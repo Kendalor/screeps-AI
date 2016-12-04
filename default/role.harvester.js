@@ -11,10 +11,10 @@ var roleHarvester = {
 
             var targetId=sources[0].id;
             for(var i in sources){
-                console.log('TAGET SETTING')
-                console.log(creep.room.memory.sources[targetId].workers)
-                console.log(creep.room.memory.sources[sources[i].id].workers)
-                console.log(creep.room.memory.sources[targetId].workers < creep.room.memory.sources[sources[i].id].workers)
+                //console.log('TAGET SETTING')
+                //console.log(creep.room.memory.sources[targetId].workers)
+                //console.log(creep.room.memory.sources[sources[i].id].workers)
+                //console.log(creep.room.memory.sources[targetId].workers < creep.room.memory.sources[sources[i].id].workers)
                 if(creep.room.memory.sources[targetId].workers > creep.room.memory.sources[sources[i].id].workers){
                     targetId=sources[i].id;
                 }else{
@@ -22,10 +22,10 @@ var roleHarvester = {
                 }
             }
             creep.memory.targetId=targetId;
-            creep.room.memory.sources[targetId].workers = 0;
+            creep.room.memory.sources[targetId].workers = creep.room.memory.sources[targetId].workers + 1;
 	    }else if(creep.carry.energy == creep.carryCapacity && creep.memory.harvesting ) {
 	        creep.memory.harvesting = false;
-	        creep.room.memory.sources[creep.memory.targetId].workers = 0;
+	        creep.room.memory.sources[creep.memory.targetId].workers = creep.room.memory.sources[targetId].workers - 1;
 	        delete creep.memory.targetId;
 	        creep.say('spending');
 	    }else{
