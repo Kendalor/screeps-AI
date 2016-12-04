@@ -2,8 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/role.harvester.js" afterPath="$PROJECT_DIR$/default/role.harvester.js" />
     </list>
     <ignored path="screeps.com.iws" />
@@ -58,8 +56,8 @@
       <file leaf-file-name="role.harvester.js" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/default/role.harvester.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="408">
-              <caret line="24" column="104" selection-start-line="24" selection-start-column="104" selection-end-line="24" selection-end-column="104" />
+            <state relative-caret-position="425">
+              <caret line="55" column="78" selection-start-line="55" selection-start-column="78" selection-end-line="55" selection-end-column="78" />
               <folding />
             </state>
           </provider>
@@ -541,8 +539,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/default/role.harvester.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="408">
-          <caret line="24" column="104" selection-start-line="24" selection-start-column="104" selection-end-line="24" selection-end-column="104" />
+        <state relative-caret-position="425">
+          <caret line="55" column="78" selection-start-line="55" selection-start-column="78" selection-end-line="55" selection-end-column="78" />
           <folding />
         </state>
       </provider>
