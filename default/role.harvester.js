@@ -22,10 +22,10 @@ var roleHarvester = {
                 }
             }
             creep.memory.targetId=targetId;
-            creep.room.memory.sources[targetId].workers = creep.room.memory.sources[targetId].workers + 1;
+            creep.room.memory.sources[targetId].workers = creep.room.memory.sources[targetId].workers+1;
 	    }else if(creep.carry.energy == creep.carryCapacity && creep.memory.harvesting ) {
 	        creep.memory.harvesting = false;
-	        creep.room.memory.sources[creep.memory.targetId].workers = creep.room.memory.sources[targetId].workers - 1;
+	        creep.room.memory.sources[creep.memory.targetId].workers = creep.room.memory.sources[targetId].workers-1;
 	        delete creep.memory.targetId;
 	        creep.say('spending');
 	    }else{
