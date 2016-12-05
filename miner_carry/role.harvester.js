@@ -29,7 +29,7 @@ var roleHarvester = {
 	        delete creep.memory.targetId;
 	        creep.say('spending');
 	    }else{
-            if(creep.memory.harvesting) {
+            if(creep.memory.harvesting){
                 var target= Game.getObjectById(creep.memory.targetId);
                 if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
                     creep.moveTo(target);
@@ -44,22 +44,37 @@ var roleHarvester = {
                     }
                 });
                 if(targets_energy.length > 0) {
-                    if(creep.transfer(targets_energy[0], RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(targets_energy[0]);
+
+                    var target_energy=creep.pos.findClosestByPath(targets_energy);
+                    if(creep.transfer(target_energy, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+                        creep.moveTo(target_energy);
 
                     }
                 }else{
-                    var targets_constr = creep.room.find(FIND_CONSTRUCTION_SITES);
-                    if(targets_constr.length) {
-                        if(creep.build(targets_constr[0]) == ERR_NOT_IN_RANGE) {
-                            creep.moveTo(targets_constr[0]);
+                    var targets_constr_1 = creep.room.find(FIND_CONSTRUCTION_SITES);
+                    if(targets_constr_1.length) {
+                        var targets_constr = creep.pos.findClosestByPath(targets_constr_1);
+                        if(creep.build(targets_constr) == ERR_NOT_IN_RANGE) {
+                            creep.moveTo(targets_constr);
 
                         }
                     }else{
-                        if(creep.upgradeController(creep.room.controller) == ERR_NOT_IN_RANGE) {
-                            creep.moveTo(creep.room.controller);
-
+                        var targets_repair = creep.room.find(FIND_STRUCTURES, {
+                        filter: (structure) => {
+                        return (structure.hits < structure.hitsMax && structure.structureType == STRUCTURE_WALL);
                     }
+                });
+                        if(targets_repair.length){
+                            var targets_repair_1 = creep.pos.findClosestByPath(targets_constr_1);
+                            if(creep.repair(targets_constr) == ERR_NOT_IN_RANGE) {
+                                creep.moveTo(targets_constr);
+                            }
+                        }else{
+                            if(creep.upgradeController(creep.room.controller) == ERR_NOT_IN_RANGE) {
+                                creep.moveTo(creep.room.controller);
+
+                            }
+                        }
 
                 }
 
