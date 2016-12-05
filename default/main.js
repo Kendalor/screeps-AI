@@ -20,7 +20,7 @@ Source.prototype.memory = undefined;
 
 module.exports.loop = function () {
 
-    if(Game.time % 5000 == 0){
+    if(Game.time % 50 == 0){
         Game.spawns['Spawn1'].room.controller.activateSafeMode();
     }
     for(var roomName in Game.rooms){//Loop through all rooms your creeps/structures are in
@@ -125,6 +125,13 @@ module.exports.loop = function () {
 
 
     for(var name in Game.creeps) {
+        /*
+        //SOURCES AUSLASTUNG
+
+
+        */
+
+
         var creep = Game.creeps[name];
         if(creep.memory.role == 'harvester') {
             roleHarvester.run(creep);

@@ -25,7 +25,7 @@ var roleHarvester = {
             creep.room.memory.sources[targetId].workers = creep.room.memory.sources[targetId].workers+1;
 	    }else if(creep.carry.energy == creep.carryCapacity && creep.memory.harvesting ) {
 	        creep.memory.harvesting = false;
-	        creep.room.memory.sources[creep.memory.targetId].workers = creep.room.memory.sources[targetId].workers-1;
+	        creep.room.memory.sources[creep.memory.targetId].workers = creep.room.memory.sources[creep.memory.targetId].workers-1;
 	        delete creep.memory.targetId;
 	        creep.say('spending');
 	    }else{
@@ -52,8 +52,8 @@ var roleHarvester = {
                 var targets_energy = creep.room.find(FIND_STRUCTURES, {
                     filter: (structure) => {
                         return (structure.structureType == STRUCTURE_EXTENSION ||
-                                structure.structureType == STRUCTURE_SPAWN ||
-                                /*structure.structureType == STRUCTURE_TOWER*/) && structure.energy < structure.energyCapacity;
+                                structure.structureType == STRUCTURE_SPAWN /*||
+                                structure.structureType == STRUCTURE_TOWER*/) && structure.energy < structure.energyCapacity;
                     }
                 });
                 if(targets_energy.length > 0) {
