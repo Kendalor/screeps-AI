@@ -60,14 +60,13 @@ var roleHarvester = {
                         }
                     }else{
                         var targets_repair = creep.room.find(FIND_STRUCTURES, {
-                        filter: (structure) => {
-                        return (structure.hits < structure.hitsMax && structure.structureType == STRUCTURE_WALL);
-                    }
-                });
+                            filter: (structure) => structure.hits < structure.hitsMax && structure.structureType != STRUCTURE_WALL
+                        });
+
                         if(targets_repair.length){
-                            var targets_repair_1 = creep.pos.findClosestByPath(targets_constr_1);
-                            if(creep.repair(targets_constr) == ERR_NOT_IN_RANGE) {
-                                creep.moveTo(targets_constr);
+                            var targets_repair_1 = creep.pos.findClosestByPath(targets_repair);
+                            if(creep.repair(targets_repair_1) == ERR_NOT_IN_RANGE) {
+                                creep.moveTo(targets_repair_1);
                             }
                         }else{
                             if(creep.upgradeController(creep.room.controller) == ERR_NOT_IN_RANGE) {
