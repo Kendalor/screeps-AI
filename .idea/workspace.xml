@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/role.harvester.js" afterPath="$PROJECT_DIR$/default/role.harvester.js" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/miner_carry/role.harvester.js" afterPath="$PROJECT_DIR$/miner_carry/role.harvester.js" />
-    </list>
+    <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="" />
     <ignored path="screeps.com.iws" />
     <ignored path=".idea/workspace.xml" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -49,7 +45,7 @@
         <entry file="file://$PROJECT_DIR$/default/role.harvester.js">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="323">
-              <caret line="61" column="28" selection-start-line="61" selection-start-column="24" selection-end-line="63" selection-end-column="27" />
+              <caret line="61" column="79" selection-start-line="61" selection-start-column="79" selection-end-line="61" selection-end-column="79" />
               <folding />
             </state>
           </provider>
@@ -358,7 +354,7 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="0" />
-    <editor active="true" />
+    <editor active="false" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
@@ -673,7 +669,7 @@
     <entry file="file://$PROJECT_DIR$/default/role.harvester.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="323">
-          <caret line="61" column="28" selection-start-line="61" selection-start-column="24" selection-end-line="63" selection-end-column="27" />
+          <caret line="61" column="79" selection-start-line="61" selection-start-column="79" selection-end-line="61" selection-end-column="79" />
           <folding />
         </state>
       </provider>
