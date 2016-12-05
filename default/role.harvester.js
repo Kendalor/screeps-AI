@@ -29,19 +29,6 @@ var roleHarvester = {
 	        delete creep.memory.targetId;
 	        creep.say('spending');
 	    }else{
-            /*if(creep.memory.harvesting) {
-                var sources = creep.room.find(FIND_SOURCES);
-                if(sources[1].energy > 0){
-                    var target= sources[1];
-                    }else{
-                    var target= sources[0];
-                    }
-                if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(target);
-                    creep.say('mv Source')
-                    }
-                }*/
-
             if(creep.memory.harvesting) {
                 var target= Game.getObjectById(creep.memory.targetId);
                 if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
@@ -49,7 +36,7 @@ var roleHarvester = {
 
                 }
             }else{
-                var targets_energy = creep.room.find(FIND_STRUCTURES, {
+                var targets_energy = creep.findClosestByPath(type, [opts])(FIND_STRUCTURES, {
                     filter: (structure) => {
                         return (structure.structureType == STRUCTURE_EXTENSION ||
                                 structure.structureType == STRUCTURE_SPAWN /*||
@@ -62,7 +49,7 @@ var roleHarvester = {
 
                     }
                 }else{
-                    var targets_constr = creep.room.find(FIND_CONSTRUCTION_SITES);
+                    var targets_constr = creep.findClosestByPath(type, [opts])(FIND_CONSTRUCTION_SITES);
                     if(targets_constr.length) {
                         if(creep.build(targets_constr[0]) == ERR_NOT_IN_RANGE) {
                             creep.moveTo(targets_constr[0]);

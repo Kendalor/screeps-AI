@@ -10,7 +10,7 @@ MIN_UPGRADERS=1
 MIN_HARVESTERS=5
 ACC_CPU=0
 var WORKER_PRESETS = [[WORK,CARRY,MOVE],[WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE]];
-
+var MINER_PRESETS = [MOVE,WORK,WORK,WORK]
 //Lets first add a shortcut prototype to the sources memory:
 Source.prototype.memory = undefined;
 
@@ -106,9 +106,6 @@ module.exports.loop = function () {
         }
 
         //Berechne Effizienz
-        /*
-        if(Game.time == Game.rooms[name].memory,
-        */
 
         var energyRatio = Game.rooms[name].energyAvailable/Game.rooms[name].energyCapacityAvailable;
 
@@ -120,16 +117,27 @@ module.exports.loop = function () {
 
 
         console.log('Room "'+name+'" has  Energy: '+Game.rooms[name].energyAvailable+' Harvesters: '+harvesters.length+' Current Workerpreset '+ WORKER_PRESETS[Game.rooms[name].memory.defaultworker]);
+        /*
+        //SOURCES AUSLASTUNG
+
+
+
+        for(var creep in Game.creeps){
+            if(Game.creeps[creep].room.name == name && Game.creeps[creep].memory.target && Game.creeps[creep].memory.harvesting){
+                Game.rooms[name].memory.source[Game.creeps[creep].memory.target]=Game.rooms[name].memory.source[Game.creeps[creep].memory.target]+1;
+
+            }
+
+        }
+
+        */
+
     }
     }
 
 
     for(var name in Game.creeps) {
-        /*
-        //SOURCES AUSLASTUNG
 
-
-        */
 
 
         var creep = Game.creeps[name];
@@ -143,6 +151,10 @@ module.exports.loop = function () {
             roleBuilder.run(creep);
         }
     }
+
+
+
+
     //var temp=Game.cpu.getUsed();
     //console.log('CPU Used: '+ temp);
 }
