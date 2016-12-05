@@ -49,10 +49,11 @@ var roleHarvester = {
 
                     }
                 }else{
-                    var targets_constr = creep.room.find(FIND_CONSTRUCTION_SITES);
-                    if(targets_constr.length) {
-                        if(creep.build(targets_constr[0]) == ERR_NOT_IN_RANGE) {
-                            creep.moveTo(targets_constr[0]);
+                    var targets_constr_1 = creep.room.find(FIND_CONSTRUCTION_SITES);
+                    if(targets_constr_1.length) {
+                        var targets_constr = creep.pos.findClosestByPath(targets_constr_1);
+                        if(creep.build(targets_constr) == ERR_NOT_IN_RANGE) {
+                            creep.moveTo(targets_constr);
 
                         }
                     }else{
