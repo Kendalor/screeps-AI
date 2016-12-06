@@ -60,7 +60,7 @@ var roleHarvester = {
                         }
                     }else{
                         var targets_repair = creep.room.find(FIND_STRUCTURES, {
-                            filter: (structure) => structure.hits < structure.hitsMax && structure.structureType != STRUCTURE_WALL
+                            filter: (structure) => structure.hits < structure.hitsMax-2500 && structure.structureType != STRUCTURE_WALL
                         });
 
                         if(targets_repair.length){
