@@ -2,13 +2,13 @@ var roleHarvester = require('role.harvester');
 var roleUpgrader = require('role.upgrader');
 var roleBuilder = require('role.builder');
 
-MAX_HARVESTERS=15
-MAX_BUILDERS=5
-MAX_UPGRADERS=5
-MIN_BUILDERS=1
-MIN_UPGRADERS=1
-MIN_HARVESTERS=5
-ACC_CPU=0
+var MAX_HARVESTERS=10
+var MAX_BUILDERS=5
+var MAX_UPGRADERS=5
+var MIN_BUILDERS=1
+var MIN_UPGRADERS=1
+var MIN_HARVESTERS=5
+var ACC_CPU=0
 var WORKER_PRESETS = [[WORK,CARRY,MOVE],[WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE]];
 var MINER_PRESETS = [MOVE,WORK,WORK,WORK]
 //Lets first add a shortcut prototype to the sources memory:
@@ -36,9 +36,21 @@ module.exports.loop = function () {
                 source.memory.workers = 0;
                 source.memory.efficiency =0;
             }
+        }else{
+            var sources = room.find(FIND_SOURCES);
+            for(var i in sources){
+                var source = sources[i];
+                if(!room.memory.sources[source.id]){
+                    source.memory = room.memory.sources[source.id] = {}; //Create a new empty memory object for this source
+                //Now you can do anything you want to do with this source
+                //for example you could add a worker counter:
+                    source.memory.workers = 0;
+                    source.memory.efficiency =0;
+                }
+            }
         }
-
     }
+
 
 
 
