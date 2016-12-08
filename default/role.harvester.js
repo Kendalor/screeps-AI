@@ -63,8 +63,8 @@ var roleHarvester = {
                 var targets_energy = creep.room.find(FIND_STRUCTURES, {
                     filter: (structure) => {
                         return (structure.structureType == STRUCTURE_EXTENSION ||
-                                structure.structureType == STRUCTURE_SPAWN /*||
-                                structure.structureType == STRUCTURE_TOWER*/) && structure.energy < structure.energyCapacity;
+                                structure.structureType == STRUCTURE_SPAWN ||
+                                (structure.structureType == STRUCTURE_TOWER && structure.energy < structure.energyCapacity*0.5)) && structure.energy < structure.energyCapacity;
                     }
                 });
                 if(targets_energy.length > 0) {
@@ -82,7 +82,7 @@ var roleHarvester = {
                         creep.say('Im Building');
                     }else{
                         var targets_repair = creep.room.find(FIND_STRUCTURES, {
-                            filter: (structure) => structure.hits < structure.hitsMax-1500 && structure.structureType != STRUCTURE_WALL
+                            filter: (structure) => (structure.hits < structure.hitsMax-1500 && structure.structureType != STRUCTURE_WALL) || (structure.structureType == STRUCTURE_WALL && structure.hits < 10000*Game.spawns['Spawn1'].room.controller.level)
                         });
                         if(targets_repair.length){
                             var targets_repair_1 = creep.pos.findClosestByPath(targets_repair);

@@ -19,8 +19,8 @@ Source.prototype.memory = undefined;
 
 
 module.exports.loop = function () {
-
-    if(Game.time % 50 == 0){
+    var hostiles=Game.spawns['Spawn1'].room.find(FIND_HOSTILE_CREEPS);
+    if(hostiles.length>0){
         Game.spawns['Spawn1'].room.controller.activateSafeMode();
     }
     for(var roomName in Game.rooms){//Loop through all rooms your creeps/structures are in

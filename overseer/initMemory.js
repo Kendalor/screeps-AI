@@ -42,6 +42,13 @@ var initMemory = {
                     container.memory= room.memory.containers[container.id]={};
                 }
             }
+        if(room.memory.safe == undefined){
+            room.memory.safe= true;
+        }
+        if(room.memory.buildinglvl == undefined){
+            room.memory.buildinglvl =0;
+        }
+
 
 
 

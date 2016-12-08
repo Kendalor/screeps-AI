@@ -16,6 +16,10 @@ module.exports.loop = function () {
 
     for(var roomName in Game.rooms){//Loop through all rooms your creeps/structures are in
         initMemory.run(roomName);
+
+        phase1.run(roomName);
+
+
     }
 
 
