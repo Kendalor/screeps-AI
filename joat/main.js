@@ -2,14 +2,14 @@ var roleHarvester = require('role.harvester');
 var roleUpgrader = require('role.upgrader');
 var roleBuilder = require('role.builder');
 
-var MAX_HARVESTERS=10
+var MAX_HARVESTERS=15
 var MAX_BUILDERS=5
 var MAX_UPGRADERS=5
 var MIN_BUILDERS=1
 var MIN_UPGRADERS=1
 var MIN_HARVESTERS=5
 var ACC_CPU=0
-var WORKER_PRESETS = [[WORK,CARRY,MOVE],[WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE]];
+var WORKER_PRESETS = [[WORK,CARRY,MOVE],[WORK,WORK,WORK,CARRY,CARRY,MOVE,MOVE,MOVE],[WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE]];
 var MINER_PRESETS = [MOVE,WORK,WORK,WORK]
 //Lets first add a shortcut prototype to the sources memory:
 Source.prototype.memory = undefined;

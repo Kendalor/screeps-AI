@@ -77,16 +77,16 @@ var roleHarvester = {
                     var targets_constr_1 = creep.room.find(FIND_CONSTRUCTION_SITES);
                     if(targets_constr_1.length){
                         var targets_constr = creep.pos.findClosestByPath(targets_constr_1);
-                        creep.memory.targetId=target_constr.id;
+                        creep.memory.targetId=targets_constr.id;
                         creep.memory.job='building';
                         creep.say('Im Building');
                     }else{
                         var targets_repair = creep.room.find(FIND_STRUCTURES, {
-                            filter: (structure) => structure.hits < structure.hitsMax-100 && structure.structureType != STRUCTURE_WALL
+                            filter: (structure) => structure.hits < structure.hitsMax-1500 && structure.structureType != STRUCTURE_WALL
                         });
                         if(targets_repair.length){
                             var targets_repair_1 = creep.pos.findClosestByPath(targets_repair);
-                            creep.memory.targetId=target_repair_1.id;
+                            creep.memory.targetId=targets_repair_1.id;
                             creep.memory.job='repair';
                             creep.say('Im Reparing');
                         }else{
@@ -97,7 +97,8 @@ var roleHarvester = {
                     }
                 }
             // DOING A JOB ?
-            }else if(creep.memory.job && !creep.memory.harvesting){
+            }
+            if(creep.memory.job && !creep.memory.harvesting){
                 /*console.log('Carry?');
                 console.log(creep.memory.job == 'carry');
                 console.log('Building');
@@ -123,7 +124,7 @@ var roleHarvester = {
                 else if(creep.memory.job == 'building'){
                     var target=Game.getObjectById(creep.memory.targetId);
                     //CHECK IS TARGET IS STILL VALID
-                    if(!Game.getObjectById(creep.memory.targetId)){
+                    if(Game.getObjectById(creep.memory.targetId)){
                         //BUILD ROUTINE
                         if(creep.build(target, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
                             creep.moveTo(target);
