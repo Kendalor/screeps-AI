@@ -19,28 +19,14 @@ var roleHarvester = {
             if(creep.memory.job){
                 delete creep.memory.job;
             }
-            var sources = creep.room.find(FIND_SOURCES);
-            //find nearest source
 
-            var targetId=sources[0].id;
-            for(var i in sources){
-                //console.log('TAGET SETTING')
-                //console.log(creep.room.memory.sources[targetId].workers)
-                //console.log(creep.room.memory.sources[sources[i].id].workers)
-                //console.log(creep.room.memory.sources[targetId].workers < creep.room.memory.sources[sources[i].id].workers)
-                if(creep.room.memory.sources[targetId].workers > creep.room.memory.sources[sources[i].id].workers){
-                    targetId=sources[i].id;
-                }else{
+            creep.memory.targetId=creep.room.storage.id;
 
-                }
-            }
-            creep.memory.targetId=targetId;
-            creep.room.memory.sources[targetId].workers = creep.room.memory.sources[targetId].workers+1;
 	    }
         //STOP HARVESTING MODE?
 	    else if(creep.carry.energy == creep.carryCapacity && creep.memory.harvesting ) {
 	        creep.memory.harvesting = false;
-	        creep.room.memory.sources[creep.memory.targetId].workers = creep.room.memory.sources[creep.memory.targetId].workers-1;
+
 	        delete creep.memory.targetId;
 	        creep.say('spending');
 	    }else{
@@ -53,7 +39,8 @@ var roleHarvester = {
             //HARVESTING
             if(creep.memory.harvesting){
                 var target= Game.getObjectById(creep.memory.targetId);
-                if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
+
+                if(creep.withdraw(target,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
                     creep.moveTo(target);
 
                 }
@@ -63,8 +50,8 @@ var roleHarvester = {
                 var targets_energy = creep.room.find(FIND_STRUCTURES, {
                     filter: (structure) => {
                         return (structure.structureType == STRUCTURE_EXTENSION ||
-                                structure.structureType == STRUCTURE_SPAWN /*||
-                                structure.structureType == STRUCTURE_TOWER*/) && structure.energy < structure.energyCapacity;
+                                structure.structureType == STRUCTURE_SPAWN ||
+                                (structure.structureType == STRUCTURE_TOWER && structure.energy < structure.energyCapacity*0.5)) && structure.energy < structure.energyCapacity;
                     }
                 });
                 if(targets_energy.length > 0) {
@@ -82,7 +69,9 @@ var roleHarvester = {
                         creep.say('Im Building');
                     }else{
                         var targets_repair = creep.room.find(FIND_STRUCTURES, {
-                            filter: (structure) => structure.hits < structure.hitsMax-1500 && structure.structureType != STRUCTURE_WALL
+                            filter: (structure) => (structure.hits < structure.hitsMax-1500 && structure.structureType != STRUCTURE_WALL && structure.structureType != STRUCTURE_RAMPART) ||
+                            (structure.structureType == STRUCTURE_WALL && structure.hits < 10000*Game.spawns['Spawn1'].room.controller.level) ||
+                            (structure.structureType == STRUCTURE_RAMPART && structure.hits < 10000*Game.spawns['Spawn1'].room.controller.level)
                         });
                         if(targets_repair.length){
                             var targets_repair_1 = creep.pos.findClosestByPath(targets_repair);
@@ -138,7 +127,9 @@ var roleHarvester = {
                 else if(creep.memory.job == 'repair') {
                     var target=Game.getObjectById(creep.memory.targetId);
                     //CHECK IS TARGET IS STILL VALID
-                    if(target.hits < target.hitsMax){
+                    if((target.structureType != target.hits < target.hitsMax-1500 && target.structureType != STRUCTURE_WALL && target.structureType != STRUCTURE_RAMPART) ||
+                            (target.structureType == STRUCTURE_WALL && target.hits < 10000*Game.spawns['Spawn1'].room.controller.level) ||
+                            (target.structureType == STRUCTURE_RAMPART && target.hits < 10000*Game.spawns['Spawn1'].room.controller.level)){
                         //BUILD ROUTINE
                         if(creep.repair(target, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
                             creep.moveTo(target);
