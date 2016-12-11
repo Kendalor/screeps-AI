@@ -10,11 +10,11 @@ var roleAttacker = {
             var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS);
             var closestStr =creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType != STRUCTURE_CONTROLLER && str.structureType != STRUCTURE_WALL});
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER});
-            if(spawn){
+            if(closestHostile){
                 //console.log(creep.name);
                 //console.log('TEST2');
-                if(creep.attack(spawn) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(spawn);
+                if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
+                    creep.moveTo(closestHostile);
                     creep.say('attacking');
                 }
             }else if(closestStr){
@@ -42,7 +42,7 @@ var roleAttacker = {
             if(Memory.squads[creep.memory.squad].assembled){
                 var target=Game.flags[creep.memory.target];
                 //console.log(target);
-                creep.moveTo(target/*,{costCallback: function(roomName, costMatrix) {
+                creep.moveTo(target,{costCallback: function(roomName, costMatrix) {
 	                if(roomName == 'E79N43') {
                         for(var i=0;i<255;i++){
                             for(var j=0;j<255;j++){
@@ -52,7 +52,7 @@ var roleAttacker = {
 		            }
 	            }
 
-                }*/);
+                });
                 creep.moveTo(target,{ignoreDestructibleStructures: true});
                 //if(creep.room.name = target.room.name){}
                 if(creep.pos.inRangeTo(target,2)){

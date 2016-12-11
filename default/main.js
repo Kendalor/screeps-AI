@@ -48,7 +48,7 @@ module.exports.loop = function () {
             if(!Memory.squads[Game.flags[flag].name]){
                 Memory.squads[Game.flags[flag].name]= {}
                 Memory.squads[Game.flags[flag].name].members={};
-                Memory.squads[Game.flags[flag].name].size=5;
+                Memory.squads[Game.flags[flag].name].size=2;
                 Memory.squads[Game.flags[flag].name].target=flag;
                 Memory.squads[Game.flags[flag].name].assembled=false;
                 Memory.squads[Game.flags[flag].name].reached=false;
