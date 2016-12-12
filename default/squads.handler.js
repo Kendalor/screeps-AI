@@ -18,7 +18,7 @@ module.exports = {
             if(Object.keys(Memory.squads[squad].members).length < Memory.squads[squad].size && !Memory.squads[squad].assembled){
                 //console.log('Spawning');
                 console.log(Game.spawns['Spawn1'].createCreep(
-                [ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE], undefined, {role: 'attacker', squad: squad, target: Memory.squads[squad].target}))
+                [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE], undefined, {role: 'attacker', squad: squad, target: Memory.squads[squad].target}))
                 /*if(Game.spawns['Spawn1'].createCreep([ATTACK,ATTACK,TOUGH,TOUGH,TOUGH], undefined, {role: 'attacker', squad: squad, target: Memory.squads[squad].target})){
                     Memory.squads[squad].count = Memory.squads[squad].count+1;
                 }*/
