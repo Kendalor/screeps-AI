@@ -7,29 +7,40 @@ var roleAttacker = {
         if(!creep.spawning){
         //console.log('TEST1');
         if(creep.memory.reached){
-            var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length == 0});
-            var closestStr =creep.pos.findClosestByRange(FIND_STRUCTURES,{filter: (str) => str.structureType != STRUCTURE_CONTROLLER && str.structureType != STRUCTURE_WALL && str.structureType != STRUCTURE_CONTAINER});
+            var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length >0});
+            var closestStr =creep.pos.findClosestByRange(FIND_STRUCTURES,{filter: (str) => str.structureType != STRUCTURE_CONTROLLER && str.structureType != STRUCTURE_WALL});
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER});
-            //console.log(closestHostile);
+            console.log(closestHostile);
             if(closestHostile){
                 //console.log(creep.name);
                 //console.log('TEST2');
-                if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
+                if(creep.pos.getRangeTo(closestHostile) >2){
+                    if(creep.rangedAttack(closestHostile) == ERR_NOT_IN_RANGE){
                     creep.moveTo(closestHostile);
-                    creep.heal(creep);
+                    if(creep.heal(creep))
                     creep.say('attacking');
+                    }
+                }else{
+                    creep.say('retreating');
+                    var t_direction=creep.pos.getDirectionTo(closestHostile);
+                    if(creep.move((t_direction+4)%8)){
+                        creep.move((t_direction+4)%8);
+                    }
+                    else if(creep.move((t_direction+3)%8)){
+                    creep.move((t_direction+3)%8);}
+                    else if(creep.move((t_direction+5)%8)){
+                    creep.move((t_direction+5)%8);}
+
                 }
-            }else if (creep.hits < creep.hitsMax){
-                creep.heal(creep);
 
             }else if(closestStr){
 
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
                     creep.moveTo(closestStr);
-                    creep.heal(creep);
                     creep.say('attacking');
                 }
-            }else{
+            }
+            else{
                 //console.log('TEST3');
                 creep.memory.reached=false;
                 delete creep.memory.target;
@@ -59,7 +70,6 @@ var roleAttacker = {
 
                 });
                 creep.moveTo(target,{ignoreDestructibleStructures: true});
-                creep.heal(creep);
                 //if(creep.room.name = target.room.name){}
                 if(creep.pos.inRangeTo(target,2)){
                     creep.memory.reached=true;

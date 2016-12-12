@@ -2,8 +2,13 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/default/class.operation.scouting.js" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/default/role.attacker_ranged.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/flag.handler.js" afterPath="$PROJECT_DIR$/default/flag.handler.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/main.js" afterPath="$PROJECT_DIR$/default/main.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/role.attacker.js" afterPath="$PROJECT_DIR$/default/role.attacker.js" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/squads.handler.js" afterPath="$PROJECT_DIR$/default/squads.handler.js" />
     </list>
     <ignored path="screeps.com.iws" />
@@ -28,28 +33,48 @@
       <file leaf-file-name="main.js" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/default/main.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="425">
-              <caret line="81" column="70" selection-start-line="81" selection-start-column="70" selection-end-line="81" selection-end-column="70" />
+            <state relative-caret-position="1156">
+              <caret line="74" column="117" selection-start-line="74" selection-start-column="117" selection-end-line="74" selection-end-column="117" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
       <file leaf-file-name="squads.handler.js" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/overseer/squads.handler.js">
+        <entry file="file://$PROJECT_DIR$/default/squads.handler.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="340">
-              <caret line="20" column="156" selection-start-line="20" selection-start-column="17" selection-end-line="20" selection-end-column="156" />
+            <state relative-caret-position="238">
+              <caret line="14" column="0" selection-start-line="14" selection-start-column="0" selection-end-line="14" selection-end-column="0" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="squads.handler.js" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/default/squads.handler.js">
+      <file leaf-file-name="class.operation.scouting.js" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/default/class.operation.scouting.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="544">
-              <caret line="32" column="0" selection-start-line="32" selection-start-column="0" selection-end-line="32" selection-end-column="0" />
+            <state relative-caret-position="391">
+              <caret line="23" column="0" selection-start-line="23" selection-start-column="0" selection-end-line="23" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="role.attacker_ranged.js" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/default/role.attacker_ranged.js">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="153">
+              <caret line="9" column="167" selection-start-line="9" selection-start-column="62" selection-end-line="9" selection-end-column="167" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="role.attacker.js" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/default/role.attacker.js">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="68">
+              <caret line="4" column="0" selection-start-line="4" selection-start-column="0" selection-end-line="4" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -58,8 +83,8 @@
       <file leaf-file-name="flag.handler.js" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/default/flag.handler.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="306">
-              <caret line="18" column="0" selection-start-line="18" selection-start-column="0" selection-end-line="18" selection-end-column="0" />
+            <state relative-caret-position="85">
+              <caret line="5" column="21" selection-start-line="5" selection-start-column="21" selection-end-line="5" selection-end-column="21" />
               <folding />
             </state>
           </provider>
@@ -113,13 +138,18 @@
         <option value="$PROJECT_DIR$/joat/role.harvester.js" />
         <option value="$PROJECT_DIR$/joat/role.attacker.js" />
         <option value="$PROJECT_DIR$/joat/main.js" />
-        <option value="$PROJECT_DIR$/default/role.attacker.js" />
         <option value="$PROJECT_DIR$/overseer/buildingRoad.js" />
         <option value="$PROJECT_DIR$/overseer/flag.handler.js" />
-        <option value="$PROJECT_DIR$/default/main.js" />
         <option value="$PROJECT_DIR$/overseer/squads.handler.js" />
+        <option value="$PROJECT_DIR$/default/roler.attacker_ranged.js" />
+        <option value="$PROJECT_DIR$/default/role.attacker_ranged.js" />
+        <option value="$PROJECT_DIR$/default/main.js" />
         <option value="$PROJECT_DIR$/default/squads.handler.js" />
+        <option value="$PROJECT_DIR$/default/role.attacker.js" />
+        <option value="$PROJECT_DIR$/default/class.operation.js" />
+        <option value="$PROJECT_DIR$/default/class.operation.mining.js" />
         <option value="$PROJECT_DIR$/default/flag.handler.js" />
+        <option value="$PROJECT_DIR$/default/class.operation.scouting.js" />
       </list>
     </option>
   </component>
@@ -154,8 +184,6 @@
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
-      <pane id="Scratches" />
-      <pane id="Scope" />
       <pane id="ProjectPane">
         <subPane>
           <PATH>
@@ -232,6 +260,8 @@
           </PATH>
         </subPane>
       </pane>
+      <pane id="Scratches" />
+      <pane id="Scope" />
     </panes>
   </component>
   <component name="PropertiesComponent">
@@ -485,20 +515,6 @@
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/default/role.builder.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="204">
-          <caret line="12" column="9" selection-start-line="12" selection-start-column="9" selection-end-line="12" selection-end-column="9" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/default/role.harvester.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="544">
-          <caret line="32" column="60" selection-start-line="32" selection-start-column="60" selection-end-line="32" selection-end-column="60" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/default/role.upgrader.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="289">
@@ -780,19 +796,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/default/role.attacker.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="510">
-          <caret line="54" column="17" selection-start-line="54" selection-start-column="17" selection-end-line="54" selection-end-column="17" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/joat/main.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="558">
           <caret line="188" column="8" selection-start-line="188" selection-start-column="8" selection-end-line="190" selection-end-column="9" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -800,7 +807,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="425">
           <caret line="25" column="0" selection-start-line="25" selection-start-column="0" selection-end-line="25" selection-end-column="0" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -816,7 +822,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="48">
           <caret line="8" column="35" selection-start-line="8" selection-start-column="35" selection-end-line="8" selection-end-column="35" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -828,34 +833,58 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/default/main.js">
+    <entry file="file://$PROJECT_DIR$/overseer/squads.handler.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="425">
-          <caret line="81" column="70" selection-start-line="81" selection-start-column="70" selection-end-line="81" selection-end-column="70" />
+        <state relative-caret-position="102">
+          <caret line="6" column="35" selection-start-line="6" selection-start-column="35" selection-end-line="6" selection-end-column="35" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/overseer/squads.handler.js">
+    <entry file="file://$PROJECT_DIR$/default/role.attacker_ranged.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="340">
-          <caret line="20" column="156" selection-start-line="20" selection-start-column="17" selection-end-line="20" selection-end-column="156" />
+        <state relative-caret-position="153">
+          <caret line="9" column="167" selection-start-line="9" selection-start-column="62" selection-end-line="9" selection-end-column="167" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/default/role.attacker.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="68">
+          <caret line="4" column="0" selection-start-line="4" selection-start-column="0" selection-end-line="4" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/default/main.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1156">
+          <caret line="74" column="117" selection-start-line="74" selection-start-column="117" selection-end-line="74" selection-end-column="117" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/default/flag.handler.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="306">
-          <caret line="18" column="0" selection-start-line="18" selection-start-column="0" selection-end-line="18" selection-end-column="0" />
+        <state relative-caret-position="85">
+          <caret line="5" column="21" selection-start-line="5" selection-start-column="21" selection-end-line="5" selection-end-column="21" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/default/squads.handler.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="544">
-          <caret line="32" column="0" selection-start-line="32" selection-start-column="0" selection-end-line="32" selection-end-column="0" />
+        <state relative-caret-position="238">
+          <caret line="14" column="0" selection-start-line="14" selection-start-column="0" selection-end-line="14" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/default/class.operation.scouting.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="391">
+          <caret line="23" column="0" selection-start-line="23" selection-start-column="0" selection-end-line="23" selection-end-column="0" />
           <folding />
         </state>
       </provider>

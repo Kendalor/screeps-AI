@@ -4,6 +4,7 @@ var roleBuilder = require('role.builder');
 var roleAttacker = require('role.attacker');
 var flagHandler = require('flag.handler');
 var squadsHandler = require('squads.handler');
+var roleAttacker_Ranged = require('role.attacker_ranged');
 
 MAX_HARVESTERS=10
 MAX_BUILDERS=5
@@ -71,7 +72,7 @@ module.exports.loop = function () {
             if(structures[i]) {
 
 
-                var closestHostile = structures[i].pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length >0});
+                var closestHostile = structures[i].pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length >0 && (_.filter(creep.body,(body) => body.type == 'work')).length >0});
                 if(closestHostile) {
                     structures[i].attack(closestHostile);
                 }else{
@@ -141,6 +142,9 @@ module.exports.loop = function () {
         }
         if(creep.memory.role == 'attacker') {
             roleAttacker.run(creep);
+        }
+        if(creep.memory.role == 'attacker_ranged') {
+            roleAttacker_Ranged.run(creep);
         }
     }
 
