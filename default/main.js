@@ -2,6 +2,8 @@ var roleHarvester = require('role.harvester');
 var roleUpgrader = require('role.upgrader');
 var roleBuilder = require('role.builder');
 var roleAttacker = require('role.attacker');
+var flagHandler = require('flag.handler');
+var squadsHandler = require('squads.handler');
 
 MAX_HARVESTERS=10
 MAX_BUILDERS=5
@@ -43,20 +45,7 @@ module.exports.loop = function () {
     if(!Memory.squads){
         Memory.squads={};
     }
-    for(var flag in Game.flags){
-        if(Game.flags[flag].color == COLOR_RED){
-            if(!Memory.squads[Game.flags[flag].name]){
-                Memory.squads[Game.flags[flag].name]= {}
-                Memory.squads[Game.flags[flag].name].members={};
-                Memory.squads[Game.flags[flag].name].size=2;
-                Memory.squads[Game.flags[flag].name].target=flag;
-                Memory.squads[Game.flags[flag].name].assembled=false;
-                Memory.squads[Game.flags[flag].name].reached=false;
-
-            }
-        }
-
-    }
+    flagHandler.run();
 
 
 
@@ -82,12 +71,12 @@ module.exports.loop = function () {
             if(structures[i]) {
 
 
-                var closestHostile = structures[i].pos.findClosestByRange(FIND_HOSTILE_CREEPS);
+                var closestHostile = structures[i].pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length >0});
                 if(closestHostile) {
                     structures[i].attack(closestHostile);
                 }else{
                     var closestDamagedStructure = structures[i].pos.findClosestByRange(FIND_STRUCTURES, {
-                        filter: (structure) => (structure.hits < structure.hitsMax && structure.structureType != STRUCTURE_WALL)
+                        filter: (structure) => (structure.hits < structure.hitsMax && structure.structureType != STRUCTURE_WALL && structure.structureType != STRUCTURE_RAMPART)
                     });
                     if(closestDamagedStructure) {
                         structures[i].repair(closestDamagedStructure);
@@ -103,17 +92,6 @@ module.exports.loop = function () {
 
 
     if(Game.time % 5 == 0){
-
-        if(Game.time % 20 == 0){
-            console.log('Aktuallisiere GSpieltaktik');
-            var energyCap=Game.rooms[name].energyCapacityAvailable;
-            var controlerlvl = Game.rooms[name].controller.level;
-            if(controlerlvl == 1){
-                Game.rooms[name].memory.defaultworker = 0;
-            }else if(controlerlvl == 2 && energyCap == 550){
-                Game.rooms[name].memory.defaultworker = 1;
-            }
-        }
 
         //Berechne Effizienz
 
@@ -144,34 +122,7 @@ module.exports.loop = function () {
 
     }
     }
-
-        for(var squad in Memory.squads){
-        if(!Game.flags[squad]){
-            delete Memory.squads[squad];
-            for(creep in Game.creeps){
-             var cr = Game.creeps[creep];
-             if(cr.memory.role == 'attacker' && cr.memory.squad == 'squad'){
-                cr.suicide();
-             }
-            }
-
-        }
-
-        if(Object.keys(Memory.squads[squad].members).length < Memory.squads[squad].size && !Memory.squads[squad].assembled){
-            //console.log('Spawning');
-            console.log(Game.spawns['Spawn1'].createCreep(
-            [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE], undefined, {role: 'attacker', squad: squad, target: Memory.squads[squad].target}))
-            /*if(Game.spawns['Spawn1'].createCreep([ATTACK,ATTACK,TOUGH,TOUGH,TOUGH], undefined, {role: 'attacker', squad: squad, target: Memory.squads[squad].target})){
-                Memory.squads[squad].count = Memory.squads[squad].count+1;
-            }*/
-
-        }else if(Object.keys(Memory.squads[squad].members).length == Memory.squads[squad].size && !Memory.squads[squad].assembled){
-            Memory.squads[squad].assembled = true;
-            console.log('Squad assembled');
-        }
-
-
-    }
+    squadsHandler.run();
 
 
     for(var name in Game.creeps) {

@@ -5,7 +5,7 @@
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/main.js" afterPath="$PROJECT_DIR$/default/main.js" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/role.attacker.js" afterPath="$PROJECT_DIR$/default/role.attacker.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/overseer/buildingRoad.js" afterPath="$PROJECT_DIR$/overseer/buildingRoad.js" />
     </list>
     <ignored path="screeps.com.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -29,38 +29,48 @@
       <file leaf-file-name="main.js" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/default/main.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="714">
-              <caret line="57" column="0" selection-start-line="57" selection-start-column="0" selection-end-line="57" selection-end-column="0" />
+            <state relative-caret-position="425">
+              <caret line="81" column="70" selection-start-line="81" selection-start-column="70" selection-end-line="81" selection-end-column="70" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="role.attacker.js" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/default/role.attacker.js">
+      <file leaf-file-name="squads.handler.js" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/overseer/squads.handler.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="510">
-              <caret line="54" column="17" selection-start-line="54" selection-start-column="17" selection-end-line="54" selection-end-column="17" />
+            <state relative-caret-position="323">
+              <caret line="19" column="62" selection-start-line="19" selection-start-column="62" selection-end-line="19" selection-end-column="62" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
       <file leaf-file-name="main.js" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/joat/main.js">
+        <entry file="file://$PROJECT_DIR$/overseer/main.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="3196">
-              <caret line="188" column="8" selection-start-line="188" selection-start-column="8" selection-end-line="190" selection-end-column="9" />
+            <state relative-caret-position="48">
+              <caret line="8" column="35" selection-start-line="8" selection-start-column="35" selection-end-line="8" selection-end-column="35" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="buildingRoad.js" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/overseer/buildingRoad.js">
+      <file leaf-file-name="flag.handler.js" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/overseer/flag.handler.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="272">
-              <caret line="16" column="13" selection-start-line="16" selection-start-column="13" selection-end-line="16" selection-end-column="13" />
+            <state relative-caret-position="306">
+              <caret line="18" column="0" selection-start-line="18" selection-start-column="0" selection-end-line="18" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="creep.js" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/overseer/creep.js">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="0">
+              <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="22" selection-end-column="23" />
               <folding />
             </state>
           </provider>
@@ -84,7 +94,6 @@
         <option value="$PROJECT_DIR$/tutorial-4/main.js" />
         <option value="$PROJECT_DIR$/overseer/init.memory.js" />
         <option value="$PROJECT_DIR$/overseer/room.phase1.js" />
-        <option value="$PROJECT_DIR$/overseer/buildingRoad.js" />
         <option value="$PROJECT_DIR$/overseer/createInfrastructure.js" />
         <option value="$PROJECT_DIR$/default/role.harvester.js" />
         <option value="$PROJECT_DIR$/overseer/creep.js" />
@@ -95,8 +104,11 @@
         <option value="$PROJECT_DIR$/joat/role.harvester.js" />
         <option value="$PROJECT_DIR$/joat/role.attacker.js" />
         <option value="$PROJECT_DIR$/joat/main.js" />
-        <option value="$PROJECT_DIR$/default/main.js" />
         <option value="$PROJECT_DIR$/default/role.attacker.js" />
+        <option value="$PROJECT_DIR$/overseer/buildingRoad.js" />
+        <option value="$PROJECT_DIR$/overseer/flag.handler.js" />
+        <option value="$PROJECT_DIR$/default/main.js" />
+        <option value="$PROJECT_DIR$/overseer/squads.handler.js" />
       </list>
     </option>
   </component>
@@ -131,8 +143,8 @@
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
-      <pane id="Scope" />
       <pane id="Scratches" />
+      <pane id="Scope" />
       <pane id="ProjectPane">
         <subPane>
           <PATH>
@@ -203,16 +215,16 @@
     <property name="last_opened_file_path" value="C:/Anaconda3/python.exe" />
   </component>
   <component name="RecentsManager">
-    <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\joat" />
-      <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\default" />
-    </key>
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\default" />
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\joat" />
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\overseer" />
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\backup" />
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\miner_carry" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\joat" />
+      <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\default" />
     </key>
   </component>
   <component name="RunManager">
@@ -388,7 +400,7 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="0" />
-    <editor active="false" />
+    <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
@@ -448,20 +460,6 @@
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/default/role.builder.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="340">
-          <caret line="20" column="13" selection-start-line="20" selection-start-column="13" selection-end-line="20" selection-end-column="13" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/default/role.upgrader.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="68">
-          <caret line="4" column="0" selection-start-line="4" selection-start-column="0" selection-end-line="4" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/default/main.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
@@ -709,13 +707,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/overseer/creep.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="374">
-          <caret line="22" column="22" selection-start-line="22" selection-start-column="22" selection-end-line="22" selection-end-column="22" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/overseer/role.miner.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="102">
@@ -727,13 +718,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="34">
           <caret line="2" column="0" selection-start-line="2" selection-start-column="0" selection-end-line="2" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/overseer/main.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="47">
-          <caret line="8" column="35" selection-start-line="8" selection-start-column="35" selection-end-line="8" selection-end-column="35" />
         </state>
       </provider>
     </entry>
@@ -786,9 +770,17 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/default/role.attacker.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="510">
+          <caret line="54" column="17" selection-start-line="54" selection-start-column="17" selection-end-line="54" selection-end-column="17" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/joat/main.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="3196">
+        <state relative-caret-position="558">
           <caret line="188" column="8" selection-start-line="188" selection-start-column="8" selection-end-line="190" selection-end-column="9" />
           <folding />
         </state>
@@ -796,24 +788,48 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/overseer/buildingRoad.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="272">
-          <caret line="16" column="13" selection-start-line="16" selection-start-column="13" selection-end-line="16" selection-end-column="13" />
+        <state relative-caret-position="425">
+          <caret line="25" column="0" selection-start-line="25" selection-start-column="0" selection-end-line="25" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/overseer/creep.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="22" selection-end-column="23" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/overseer/main.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="48">
+          <caret line="8" column="35" selection-start-line="8" selection-start-column="35" selection-end-line="8" selection-end-column="35" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/overseer/flag.handler.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="306">
+          <caret line="18" column="0" selection-start-line="18" selection-start-column="0" selection-end-line="18" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/default/main.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="714">
-          <caret line="57" column="0" selection-start-line="57" selection-start-column="0" selection-end-line="57" selection-end-column="0" />
+        <state relative-caret-position="425">
+          <caret line="81" column="70" selection-start-line="81" selection-start-column="70" selection-end-line="81" selection-end-column="70" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/default/role.attacker.js">
+    <entry file="file://$PROJECT_DIR$/overseer/squads.handler.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="510">
-          <caret line="54" column="17" selection-start-line="54" selection-start-column="17" selection-end-line="54" selection-end-column="17" />
+        <state relative-caret-position="323">
+          <caret line="19" column="62" selection-start-line="19" selection-start-column="62" selection-end-line="19" selection-end-column="62" />
           <folding />
         </state>
       </provider>
