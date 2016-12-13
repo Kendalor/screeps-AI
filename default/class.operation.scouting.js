@@ -2,22 +2,35 @@
 
 module.exports = class{
         constructor(roomName,flag,id = undefined){
-            if(id == undefined && !Memory.flags[flag].operation_id){
-
-                this.roomName=roomName;
-                this.flagName=flag;
+            if(!Game.flags[flag].memory.operation_id){
                 this.id=parseInt(Math.random()*10000000);
-                Memory.flags[flag].operation_id=this.id;
-            else{
+                this.roomName=roomName;
+                console.log(flag);
+                this.flagName=flag;
 
-                this.roomName=Memory.operations[id].roomName;
-                this.flagName=Memory.operations[id].flag;
-                this.id=id;
+                Game.flags[flag].memory.operation_id=this.id;
+                if(!Memory.operations){
+                        Memory.operations={};
+                    }
+                if(!Memory.operations[this.id]){
+                    Memory.operations[this.id]={}
+                }
+                Memory.operations[this.id].roomName=roomName;
+                Memory.operations[this.id].flagName=flag;
+                console.log(JSON.stringify(this));
+            }else{
+                this.id = Game.flags[flag].memory.operation_id;
+                this.roomName=Memory.operations[this.id].roomName;
+                this.flagName=Memory.operations[this.id].flagName;
+                console.log(JSON.stringify(this));
             }
+        }
+        run (){
+            console.log(JSON.stingify(this));
         }
 
 
 
 
-    }
+
 };

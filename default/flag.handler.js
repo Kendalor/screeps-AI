@@ -17,7 +17,8 @@ module.exports = {
 
             }
         }else if(Game.flags[flag].color == COLOR_WHITE && Game.flags[flag].secondaryColor == COLOR_WHITE){
-            var scouting_op = new scoutingOperation(Game.flags[flag].room.name,flag);
+
+            var scouting_op = new scoutingOperation(Game.flags[flag].pos.roomName,Game.flags[flag].name);
         }
 
 
@@ -25,6 +26,7 @@ module.exports = {
 
 
         }
+
     }
 
 
