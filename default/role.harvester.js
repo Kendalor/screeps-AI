@@ -69,9 +69,12 @@ var roleHarvester = {
                 });
                 if(targets_energy.length > 0) {
                     var target_energy=creep.pos.findClosestByPath(targets_energy);
-                    creep.memory.targetId=target_energy.id;
-                    creep.memory.job='carry';
-                    creep.say('Im Hauling');
+                    if(target_energy){
+                        creep.memory.targetId=target_energy.id;
+                        creep.memory.job='carry';
+                        creep.say('Im Hauling');
+                    }
+
 
                 }else{
                     var targets_constr_1 = creep.room.find(FIND_CONSTRUCTION_SITES);

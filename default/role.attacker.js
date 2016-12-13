@@ -7,7 +7,7 @@ var roleAttacker = {
         if(!creep.spawning){
         //console.log('TEST1');
         if(creep.memory.reached){
-            var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length == 0});
+            var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length =! 0});
             var closestStr =creep.pos.findClosestByRange(FIND_STRUCTURES,{filter: (str) => str.structureType != STRUCTURE_CONTROLLER && str.structureType != STRUCTURE_WALL && str.structureType != STRUCTURE_CONTAINER});
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER});
             //console.log(closestHostile);
@@ -58,7 +58,7 @@ var roleAttacker = {
 	            }
 
                 });
-                creep.moveTo(target,{ignoreDestructibleStructures: true});
+                //creep.moveTo(target,{ignoreDestructibleStructures: true});
                 creep.heal(creep);
                 //if(creep.room.name = target.room.name){}
                 if(creep.pos.inRangeTo(target,2)){
