@@ -9,12 +9,17 @@ module.exports = class{
                 if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
                     if(Game.spawns['Spawn1'].canCreateCreep([MOVE],undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
                         var name=Game.spawns['Spawn1'].createCreep([MOVE],undefined,{role: 'scout', operation_id: id});
-                        Memory.operations[id].creep=Game.creeps[name].id;
+                        var creep=Game.creeps[name];
+                        console.log('SPAWNING');
+                        console.log(name);
+                        console.log(JSON.stringify(creep));
+                        console.log(creep.name);
+                        Memory.operations[id].creep=name;
                     }
-                }else if(!Game.getObjectById(Memory.operations[id].creep).spawning){ //IF CREEP FINISHED SPAWNING
-                    var creep= Game.getObjectById(Memory.operations[id].creep);
+                }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
+                    var creep= Game.creeps[Memory.operations[id].creep];
                     creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
-                    if(creep.room == Memory.operations[id].roomName){
+                    if(creep.room.name == Memory.operations[id].roomName){
                         Game.flags[Memory.operations[id].flagName].remove();
 
                     }
@@ -25,7 +30,7 @@ module.exports = class{
             }
         }
 
-        static init(roomName,flag,id = undefined){
+        static init(roomName,flag){
             if(!Game.flags[flag].memory.operation_id){
                 if(!Memory.operations){
                         Memory.operations={};
