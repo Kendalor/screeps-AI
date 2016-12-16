@@ -5,6 +5,7 @@ var roleAttacker = require('role.attacker');
 var flagHandler = require('flag.handler');
 var squadsHandler = require('squads.handler');
 var roleAttacker_Ranged = require('role.attacker_ranged');
+var operationsHandler = require('operations.handler');
 
 MAX_HARVESTERS=10
 MAX_BUILDERS=5
@@ -48,7 +49,7 @@ module.exports.loop = function () {
     }
     flagHandler.run();
 
-
+    operationsHandler.run();
 
 
 
@@ -107,20 +108,6 @@ module.exports.loop = function () {
 
 
         console.log('Room "'+name+'" has  Energy: '+Game.rooms[name].energyAvailable+' Harvesters: '+harvesters.length+' Current Workerpreset '+ WORKER_PRESETS[Game.rooms[name].memory.defaultworker]);
-        /*
-        //SOURCES AUSLASTUNG
-
-
-
-        for(var creep in Game.creeps){
-            if(Game.creeps[creep].room.name == name && Game.creeps[creep].memory.target && Game.creeps[creep].memory.harvesting){
-                Game.rooms[name].memory.source[Game.creeps[creep].memory.target]=Game.rooms[name].memory.source[Game.creeps[creep].memory.target]+1;
-
-            }
-
-        }
-
-        */
 
     }
     }
