@@ -128,12 +128,6 @@ module.exports.loop = function () {
         if(creep.memory.role == 'builder') {
             roleBuilder.run(creep);
         }
-        if(creep.memory.role == 'attacker') {
-            roleAttacker.run(creep);
-        }
-        if(creep.memory.role == 'attacker_ranged') {
-            roleAttacker_Ranged.run(creep);
-        }
     }
 
 
