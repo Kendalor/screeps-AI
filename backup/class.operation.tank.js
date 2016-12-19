@@ -9,21 +9,34 @@ module.exports = class{
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 
-            if(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'heal', operation: id, target: Memory.operations[id].flagName}) == OK){
+            if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
+                console.log('Spawning');
+                //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'tank', operation: id, target: Memory.operations[id].flagName}));
+                if(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'heal', operation: id, target: Memory.operations[id].flagName}) == OK){
                     var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'heal', operation_id: id, target: Memory.operations[id].flagName});
                     Memory.operations[id].members[name]= 'heal';
                     console.log('Did spawn creep '+name);
                 }
 
             }else if(Object.keys(Memory.operations[id].members).length == Memory.operations[id].size && !Memory.operations[id].assembled){
-                Memory.operations[id].assembled = true;
-                console.log('Squad assembled');
+                var assembled =0;
+                for(var cr in Memory.operations[id].members){
+                    if(!Game.creeps[cr].spawning){
+                        assembled=assembled+1;
+                    }
+                }
+                if(assembled == Memory.operations[id].size){
+                    Memory.operations[id].assembled = true;
+                    console.log('Squad assembled');
+                }
+
             }
             // CHECK IF REACHED OR FLAG POSITION CHANGED
             var reached=0;
             for(var cr in Memory.operations[id].members){
                 // DELETE NONEXISTING CREEPS FROM OPERATION
                 if(!Game.creeps[cr]) {
+                    console.log('Deleted '+cr +'from memory')
                     delete Memory.creeps[cr];
                     delete Memory.operations[id].members[cr];
                 }
@@ -40,14 +53,14 @@ module.exports = class{
                     if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],2)){
                         reached = reached+1;
                     }
-                    if(reached == Memory.operations[id].size){
+                    if(reached == Object.keys(Memory.operations[id].members).length){
                         Memory.operations[id].reached=true;
                     }
                 }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
                     if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
                         reached = reached+1;
                     }
-                    if(reached != Memory.operations[id].size){
+                    if(reached != Object.keys(Memory.operations[id].members).length){
                         Memory.operations[id].reached=false;
                     }
                 }
@@ -158,25 +171,37 @@ module.exports = class{
         // ATTACK CODE
         static creepHeal(creep,lowestHP){
 
-            switch (creep.getRangeTo(lowestHP)){
+            switch (creep.pos.getRangeTo(lowestHP)){
                 case 0:
+                    console.log(creep.name+' Heals '+ creep.name);
                     creep.heal(creep);
+                    break;
                 case 1:
                     creep.heal(lowestHP);
+                    console.log(creep.name+' Heals '+ lowestHP.name);
+                    break;
                 case 2:
                     creep.moveTo(lowestHP);
                     creep.heal(lowestHP);
+                    console.log(creep.name+' Heals '+ lowestHP.name);
+                    break;
                 case 3:
                     creep.moveTo(lowestHP);
                     creep.rangedHeal(lowestHP);
+                    console.log(creep.name+' Heals Ranged '+ lowestHP.name);
+                    break;
                 case 4:
                     creep.moveTo(lowestHP);
                     creep.rangedHeal(lowestHP);
+                    console.log(creep.name+' Heals Ranged '+ lowestHP.name);
+                    break;
                 default:
                     creep.moveTo(lowestHP);
                     if(creep.hits < creep.hitsMax){
                         creep.heal(creep);
+                        console.log(creep.name+' Heals '+ creep.name);
                     }
+                    break;
 
             }
 
