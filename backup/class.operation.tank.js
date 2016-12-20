@@ -33,6 +33,7 @@ module.exports = class{
             }
             // CHECK IF REACHED OR FLAG POSITION CHANGED
             var reached=0;
+            var lowestHP = undefined
             for(var cr in Memory.operations[id].members){
                 // DELETE NONEXISTING CREEPS FROM OPERATION
                 if(!Game.creeps[cr]) {
@@ -43,7 +44,9 @@ module.exports = class{
 
 
 
-                var lowestHP =Game.creeps[cr];
+                if(lowestHP == undefined){
+                    lowestHP =Game.creeps[cr]
+                }
                 if(Game.creeps[cr].hits < lowestHP.hits){
                     lowestHP =Game.creeps[cr];
                 }
@@ -173,33 +176,33 @@ module.exports = class{
 
             switch (creep.pos.getRangeTo(lowestHP)){
                 case 0:
-                    console.log(creep.name+' Heals '+ creep.name);
-                    creep.heal(creep);
+                    console.log(creep.name+'0: Heals '+ creep.name);
+                    console.log(creep.heal(creep));
                     break;
                 case 1:
-                    creep.heal(lowestHP);
-                    console.log(creep.name+' Heals '+ lowestHP.name);
+                    console.log(creep.heal(lowestHP));
+                    console.log(creep.name+'1: Heals '+ lowestHP.name);
                     break;
                 case 2:
                     creep.moveTo(lowestHP);
                     creep.heal(lowestHP);
-                    console.log(creep.name+' Heals '+ lowestHP.name);
+                    console.log(creep.name+'2: Heals '+ lowestHP.name);
                     break;
                 case 3:
                     creep.moveTo(lowestHP);
                     creep.rangedHeal(lowestHP);
-                    console.log(creep.name+' Heals Ranged '+ lowestHP.name);
+                    console.log(creep.name+'3: Heals Ranged '+ lowestHP.name);
                     break;
                 case 4:
                     creep.moveTo(lowestHP);
                     creep.rangedHeal(lowestHP);
-                    console.log(creep.name+' Heals Ranged '+ lowestHP.name);
+                    console.log(creep.name+'4: Heals Ranged '+ lowestHP.name);
                     break;
                 default:
                     creep.moveTo(lowestHP);
                     if(creep.hits < creep.hitsMax){
-                        creep.heal(creep);
-                        console.log(creep.name+' Heals '+ creep.name);
+                        console.log(creep.heal(creep));
+                        console.log(creep.name+'default: Heals '+ creep.name);
                     }
                     break;
 
