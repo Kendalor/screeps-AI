@@ -1,6 +1,7 @@
 var scoutingOperation = require('class.operation.scouting');
 var attackOperation = require('class.operation.attack');
 var tankOperation = require('class.operation.tank');
+var thiefOperation = require('class.operation.steal');
 module.exports = {
 
     /** @param {Flag_list} flag_list **/
@@ -15,6 +16,9 @@ module.exports = {
                 scoutingOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
             }else if(Game.flags[flag].color == COLOR_GREEN){
                 tankOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+
+            }else if(Game.flags[flag].color == COLOR_BLUE){
+                thiefOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
             }
 

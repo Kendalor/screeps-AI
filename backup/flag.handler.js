@@ -17,6 +17,8 @@ module.exports = {
             }else if(Game.flags[flag].color == COLOR_GREEN){
                 tankOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
+            }else if(Game.flags[flag].color == COLOR_BLUE){
+                thiefOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
             }
 
 

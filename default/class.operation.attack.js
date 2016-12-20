@@ -57,11 +57,11 @@ module.exports = class{
                             this.creepIdle(Game.creeps[cr]);
                         }
                     }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==false){
-                        console.log('Running Travel for '+cr);
+                        //console.log('Running Travel for '+cr);
                         this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
                     }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
-                        console.log('Running Attack for '+cr);
+                        //console.log('Running Attack for '+cr);
                         this.creepAttack(Game.creeps[cr]);
                     }
                 }
@@ -105,7 +105,7 @@ module.exports = class{
                 Memory.operations[this.id].reached=false;
                 Memory.operations[this.id].refreshed=false;
                 Memory.operations[this.id].members= {};
-                Memory.operations[this.id].rallyPoint=Game.flags[flag].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
+                Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
@@ -153,10 +153,10 @@ module.exports = class{
             var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length =! 0,ignoreDestructibleStructures: true});
             var closestStr =creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN, ignoreDestructibleStructures: true});
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES);
-            console.log(closestHostile);
+            //console.log(closestHostile);
             if(closestHostile){
-                console.log(creep.name);
-                console.log('TEST2');
+                //console.log(creep.name);
+                //console.log('TEST2');
                 if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
                     creep.moveTo(closestHostile,{ignoreDestructibleStructures: true});
                     creep.heal(creep);
@@ -180,7 +180,7 @@ module.exports = class{
                     creep.say('attacking 2');
                 }
             }else{
-                console.log('TEST3');
+                //console.log('TEST3');
                 creep.memory.reached=false;
                 delete creep.memory.target;
 

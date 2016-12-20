@@ -22,7 +22,10 @@ module.exports = {
                     console.log('Case: Tanking');
                     tankOperation.run(id);
                     break;
-
+                case 'steal':
+                    //console.log('Case: Steal');
+                    thiefOperation.run(id);
+                    break;
 
             }
 
