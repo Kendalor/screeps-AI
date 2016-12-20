@@ -44,9 +44,6 @@ module.exports = class{
                     if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
                         reached = reached+1;
                     }
-                    if(reached != Memory.operations[id].size){
-                        Memory.operations[id].reached=false;
-                    }
                 }
             }
             // RUN CREEP JOBS
@@ -154,17 +151,24 @@ module.exports = class{
         // ATTACK CODE
         static creepAttack(creep){
             var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length =! 0,ignoreDestructibleStructures: true});
-            var closestStr =creep.pos.findClosestByRange(FIND_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER && str.structureType == STRUCTURE_SPAWN, ignoreDestructibleStructures: true});
-            var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER,ignoreDestructibleStructures: true});
-            //console.log(closestHostile);
+            var closestStr =creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN, ignoreDestructibleStructures: true});
+            var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES);
+            console.log(closestHostile);
             if(closestHostile){
-                //console.log(creep.name);
-                //console.log('TEST2');
+                console.log(creep.name);
+                console.log('TEST2');
                 if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
                     creep.moveTo(closestHostile,{ignoreDestructibleStructures: true});
                     creep.heal(creep);
                     creep.say('attacking 1');
                 }
+            }else if(spawn){
+                if(creep.attack(spawn) == ERR_NOT_IN_RANGE){
+                    creep.moveTo(spawn,{ignoreDestructibleStructures: true});
+                    creep.heal(creep);
+                    creep.say('attacking 2');
+                }
+
             }else if (creep.hits < creep.hitsMax){
                 creep.heal(creep);
 
@@ -176,7 +180,7 @@ module.exports = class{
                     creep.say('attacking 2');
                 }
             }else{
-                //console.log('TEST3');
+                console.log('TEST3');
                 creep.memory.reached=false;
                 delete creep.memory.target;
 

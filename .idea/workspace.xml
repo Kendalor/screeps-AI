@@ -3,7 +3,10 @@
   <component name="ChangeListManager">
     <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/class.operation.steal_energy.js" afterPath="$PROJECT_DIR$/backup/class.operation.steal_energy.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/flag.handler.js" afterPath="$PROJECT_DIR$/backup/flag.handler.js" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/class.operation.attack.js" afterPath="$PROJECT_DIR$/default/class.operation.attack.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/default/operations.handler.js" afterPath="$PROJECT_DIR$/default/operations.handler.js" />
     </list>
     <ignored path="screeps.com.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -37,8 +40,18 @@
       <file leaf-file-name="operations.handler.js" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/default/operations.handler.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="340">
-              <caret line="20" column="46" selection-start-line="20" selection-start-column="46" selection-end-line="20" selection-end-column="46" />
+            <state relative-caret-position="51">
+              <caret line="3" column="0" selection-start-line="3" selection-start-column="0" selection-end-line="3" selection-end-column="61" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="flag.handler.js" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/backup/flag.handler.js">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="51">
+              <caret line="3" column="61" selection-start-line="3" selection-start-column="61" selection-end-line="3" selection-end-column="61" />
               <folding />
             </state>
           </provider>
@@ -64,11 +77,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="class.operation.attack.js" pinned="false" current-in-tab="true">
+      <file leaf-file-name="class.operation.attack.js" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/default/class.operation.attack.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="344">
-              <caret line="171" column="0" selection-start-line="171" selection-start-column="0" selection-end-line="171" selection-end-column="0" />
+            <state relative-caret-position="106">
+              <caret line="154" column="76" selection-start-line="154" selection-start-column="76" selection-end-line="154" selection-end-column="76" />
               <folding />
             </state>
           </provider>
@@ -77,8 +90,18 @@
       <file leaf-file-name="class.operation.steal_energy.js" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/backup/class.operation.steal_energy.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="310">
-              <caret line="113" column="0" selection-start-line="113" selection-start-column="0" selection-end-line="113" selection-end-column="0" />
+            <state relative-caret-position="2176">
+              <caret line="128" column="52" selection-start-line="128" selection-start-column="52" selection-end-line="128" selection-end-column="52" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="role.harvester.js" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/backup/role.harvester.js">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="714">
+              <caret line="44" column="0" selection-start-line="44" selection-start-column="0" selection-end-line="44" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -143,14 +166,15 @@
         <option value="$PROJECT_DIR$/default/role.harvester.js" />
         <option value="$PROJECT_DIR$/default/class.operation.scouting.js" />
         <option value="$PROJECT_DIR$/default/flag.handler.js" />
-        <option value="$PROJECT_DIR$/default/operations.handler.js" />
         <option value="$PROJECT_DIR$/default/main.js" />
         <option value="$PROJECT_DIR$/backup/main.js" />
         <option value="$PROJECT_DIR$/backup/operations.handler.js" />
         <option value="$PROJECT_DIR$/backup/class.operation.tank.js" />
         <option value="$PROJECT_DIR$/default/class.operation.tank.js" />
-        <option value="$PROJECT_DIR$/backup/class.operation.steal_energy.js" />
         <option value="$PROJECT_DIR$/default/class.operation.attack.js" />
+        <option value="$PROJECT_DIR$/backup/class.operation.steal_energy.js" />
+        <option value="$PROJECT_DIR$/default/operations.handler.js" />
+        <option value="$PROJECT_DIR$/backup/flag.handler.js" />
       </list>
     </option>
   </component>
@@ -470,9 +494,9 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="0" />
-    <editor active="true" />
+    <editor active="false" />
     <layout>
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Python Console" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
@@ -530,13 +554,6 @@
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/default/role.upgrader.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="425">
-          <caret line="25" column="5" selection-start-line="25" selection-start-column="5" selection-end-line="25" selection-end-column="5" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/tutorial-5/role.builder.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="68">
@@ -830,13 +847,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/backup/role.harvester.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-663">
-          <caret line="30" column="34" selection-start-line="30" selection-start-column="34" selection-end-line="30" selection-end-column="34" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/default/main.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="204">
@@ -849,14 +859,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="306">
           <caret line="18" column="39" selection-start-line="18" selection-start-column="39" selection-end-line="18" selection-end-column="39" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/default/operations.handler.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="340">
-          <caret line="20" column="46" selection-start-line="20" selection-start-column="46" selection-end-line="20" selection-end-column="46" />
           <folding />
         </state>
       </provider>
@@ -885,18 +887,42 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/backup/class.operation.steal_energy.js">
+    <entry file="file://$PROJECT_DIR$/backup/role.harvester.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="310">
-          <caret line="113" column="0" selection-start-line="113" selection-start-column="0" selection-end-line="113" selection-end-column="0" />
+        <state relative-caret-position="714">
+          <caret line="44" column="0" selection-start-line="44" selection-start-column="0" selection-end-line="44" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/default/class.operation.attack.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="344">
-          <caret line="171" column="0" selection-start-line="171" selection-start-column="0" selection-end-line="171" selection-end-column="0" />
+        <state relative-caret-position="106">
+          <caret line="154" column="76" selection-start-line="154" selection-start-column="76" selection-end-line="154" selection-end-column="76" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/backup/class.operation.steal_energy.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="2176">
+          <caret line="128" column="52" selection-start-line="128" selection-start-column="52" selection-end-line="128" selection-end-column="52" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/default/operations.handler.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="51">
+          <caret line="3" column="0" selection-start-line="3" selection-start-column="0" selection-end-line="3" selection-end-column="61" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/backup/flag.handler.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="51">
+          <caret line="3" column="61" selection-start-line="3" selection-start-column="61" selection-end-line="3" selection-end-column="61" />
           <folding />
         </state>
       </provider>

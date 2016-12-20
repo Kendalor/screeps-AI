@@ -1,6 +1,7 @@
 var scoutingOperation = require('class.operation.scouting');
 var attackOperation = require('class.operation.attack');
 var tankOperation = require('class.operation.tank');
+var thiefOperation = require('class.operation.steal_energy');
 module.exports = {
 
     // HANDLE ALL OPERATIONS

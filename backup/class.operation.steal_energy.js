@@ -71,7 +71,7 @@ module.exports = class{
                 Memory.operations[this.id].size=10;
                 Memory.operations[this.id].members= {};
                 Memory.operations[this.id].home=Game.spawns['Spawn1'].pos.storage.id;
-                Memory.operations[this.id].target=Game.flags[flag].pos.storage.id;
+                Memory.operations[this.id].target=Game.flags[flag].pos.roomName;
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
@@ -105,19 +105,32 @@ module.exports = class{
         }
         // IDLE MOVESET
         static creepSteal(creep){
-            if(!creep.memory.start || !creep.memory.finish){
-                creep.memory.start=Game.getObjectById(Memory.operations[creep.memory.operation_id].home);
-                creep.memory.start=Game.getObjectById(Memory.operations[creep.memory.operation_id].target);
-
-            }else{
-                if(creep.energy){
-
+                if(creep.carry.energy < creep.carryCapacity){
+                    var target_r=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.findClosestByPath(FIND_RESSOURCE_ENERGY);
+                    var target_c=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.findClosestByPath(STRUCTURE_CONTAINER);
+                    if(target){
+                        if(creep.pickup(target,RESSOURCE_ENERGY) == ERR_NOT_IN_RANGE){
+                            creep.moveTo(target);
+                            creep.say('picking up ressource');
+                        }
+                    }else if(target_c){
+                        if(creep.withdraw(target,RESSOURCE_ENERGY) == ERR_NOT_IN_RANGE){
+                            creep.moveTo(target);
+                            creep.say('picking up container');
+                        }
+                    }else{
+                        creep.moveTo(Game.flags[Memory.operations[creep.memory.operation_id].flagName]);
+                        creep.say('moving to flagRoom');
+                    }
+                }else{
+                    var target=Game.rooms[Game.spawns['Spawn1'].pos.roomName].storage;
+                    if(creep.transfer(target,RESSOURCE_ENERGY) == ERR_NOT_IN_RANGE){
+                        creep.moveTo(target);
+                        creep.say('Moving to Storage');
+                }
 
                 }
 
-            }
-            var target = Game.getObjectById(Memory.operations[creep.memory.operation_id].rallyPoint);
-            creep.moveTo(target);
 
         }
 
