@@ -5,20 +5,20 @@ module.exports = class{
 
         }
         static run(id){
-            var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+            var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 
-            if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
-                //console.log('Spawning');
-                //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
+            if(!Memory.operations[id].members.assembled && Object.keys(Memory.operations[id].members).length < Memory.operations[id].size){
+                console.log('Spawning');
+                console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
                 if(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
                     var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
                     Memory.operations[id].members[name]= 'attacker';
                     console.log('Did spawn creep '+name);
                 }
 
-            }else if(Object.keys(Memory.operations[id].members).length == Memory.operations[id].size && !Memory.operations[id].assembled){
+            }else if(Object.keys(Memory.operations[id].members).length >= Memory.operations[id].size && !Memory.operations[id].assembled){
                 Memory.operations[id].assembled = true;
                 console.log('Squad assembled');
             }
@@ -31,10 +31,8 @@ module.exports = class{
                     delete Memory.creeps[cr];
                     delete Memory.operations[id].members[cr];
                 }
-
-
                 if(Memory.operations[id].reached==false && Memory.operations[id].assembled==true){
-                    if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],2)){
+                    if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],3)){
                         reached = reached+1;
                     }
                     if(reached == Memory.operations[id].size){
@@ -44,24 +42,33 @@ module.exports = class{
                     if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
                         reached = reached+1;
                     }
+
                 }
             }
+            if(reached != Memory.operations[id].size){
+                        Memory.operations[id].reached=false;
+            }else if(reached == Memory.operations[id].size){
+                        Memory.operations[id].reached=true;
+            }
+
+
             // RUN CREEP JOBS
             for(var cr in Memory.operations[id].members){
                 if(!Game.creeps[cr].spawning && Game.creeps[cr]){
                     if(Memory.operations[id].assembled==false){
-                        console.log('Running Refresh for'+cr);
                         if(Game.creeps[cr].ticksToLive < 1400){
+                            console.log('Running Refresh for'+cr);
                             this.refreshTimer(Game.creeps[cr]);
                         }else{
+                            console.log('Running Idle for'+cr);
                             this.creepIdle(Game.creeps[cr]);
                         }
                     }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==false){
-                        //console.log('Running Travel for '+cr);
+                        console.log('Running Travel for '+cr);
                         this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
                     }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
-                        //console.log('Running Attack for '+cr);
+                        console.log('Running Attack for '+cr);
                         this.creepAttack(Game.creeps[cr]);
                     }
                 }
@@ -150,21 +157,21 @@ module.exports = class{
         }
         // ATTACK CODE
         static creepAttack(creep){
-            var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length =! 0,ignoreDestructibleStructures: true});
+            var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length =! 0});
             var closestStr =creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN, ignoreDestructibleStructures: true});
-            var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES);
+            var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES, {filter: (str) => str.structureType != STRUCTURE_CONTROLLER});
             //console.log(closestHostile);
             if(closestHostile){
                 //console.log(creep.name);
                 //console.log('TEST2');
                 if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestHostile,{ignoreDestructibleStructures: true});
+                    creep.moveTo(closestHostile);
                     creep.heal(creep);
                     creep.say('attacking 1');
                 }
             }else if(spawn){
                 if(creep.attack(spawn) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(spawn,{ignoreDestructibleStructures: true});
+                    creep.moveTo(spawn);
                     creep.heal(creep);
                     creep.say('attacking 2');
                 }
@@ -175,7 +182,7 @@ module.exports = class{
             }else if(closestStr){
 
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestStr,{ignoreDestructibleStructures: true});
+                    creep.moveTo(closestStr);
                     creep.heal(creep);
                     creep.say('attacking 2');
                 }

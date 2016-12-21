@@ -2,6 +2,7 @@ var scoutingOperation = require('class.operation.scouting');
 var attackOperation = require('class.operation.attack');
 var tankOperation = require('class.operation.tank');
 var thiefOperation = require('class.operation.steal');
+var reserveOperation = require('class.operation.reserve');
 module.exports = {
 
     // HANDLE ALL OPERATIONS
@@ -25,6 +26,9 @@ module.exports = {
                 case 'steal':
                     //console.log('Case: Steal');
                     thiefOperation.run(id);
+                    break;
+                case 'reserve':
+                    reserveOperation.run(id);
                     break;
 
             }
