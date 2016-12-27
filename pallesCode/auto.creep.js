@@ -128,7 +128,6 @@ module.exports = {
     if(creep.memory.job == 'idle' && creep.carry.energy < creep.carryCapacity){
       var sources = creep.room.find(FIND_SOURCES,{filter: (source) => (creep.room.memory.sources[source.id].slots > creep.room.memory.sources[source.id].slotsUsed && !creep.room.memory.sources[source.id].minerId && source.energy > 0)});
       if (sources.length){
-        utils.dump(sources)
         var source = sources[0];//creep.pos.findClosestByPath(sources);
         if (source != null){
           this.anounceJob(creep,'harvest');

@@ -2,14 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/backup/role.attacker_ranged.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.colonize.js" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/flag.handler.js" afterPath="$PROJECT_DIR$/backup/flag.handler.js" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/main.js" afterPath="$PROJECT_DIR$/backup/main.js" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/operations.handler.js" afterPath="$PROJECT_DIR$/backup/operations.handler.js" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/role.harvester.js" afterPath="$PROJECT_DIR$/backup/role.harvester.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pallesCode/auto.creep.js" afterPath="$PROJECT_DIR$/pallesCode/auto.creep.js" />
     </list>
     <ignored path="screeps.com.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -30,11 +24,11 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="auto.memory.js" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/pallesCode/auto.memory.js">
+      <file leaf-file-name="auto.creep.js" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/pallesCode/auto.creep.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="799">
-              <caret line="95" column="37" selection-start-line="95" selection-start-column="37" selection-end-line="95" selection-end-column="37" />
+            <state relative-caret-position="289">
+              <caret line="130" column="8" selection-start-line="130" selection-start-column="8" selection-end-line="130" selection-end-column="8" />
               <folding />
             </state>
           </provider>
@@ -91,6 +85,7 @@
         <option value="$PROJECT_DIR$/overseer/buildingRoad.js" />
         <option value="$PROJECT_DIR$/default/class.operation.scouting.js" />
         <option value="$PROJECT_DIR$/default/class.operation.remote_mining.js" />
+        <option value="$PROJECT_DIR$/pallesCode/auto.creep.js" />
       </list>
     </option>
   </component>
@@ -705,14 +700,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pallesCode/auto.creep.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-7344">
-          <caret line="24" column="34" selection-start-line="24" selection-start-column="34" selection-end-line="24" selection-end-column="34" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pallesCode/prototypes.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="170">
@@ -816,6 +803,14 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="799">
           <caret line="95" column="37" selection-start-line="95" selection-start-column="37" selection-end-line="95" selection-end-column="37" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pallesCode/auto.creep.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="289">
+          <caret line="130" column="8" selection-start-line="130" selection-start-column="8" selection-end-line="130" selection-end-column="8" />
           <folding />
         </state>
       </provider>
