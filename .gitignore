@@ -3,3 +3,5 @@
 .sync
 .sync
 *.sync
+.idea/workspace.xml
+*.xml
