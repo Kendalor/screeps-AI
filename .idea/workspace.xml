@@ -2,18 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/auto.creep.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/auto.memory.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/auto.spawn.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/auto.tower.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.attack.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.colonize.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.developmentAid.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.remote_mining.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.scouting.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.steal.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.tank.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/var.const.js" afterPath="" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
     </list>
     <ignored path="screeps.com.iws" />
@@ -58,11 +46,21 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="flag.handler.js" pinned="false" current-in-tab="true">
+      <file leaf-file-name="flag.handler.js" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/default/flag.handler.js">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="46">
               <caret line="16" column="92" selection-start-line="16" selection-start-column="92" selection-end-line="16" selection-end-column="92" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="main.js" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/pallesCode/main.js">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="204">
+              <caret line="13" column="0" selection-start-line="13" selection-start-column="0" selection-end-line="13" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -191,6 +189,20 @@
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
             <PATH_ELEMENT>
+              <option name="myItemId" value="pallesCode" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+          </PATH>
+          <PATH>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="screeps.com" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.ProjectViewProjectNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="screeps.com" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
               <option name="myItemId" value="default" />
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
@@ -207,8 +219,8 @@
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
-      <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\backup" />
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\pallesCode" />
+      <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\backup" />
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\default" />
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\joat" />
       <recent name="C:\Users\Kendalor\AppData\Local\Screeps\scripts\screeps.com\overseer" />
@@ -391,9 +403,9 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="0" width="1936" height="1047" extended-state="0" />
-    <editor active="false" />
+    <editor active="true" />
     <layout>
-      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.3238512" sideWeight="0.5021075" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Python Console" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
@@ -747,14 +759,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pallesCode/main.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="204">
-          <caret line="13" column="0" selection-start-line="13" selection-start-column="0" selection-end-line="13" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pallesCode/class.operation.reserve.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="340">
@@ -826,6 +830,14 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="46">
           <caret line="16" column="92" selection-start-line="16" selection-start-column="92" selection-end-line="16" selection-end-column="92" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pallesCode/main.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="204">
+          <caret line="13" column="0" selection-start-line="13" selection-start-column="0" selection-end-line="13" selection-end-column="0" />
           <folding />
         </state>
       </provider>
