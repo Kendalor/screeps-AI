@@ -5,6 +5,7 @@ var thiefOperation = require('class.operation.steal');
 var reserveOperation = require('class.operation.reserve');
 var colonizeOperation = require('class.operation.colonize');
 var devAidOperation = require('class.operation.developmentAid');
+var remoteMiningOperation = require('class.operation.remote_mining');
 
 module.exports = {
 
@@ -22,7 +23,7 @@ module.exports = {
             }else if(Game.flags[flag].color == COLOR_GREEN){
                 tankOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if(Game.flags[flag].color == COLOR_BLUE){
+            }else if(Game.flags[flag].color == COLOR_BLUE && Game.flags[flag].secondaryColor == COLOR_RED){
                 thiefOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
             }
@@ -30,8 +31,13 @@ module.exports = {
             else if(Game.flags[flag].color == COLOR_WHITE && Game.flags[flag].secondaryColor == COLOR_GREEN){
                 colonizeOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if(Game.flags[flag].color == COLOR_WHITE && Game.flags[flag].secondaryColor == COLOR_BLUE){
+            }
+            else if(Game.flags[flag].color == COLOR_WHITE && Game.flags[flag].secondaryColor == COLOR_BLUE){
                 devAidOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+
+            }
+            else if(Game.flags[flag].color == COLOR_BLUE && Game.flags[flag].secondaryColor == COLOR_BLUE){
+                remoteMiningOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
             }
 

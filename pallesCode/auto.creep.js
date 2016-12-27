@@ -163,22 +163,24 @@ module.exports = {
   },
     
   mine: function(creep) {
+    var tmpContainer = creep.pos.lookFor('structure').filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
+    var pos = creep.room.memory.sources[creep.memory.source].containerPos;
+    //console.log(tmpContainer)
     if (creep.memory.job == 'idle' && creep.carry.energy == 0){
       this.anounceJob(creep,'mine');
     }
     if(creep.memory.job == 'mine' && creep.carry.energy < creep.carryCapacity){
       var source = Game.getObjectById(creep.memory.source);
       if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
-        creep.moveTo(source);
+        creep.moveTo(pos.x,pos.y);
       }
     }
     
     if(creep.memory.job == 'mine' && creep.carry.energy >= 0){
       if(!creep.memory.containerId && creep.carry.energy > 30){
-        var pos = creep.room.memory.sources[creep.memory.source].containerPos;
-        var containers = creep.room.find(FIND_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER && struct.pos.x == pos.x && struct.pos.y == pos.y});
+        var containers = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
         if (containers[0] == null){
-          var constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.pos.x == pos.x && site.pos.y == pos.y});
+          var constructions = creep.room.lookForAt('constructionSite',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
           if (constructions[0] != null){
             if (creep.build(constructions[0]) == ERR_NOT_IN_RANGE){
               creep.say("woah");

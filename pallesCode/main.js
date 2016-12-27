@@ -19,15 +19,16 @@ module.exports.loop = function () {
   
   for(var name in Game.rooms) {
   
-  
+    
     var room = Game.rooms[name];
+    
+    
     
     if(Game.time % 50 == 0){
       autoMemory.checkRoomMemory(room);
     }
     
     invasionCounter.run(room);
-    invasionCounter.placeWalls(room);
     
     if(Game.time % 25 == 0){
       var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
