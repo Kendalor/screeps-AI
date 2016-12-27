@@ -91,7 +91,7 @@ module.exports = {
         source.memory.slotsUsed = 0;
         
         // Calc ContainerPos
-        var path = room.findPath(source.pos,source.room.controller.pos);
+        var path = room.findPath(source.pos,source.room.controller.pos,{ignoreCreeps: true});
         var pathArray = Room.deserializePath(Room.serializePath(path));
         source.memory.containerPos = {}
         source.memory.containerPos.x = pathArray[0].x;
