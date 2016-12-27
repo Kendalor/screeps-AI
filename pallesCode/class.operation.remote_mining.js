@@ -271,6 +271,8 @@ module.exports = class{
             var ENERGY_SOFT_CAP = creep.carryCapacity-200;
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
             if (creep.memory.targetId == null){ // SELECT NEW TARGET
+                var roomName = Memory.operations[creep.memory.operation_id].roomName
+                console.log(Game.rooms[roomName])
                 var containers = Game.rooms[Memory.operations[creep.memory.operation_id].roomName].lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
                 if (creep.carry.energy == 0){ // NO ENERGY
                     if (containers.length > 0){ // FOUND CONTAINER
@@ -295,7 +297,7 @@ module.exports = class{
                     console.log("targets[0]:"+targets[0])
                     console.log("targets[1]:"+targets[1])
                     if (targets[0] != null && targets[1] != null){
-                        var closest = creep.pos.findClosestByPath(targets,{reusePath: 30,ignoreCreeps: true})
+                        var closest = creep.pos.findClosestByPath(targets);//,{reusePath: 30,ignoreCreeps: true})
                         console.log("closest: "+closest);
                         creep.memory.targetId = closest.id;
                     }

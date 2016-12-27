@@ -115,6 +115,26 @@ module.exports = class{
 
 
         }
+        
+        static findClosestSpawn(flagName){
+            var min_length;
+            var best_spawn;
+            var length;
+            for(var i in Game.spawns){
+                console.log('length from '+Game.spawns[i].pos.roomName+' to '+Game.flags[flagName].pos.roomName);
+                console.log( Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length < min_length  || min_length == undefined);
+                length= Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length;
+                if(length < min_length  || min_length == undefined){
+                    min_length=length;
+                    best_spawn=Game.spawns[i].id;
+
+                }
+
+
+            }
+            return best_spawn;
+        }
+        
         // CHECK IF ID IS AVAILABLE
         static isIdFree(id){
             var out=true;
