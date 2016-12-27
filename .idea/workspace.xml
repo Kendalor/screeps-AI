@@ -2,8 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pallesCode/auto.memory.js" afterPath="$PROJECT_DIR$/pallesCode/auto.memory.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pallesCode/auto.creep.js" afterPath="$PROJECT_DIR$/pallesCode/auto.creep.js" />
     </list>
     <ignored path="screeps.com.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -24,17 +25,17 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="auto.creep.js" pinned="false" current-in-tab="false">
+      <file leaf-file-name="auto.creep.js" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/pallesCode/auto.creep.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="221">
-              <caret line="126" column="28" selection-start-line="126" selection-start-column="28" selection-end-line="126" selection-end-column="28" />
+            <state relative-caret-position="323">
+              <caret line="165" column="74" selection-start-line="165" selection-start-column="74" selection-end-line="165" selection-end-column="74" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="auto.memory.js" pinned="false" current-in-tab="true">
+      <file leaf-file-name="auto.memory.js" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pallesCode/auto.memory.js">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="471">
@@ -95,8 +96,8 @@
         <option value="$PROJECT_DIR$/overseer/buildingRoad.js" />
         <option value="$PROJECT_DIR$/default/class.operation.scouting.js" />
         <option value="$PROJECT_DIR$/default/class.operation.remote_mining.js" />
-        <option value="$PROJECT_DIR$/pallesCode/auto.creep.js" />
         <option value="$PROJECT_DIR$/pallesCode/auto.memory.js" />
+        <option value="$PROJECT_DIR$/pallesCode/auto.creep.js" />
       </list>
     </option>
   </component>
@@ -810,18 +811,18 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pallesCode/auto.creep.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="221">
-          <caret line="126" column="28" selection-start-line="126" selection-start-column="28" selection-end-line="126" selection-end-column="28" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pallesCode/auto.memory.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="471">
           <caret line="93" column="93" selection-start-line="93" selection-start-column="93" selection-end-line="93" selection-end-column="93" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pallesCode/auto.creep.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="323">
+          <caret line="165" column="74" selection-start-line="165" selection-start-column="74" selection-end-line="165" selection-end-column="74" />
           <folding />
         </state>
       </provider>
