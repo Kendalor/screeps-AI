@@ -2,6 +2,8 @@ var scoutingOperation = require('class.operation.scouting');
 var attackOperation = require('class.operation.attack');
 var tankOperation = require('class.operation.tank');
 var thiefOperation = require('class.operation.steal');
+var reserveOperation = require('class.operation.reserve');
+var remote_miningOperation = require('class.operation.remote_mining');
 module.exports = {
 
     /** @param {Flag_list} flag_list **/
@@ -12,13 +14,18 @@ module.exports = {
 
                 attackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
             }else if(Game.flags[flag].color == COLOR_WHITE && Game.flags[flag].secondaryColor == COLOR_WHITE){
-
                 scoutingOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+            }else if(Game.flags[flag].color == COLOR_WHITE && Game.flags[flag].secondaryColor == COLOR_GREY){
+                reserveOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
             }else if(Game.flags[flag].color == COLOR_GREEN){
                 tankOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if(Game.flags[flag].color == COLOR_BLUE){
+            }else if(Game.flags[flag].color == COLOR_BLUE && Game.flags[flag].secondaryColor == COLOR_RED){
                 thiefOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+
+            }else if(Game.flags[flag].color == COLOR_BLUE && Game.flags[flag].secondaryColor == COLOR_BLUE){
+                remote_miningOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+
             }
 
 

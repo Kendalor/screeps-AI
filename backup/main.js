@@ -7,14 +7,14 @@ var squadsHandler = require('squads.handler');
 var roleAttacker_Ranged = require('role.attacker_ranged');
 var operationsHandler = require('operations.handler');
 
-var MAX_HARVESTERS=5
-var MAX_BUILDERS=5
-var MAX_UPGRADERS=5
-var MIN_BUILDERS=1
-var MIN_UPGRADERS=1
-var MIN_HARVESTERS=5
-var ACC_CPU=0
-var WORKER_PRESETS = [[CARRY,MOVE,MOVE,CARRY],[WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE]];
+MAX_HARVESTERS=10
+MAX_BUILDERS=5
+MAX_UPGRADERS=5
+MIN_BUILDERS=1
+MIN_UPGRADERS=1
+MIN_HARVESTERS=5
+ACC_CPU=0
+var WORKER_PRESETS = [[CARRY,MOVE,WORK],[WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE]];
 var MINER_PRESETS = [MOVE,WORK,WORK,WORK]
 //Lets first add a shortcut prototype to the sources memory:
 Source.prototype.memory = undefined;
@@ -69,18 +69,6 @@ module.exports.loop = function () {
     var upgraders = _.filter(Game.creeps, (creep) => creep.memory.role == 'upgrader');
 
     for(var name in Game.rooms) {
-
-
-    if(Game.time % 20 == 0){
-            console.log('Aktuallisiere GSpieltaktik');
-            var energyCap=Game.rooms[name].energyCapacityAvailable;
-            var controlerlvl = Game.rooms[name].controller.level;
-
-            Game.rooms[name].memory.defaultworker = 0;
-
-        }
-
-
     var structures = Game.rooms[name].find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_TOWER});
         for( i in structures){
             if(structures[i]) {

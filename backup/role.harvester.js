@@ -19,14 +19,28 @@ var roleHarvester = {
             if(creep.memory.job){
                 delete creep.memory.job;
             }
+            var sources = creep.room.find(FIND_SOURCES);
+            //find nearest source
 
-            creep.memory.targetId=creep.room.storage.id;
+            var targetId=sources[0].id;
+            for(var i in sources){
+                //console.log('TAGET SETTING')
+                //console.log(creep.room.memory.sources[targetId].workers)
+                //console.log(creep.room.memory.sources[sources[i].id].workers)
+                //console.log(creep.room.memory.sources[targetId].workers < creep.room.memory.sources[sources[i].id].workers)
+                if(creep.room.memory.sources[targetId].workers > creep.room.memory.sources[sources[i].id].workers){
+                    targetId=sources[i].id;
+                }else{
 
+                }
+            }
+            creep.memory.targetId=targetId;
+            creep.room.memory.sources[targetId].workers = creep.room.memory.sources[targetId].workers+1;
 	    }
         //STOP HARVESTING MODE?
 	    else if(creep.carry.energy == creep.carryCapacity && creep.memory.harvesting ) {
 	        creep.memory.harvesting = false;
-
+	        creep.room.memory.sources[creep.memory.targetId].workers = creep.room.memory.sources[creep.memory.targetId].workers-1;
 	        delete creep.memory.targetId;
 	        creep.say('spending');
 	    }else{
@@ -39,8 +53,7 @@ var roleHarvester = {
             //HARVESTING
             if(creep.memory.harvesting){
                 var target= Game.getObjectById(creep.memory.targetId);
-
-                if(creep.withdraw(target,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+                if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
                     creep.moveTo(target);
 
                 }
@@ -56,9 +69,12 @@ var roleHarvester = {
                 });
                 if(targets_energy.length > 0) {
                     var target_energy=creep.pos.findClosestByPath(targets_energy);
-                    creep.memory.targetId=target_energy.id;
-                    creep.memory.job='carry';
-                    creep.say('Im Hauling');
+                    if(target_energy){
+                        creep.memory.targetId=target_energy.id;
+                        creep.memory.job='carry';
+                        creep.say('Im Hauling');
+                    }
+
 
                 }else{
                     var targets_constr_1 = creep.room.find(FIND_CONSTRUCTION_SITES);
