@@ -50,6 +50,7 @@ module.exports = class{
                     Memory.operations[this.id]={}
                 }
                 //DEFINE ALL OP VARIABLES HERE
+                //Memory.operations[this.id].containerId=undefined;
                 Memory.operations[this.id].roomName=roomName;
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
@@ -268,37 +269,17 @@ module.exports = class{
     */
 
         static creepHaul(creep){
-            var ENERGY_SOFT_CAP = creep.carryCapacity-200;
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
             if (creep.memory.targetId == null){ // SELECT NEW TARGET
-                var containers = Game.rooms[Memory.operations[creep.memory.operation_id].roomName].lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
                 if (creep.carry.energy == 0){ // NO ENERGY
-                    if (containers.length > 0){ // FOUND CONTAINER
-                        creep.memory.targetId = containers[0].id;
+                    if (Memory.operations[creep.memory.operation_id].containerId != undefined){ // FOUND CONTAINER
+                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].containerId;
                     }else{ // HARVEST // WAIT AT FLAG
                         //creep.memory.targetId = creep.memory.source_id;
                         creep.memory.targetId = creep.id;
                     }
-                }else if(creep.carry.energy == creep.carryCapacity){ // FULL ENERGY
-                    if (containers.length > 0){ // GOTO STORAGE{
-                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].nearest_storageId;
-                    }else{ // BUILD CONTAINER
-                        var containerConstructions = Rooms[Memory.operations[creep.memory.operation_id].roomName].lookForAt('constructionSite',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
-                        if (containerConstructions != null){
-                            creep.memory.targetId = containerConstructions[0].id;
-                        }else creep.say("Cannot find Container!")
-                    }
-                }else if(creep.carry.energy > ENERGY_SOFT_CAP){ // ENOUGH ENERGY
+                }else{ // ENOUGH ENERGY
                     creep.memory.targetId = Memory.operations[creep.memory.operation_id].nearest_storageId;
-                }else if(creep.carry.energy < ENERGY_SOFT_CAP){ // STILL ENOUGH ENERGY ?
-                    var targets = [containers[0],Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId)];
-                    console.log("targets[0]:"+targets[0])
-                    console.log("targets[1]:"+targets[1])
-                    if (targets[0] != null && targets[1] != null){
-                        var closest = creep.pos.findClosestByPath(targets,{reusePath: 30,ignoreCreeps: true})
-                        console.log("closest: "+closest);
-                        creep.memory.targetId = closest.id;
-                    }
                 }
             }else{
                 var target = Game.getObjectById(creep.memory.targetId);
@@ -335,6 +316,7 @@ module.exports = class{
                     }else if (target.structureType == STRUCTURE_CONTAINER){ // TARGET CONTAINER
                         if (creep.room == Memory.operations[creep.memory.operation_id].roomName){
                             var salvage = Rooms[Memory.operations[creep.memory.operation_id].roomName].lookForAt(RESOURCE_ENERGY,pos.x,pos.y); // SALVAGE AVAILABLE?
+                            console.log(salvage)
                             if (salvage.length > 0){
                                 var err = creep.pickup(salvage[0],RESOURCE_ENERGY)
                                 if(err == ERR_NOT_IN_RANGE) {
@@ -401,6 +383,9 @@ module.exports = class{
             if(creep.carry.energy > 0 && creep.room.name == pos.roomName){
                 var container = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
                 if(!container.length && creep.carry.energy>35){ // NO CONTAINER & ENOUGH ENERGY FOR 1 BUILD ATTEMPTS
+                    if(Memory.operations[creep.memory.operation_id].containerId){ // DELETE GLOBAL OPERATION VAR
+                      delete Memory.operations[creep.memory.operation_id].containerId;
+                    }
                     var containerConstruction = creep.room.lookForAt('constructionSite',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
                     if (containerConstruction[0] != null){
                         if (creep.build(containerConstruction[0]) == ERR_NOT_IN_RANGE){
@@ -411,6 +396,9 @@ module.exports = class{
                         Memory.operations[creep.memory.operation_id].containerId = containers[0].id;
                     }
                 }else if(container.length){ // DROP ENERGY
+                    if(!Memory.operations[creep.memory.operation_id].containerId){ // SET GLOBAL OPERATION VAR
+                      Memory.operations[creep.memory.operation_id].containerId = container[0].id;
+                    }
                     if(creep.pos.x != pos.x || creep.pos.y != pos.y){
                         creep.moveTo(pos.x,pos.y);
                     }else{
