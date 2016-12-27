@@ -175,7 +175,7 @@ module.exports = class{
                                 }
                             }
                         }else{
-                            path=new RoomPostition(lastPos.x,lastPos.y,roomList[j].room).findPathTo(source,{ignoreCreeps: true})
+                            path=new RoomPosition(lastPos.x,lastPos.y,roomList[j].room).findPathTo(source,{ignoreCreeps: true})
                             for(var i in path){
                                 if(i == path.length-1 ){
                                     if(path[i].x == 0){
@@ -193,8 +193,8 @@ module.exports = class{
                                     }
                                 }else{
                                     console.log('create Road');
-                                    console.log(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                                    if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
+                                    console.log(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
+                                    if(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
                                         done=false;
                                     }
                                 }
@@ -203,32 +203,10 @@ module.exports = class{
 
                     }
 
-                    /*
-                    console.log(JSON.stringify(lastPos));
-                    var path=source.pos.findPathTo(new RoomPosition(lastPos.x,lastPos.y,source.pos.roomName),{ignoreCreeps: true});
-                    for(var i in path){
-                        if(i==0){
-                            console.log('create Container');
-                            console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
-                            Memory.operations[id].sources[s_id].containerPos = {};
-                            Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
-                            Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
-                            if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != ERR_INVALID_TARGET){
-                                done=false;
-                            }
-                        }else{
-                            console.log('create Road');
-                            console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                            if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
-                                done=false;
-                            }
-                        }
-                    }*/
-
                 }
             }
             if(done){
-                Memory.operations[id].status='building';
+                Memory.operations[id].status='Mining';
             }
 
 
