@@ -5,67 +5,70 @@ module.exports = class{
 
         }
         static run(id){
-            var creep_body = [MOVE];
+            var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-            // BUILD CREEPS UNTIL SQUAD SIZE REACHED
-
-            if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
-                //console.log('Spawning');
-                //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
-                if(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
-                    var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
-                    Memory.operations[id].members[name]= 'attacker';
-                    console.log('Did spawn creep '+name);
+                // BUILD CREEPS UNTIL SQUAD SIZE REACHED
+                if(!Memory.operations[id].assembled && Object.keys(Memory.operations[id].members).length < Memory.operations[id].size){
+                    if(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
+                        var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
+                        Memory.operations[id].members[name]= 'attacker';
+                        console.log('Did spawn creep '+name);
+                    }
+                }else if(Object.keys(Memory.operations[id].members).length >= Memory.operations[id].size && !Memory.operations[id].assembled){
+                    Memory.operations[id].assembled = true;
+                    console.log('Squad assembled');
                 }
-
-            }else if(Object.keys(Memory.operations[id].members).length == Memory.operations[id].size && !Memory.operations[id].assembled){
-                Memory.operations[id].assembled = true;
-                console.log('Squad assembled');
-            }
-            // CHECK IF REACHED OR FLAG POSITION CHANGED
-            var reached=0;
-            for(var cr in Memory.operations[id].members){
-                if(Memory.operations[id].reached==false && Memory.operations[id].assembled==true){
-                    if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],2)){
-                        reached = reached+1;
+                // CHECK IF REACHED OR FLAG POSITION CHANGED
+                var reached=0;
+                for(var cr in Memory.operations[id].members){
+                    // DELETE NONEXISTING CREEPS FROM OPERATION
+                    if(!Game.creeps[cr]) {
+                        console.log('Deleted '+cr +'from memory')
+                        delete Memory.creeps[cr];
+                        delete Memory.operations[id].members[cr];
                     }
-                    if(reached == Memory.operations[id].size){
-                        Memory.operations[id].reached=true;
-                    }
-                }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
-                    if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
-                        reached = reached+1;
-                    }
-                    if(reached != Memory.operations[id].size){
-                        Memory.operations[id].reached=false;
-                    }
-                }
-            }
-            // RUN CREEP JOBS
-            for(var cr in Memory.operations[id].members){
-                if(!Game.creeps[cr].spawning && Game.creeps[cr]){
-                    if(Memory.operations[id].assembled==false){
-                        console.log('Running Idle for '+cr);
-                        this.creepIdle(Game.creeps[cr]);
-                    }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==false && Memory.operations[id].refreshed==false) {
-                        console.log('Running Refresh for'+cr);
-                        if(Game.creeps[cr].ticksToLive < 1400){
-                            this.refreshTimer(Game.creeps[cr]);
-                        }else{
-                            this.creepIdle(Game.creeps[cr]);
+                    if(Memory.operations[id].reached==false && Memory.operations[id].assembled==true){
+                        if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],3)){
+                            reached = reached+1;
+                        }
+                        if(reached == Memory.operations[id].size){
+                            Memory.operations[id].reached=true;
+                        }
+                    }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
+                        if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
+                            reached = reached+1;
                         }
 
-
-                    }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==false && Memory.operations[id].refreshed==true){
-                        console.log('Running Travel for '+cr);
-                        this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
-
-                    }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true && Memory.operations[id].refreshed==true){
-                        console.log('Running Attack for '+cr);
-                        this.creepAttack(Game.creeps[cr]);
                     }
                 }
-            }
+                if(reached != Memory.operations[id].size){
+                            Memory.operations[id].reached=false;
+                }else if(reached == Memory.operations[id].size){
+                            Memory.operations[id].reached=true;
+                }
+
+
+                // RUN CREEP JOBS
+                for(var cr in Memory.operations[id].members){
+                    if(!Game.creeps[cr].spawning && Game.creeps[cr]){
+                        if(Memory.operations[id].assembled==false){
+                            if(Game.creeps[cr].ticksToLive < 1400){
+                                //console.log('Running Refresh for'+cr);
+                                this.refreshTimer(Game.creeps[cr]);
+                            }else{
+                                //console.log('Running Idle for'+cr);
+                                this.creepIdle(Game.creeps[cr]);
+                            }
+                        }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==false){
+                            //console.log('Running Travel for '+cr);
+                            this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
+
+                        }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
+                            //console.log('Running Attack for '+cr);
+                            this.creepAttack(Game.creeps[cr]);
+                        }
+                    }
+                }
 
 
 
@@ -105,7 +108,7 @@ module.exports = class{
                 Memory.operations[this.id].reached=false;
                 Memory.operations[this.id].refreshed=false;
                 Memory.operations[this.id].members= {};
-                Memory.operations[this.id].rallyPoint=Game.flags[flag].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
+                Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
@@ -151,31 +154,37 @@ module.exports = class{
         // ATTACK CODE
         static creepAttack(creep){
             var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length =! 0});
-            var closestStr =creep.pos.findClosestByRange(FIND_STRUCTURES,{filter: (str) => str.structureType != STRUCTURE_CONTROLLER && str.structureType != STRUCTURE_WALL && str.structureType != STRUCTURE_CONTAINER});
-            var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER});
+            var closestStr =creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN, ignoreDestructibleStructures: true});
+            var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES, {filter: (str) => str.structureType != STRUCTURE_CONTROLLER, ignoreCreeps: true,ignoreDestructibleStructures: true});
             //console.log(closestHostile);
             if(closestHostile){
                 //console.log(creep.name);
                 //console.log('TEST2');
                 if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestHostile);
+                    creep.moveTo(closestHostile,{ignoreCreeps: true});
                     creep.heal(creep);
-                    creep.say('attacking');
+                    creep.say('1attacking 1');
                 }
+            }else if(spawn){
+                if(creep.attack(spawn) == ERR_NOT_IN_RANGE){
+                    creep.moveTo(spawn,{ignoreCreeps: true,ignoreCreeps: true,ignoreDestructibleStructures: true});
+                    creep.heal(creep);
+                    creep.say('2attacking 2');
+                }
+
             }else if (creep.hits < creep.hitsMax){
                 creep.heal(creep);
 
             }else if(closestStr){
 
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestStr);
+                    creep.moveTo(closestStr,{ignoreCreeps: true});
                     creep.heal(creep);
-                    creep.say('attacking');
+                    creep.say('3attacking 2');
                 }
             }else{
                 //console.log('TEST3');
-                creep.memory.reached=false;
-                delete creep.memory.target;
+                Memory.operations[creep.memory.operation_id].reached=false;
 
             }
 
@@ -183,93 +192,13 @@ module.exports = class{
 
         static refreshTimer(creep){
             var target = Game.spawns['Spawn1'];
-            if(target.renew(creep) == ERR_NOT_IN_RANGE){
-                creep.moveTo(Target)
-            }else if(target.renew(creep) == ERR_FULL){
+            if(target.renewCreep(creep) == ERR_NOT_IN_RANGE){
+                creep.moveTo(target)
+            }else if(target.renewCreep(creep) == ERR_FULL){
                 this.creep.Idle(creep);
             }
         }
-        static runCreep(creep){
 
-
-        if(!creep.spawning){
-        //console.log('TEST1');
-        if(creep.memory.reached){
-            var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length =! 0});
-            var closestStr =creep.pos.findClosestByRange(FIND_STRUCTURES,{filter: (str) => str.structureType != STRUCTURE_CONTROLLER && str.structureType != STRUCTURE_WALL && str.structureType != STRUCTURE_CONTAINER});
-            var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER});
-            //console.log(closestHostile);
-            if(closestHostile){
-                //console.log(creep.name);
-                //console.log('TEST2');
-                if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestHostile);
-                    creep.heal(creep);
-                    creep.say('attacking');
-                }
-            }else if (creep.hits < creep.hitsMax){
-                creep.heal(creep);
-
-            }else if(closestStr){
-
-                if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestStr);
-                    creep.heal(creep);
-                    creep.say('attacking');
-                }
-            }else{
-                //console.log('TEST3');
-                creep.memory.reached=false;
-                delete creep.memory.target;
-
-            }
-
-        }else if(!creep.memory.reached && !creep.memory.target){
-
-
-            creep.memory.target=creep.memory.squad;
-            //console.log('TEST4');
-        }else{
-            //console.log('TEST5');
-
-            if(Memory.squads[creep.memory.squad].assembled){
-                var target=Game.flags[creep.memory.target];
-                //console.log(target);
-                creep.moveTo(target,{costCallback: function(roomName, costMatrix) {
-	                if(roomName == 'E79N43') {
-                        for(var i=0;i<255;i++){
-                            for(var j=0;j<255;j++){
-                                costMatrix.set(i,j,255);
-                            }
-                        }
-		            }
-	            }
-
-                });
-                //creep.moveTo(target,{ignoreDestructibleStructures: true});
-                creep.heal(creep);
-                //if(creep.room.name = target.room.name){}
-                if(creep.pos.inRangeTo(target,2)){
-                    creep.memory.reached=true;
-                }
-
-            }else{
-                creep.say('waiting for assembling')
-                if(!Memory.squads[creep.memory.squad].members[creep.id]){
-                    Memory.squads[creep.memory.squad].members[creep.id]=creep.id;
-                    console.log('added');
-                }
-
-        }
-
-        }
-
-        }
-
-
-
-
-        }
 
 
 

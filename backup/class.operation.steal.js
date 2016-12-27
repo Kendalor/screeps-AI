@@ -18,8 +18,7 @@ module.exports = class{
                     console.log('Did spawn creep '+name);
                 }
             }
-            // CHECK IF REACHED OR FLAG POSITION CHANGED
-            var reached=0;
+
             for(var cr in Memory.operations[id].members){
                 // DELETE NONEXISTING CREEPS FROM OPERATION
                 if(!Game.creeps[cr]) {
@@ -31,13 +30,9 @@ module.exports = class{
             // RUN CREEP JOBS
             for(var cr in Memory.operations[id].members){
                 if(!Game.creeps[cr].spawning && Game.creeps[cr]){
-
+                    this.creepSteal(Game.creeps[cr]);
                 }
             }
-
-
-
-
             }
         }
 
@@ -71,7 +66,7 @@ module.exports = class{
                 Memory.operations[this.id].size=10;
                 Memory.operations[this.id].members= {};
                 Memory.operations[this.id].home=Game.spawns['Spawn1'].pos.storage.id;
-                Memory.operations[this.id].target=Game.flags[flag].pos.roomName;
+                //Memory.operations[this.id].target=Game.flags[flag].pos.roomName;
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
@@ -106,28 +101,34 @@ module.exports = class{
         // IDLE MOVESET
         static creepSteal(creep){
                 if(creep.carry.energy < creep.carryCapacity){
-                    var target_r=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.findClosestByPath(FIND_RESSOURCE_ENERGY);
-                    var target_c=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.findClosestByPath(STRUCTURE_CONTAINER);
-                    if(target){
-                        if(creep.pickup(target,RESSOURCE_ENERGY) == ERR_NOT_IN_RANGE){
-                            creep.moveTo(target);
-                            creep.say('picking up ressource');
+                    var target_r=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.findClosestByPath(FIND_DROPPED_ENERGY,{ignoreCreeps: true});
+                    var target_c=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.findClosestByPath(FIND_STRUCTURES, {filter: (str) => str.structureType == STRUCTURE_CONTAINER});
+                    //console.log(target_r);
+                    //console.log('TEST');
+                    //console.log(target_c);
+                    if(target_r){
+                        if(creep.pickup(target_r) == ERR_NOT_IN_RANGE){
+                            creep.moveTo(target_r);
+                            creep.say('ressource');
                         }
                     }else if(target_c){
-                        if(creep.withdraw(target,RESSOURCE_ENERGY) == ERR_NOT_IN_RANGE){
-                            creep.moveTo(target);
-                            creep.say('picking up container');
+                        if(creep.withdraw(target_c) == ERR_NOT_IN_RANGE){
+                            creep.moveTo(target_c);
+                            creep.say('container');
                         }
                     }else{
-                        creep.moveTo(Game.flags[Memory.operations[creep.memory.operation_id].flagName]);
-                        creep.say('moving to flagRoom');
+                        //creep.moveTo(Game.flags[Memory.operations[creep.memory.operation_id].flagName]);
+                        //creep.say('flagRoom');
                     }
                 }else{
+                    //console.log('TEST2');
                     var target=Game.rooms[Game.spawns['Spawn1'].pos.roomName].storage;
-                    if(creep.transfer(target,RESSOURCE_ENERGY) == ERR_NOT_IN_RANGE){
-                        creep.moveTo(target);
-                        creep.say('Moving to Storage');
-                }
+                    console.log(target);
+                    console.log(creep.transfer(target,RESOURCE_ENERGY));
+                    if(creep.transfer(target,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE){
+                        creep.moveTo(target,{ignoreCreeps: true});
+                        creep.say('Storage');
+                    }
 
                 }
 
