@@ -2,7 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
+      <change type="DELETED" beforePath="$PROJECT_DIR$/pallesCode/class.operation.remote_mining.js" afterPath="" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.sync" afterPath="$PROJECT_DIR$/.sync" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pallesCode/auto.creep.js" afterPath="$PROJECT_DIR$/pallesCode/auto.creep.js" />
     </list>
     <ignored path="screeps.com.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -27,7 +30,7 @@
         <entry file="file://$PROJECT_DIR$/pallesCode/auto.creep.js">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="323">
-              <caret line="165" column="74" selection-start-line="165" selection-start-column="74" selection-end-line="165" selection-end-column="74" />
+              <caret line="164" column="74" selection-start-line="164" selection-start-column="74" selection-end-line="164" selection-end-column="74" />
               <folding />
             </state>
           </provider>
@@ -357,7 +360,7 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="-8" y="0" width="1936" height="1047" extended-state="1" />
+    <frame x="-8" y="0" width="1936" height="1047" extended-state="0" />
     <editor active="false" />
     <layout>
       <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
@@ -792,7 +795,7 @@
     <entry file="file://$PROJECT_DIR$/pallesCode/auto.creep.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="323">
-          <caret line="165" column="74" selection-start-line="165" selection-start-column="74" selection-end-line="165" selection-end-column="74" />
+          <caret line="164" column="74" selection-start-line="164" selection-start-column="74" selection-end-line="164" selection-end-column="74" />
           <folding />
         </state>
       </provider>
