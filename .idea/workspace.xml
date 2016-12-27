@@ -2,34 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="b9a46755-74ec-4772-ba64-a9864e415ed4" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/backup/class.operation.tank.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/joat/main.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/joat/role.attacker.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/joat/role.builder.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/joat/role.harvester.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/joat/role.miner.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/joat/role.upgrader.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/miner_carry/main.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/miner_carry/role.builder.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/miner_carry/role.upgrader.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/actMemory.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/blueprints.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/buildingRoad.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/createInfrastructure.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/creep.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/flag.handler.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/getCreepBody.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/initMemory.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/main.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/role.Attacker.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/role.harvester.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/role.miner.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/room.phase1.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/spawnCreeps.js" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/overseer/squads.handler.js" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/class.operation.attack.js" afterPath="$PROJECT_DIR$/backup/class.operation.attack.js" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/class.operation.scouting.js" afterPath="$PROJECT_DIR$/backup/class.operation.scouting.js" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/backup/class.operation.steal.js" afterPath="$PROJECT_DIR$/backup/class.operation.steal.js" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
     </list>
     <ignored path="screeps.com.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -76,8 +49,8 @@
       <file leaf-file-name="flag.handler.js" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/default/flag.handler.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="238">
-              <caret line="14" column="90" selection-start-line="14" selection-start-column="90" selection-end-line="14" selection-end-column="90" />
+            <state relative-caret-position="272">
+              <caret line="16" column="92" selection-start-line="16" selection-start-column="92" selection-end-line="16" selection-end-column="92" />
               <folding />
             </state>
           </provider>
@@ -266,7 +239,7 @@
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
             <PATH_ELEMENT>
-              <option name="myItemId" value="pallesCode" />
+              <option name="myItemId" value="default" />
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
           </PATH>
@@ -465,10 +438,10 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="-8" y="0" width="1936" height="1047" extended-state="0" />
-    <editor active="false" />
+    <frame x="-8" y="0" width="1936" height="1047" extended-state="1" />
+    <editor active="true" />
     <layout>
-      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24973656" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.3238512" sideWeight="0.5021075" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Python Console" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
@@ -894,8 +867,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/default/flag.handler.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="238">
-          <caret line="14" column="90" selection-start-line="14" selection-start-column="90" selection-end-line="14" selection-end-column="90" />
+        <state relative-caret-position="272">
+          <caret line="16" column="92" selection-start-line="16" selection-start-column="92" selection-end-line="16" selection-end-column="92" />
           <folding />
         </state>
       </provider>
