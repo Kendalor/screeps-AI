@@ -64,7 +64,7 @@ module.exports = class{
                     Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
                     Memory.operations[this.id].roadsBuild=false;
                     Memory.operations[this.id].status='createConstructionSites';
-
+                    Memory.operations[this.id].constructionSites={};
 
                 }else{
                     Memory.operations[this.id].scouting=false;
@@ -72,6 +72,7 @@ module.exports = class{
                     Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
                     Memory.operations[this.id].roadsBuild=false;
                     Memory.operations[this.id].status='createConstructionSites';
+                    Memory.operations[this.id].constructionSites={};
                 }
 
 
@@ -112,6 +113,18 @@ module.exports = class{
 
         }
         // BUILD CREEPS FOR HAULING AND MINING
+        static buildAndRunMiner(id){
+
+        }
+
+        static buildAndRunHauler(id){
+
+        }
+
+        static buildAndRunBuilder(id){
+
+        }
+
         static buildAndRunCreeps(id){
             // ITERATE OVER SOURCES
             for(var i in Memory.operations[id].sources){
@@ -149,7 +162,9 @@ module.exports = class{
             }
 
         }
-
+        /* TODO
+        COMBINE WITH SCOUT METHOD, place Construction sites in room while scout is traveling this room to avoid "No Room" Error
+        */
         static buildRoadAndContainer(id){
             if(!Memory.operations[id].sources){//If this room has no sources memory yet
                 Memory.operations[id].sources = {}; //Add it
@@ -196,7 +211,7 @@ module.exports = class{
                             if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) == OK){
                                 done=false;
                                 temp_id=Game.rooms[storage.pos.roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                if(! Memory.operations[id].constructionSites[temp_id[0].id]){
+                                if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
                                     Memory.operations[id].constructionSites[temp_id[0].id]={};
                                 }
 
@@ -205,7 +220,7 @@ module.exports = class{
                     }
 
                     for(var j in roomList){
-                        if(Game.rooms[roomList[j].room != undefined]){
+                        if(Game.rooms[roomList[j].room] != undefined){
                             if(roomList[j].room == source.pos.roomName){
                                 var path=source.pos.findPathTo(new RoomPosition(lastPos.x,lastPos.y,source.pos.roomName),{ignoreCreeps: true});
                                 for(var i in path){
@@ -215,20 +230,21 @@ module.exports = class{
                                     Memory.operations[id].sources[s_id].containerPos = {};
                                     Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
                                     Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
-                                    if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) == OK){
+
+                                    if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != OK){
                                         done=false;
-                                        temp_id=Game.rooms[storage.pos.roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                        if(! Memory.operations[id].constructionSites[temp_id[0].id]){
+                                        temp_id=Game.rooms[Memory.operations[id].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
+                                        if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
                                             Memory.operations[id].constructionSites[temp_id[0].id]={};
                                         }
                                     }
                                     }else{
                                         //console.log('create Road');
                                         //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                                        if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) == OK){
+                                        if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
                                             done=false;
-                                            temp_id=Game.rooms[storage.pos.roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                            if(! Memory.operations[id].constructionSites[temp_id[0].id]){
+                                            temp_id=Game.rooms[Memory.operations[id].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
+                                            if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
                                                 Memory.operations[id].constructionSites[temp_id[0].id]={};
                                             }
                                         }
@@ -256,8 +272,8 @@ module.exports = class{
                                         //console.log(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
                                         if(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
                                             done=false;
-                                            temp_id=Game.rooms[storage.pos.roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                            if(! Memory.operations[id].constructionSites[temp_id[0].id]){
+                                            temp_id=Game.rooms[roomList[j].room].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
+                                            if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
                                                 Memory.operations[id].constructionSites[temp_id[0].id]={};
                                             }
                                         }
@@ -270,14 +286,11 @@ module.exports = class{
                 }
             }
             if(done){
-                Memory.operations[id].status='Mining';
+                Memory.operations[id].status='BuildingContainer';
             }
-
-
-
-
-
         }
+
+
 
         static creepHaul(creep){
             var ENERGY_SOFT_CAP = creep.carryCapacity-200;
@@ -442,7 +455,6 @@ module.exports = class{
                         Memory.operations[id].scouting=false;
                     }
                 }
-
         }
 
         static checkForDelete(id){
