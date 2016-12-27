@@ -133,10 +133,10 @@ module.exports = {
     var workParts = 1
     if (spawn.room.controller.level > 1)
       workParts = 0
-    var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/3)/50)),10);
+    var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/3)/50)),8);
     //var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)*2/3)/50)),10);
     //var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/2)/50)),10);
-    var carryParts = Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),20);
+    var carryParts = Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),16);
     if (spawn.room.memory.activeCreepRoles.hauler == 0) {moveParts=2;carryParts=2;workParts=1;}
       return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
@@ -156,7 +156,6 @@ module.exports = {
     var moveParts = 1;
     var carryParts= Math.max(parseInt((energyCap-(100*workParts)-50)/50));
     if (carryParts > 3) carryParts = 3;
-    console.log(workParts+" "+carryParts+" "+moveParts);
     if (spawn.room.memory.activeCreepRoles.miner == 0) {moveParts=1;carryParts=1;workParts=1;}
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },

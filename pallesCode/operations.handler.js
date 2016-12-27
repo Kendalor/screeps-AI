@@ -5,6 +5,7 @@ var thiefOperation = require('class.operation.steal');
 var reserveOperation = require('class.operation.reserve');
 var colonizeOperation = require('class.operation.colonize');
 var devAidOperation = require('class.operation.developmentAid');
+var remoteMiningOperation = require('class.operation.remote_mining');
 
 module.exports = {
 
@@ -38,6 +39,9 @@ module.exports = {
                     break;
                 case 'devAid':
                     devAidOperation.run(id);
+                    break;
+                case 'remote_mining':
+                    remoteMiningOperation.run(id);
                     break;
 
 

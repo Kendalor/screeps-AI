@@ -8,8 +8,9 @@ module.exports = class{
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
 
                 if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
-                    if(Game.spawns['Spawn1'].canCreateCreep([MOVE,CLAIM,CLAIM,MOVE],undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.spawns['Spawn1'].createCreep([MOVE,CLAIM,CLAIM,MOVE],undefined,{role: 'reserve', operation_id: id});
+                    var spawn = Game.getObjectById(this.findClosestSpawn(Memory.operations[id].flagName));
+                    if(spawn.canCreateCreep([MOVE,CLAIM,CLAIM,MOVE],undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=spawn.createCreep([MOVE,CLAIM,CLAIM,MOVE],undefined,{role: 'reserve', operation_id: id});
                         var creep=Game.creeps[name];
                         Memory.operations[id].creep=name;
                     }
@@ -90,5 +91,28 @@ module.exports = class{
             }else {
                 return false;
             }
+        }
+        static findClosestSpawn(flagName){
+            var min_length;
+            var best_spawn;
+            var length;
+            for(var i in Game.spawns){
+                //console.log('length from '+Game.spawns[i].pos.roomName+' to '+Game.flags[flagName].pos.roomName);
+                //console.log( Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length < min_length  || min_length == undefined);
+                length= Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length;
+                if(length < min_length  || min_length == undefined){
+                    min_length=length;
+                    best_spawn=Game.spawns[i].id;
+
+                }
+
+
+            }
+            return best_spawn;
+          
+            /*
+            var flag = Game.flags[flagName]
+            return flag.pos.findClosestByPath(FIND_MY_SPAWNS).id;
+            */
         }
 };
