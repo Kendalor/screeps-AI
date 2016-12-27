@@ -3,6 +3,7 @@ var attackOperation = require('class.operation.attack');
 var tankOperation = require('class.operation.tank');
 var thiefOperation = require('class.operation.steal');
 var reserveOperation = require('class.operation.reserve');
+var remote_miningOperation = require('class.operation.remote_mining');
 module.exports = {
 
     // HANDLE ALL OPERATIONS
@@ -29,6 +30,9 @@ module.exports = {
                     break;
                 case 'reserve':
                     reserveOperation.run(id);
+                    break;
+                case 'remote_mining':
+                    remote_miningOperation.run(id);
                     break;
 
             }

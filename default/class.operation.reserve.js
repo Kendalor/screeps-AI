@@ -30,9 +30,7 @@ module.exports = class{
                             if(creep.reserveController(Game.getObjectById(Memory.operations[id].controller_id)) == ERR_NOT_IN_RANGE){
                             creep.moveTo(Game.getObjectById(Memory.operations[id].controller_id));
                             creep.say('Reserve');
-
                             }
-
                         }
 
                     }
