@@ -14,8 +14,8 @@ module.exports = class{
                             this.buildRoadAndContainer(id);
                             break;
 
-                        case 'building':
-
+                        case 'Mining':
+                            //PALLES FUNKTION HIER
                             break;
 
 
@@ -124,36 +124,114 @@ module.exports = class{
                     var source=Game.getObjectById(s_id);
                     console.log(source);
                     var storage=Game.getObjectById(Memory.operations[id].nearest_storageId);
-                    var path=source.pos.findPathTo(storage,{ignoreCreeps: true});
+
                     console.log('Start');
                     var roomList=Game.map.findRoute(storage.pos.roomName,source.pos.roomName);
-                    console.log(JSON.stringify(roomList));
-                    for(var j in roomList ){
-                        var path=source.pos.findPathTo(storage,{ignoreCreeps: true});
-                        console.log('Path in Room'+ j);
-                        console.log(JSON.stringify(path));
-                        for(var i in path){
-                            if(i==0){
-                                    console.log('create Container');
-                                    console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
-                                    if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != ERR_INVALID_TARGET){
-                                        done=false;
-                                    }
-                            }else{
+                    var lastPos={};
+                    var path=storage.pos.findPathTo(source,{ignoreCreeps: true});
+                    for(var i in path){
+                        if(i == path.length-1 ){
+                            if(path[i].x == 0){
+                                lastPos.x=49;
+                                lastPos.y=path[i].y;
+                            }else if(path[i].x == 49){
+                                lastPos.x=0;
+                                lastPos.y=path[i].y;
+                            }else if(path[i].y == 0){
+                                lastPos.y=49;
+                                lastPos.x=path[i].x;
+                            }else if(path[i].y == 49){
+                                lastPos.y=0;
+                                lastPos.x=path[i].x;
+                            }
+                        }else{
+                            console.log('create Road');
+                            console.log(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
+                            if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
+                                done=false;
+                            }
+                        }
+                    }
+
+                    for(var j in roomList){
+                        if(roomList[j].room == source.pos.roomName){
+                            var path=source.pos.findPathTo(new RoomPosition(lastPos.x,lastPos.y,source.pos.roomName),{ignoreCreeps: true});
+                            for(var i in path){
+                                if(i==0){
+                                console.log('create Container');
+                                console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
+                                Memory.operations[id].sources[s_id].containerPos = {};
+                                Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
+                                Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
+                                if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != ERR_INVALID_TARGET){
+                                    done=false;
+                                }
+                                }else{
                                     console.log('create Road');
                                     console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
                                     if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
                                         done=false;
                                     }
+                                }
+                            }
+                        }else{
+                            path=new RoomPostition(lastPos.x,lastPos.y,roomList[j].room).findPathTo(source,{ignoreCreeps: true})
+                            for(var i in path){
+                                if(i == path.length-1 ){
+                                    if(path[i].x == 0){
+                                        lastPos.x=49;
+                                        lastPos.y=path[i].y;
+                                    }else if(path[i].x == 49){
+                                        lastPos.x=0;
+                                        lastPos.y=path[i].y;
+                                    }else if(path[i].y == 0){
+                                        lastPos.y=49;
+                                        lastPos.x=path[i].x;
+                                    }else if(path[i].y == 49){
+                                        lastPos.y=0;
+                                        lastPos.x=path[i].x;
+                                    }
+                                }else{
+                                    console.log('create Road');
+                                    console.log(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
+                                    if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
+                                        done=false;
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-                if(done){
-                    //Memory.operations[id].status='building';
-                }
 
+                    }
+
+                    /*
+                    console.log(JSON.stringify(lastPos));
+                    var path=source.pos.findPathTo(new RoomPosition(lastPos.x,lastPos.y,source.pos.roomName),{ignoreCreeps: true});
+                    for(var i in path){
+                        if(i==0){
+                            console.log('create Container');
+                            console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
+                            Memory.operations[id].sources[s_id].containerPos = {};
+                            Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
+                            Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
+                            if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != ERR_INVALID_TARGET){
+                                done=false;
+                            }
+                        }else{
+                            console.log('create Road');
+                            console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
+                            if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
+                                done=false;
+                            }
+                        }
+                    }*/
+
+                }
             }
+            if(done){
+                Memory.operations[id].status='building';
+            }
+
+
 
 
 

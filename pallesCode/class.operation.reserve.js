@@ -4,22 +4,37 @@ module.exports = class{
         constructor(){
         }
         static run(id){
+            // DELETE NONEXISTING CREEPS FROM OPERATION
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
+
                 if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
-                    if(Game.spawns['Spawn1'].canCreateCreep([MOVE],undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.spawns['Spawn1'].createCreep([MOVE],undefined,{role: 'scout', operation_id: id});
+                    if(Game.spawns['Spawn1'].canCreateCreep([MOVE,CLAIM,CLAIM,MOVE],undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=Game.spawns['Spawn1'].createCreep([MOVE,CLAIM,CLAIM,MOVE],undefined,{role: 'reserve', operation_id: id});
                         var creep=Game.creeps[name];
-                        console.log('SPAWNING');
-                        console.log(name);
-                        console.log(JSON.stringify(creep));
-                        console.log(creep.name);
                         Memory.operations[id].creep=name;
                     }
+                }else if(!Game.creeps[Memory.operations[id].creep]){
+                    console.log('Deleted '+Memory.operations[id].creep +'from memory')
+                    delete Memory.creeps[Memory.operations[id].creep];
+                    delete Memory.operations[id].creep;
                 }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
                     var creep= Game.creeps[Memory.operations[id].creep];
-                    creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30,ignoreCreeps: true});
-                    if(creep.room.name == Memory.operations[id].roomName){
-                        Game.flags[Memory.operations[id].flagName].remove();
+
+                    if(creep.room.name != Memory.operations[id].roomName){
+                        creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
+                        creep.say('Traveling to Room');
+                    }else if(creep.room.name == Memory.operations[id].roomName){
+                        if(!Memory.operations[id].controller_id){
+                            Memory.operations[id].controller_id=Game.rooms[Memory.operations[id].roomName].controller.id;
+                        }else{
+                            if(creep.reserveController(Game.getObjectById(Memory.operations[id].controller_id)) == ERR_NOT_IN_RANGE){
+                            creep.moveTo(Game.getObjectById(Memory.operations[id].controller_id));
+                            creep.say('Reserve');
+
+                            }
+
+                        }
+
                     }
                 }
             }
@@ -51,7 +66,7 @@ module.exports = class{
                 Memory.operations[this.id].roomName=roomName;
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
-                Memory.operations[this.id].type='scouting';
+                Memory.operations[this.id].type='reserve';
                 console.log(JSON.stringify(Memory.operations[this.id]));
             }
         }

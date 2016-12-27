@@ -4,10 +4,14 @@ module.exports = class{
         constructor(){
         }
         static run(id){
+            // tank
+            var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+            // scout
+            //var creep_body = [MOVE];
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
-                    if(Game.spawns['Spawn1'].canCreateCreep([MOVE],undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.spawns['Spawn1'].createCreep([MOVE],undefined,{role: 'scout', operation_id: id});
+                    if(Game.spawns['Spawn1'].canCreateCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'scout', operation_id: id});
                         var creep=Game.creeps[name];
                         console.log('SPAWNING');
                         console.log(name);
@@ -17,7 +21,7 @@ module.exports = class{
                     }
                 }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
                     var creep= Game.creeps[Memory.operations[id].creep];
-                    creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30,ignoreCreeps: true});
+                    creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
                     if(creep.room.name == Memory.operations[id].roomName){
                         Game.flags[Memory.operations[id].flagName].remove();
                     }
