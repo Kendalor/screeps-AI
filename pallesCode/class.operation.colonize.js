@@ -231,7 +231,7 @@ module.exports = class{
                  if(target.resourceType == RESOURCE_ENERGY){
 
                     if(creep.pickup(target) == ERR_NOT_IN_RANGE){
-                        
+
                         creep.moveTo(target);
                     }
                  }else{
