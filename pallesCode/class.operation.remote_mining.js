@@ -63,6 +63,7 @@ module.exports = class{
                     Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
                     Memory.operations[this.id].roadsBuild=false;
                     Memory.operations[this.id].status='createConstructionSites';
+                    Memory.operations[this.id].constructionSites={};
 
 
                 }else{
@@ -71,6 +72,7 @@ module.exports = class{
                     Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
                     Memory.operations[this.id].roadsBuild=false;
                     Memory.operations[this.id].status='createConstructionSites';
+                    Memory.operations[this.id].constructionSites={};
                 }
 
 
@@ -378,7 +380,7 @@ module.exports = class{
                     creep.memory.targetId=creep.pos.findClosestByRange(targets);
                 }
             }else{
-                target=Game.getObjectById(creep.memory.targetId);
+                var target=Game.getObjectById(creep.memory.targetId);
                 if(target.structureType == STRUCTURE_CONTAINER){
                     var err = creep.withdraw(target,RESOURCE_ENERGY);
                     if(err == ERR_NOT_IN_RANGE) {
