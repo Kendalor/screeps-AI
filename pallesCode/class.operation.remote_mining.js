@@ -1,5 +1,3 @@
-
-
 module.exports = class{
         constructor(){
         }
@@ -13,10 +11,7 @@ module.exports = class{
                         case 'createConstructionSites':
                             this.buildRoadAndContainer(id);
                             break;
-                        case 'buildingContainer':
-                            break;
-                        case 'buildingRoad':
-                            break;
+
                         case 'Mining':
                             //PALLES FUNKTION HIER
                             //CREEP SPAWNING
@@ -65,7 +60,7 @@ module.exports = class{
                     Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
                     Memory.operations[this.id].roadsBuild=false;
                     Memory.operations[this.id].status='createConstructionSites';
-                    Memory.operations[this.id].constructionSites={};
+
 
                 }else{
                     Memory.operations[this.id].scouting=false;
@@ -73,7 +68,6 @@ module.exports = class{
                     Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
                     Memory.operations[this.id].roadsBuild=false;
                     Memory.operations[this.id].status='createConstructionSites';
-                    Memory.operations[this.id].constructionSites={};
                 }
 
 
@@ -111,21 +105,13 @@ module.exports = class{
 
             }
             return best_spawn;
-
+          
+            /*
+            var flag = Game.flags[flagName]
+            return flag.pos.findClosestByPath(FIND_MY_SPAWNS).id;
+            */
         }
         // BUILD CREEPS FOR HAULING AND MINING
-        static buildAndRunMiner(id){
-
-        }
-
-        static buildAndRunHauler(id){
-
-        }
-
-        static buildAndRunBuilder(id){
-
-        }
-
         static buildAndRunCreeps(id){
             // ITERATE OVER SOURCES
             for(var i in Memory.operations[id].sources){
@@ -163,9 +149,7 @@ module.exports = class{
             }
 
         }
-        /* TODO
-        COMBINE WITH SCOUT METHOD, place Construction sites in room while scout is traveling this room to avoid "No Room" Error
-        */
+
         static buildRoadAndContainer(id){
             if(!Memory.operations[id].sources){//If this room has no sources memory yet
                 Memory.operations[id].sources = {}; //Add it
@@ -180,7 +164,6 @@ module.exports = class{
 
                 var sources = Memory.operations[id].sources;
                 var done = true;
-                var temp_id;
                 for(var s_id in sources){
                     //console.log(s_id);
                     var source=Game.getObjectById(s_id);
@@ -209,89 +192,79 @@ module.exports = class{
                         }else{
                             //console.log('create Road');
                             //console.log(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                            if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) == OK){
+                            if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
                                 done=false;
-                                temp_id=Game.rooms[storage.pos.roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
-                                    Memory.operations[id].constructionSites[temp_id[0].id]={};
-                                }
-
                             }
                         }
                     }
 
                     for(var j in roomList){
-                        if(Game.rooms[roomList[j].room] != undefined){
-                            if(roomList[j].room == source.pos.roomName){
-                                var path=source.pos.findPathTo(new RoomPosition(lastPos.x,lastPos.y,source.pos.roomName),{ignoreCreeps: true});
-                                for(var i in path){
-                                    if(i==0){
-                                    //console.log('create Container');
-                                    //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
-                                    Memory.operations[id].sources[s_id].containerPos = {};
-                                    Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
-                                    Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
-
-                                    if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != OK){
+                        if(roomList[j].room == source.pos.roomName){
+                            var path=source.pos.findPathTo(new RoomPosition(lastPos.x,lastPos.y,source.pos.roomName),{ignoreCreeps: true});
+                            for(var i in path){
+                                if(i==0){
+                                //console.log('create Container');
+                                //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
+                                Memory.operations[id].sources[s_id].containerPos = {};
+                                Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
+                                Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
+                                if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != ERR_INVALID_TARGET){
+                                    done=false;
+                                }
+                                }else{
+                                    //console.log('create Road');
+                                    //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
+                                    if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
                                         done=false;
-                                        temp_id=Game.rooms[Memory.operations[id].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                        if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
-                                            Memory.operations[id].constructionSites[temp_id[0].id]={};
-                                        }
-                                    }
-                                    }else{
-                                        //console.log('create Road');
-                                        //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                                        if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
-                                            done=false;
-                                            temp_id=Game.rooms[Memory.operations[id].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                            if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
-                                                Memory.operations[id].constructionSites[temp_id[0].id]={};
-                                            }
-                                        }
                                     }
                                 }
-                            }else{
-                                path=new RoomPosition(lastPos.x,lastPos.y,roomList[j].room).findPathTo(source,{ignoreCreeps: true})
-                                for(var i in path){
-                                    if(i == path.length-1 ){
-                                        if(path[i].x == 0){
-                                            lastPos.x=49;
-                                            lastPos.y=path[i].y;
-                                        }else if(path[i].x == 49){
-                                            lastPos.x=0;
-                                            lastPos.y=path[i].y;
-                                        }else if(path[i].y == 0){
-                                            lastPos.y=49;
-                                            lastPos.x=path[i].x;
-                                        }else if(path[i].y == 49){
-                                            lastPos.y=0;
-                                            lastPos.x=path[i].x;
-                                        }
-                                    }else{
-                                        //console.log('create Road');
-                                        //console.log(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                                        if(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
-                                            done=false;
-                                            temp_id=Game.rooms[roomList[j].room].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                            if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
-                                                Memory.operations[id].constructionSites[temp_id[0].id]={};
-                                            }
-                                        }
+                            }
+                        }else{
+                            path=new RoomPosition(lastPos.x,lastPos.y,roomList[j].room).findPathTo(source,{ignoreCreeps: true})
+                            for(var i in path){
+                                if(i == path.length-1 ){
+                                    if(path[i].x == 0){
+                                        lastPos.x=49;
+                                        lastPos.y=path[i].y;
+                                    }else if(path[i].x == 49){
+                                        lastPos.x=0;
+                                        lastPos.y=path[i].y;
+                                    }else if(path[i].y == 0){
+                                        lastPos.y=49;
+                                        lastPos.x=path[i].x;
+                                    }else if(path[i].y == 49){
+                                        lastPos.y=0;
+                                        lastPos.x=path[i].x;
+                                    }
+                                }else{
+                                    //console.log('create Road');
+                                    //console.log(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
+                                    if(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
+                                        done=false;
                                     }
                                 }
                             }
                         }
+
                     }
 
                 }
             }
             if(done){
-                Memory.operations[id].status='BuildingContainer';
+                Memory.operations[id].status='Mining';
             }
+
+
+
+
+
         }
-
-
+          /*CONSTANTS TO REPLACE:
+    CONTAINER_POS = new RoomPosition(Memory.operations[creep.memory.operation_id].source[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].source[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
+    STORAGE_ID = Memory.operations[creep.memory.operation_id].nearest_storageId
+    ROOM_NAME = Memory.operations[creep.memory.operation_id].roomName
+    SOURCE_ID = creep.memory.source_id
+    */
 
         static creepHaul(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
@@ -384,6 +357,13 @@ module.exports = class{
             }
         }
 
+
+
+        /* CONSTANTS TO REPLACE
+        SOURCE_ID
+        CONTAINER_POS
+
+        */
         static creepMine(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
             if(Game.time % 10 == 0){
@@ -400,7 +380,7 @@ module.exports = class{
             }
             if(creep.carry.energy > 0 && creep.room.name == pos.roomName){
                 var container = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
-                if(!container.length && creep.carry.energy>35){ // NO CONTAINER & ENOUGH ENERGY FOR 1 BUILD ATTEMPTS
+                if(container.length == 0 && creep.carry.energy>35){ // NO CONTAINER & ENOUGH ENERGY FOR 1 BUILD ATTEMPTS
                     if(Memory.operations[creep.memory.operation_id].containerId){ // DELETE GLOBAL OPERATION VAR
                       delete Memory.operations[creep.memory.operation_id].containerId;
                     }
@@ -411,7 +391,12 @@ module.exports = class{
                         }
                     }else{
                         container = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
-                        Memory.operations[creep.memory.operation_id].containerId = containers[0].id;
+                        if (container.length > 0){
+                          console.log(container)
+                          Memory.operations[creep.memory.operation_id].containerId = container[0].id;
+                        }else{
+                          creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_CONTAINER);
+                        }
                     }
                 }else if(container.length){ // DROP ENERGY
                     if(!Memory.operations[creep.memory.operation_id].containerId){ // SET GLOBAL OPERATION VAR
@@ -420,7 +405,7 @@ module.exports = class{
                     if(creep.pos.x != pos.x || creep.pos.y != pos.y){
                         creep.moveTo(pos.x,pos.y);
                     }else{
-                        if(container.hits < container.hitsMax-1000) // CONTAINER REPAIR?
+                        if(container[0].hits < container[0].hitsMax-1000) // CONTAINER REPAIR?
                             creep.repair(container);
                         creep.drop(RESOURCE_ENERGY);
                     }
@@ -443,6 +428,7 @@ module.exports = class{
                         Memory.operations[id].scouting=false;
                     }
                 }
+
         }
 
         static checkForDelete(id){
