@@ -387,7 +387,13 @@ module.exports = class{
                 if(creep.carry.energy == 0){
                     creep.memory.targetId=container.id;
                 }else{
-                    creep.memory.targetId=creep.pos.findClosestByRange(targets).id;
+                    var target=creep.pos.findClosestByRange(targets);
+                    if(target !=null){
+                        creep.memory.targetId=target.id;
+                    }else{
+                        creep.moveTo(targets[0]);
+                    }
+
                     //console.log(JSON.stringify(creep.pos.findClosestByRange(targets).id));
                 }
             }else{
@@ -561,7 +567,7 @@ module.exports = class{
                     if(creep.pos.x != pos.x || creep.pos.y != pos.y){
                         creep.moveTo(pos.x,pos.y);
                     }else{
-                        if(container[0].hits < container[0].hitsMax-1000){
+                        if(container[0].hits < container[0].hitsMax-700){
                             creep.repair(container[0]);
                             //creep.say('Repair');
                         }else{

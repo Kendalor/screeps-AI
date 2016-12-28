@@ -32,6 +32,9 @@ module.exports = class{
                             creep.moveTo(Game.getObjectById(Memory.operations[id].controller_id));
                             creep.say('Reserve');
 
+                            }else if(!Memory.operations[id].ticksToController || Memory.operations[id].ticksToController > 500-creep.ticksToLive){
+                                Memory.operations[id].ticksToController=500-creep.ticksToLive;
+                                //Memory.operations[id].spawnCreepAtTime=Game.time
                             }
 
                         }
@@ -68,6 +71,7 @@ module.exports = class{
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='reserve';
+                Memory.operations[id].spawnCreepAtTime= 0;
                 console.log(JSON.stringify(Memory.operations[this.id]));
             }
         }

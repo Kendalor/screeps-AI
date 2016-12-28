@@ -5,7 +5,7 @@ module.exports = class{
 
         }
         static run(id){
-            this.checkForInvaders(Game.flags[Memory.operations[id].flagName].room);
+            //this.checkForInvaders(Game.flags[Memory.operations[id].flagName].room);
           
             if (!Memory.operations[id].spawnBuilt && Game.flags[Memory.operations[id].flagName].room.controller.my){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
               Memory.operations[id].spawn = true; 
