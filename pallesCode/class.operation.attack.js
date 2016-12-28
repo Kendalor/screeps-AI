@@ -6,7 +6,7 @@ module.exports = class{
         }
         static run(id){
             //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK];
-            var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
+            var creep_body = Array(15).fill(MOVE).concat(Array(13).fill(ATTACK)).concat(Array(2).fill(HEAL)); // Needs 2290 Energy
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 

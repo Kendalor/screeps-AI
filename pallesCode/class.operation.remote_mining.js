@@ -482,14 +482,17 @@ module.exports = class{
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
                                 }
+                            }else{
+                                var err = creep.withdraw(target,RESOURCE_ENERGY);
+                                if(err == ERR_NOT_IN_RANGE) {
+                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                }else if (err == ERR_FULL){
+                                    creep.memory.targetId = null;
+                                    return this.creepHaul(creep);
+                                }
                             }
-                        }
-                        var err = creep.withdraw(target,RESOURCE_ENERGY);
-                        if(err == ERR_NOT_IN_RANGE) {
+                        } else{
                             creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
-                        }else if (err == ERR_FULL){
-                            creep.memory.targetId = null;
-                            return this.creepHaul(creep);
                         }
                     }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
                         var roadConstructions = creep.pos.lookFor(LOOK_CONSTRUCTION_SITES).filter((struct) => struct.structureType == STRUCTURE_ROAD);
