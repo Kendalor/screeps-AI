@@ -1,4 +1,4 @@
-var WHITELIST = {'Kendalor' : true};
+var WHITELIST = {'Kendalor' : true,'Palle' : true};
 
 module.exports = {
   /** @param {towerList} towerList **/
