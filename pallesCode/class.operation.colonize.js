@@ -14,6 +14,8 @@ module.exports = class{
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt)
               creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
+            else if(Game.rooms[Memory.operations[id].roomName].controller.my)
+              creep_body = [WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
             else
               creep_body = [CLAIM,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
             
@@ -175,11 +177,17 @@ module.exports = class{
                 creep.memory.targetId = creep.room.controller.id;
               }
               else if (creep.carry.energy < creep.carryCapacity/2){ // HARVEST SOURCE
-                var source = creep.pos.findClosestByRange(FIND_SOURCES);
-                if (source != undefined)
-                  creep.memory.targetId = source.id;
-                  creep.say('Harvesting');
-              } 
+                var dropped_ressource = creep.pos.findClosestByRange(FIND_DROPPED_ENERGY);
+                if(dropped_ressource != undefined){
+                    creep.memory.targetId = dropped_ressource.id;
+                    creep.say('Harvesting');
+                }else {
+                    var source = creep.pos.findClosestByRange(FIND_SOURCES);
+                    if (source != undefined)
+                      creep.memory.targetId = source.id;
+                      creep.say('Harvesting');
+                    }
+              }
               if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/2){ // BUILD SPAWN
                 var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_SPAWN});
                 if (structure.length){
