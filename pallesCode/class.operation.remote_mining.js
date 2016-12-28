@@ -7,6 +7,7 @@ module.exports = class{
                 if(Memory.operations[id].scouting){
                     this.scouting(id);
                 }else{
+
                     switch (Memory.operations[id].status) {
                         case 'createConstructionSites':
                             this.buildRoadAndContainer(id);
@@ -182,11 +183,10 @@ module.exports = class{
 
             }else{
                 for(var i in Memory.operations[id].sources){
-                    
-                    Game.creeps[Memory.operations[id].sources[i].builder].memory.role='Maintance';
-                    Game.creeps[Memory.operations[id].sources[i].builder].memory.job='Idle';
-                    Game.creeps[Memory.operations[id].sources[i].builder].memory.targetId= null;
-                    Game.creeps[Memory.operations[id].sources[i].builder].suicide();
+                    if(Game.creeps[Memory.operations[id].sources[i].builder]){
+                        Game.creeps[Memory.operations[id].sources[i].builder].suicide();
+                    }
+
                 }
                 Memory.operations[id].status='Mining';
 
@@ -361,7 +361,7 @@ module.exports = class{
                 }
             }
             if(done){
-                Memory.operations[id].status='BuildingRoad';
+                Memory.operations[id].status='BuildingContainer';
             }
 
 
