@@ -227,8 +227,20 @@ module.exports = class{
                   creep.memory.targetId = null;
                   return this.creepColonize(creep);
                 } 
-                else if (creep.carry.energy < creep.carryCapacity) { 
-                  if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
+                else if (creep.carry.energy < creep.carryCapacity) {
+                 if(target.resourceType == RESOURCE_ENERGY){
+
+                    if(creep.pickup(target) == ERR_NOT_IN_RANGE){
+                        
+                        creep.moveTo(target);
+                    }
+                 }else{
+                    console.log('Pickup');
+                    if(creep.harvest(target) == ERR_NOT_IN_RANGE){
+                        creep.moveTo(target);
+                    }
+                 }
+                  if(creep.harvest(target) == ERR_NOT_IN_RANGE || creep.pickup(RESOURCE_ENERGY)){
                     creep.moveTo(target);
                   }
                 }
