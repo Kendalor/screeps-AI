@@ -15,8 +15,8 @@ module.exports = class{
                             this.buildAndRunMiner(id);
                             break;
                         case 'BuildingRoad':
-
-
+                            this.buildAndRunBuilder(id);
+                            this.buildAndRunMiner(id);
                             break;
                         case 'Mining':
                             //PALLES FUNKTION HIER
