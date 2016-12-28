@@ -404,10 +404,10 @@ module.exports = class{
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
             if (!creep.memory.targetId){ // SELECT NEW TARGET
                 if (creep.carry.energy == 0){ // NO ENERGY
-                    if (!Memory.operations[creep.memory.operation_id].containerId){ // NO CONTAINER FOUND
+                    if (!Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId){ // NO CONTAINER FOUND
                         creep.memory.targetId = creep.id;
                     }else{ // FOUND CONTAINER
-                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].containerId;
+                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId;
                     }
                 }else{ // ENOUGH ENERGY
                     creep.memory.targetId = Memory.operations[creep.memory.operation_id].nearest_storageId;
@@ -512,8 +512,8 @@ module.exports = class{
             if(creep.carry.energy > 0 && creep.room.name == pos.roomName){
                 var container = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
                 if(container.length == 0 && creep.carry.energy>35){ // NO CONTAINER & ENOUGH ENERGY FOR 1 BUILD ATTEMPTS
-                    if(Memory.operations[creep.memory.operation_id].containerId){ // DELETE GLOBAL OPERATION VAR
-                      delete Memory.operations[creep.memory.operation_id].containerId;
+                    if(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId){ // DELETE GLOBAL OPERATION VAR
+                      delete Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId;
                     }
                     var containerConstruction = creep.room.lookForAt('constructionSite',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
                     if (containerConstruction[0] != null){
@@ -524,14 +524,14 @@ module.exports = class{
                         container = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
                         if (container.length > 0){
                           console.log(container)
-                          Memory.operations[creep.memory.operation_id].containerId = container[0].id;
+                          Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId = container[0].id;
                         }else{
                           creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_CONTAINER);
                         }
                     }
                 }else if(container.length){ // DROP ENERGY
-                    if(!Memory.operations[creep.memory.operation_id].containerId){ // SET GLOBAL OPERATION VAR
-                      Memory.operations[creep.memory.operation_id].containerId = container[0].id;
+                    if(!Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId){ // SET GLOBAL OPERATION VAR
+                      Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId = container[0].id;
                     }
                     if(creep.pos.x != pos.x || creep.pos.y != pos.y){
                         creep.moveTo(pos.x,pos.y);
