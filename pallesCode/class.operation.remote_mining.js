@@ -130,10 +130,11 @@ module.exports = class{
                 }
                 if(!Memory.operations[id].sources[i].containerId){
                     temp=false;
-                    console.log('test temp to false');
+                    //console.log('test temp to false');
                 }
             }
             if(temp){
+                console.log('Set Operation Status to Building Road');
                 Memory.operations[id].status='BuildingRoad';
             }
         }
@@ -158,6 +159,7 @@ module.exports = class{
         }
 
         static buildAndRunBuilder(id){
+            //Memory.operations[id].status='BuildingContainer';
             if(Object.keys(Memory.operations[id].constructionSites).length >0){
                 for(var i in Memory.operations[id].sources){
                     if(!Memory.operations[id].sources[i].builder){ //DOES THIS SOURCE HAVE A MINER
@@ -276,7 +278,7 @@ module.exports = class{
                                 }
 
                             }else{
-                                console.log('Set done to False');
+                                //console.log('Set done to False');
                                  done=false;
                             }
                         }
@@ -525,7 +527,7 @@ module.exports = class{
             }
             if(creep.carry.energy < creep.carryCapacity){
                 var source = Game.getObjectById(creep.memory.source_id);
-                var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName]
+                var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName];
                 if(creep.room.name != pos.roomName){
                     creep.moveTo(flag,{reusePath: 30,ignoreCreeps: true});
                 }else if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
@@ -559,9 +561,12 @@ module.exports = class{
                     if(creep.pos.x != pos.x || creep.pos.y != pos.y){
                         creep.moveTo(pos.x,pos.y);
                     }else{
-                        if(container[0].hits < container[0].hitsMax-1000) // CONTAINER REPAIR?
-                            creep.repair(container);
-                        creep.drop(RESOURCE_ENERGY);
+                        if(container[0].hits < container[0].hitsMax-1000){
+                            creep.repair(container[0]);
+                            //creep.say('Repair');
+                        }else{
+                            creep.drop(RESOURCE_ENERGY);
+                        }
                     }
                 }
             }
