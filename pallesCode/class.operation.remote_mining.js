@@ -11,28 +11,21 @@ module.exports = class{
                         case 'createConstructionSites':
                             this.buildRoadAndContainer(id);
                             break;
-<<<<<<< HEAD
                         case 'BuildingContainer':
                             this.buildAndRunMiner(id);
                             break;
                         case 'buildingRoad':
                             break;
-=======
-
->>>>>>> origin/master
                         case 'Mining':
                             //PALLES FUNKTION HIER
                             //CREEP SPAWNING
                             this.buildAndRunCreeps(id);
                             break;
-
-
                     }
-
-
                 }
             }
         }
+
         static init(roomName,flag){
             if(!Game.flags[flag].memory.operation_id){
                 if(!Memory.operations){
@@ -117,7 +110,6 @@ module.exports = class{
             */
         }
         // BUILD CREEPS FOR HAULING AND MINING
-<<<<<<< HEAD
         static buildAndRunMiner(id){
             for(var i in Memory.operations[id].sources){
                 // MINER CODE
@@ -168,9 +160,6 @@ module.exports = class{
             }
 
         }
-
-=======
->>>>>>> origin/master
         static buildAndRunCreeps(id){
             // ITERATE OVER SOURCES
             for(var i in Memory.operations[id].sources){
@@ -251,7 +240,6 @@ module.exports = class{
                         }else{
                             //console.log('create Road');
                             //console.log(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-<<<<<<< HEAD
                             if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
 
                                 temp_id=Game.rooms[storage.pos.roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
@@ -261,16 +249,11 @@ module.exports = class{
 
                             }else{
                                 console.log('Set done to False');
-=======
-                            if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
->>>>>>> origin/master
-                                done=false;
+                                 done=false;
                             }
                         }
                     }
-
                     for(var j in roomList){
-<<<<<<< HEAD
                         if(Game.rooms[roomList[j].room] != undefined){
                             if(roomList[j].room == source.pos.roomName){
                                 var path=source.pos.findPathTo(new RoomPosition(lastPos.x,lastPos.y,source.pos.roomName),{ignoreCreeps: true});
@@ -334,50 +317,7 @@ module.exports = class{
                                         }else{
                                             done=false;
                                         }
-=======
-                        if(roomList[j].room == source.pos.roomName){
-                            var path=source.pos.findPathTo(new RoomPosition(lastPos.x,lastPos.y,source.pos.roomName),{ignoreCreeps: true});
-                            for(var i in path){
-                                if(i==0){
-                                //console.log('create Container');
-                                //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
-                                Memory.operations[id].sources[s_id].containerPos = {};
-                                Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
-                                Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
-                                if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != ERR_INVALID_TARGET){
-                                    done=false;
-                                }
-                                }else{
-                                    //console.log('create Road');
-                                    //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                                    if(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
-                                        done=false;
-                                    }
-                                }
-                            }
-                        }else{
-                            path=new RoomPosition(lastPos.x,lastPos.y,roomList[j].room).findPathTo(source,{ignoreCreeps: true})
-                            for(var i in path){
-                                if(i == path.length-1 ){
-                                    if(path[i].x == 0){
-                                        lastPos.x=49;
-                                        lastPos.y=path[i].y;
-                                    }else if(path[i].x == 49){
-                                        lastPos.x=0;
-                                        lastPos.y=path[i].y;
-                                    }else if(path[i].y == 0){
-                                        lastPos.y=49;
-                                        lastPos.x=path[i].x;
-                                    }else if(path[i].y == 49){
-                                        lastPos.y=0;
-                                        lastPos.x=path[i].x;
-                                    }
-                                }else{
-                                    //console.log('create Road');
-                                    //console.log(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                                    if(Game.rooms[roomList[j].room].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != ERR_INVALID_TARGET){
-                                        done=false;
->>>>>>> origin/master
+
                                     }
                                 }
                             }
