@@ -438,7 +438,7 @@ module.exports = class{
                 if (target != null){ // TARGET IS VALID
                     if (target.structureType == undefined){ // TARGET SOURCE -> HARVEST // TARGET FLAG -> WAIT
                         if (creep.carry.energy == creep.ticksToLive-100){
-                            delete Memory.creeps[creep.id].targetId;
+                            delete Memory.creeps[creep.name].targetId;
                         }else if (creep.carry.energy < creep.carryCapacity){
                             //if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
                             //    creep.moveTo(target,{reusePath: 30});
@@ -450,7 +450,7 @@ module.exports = class{
                             }
                             creep.say("Waiting")
                         }else{ //ENERGY FULL
-                            delete Memory.creeps[creep.id].targetId;
+                            delete Memory.creeps[creep.name].targetId;
                             return this.creepHaul(creep);
                         }
                     }else if(target.progress != undefined){ //TARGET CONSTRUCTION SITE -> BUILD
@@ -458,7 +458,10 @@ module.exports = class{
                         if(err == ERR_NOT_IN_RANGE) {
                             creep.moveTo(target);
                         }else if (err == ERR_FULL){
-                            creep.memory.targetId = null;
+                            delete Memory.creeps[creep.name].targetId;
+                            return this.creepHaul(creep);
+                        }else if (err == ERR_NOT_ENOUGH_ENERGY){
+                            delete Memory.creeps[creep.name].targetId;
                             return this.creepHaul(creep);
                         }
                     }else if (target.structureType == STRUCTURE_ROAD){ // TARGET ROAD -> REPAIR
