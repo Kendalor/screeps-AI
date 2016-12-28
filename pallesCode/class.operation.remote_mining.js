@@ -107,11 +107,6 @@ module.exports = class{
                 }
             }
             return best_spawn;
-          
-            /*
-            var flag = Game.flags[flagName]
-            return flag.pos.findClosestByPath(FIND_MY_SPAWNS).id;
-            */
         }
         // BUILD CREEPS FOR HAULING AND MINING
         static buildAndRunMiner(id){
@@ -499,7 +494,11 @@ module.exports = class{
                         }else{
                             var err = creep.transfer(target, RESOURCE_ENERGY);
                             if (err == ERR_NOT_IN_RANGE){
-                                creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                if (creep.room.name == target.room.name){
+                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                                }else{
+                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                }
                             }else if (err == ERR_NOT_ENOUGH_ENERGY){
                                 creep.memory.targetId = null;
                                 return this.creepHaul(creep);
