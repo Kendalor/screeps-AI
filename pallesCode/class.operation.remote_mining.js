@@ -132,6 +132,7 @@ module.exports = class{
                 }
                 if(!Memory.operations[id].sources[i].containerId){
                     temp=false;
+                    console.log('test temp to false');
                 }
             }
             if(temp){
