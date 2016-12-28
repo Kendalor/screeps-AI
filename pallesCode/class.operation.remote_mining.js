@@ -16,7 +16,7 @@ module.exports = class{
                             break;
                         case 'BuildingRoad':
                             this.buildAndRunBuilder(id);
-                            this.buildAndRunMiner(id);
+                            this.buildAndRunCreeps(id);
                             break;
                         case 'Mining':
                             //PALLES FUNKTION HIER
@@ -181,7 +181,15 @@ module.exports = class{
                 }
 
             }else{
+                for(var i in Memory.operations[id].sources){
+                    
+                    Game.creeps[Memory.operations[id].sources[i].builder].memory.role='Maintance';
+                    Game.creeps[Memory.operations[id].sources[i].builder].memory.job='Idle';
+                    Game.creeps[Memory.operations[id].sources[i].builder].memory.targetId= null;
+                    Game.creeps[Memory.operations[id].sources[i].builder].suicide();
+                }
                 Memory.operations[id].status='Mining';
+
             }
 
         }
@@ -353,7 +361,7 @@ module.exports = class{
                 }
             }
             if(done){
-                Memory.operations[id].status='Mining';
+                Memory.operations[id].status='BuildingRoad';
             }
 
 
@@ -369,18 +377,29 @@ module.exports = class{
     */
         static creepBuild(creep){
             var container=Game.getObjectById(creep.memory.container_id);
-            var targets = {};
+            var targets = [];
             for(var i in Memory.operations[creep.memory.operation_id].constructionSites){
-                targets[i]=Game.getObjectById(Memory.operations[creep.memory.operation_id].constructionSites[i]);
+                if(!Game.constructionSites[i]){
+                    delete Memory.operations[creep.memory.operation_id].constructionSites[i];
+                }else{
+                    targets.push(Game.getObjectById(i));
+                }
+
             }
             if(creep.memory.targetId == null){
                 if(creep.carry.energy == 0){
                     creep.memory.targetId=container.id;
                 }else{
-                    creep.memory.targetId=creep.pos.findClosestByRange(targets);
+                    creep.memory.targetId=creep.pos.findClosestByRange(targets).id;
+                    //console.log(JSON.stringify(creep.pos.findClosestByRange(targets).id));
                 }
             }else{
                 var target=Game.getObjectById(creep.memory.targetId);
+                //console.log(JSON.stringify(target));
+                if(target == null){
+                    delete creep.memory.targetId;
+                    return this.creepBuild(creep);
+                }
                 if(target.structureType == STRUCTURE_CONTAINER){
                     var err = creep.withdraw(target,RESOURCE_ENERGY);
                     if(err == ERR_NOT_IN_RANGE) {
