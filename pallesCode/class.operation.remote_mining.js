@@ -491,7 +491,10 @@ module.exports = class{
                                     return this.creepHaul(creep);
                                 }
                             }
-                        } else{
+                        } else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId).room.name){
+                            creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                        }
+                        else{
                             creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
                         }
                     }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
