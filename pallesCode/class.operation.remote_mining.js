@@ -401,13 +401,12 @@ module.exports = class{
 
         static creepHaul(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
-            if (creep.memory.targetId == null){ // SELECT NEW TARGET
+            if (!creep.memory.targetId){ // SELECT NEW TARGET
                 if (creep.carry.energy == 0){ // NO ENERGY
-                    if (Memory.operations[creep.memory.operation_id].containerId != undefined){ // FOUND CONTAINER
-                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].containerId;
-                    }else{ // HARVEST // WAIT AT FLAG
-                        //creep.memory.targetId = creep.memory.source_id;
+                    if (!Memory.operations[creep.memory.operation_id].containerId){ // NO CONTAINER FOUND
                         creep.memory.targetId = creep.id;
+                    }else{ // FOUND CONTAINER
+                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].containerId;
                     }
                 }else{ // ENOUGH ENERGY
                     creep.memory.targetId = Memory.operations[creep.memory.operation_id].nearest_storageId;
@@ -417,19 +416,19 @@ module.exports = class{
                 if (target != null){ // TARGET IS VALID
                     if (target.structureType == undefined){ // TARGET SOURCE -> HARVEST // TARGET FLAG -> WAIT
                         if (creep.carry.energy == creep.ticksToLive-100){
-                            creep.memory.targetId == null;
+                            delete Memory.creeps[creep.id].targetId;
                         }else if (creep.carry.energy < creep.carryCapacity){
                             //if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
                             //    creep.moveTo(target,{reusePath: 30});
                             var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName]
                             if (creep.pos.x != flag.pos.x || creep.pos.y != flag.pos.y){
                                 creep.moveTo(flag);
-                            }else if(Game.time % 10 == 0){
+                            }else if(Game.time % 2 == 0){
                                 creep.memory.targetId = null;
                             }
                             creep.say("Waiting")
                         }else{ //ENERGY FULL
-                            creep.memory.targetId == null;
+                            delete Memory.creeps[creep.id].targetId;
                             return this.creepHaul(creep);
                         }
                     }else if(target.progress != undefined){ //TARGET CONSTRUCTION SITE -> BUILD
@@ -446,12 +445,11 @@ module.exports = class{
                         return this.creepHaul(creep);
                     }else if (target.structureType == STRUCTURE_CONTAINER){ // TARGET CONTAINER
                         if (creep.room.name == Memory.operations[creep.memory.operation_id].roomName){
-                            var salvage = Rooms[Memory.operations[creep.memory.operation_id].roomName].lookForAt(RESOURCE_ENERGY,pos.x,pos.y); // SALVAGE AVAILABLE?
+                            var salvage = creep.room.lookForAt(RESOURCE_ENERGY,pos.x,pos.y); // SALVAGE AVAILABLE?
                             if (salvage.length > 0){
                                 var err = creep.pickup(salvage[0],RESOURCE_ENERGY)
                                 if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(salvage[0],{reusePath: 30,ignoreCreeps: true});
-                                    creep.memory.targetId = salvage[0].id;
+                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
