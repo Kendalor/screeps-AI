@@ -7,6 +7,7 @@ module.exports = class{
                 if(Memory.operations[id].scouting){
                     this.scouting(id);
                 }else{
+
                     switch (Memory.operations[id].status) {
                         case 'createConstructionSites':
                             this.buildRoadAndContainer(id);
@@ -177,11 +178,10 @@ module.exports = class{
 
             }else{
                 for(var i in Memory.operations[id].sources){
-                    
-                    Game.creeps[Memory.operations[id].sources[i].builder].memory.role='Maintance';
-                    Game.creeps[Memory.operations[id].sources[i].builder].memory.job='Idle';
-                    Game.creeps[Memory.operations[id].sources[i].builder].memory.targetId= null;
-                    Game.creeps[Memory.operations[id].sources[i].builder].suicide();
+                    if(Game.creeps[Memory.operations[id].sources[i].builder]){
+                        Game.creeps[Memory.operations[id].sources[i].builder].suicide();
+                    }
+
                 }
                 Memory.operations[id].status='Mining';
 
@@ -270,7 +270,7 @@ module.exports = class{
                             //console.log(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
                             if(Game.rooms[storage.pos.roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
 
-                                temp_id=Game.rooms[storage.pos.roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
+                                var temp_id=Game.rooms[storage.pos.roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
                                 if(temp_id.length > 0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
                                     Memory.operations[id].constructionSites[temp_id[0].id]={};
                                 }
@@ -356,7 +356,7 @@ module.exports = class{
                 }
             }
             if(done){
-                Memory.operations[id].status='BuildingRoad';
+                Memory.operations[id].status='BuildingContainer';
             }
 
 
