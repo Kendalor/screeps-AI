@@ -358,7 +358,7 @@ module.exports = class{
                 }
             }else{
                 var target = Game.getObjectById(creep.memory.targetId);
-                if (target != undefined){ // TARGET IS VALID
+                if (target != null){ // TARGET IS VALID
                     if (target.structureType == undefined){ // TARGET SOURCE -> HARVEST // TARGET FLAG -> WAIT
                         if (creep.carry.energy == creep.ticksToLive-100){
                             creep.memory.targetId == null;
@@ -368,8 +368,8 @@ module.exports = class{
                             var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName]
                             if (creep.pos.x != flag.pos.x || creep.pos.y != flag.pos.y){
                                 creep.moveTo(flag);
-                            }else if(Game.time % 2 == 0){
-                                creep.memory.targetId == null;
+                            }else if(Game.time % 10 == 0){
+                                creep.memory.targetId = null;
                             }
                             creep.say("Waiting")
                         }else{ //ENERGY FULL
@@ -389,9 +389,8 @@ module.exports = class{
                         creep.memory.targetId = null;
                         return this.creepHaul(creep);
                     }else if (target.structureType == STRUCTURE_CONTAINER){ // TARGET CONTAINER
-                        if (creep.room == Memory.operations[creep.memory.operation_id].roomName){
+                        if (creep.room.name == Memory.operations[creep.memory.operation_id].roomName){
                             var salvage = Rooms[Memory.operations[creep.memory.operation_id].roomName].lookForAt(RESOURCE_ENERGY,pos.x,pos.y); // SALVAGE AVAILABLE?
-                            console.log(salvage)
                             if (salvage.length > 0){
                                 var err = creep.pickup(salvage[0],RESOURCE_ENERGY)
                                 if(err == ERR_NOT_IN_RANGE) {
