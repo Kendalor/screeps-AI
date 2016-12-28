@@ -14,7 +14,9 @@ module.exports = class{
                         case 'BuildingContainer':
                             this.buildAndRunMiner(id);
                             break;
-                        case 'buildingRoad':
+                        case 'BuildingRoad':
+
+
                             break;
                         case 'Mining':
                             //PALLES FUNKTION HIER
@@ -111,6 +113,7 @@ module.exports = class{
         }
         // BUILD CREEPS FOR HAULING AND MINING
         static buildAndRunMiner(id){
+            var temp=true;
             for(var i in Memory.operations[id].sources){
                 // MINER CODE
                 if(!Memory.operations[id].sources[i].miner){ //DOES THIS SOURCE HAVE A MINER
@@ -127,6 +130,12 @@ module.exports = class{
                     this.creepMine(Game.creeps[Memory.operations[id].sources[i].miner]);
 
                 }
+                if(!Memory.operations[id].sources[i].containerId){
+                    temp=false;
+                }
+            }
+            if(temp){
+                Memory.operations[id].status='BuildingRoad';
             }
         }
 
@@ -145,15 +154,28 @@ module.exports = class{
                     delete Memory.operations[id].sources[i].hauler;
                 }else if(!Game.creeps[Memory.operations[id].sources[i].hauler].spawning){
                     this.creepHaul(Game.creeps[Memory.operations[id].sources[i].hauler]);
-
                 }
-
             }
         }
 
         static buildAndRunBuilder(id){
             if(Object.keys(Memory.operations[id].constructionSites).length >0){
+                for(var i in Memory.operations[id].sources){
+                    if(!Memory.operations[id].sources[i].builder){ //DOES THIS SOURCE HAVE A MINER
+                        // 5x WORK ( to make up for the walking distance ) , 5 CARRY,and 5 MOVE to assure walk speed = 1/tick COST = 1500
+                        if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'building', operation_id: id, container_id: Memory.operations[id].sources[i].containerId}) == OK){// NO SPAWN IT IF POSSIBLE !
+                            var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'building', operation_id: id, container_id: Memory.operations[id].sources[i].containerId});
+                            Memory.operations[id].sources[i].builder=name;
+                        }
+                    }else if(!Game.creeps[Memory.operations[id].sources[i].builder]){
+                        console.log('Deleted '+Memory.operations[id].sources[i].builder +' from memory')
+                        delete Memory.creeps[Memory.operations[id].sources[i].builder];
+                        delete Memory.operations[id].sources[i].builder;
+                    }else if(!Game.creeps[Memory.operations[id].sources[i].builder].spawning){
+                        this.creepBuild(Game.creeps[Memory.operations[id].sources[i].builder]);
 
+                    }
+                }
 
             }else{
                 Memory.operations[id].status='Mining';
@@ -342,6 +364,40 @@ module.exports = class{
     ROOM_NAME = Memory.operations[creep.memory.operation_id].roomName
     SOURCE_ID = creep.memory.source_id
     */
+        static creepBuild(creep){
+            var container=Game.getObjectById(creep.memory.container_id);
+            var targets = {};
+            for(var i in Memory.operations[creep.memory.operation_id].constructionSites){
+                targets[i]=Game.getObjectById(Memory.operations[creep.memory.operation_id].constructionSites[i]);
+            }
+            if(creep.memory.targetId == null){
+                if(creep.carry.energy == 0){
+                    creep.memory.targetId=container.id;
+                }else{
+                    creep.memory.targetId=creep.pos.findClosestByRange(targets);
+                }
+            }else{
+                target=Game.getObjectById(creep.memory.targetId);
+                if(target.structureType == STRUCTURE_CONTAINER){
+                    var err = creep.withdraw(target,RESOURCE_ENERGY);
+                    if(err == ERR_NOT_IN_RANGE) {
+                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                    }else if (err == ERR_FULL){
+                        creep.memory.targetId = null;
+                        return this.creepBuild(creep);
+                    }
+                }else{
+                    var err = creep.build(target);
+                    if(err == ERR_NOT_IN_RANGE) {
+                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                    }else if (err == ERR_INVALID_TARGET || err == ERR_NOT_ENOUGH_RESOURCES){
+                        creep.memory.targetId = null;
+                        return this.creepBuild(creep);
+                    }
+
+                }
+            }
+        }
 
         static creepHaul(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);

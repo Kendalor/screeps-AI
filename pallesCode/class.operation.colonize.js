@@ -275,16 +275,6 @@ module.exports = class{
             }
         }
 
-      static checkForInvaders(room){
-        {
-          var enemyPresent = room.find(FIND_HOSTILE_CREEPS, (hostile) => hostile.owner.username == 'Invader').length > 0;
-          if (enemyPresent && room.controller.safeMode == undefined){
-            if (room.controller.safeModeAvailable){
-              room.controller.activateSafeMode()
-            }
-          }
-        }
-      }
 
 
 
