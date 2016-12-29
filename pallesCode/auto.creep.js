@@ -19,10 +19,10 @@ module.exports = {
 				creep.room.memory.sources[creep.memory.source].minerId = creep.id;
 				delete creep.memory.spawn;
 			  }
-			/*
+			
 			if (creep.room.controller.level == 1)
 				this.allrounder(creep);
-			else*/
+			else
 				this.miner(creep);
 		
 
@@ -73,7 +73,8 @@ module.exports = {
   },
     
   allrounder: function(creep) {
-    this.upgradeCancel(creep);
+	if (creep.room.controller.lvl > 1)
+		this.upgradeCancel(creep);
     this.repairCancel(creep);
     this.mineCancel(creep);
     this.gatherCancel(creep);
@@ -81,7 +82,8 @@ module.exports = {
 
     this.haul(creep);  
     this.build(creep);
-    this.upgrade(creep);
+	if (creep.room.controller.lvl == 1)
+		this.upgrade(creep);
     this.salvage(creep);
     this.harvest(creep);
   },
@@ -135,10 +137,9 @@ module.exports = {
   },
   
   harvest: function(creep) {
-	  creep.say("m")
     if(creep.memory.job == 'idle' && creep.carry.energy < creep.carryCapacity){
-      var sources = creep.room.find(FIND_SOURCES,{filter: (source) => (creep.room.memory.sources[source.id].slots > creep.room.memory.sources[source.id].slotsUsed && !creep.room.memory.sources[source.id].minerId && source.energy > 0)});
-      if (sources.length){
+      var sources = creep.room.find(FIND_SOURCES,{filter: (source) => (creep.room.memory.sources[source.id].slots > creep.room.memory.sources[source.id].slotsUsed+1 && source.energy > 0)});
+      if (sources.length > 0){
         var source = sources[0];//creep.pos.findClosestByPath(sources);
         if (source != null){
           this.anounceJob(creep,'harvest');
@@ -193,7 +194,6 @@ module.exports = {
           var constructions = creep.room.lookForAt('constructionSite',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
           if (constructions[0] != null){
             if (creep.build(constructions[0]) == ERR_NOT_IN_RANGE){
-              creep.say("woah");
               creep.build(constructions[0]);
             }
           }
