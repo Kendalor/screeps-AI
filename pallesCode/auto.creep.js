@@ -138,9 +138,9 @@ module.exports = {
   
   harvest: function(creep) {
     if(creep.memory.job == 'idle' && creep.carry.energy < creep.carryCapacity){
-      var sources = creep.room.find(FIND_SOURCES,{filter: (source) => (creep.room.memory.sources[source.id].slots > creep.room.memory.sources[source.id].slotsUsed+1 && source.energy > 0)});
+      var sources = creep.room.find(FIND_SOURCES,{filter: (source) => (creep.room.memory.sources[source.id].slots > creep.room.memory.sources[source.id].slotsUsed && source.energy > 0)});
       if (sources.length > 0){
-        var source = sources[0];//creep.pos.findClosestByPath(sources);
+        var source = creep.pos.findClosestByPath(sources);//creep.pos.findClosestByPath(sources);
         if (source != null){
           this.anounceJob(creep,'harvest');
           creep.memory.tmpSource = source.id;
