@@ -196,7 +196,7 @@ module.exports = class{
                     }
 
                 }else {
-                    var source = creep.pos.findClosestByRange(FIND_SOURCES);
+                    var source = creep.pos.findClosestByPath(FIND_SOURCES);
                     if (source != undefined)
                       creep.memory.targetId = source.id;
                       creep.say('Harvesting');
