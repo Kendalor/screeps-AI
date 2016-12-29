@@ -14,13 +14,14 @@ module.exports = {
       
       switch(creep.memory.role) {
         case creepRole[0].name:
+		/*
 			if (creep.memory.spawn){
 				creep.room.memory.sources[creep.memory.source].minerId = creep.id;
 				delete creep.memory.spawn;
 			  }
 			if (creep.room.controller.level == 1)
 				this.allrounder(creep);
-			else  
+			else  */
 				this.miner(creep);
 		
 
@@ -133,6 +134,7 @@ module.exports = {
   },
   
   harvest: function(creep) {
+	  creep.say("m")
     if(creep.memory.job == 'idle' && creep.carry.energy < creep.carryCapacity){
       var sources = creep.room.find(FIND_SOURCES,{filter: (source) => (creep.room.memory.sources[source.id].slots > creep.room.memory.sources[source.id].slotsUsed && !creep.room.memory.sources[source.id].minerId && source.energy > 0)});
       if (sources.length){
