@@ -146,7 +146,9 @@ module.exports = {
           creep.memory.tmpSource = source.id;
           creep.room.memory.sources[source.id].slotsUsed++;
         }
-      }
+      }else{
+		this.relax(creep);
+	  }
     }
     if(creep.memory.job == 'harvest' && creep.carry.energy < creep.carryCapacity){
       var source = Game.getObjectById(creep.memory.tmpSource);
@@ -574,6 +576,12 @@ module.exports = {
   anounceJob: function(creep,job){
     creep.memory.job=job;
     creep.say(job);
+  },
+  
+  relax: function(creep){
+	  creep.say("No path!")
+		if (creep.pos.x > 2 && creep.pos.x < 48 && creep.pos.y > 2 && creep.pos.y < 48)
+			creep.move(Game.time%8)
   },
   
   idle: function(creep){
