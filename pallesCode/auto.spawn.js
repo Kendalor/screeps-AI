@@ -145,7 +145,7 @@ module.exports = {
     var workParts = 1
     if (spawn.room.controller.level > 1)
       workParts = 0
-    var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/3)/50)),Math.ceil(carryCap/2));
+    var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/3)/50)),parseInt(Math.ceil(carryCap/2)));
     var carryParts = Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),carryCap);
 	
 	if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
