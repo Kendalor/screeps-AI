@@ -13,17 +13,17 @@ module.exports = class{
                     if(Game.spawns['Spawn1'].canCreateCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
                         var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'scout', operation_id: id});
                         var creep=Game.creeps[name];
-                        console.log('SPAWNING');
-                        console.log(name);
-                        console.log(JSON.stringify(creep));
-                        console.log(creep.name);
                         Memory.operations[id].creep=name;
                     }
+                }else if(!Game.creeps[Memory.operations[id].creep]){
+                    delete Memory.operations[id].creep;
+
                 }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
+                
                     var creep= Game.creeps[Memory.operations[id].creep];
                     creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
                     if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
-                        Game.flags[Memory.operations[id].flagName].remove();
+                        //Game.flags[Memory.operations[id].flagName].remove();
                     }
                 }
             }
