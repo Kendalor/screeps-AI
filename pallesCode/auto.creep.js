@@ -1,6 +1,8 @@
 var constants  = require('var.const');
 var creepRole = constants.creepRole();
 
+var WHITELIST = {'Kendalor' : true,'Palle' : true};
+
 module.exports = {
   /** @param {creepList} creepList **/
   run: function(creepList) {
@@ -158,8 +160,8 @@ module.exports = {
     }
     if(creep.memory.job == 'harvest' && creep.carry.energy == creep.carryCapacity){
       if (!(!creep.memory.tmpSource)){
-      creep.room.memory.sources[creep.memory.tmpSource].slotsUsed--;
-      delete creep.memory.tmpSource;
+		  creep.room.memory.sources[creep.memory.tmpSource].slotsUsed--;
+		  delete creep.memory.tmpSource;
       }
       this.idle(creep);
     }
@@ -564,7 +566,12 @@ module.exports = {
   },
   
   defend: function(creep){
-    var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (creep) => (_.filter(creep.body,(body) => body.type == 'attack')).length =! 0,ignoreDestructibleStructures: true});
+    var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
+		WHITELIST[hostile.owner.username] == undefined 
+		&& hostile.pos.x > 0 && hostile.pos.y > 0 && hostile.pos.x < 49 && hostile.pos.y < 49 
+		&& hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack' || body.type == 'claim').length > 0
+		,ignoreDestructibleStructures: true
+	});
     if(closestHostile){
       if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
           creep.moveTo(closestHostile);

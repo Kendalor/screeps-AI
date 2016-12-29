@@ -1,13 +1,13 @@
 module.exports = {
   /** @param {towerList} towerList **/
   clearDeadCreeps: function() {
-    for(var id in Memory.creeps) {
-      if(!Game.creeps[id]) {
-        if (Memory.creeps[id].tmpSource){
-          Game.getObjectById([Memory.creeps[id].tmpSource]).room.memory.sources[Memory.creeps[id].tmpSource].slotsUsed--
+    for(var name in Memory.creeps) {
+      if(!Game.creeps[name]) {
+        if (Memory.creeps[name].tmpSource){
+          Game.getObjectById([Memory.creeps[name].tmpSource]).room.memory.sources[Memory.creeps[name].tmpSource].slotsUsed--
         }
-        delete Memory.creeps[id];
-        console.log('Clearing non-existing creep memory:', id);
+        delete Memory.creeps[name];
+        console.log('Clearing non-existing creep memory:', name);
       }
     }
   },
