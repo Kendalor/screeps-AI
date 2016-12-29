@@ -73,7 +73,7 @@ module.exports = {
   },
     
   allrounder: function(creep) {
-	if (creep.room.controller.lvl > 1)
+	if (creep.room.controller.level > 1)
 		this.upgradeCancel(creep);
     this.repairCancel(creep);
     this.mineCancel(creep);
@@ -82,7 +82,7 @@ module.exports = {
 
     this.haul(creep);  
     this.build(creep);
-	if (creep.room.controller.lvl == 1)
+	if (creep.room.controller.level == 1)
 		this.upgrade(creep);
     this.salvage(creep);
     this.harvest(creep);

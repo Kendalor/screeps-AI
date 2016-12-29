@@ -140,7 +140,8 @@ module.exports = {
     //var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)*2/3)/50)),10);
     //var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/2)/50)),10);
     var carryParts = Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),16);
-    if (spawn.room.memory.activeCreepRoles.hauler == 0) {moveParts=2;carryParts=2;workParts=1;}
+    if (spawn.room.memory.activeCreepRoles.hauler == 0) {moveParts=2;carryParts=1;workParts=1;}
+	if (spawn.room.controller.level == 1) {moveParts=2;carryParts=1;workParts=1;}
       return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   maintancePreset: function(spawn){
@@ -150,6 +151,7 @@ module.exports = {
     if (energyCap % 200 != 0) moveParts++;
     if (moveParts > 4) moveParts = 4;
     var carryParts= Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),4);
+	if (spawn.room.controller.level == 1) {moveParts=2;carryParts=1;workParts=1;}
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   upgraderPreset: function(spawn){
@@ -167,6 +169,7 @@ module.exports = {
     var moveParts = 2;
     var attackParts = 2;
     var toughParts = 2;
+	if (spawn.room.controller.level == 1) {moveParts=2;attackParts=1;toughParts=1;}
     return Array(toughParts).fill(TOUGH).concat(Array(moveParts).fill(MOVE)).concat(Array(attackParts).fill(ATTACK));
   },
   
