@@ -20,7 +20,7 @@ module.exports = {
 				delete creep.memory.spawn;
 			  }
 			
-			if (creep.room.controller.level == 1)
+			if (creep.room.controller.level < 3)
 				this.allrounder(creep);
 			else
 				this.miner(creep);
@@ -33,7 +33,7 @@ module.exports = {
 				delete creep.memory.spawn;
 			}
 			
-			if (creep.room.controller.level == 1){
+			if (creep.room.controller.level < 3){
 				this.allrounder(creep);
 			}else{
 				var containerPos = creep.room.memory.sources[creep.memory.source].containerPos
@@ -73,7 +73,7 @@ module.exports = {
   },
     
   allrounder: function(creep) {
-	if (creep.room.controller.level > 1)
+	if (creep.room.controller.level > 2)
 		this.upgradeCancel(creep);
     this.repairCancel(creep);
     this.mineCancel(creep);
@@ -82,7 +82,7 @@ module.exports = {
 
     this.haul(creep);  
     this.build(creep);
-	if (creep.room.controller.level == 1)
+	if (creep.room.controller.level <= 2)
 		this.upgrade(creep);
     this.salvage(creep);
     this.harvest(creep);
