@@ -29,7 +29,7 @@ module.exports = {
       if(Game.time % 50 == 0){
         console.log("\nSpawn    :"+spawn.name+" energy cap: "+spawn.room.energyCapacityAvailable
                     +"\nMiner    :"+minerAmount+" "+this.minerPreset(spawn)
-                    +"\nHauler   :"+haulerAmount+" "+this.haulerPreset(spawn)
+                    +"\nHauler   :"+haulerAmount+" "+"dynamic part calculation"//+this.haulerPreset(spawn,0)
                     +"\nMaintance:"+maintanceAmount+" "+this.maintancePreset(spawn)
                     +"\nUpgrader :"+upgraderAmount+" "+this.upgraderPreset(spawn)
                     +"\nDefender :"+defenderAmount+" "+this.defenderPreset(spawn));
@@ -87,7 +87,7 @@ module.exports = {
               var found = true;
               if(_.filter(Game.creeps, (creep) => creep.id == spawn.room.memory.sources[id].haulerId).length == 0
               && found){
-                spawn.createCreep(this.haulerPreset(spawn,room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true, job: 'idle', targetId: null});
+                spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true, job: 'idle', targetId: null});
                 found = false;
               }
             }
@@ -146,11 +146,11 @@ module.exports = {
     if (spawn.room.controller.level > 1)
       workParts = 0
     var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/3)/50)),parseInt(Math.ceil(carryCap/2)));
-    var carryParts = Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),carryCap);
+    var carryParts = parseInt(moveParts*2);//Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),carryCap);
 	
 	if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
 	if (spawn.room.controller.level > 2 && spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.energyAvailable < 300) {moveParts=2;carryParts=1;workParts=1;}
-      return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
+	return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   maintancePreset: function(spawn){
     var energyCap = spawn.room.energyCapacityAvailable;
