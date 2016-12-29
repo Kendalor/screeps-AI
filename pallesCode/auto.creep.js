@@ -353,16 +353,16 @@ module.exports = {
   
   build: function(creep) {
     if((creep.carry.energy > 0)&&(creep.memory.job == 'idle')){
-      var constructions;
-      if(constructions == null && creep.room.controller.level >= 2) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION });}
-      if(constructions == null) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});}
-      if(constructions == null & creep.room.controller.level >= 3) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_TOWER});}
-      if(constructions == null) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});}
-      if(constructions == null) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_WALL});}
-      if(constructions != null) {constructions = creep.pos.findClosestByPath(constructions);} 
-      if(constructions!= null){
+	var constructions = [];
+      if(constructions.length == 0 && creep.room.controller.level >= 2) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION });}
+      if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});}
+      if(constructions.length == 0 & creep.room.controller.level >= 3) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_TOWER});}
+      if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});}
+      if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_WALL});}
+      if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES);}
+      if(constructions.length > 0){
         this.anounceJob(creep,'build');
-        creep.memory.targetId = constructions.id;
+        creep.memory.targetId = creep.pos.findClosestByRange(constructions).id;
       }
     }
     var target = Game.getObjectById(creep.memory.targetId);
