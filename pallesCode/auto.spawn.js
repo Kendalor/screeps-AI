@@ -38,7 +38,7 @@ module.exports = {
       var storage = spawn.room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_STORAGE && spawn.room.name == s.room.name});
       if (storage <= 1) {
 		if (spawn.room.controller.level == 1)maintanceUnits = 3*minerAmount;
-		else maintanceUnits = 3*minerAmount;
+		else maintanceUnits = 4*minerAmount;
 	  }
       else maintanceUnits = 1;
       
