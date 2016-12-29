@@ -34,7 +34,7 @@ module.exports = {
       var storage = spawn.room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_STORAGE && spawn.room.name == s.room.name});
       if (storage <= 1) {
 		if (spawn.room.controller.level == 1)maintanceUnits = 3*minerAmount;
-		else maintanceUnits = 2*minerAmount;
+		else maintanceUnits = 3*minerAmount;
 	  }
       else maintanceUnits = 1;
       
@@ -60,17 +60,17 @@ module.exports = {
         break;
           
         case 0: //miner
-          //if(minerAmount < Object.keys(sources).length){
+          if(minerAmount < Object.keys(sources).length){
             for(id in sources){
               var found = true;
-              //console.log('Test ' + String(id));
-              //console.log(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
+              console.log('Test ' + String(id));
+              console.log(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
               if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}).length == 0 && found){
                 spawn.createCreep(this.minerPreset(spawn), undefined, {role: creepRole[0].name, source: id, spawn: true,job: 'idle', targetId: null, containerId: null});
                 found = false;
               }
             }
-          //}
+          }
           
           break;
           
@@ -79,7 +79,7 @@ module.exports = {
           if(minerAmount > haulerAmount && haulerAmount < (Object.keys(sources).length)){
             for(id in sources){
               var found = true;
-              if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.role == 'hauler'}).length == 0 && found){
+              if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}).length == 0 && found){
                 spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true, job: 'idle', targetId: null});
                 found = false;
               }

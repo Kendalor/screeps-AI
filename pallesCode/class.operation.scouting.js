@@ -22,7 +22,7 @@ module.exports = class{
                 }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
                     var creep= Game.creeps[Memory.operations[id].creep];
                     creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
-                    if(creep.room.name == Memory.operations[id].roomName){
+                    if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
                         Game.flags[Memory.operations[id].flagName].remove();
                     }
                 }
