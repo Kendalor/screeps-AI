@@ -53,7 +53,7 @@ module.exports = {
           
           break;
         case creepRole[2].name:
-          var container = creep.room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_CONTAINER && s.store[RESOURCE_ENERGY] > creep.carryCapacity});
+          var container = creep.room.find(FIND_STRUCTURES, {filter: (s) => (s.structureType == STRUCTURE_CONTAINER || s.structureType == STRUCTURE_STORAGE) && s.store[RESOURCE_ENERGY] > creep.carryCapacity});
           if (container == 0){
             this.allrounder(creep);
           }
@@ -83,6 +83,9 @@ module.exports = {
     this.mineCancel(creep);
     this.gatherCancel(creep);
     this.containerizeCancel(creep);
+	
+	if(creep.room.controller.level <= 2 && creep.room.controller.ticksToDowngrade < 1000)
+      this.upgrade(creep);
 
     this.haul(creep);  
     this.build(creep);
@@ -122,7 +125,7 @@ module.exports = {
   maintance: function(creep){
     this.harvestCancel(creep);
     this.haulCancel(creep);
-    
+    console.log("maintenance");
     if(creep.room.controller.ticksToDowngrade < 1000)
       this.upgrade(creep);
     this.build(creep);
