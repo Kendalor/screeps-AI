@@ -1,5 +1,5 @@
 /*
-*   Add functions and/or constants to Screeps objects
+*   Add functions and/or constants to native Screeps objects
 */
 
 module.exports = function(){
@@ -22,13 +22,13 @@ module.exports = function(){
   /*
   * CREEP
   */
-  Creep.prototype.gather = function(target,resourceType,amount){
-    return false
-  },
-  
-  Creep.prototype.chargeController = function(controller){
-    return false
-  },
+	  Creep.prototype.gather = function(target,resourceType,amount){
+		return false
+	  },
+	  
+	  Creep.prototype.chargeController = function(controller){
+		return false
+	  },
   
   
   
@@ -108,9 +108,9 @@ module.exports = function(){
   /*
   * STRUCTURE_SPAWN
   */
-  StructureSpawn.prototype.createCustomCreep = function(spawnEnergyCap, creepType){
-    return false
-  }
+	  StructureSpawn.prototype.createCustomCreep = function(spawnEnergyCap, creepType){
+		return false
+	  }
   
   /*
   * STRUCTURE_STORAGE

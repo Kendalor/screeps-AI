@@ -121,12 +121,14 @@ module.exports = {
   },
   
   minerPreset: function(spawn){
+	
     var energyCap = spawn.room.energyCapacityAvailable;
     var moveParts = 1;
     var carryParts= 1;
     var workParts = Math.max(1,parseInt(((energyCap-100)/100)));
     if (workParts > 6) workParts = 6;
     if (spawn.room.memory.activeCreepRoles.miner == 0) {moveParts=1;carryParts=1;workParts=2;}
+	if (spawn.room.controller.level == 1) {moveParts=2;carryParts=1;workParts=1;}
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   haulerPreset: function(spawn){

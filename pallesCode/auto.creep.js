@@ -14,30 +14,38 @@ module.exports = {
       
       switch(creep.memory.role) {
         case creepRole[0].name:
-          if (creep.memory.spawn){
-            creep.room.memory.sources[creep.memory.source].minerId = creep.id;
-            delete creep.memory.spawn;
-          }
-          this.miner(creep)
+			if (creep.memory.spawn){
+				creep.room.memory.sources[creep.memory.source].minerId = creep.id;
+				delete creep.memory.spawn;
+			  }
+			if (creep.room.controller.level == 1)
+				this.allrounder(creep);
+			else  
+				this.miner(creep);
+		
 
           break;
         case creepRole[1].name:
-          if (creep.memory.spawn){
-            creep.room.memory.sources[creep.memory.source].haulerId = creep.id;
-            delete creep.memory.spawn;
-          }
-          
-          var containerPos = creep.room.memory.sources[creep.memory.source].containerPos
-          containers = creep.room.find(FIND_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER && struct.pos.x == containerPos.x && struct.pos.y == containerPos.y});
-          if (containers[0] != null){
-            creep.memory.containerId = containers[0].id;
-          }
-          if (!creep.memory.containerId || containers[0].store.energy == 0){
-            this.allrounder(creep);
-          }
-          else if(creep.memory.containerId != null && containers[0].store.energy> 0){
-            this.hauler(creep);
-          }
+			if (creep.memory.spawn){
+				creep.room.memory.sources[creep.memory.source].haulerId = creep.id;
+				delete creep.memory.spawn;
+			}
+			
+			if (creep.room.controller.level == 1){
+				this.allrounder(creep);
+			}else{
+				var containerPos = creep.room.memory.sources[creep.memory.source].containerPos
+				containers = creep.room.find(FIND_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER && struct.pos.x == containerPos.x && struct.pos.y == containerPos.y});
+				if (containers[0] != null){
+					creep.memory.containerId = containers[0].id;
+				}
+				if (!creep.memory.containerId || containers[0].store.energy == 0){
+					this.allrounder(creep);
+				}
+				else if(creep.memory.containerId != null && containers[0].store.energy> 0){
+					this.hauler(creep);
+				}
+			}
           
           break;
         case creepRole[2].name:
