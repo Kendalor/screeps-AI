@@ -42,7 +42,7 @@ module.exports = {
             console.log("2");
           }
         }
-        else{
+        else if (room.controller.level > 1){
           room.createConstructionSite(containerPos.x,containerPos.y,STRUCTURE_CONTAINER);
         }
       }
