@@ -5,7 +5,7 @@ module.exports = class{
         }
         static run(id){
             // tank
-            var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+            var creep_body = [MOVE];
             // scout
             //var creep_body = [MOVE];
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
