@@ -110,7 +110,7 @@ module.exports = class{
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='attack';
-                Memory.operations[this.id].size=4;
+                Memory.operations[this.id].size=3;
                 Memory.operations[this.id].assembled=false;
                 Memory.operations[this.id].reached=false;
                 Memory.operations[this.id].refreshed=false;
@@ -162,6 +162,7 @@ module.exports = class{
         }
         // ATTACK CODE
         static creepAttack(creep){
+            var priorityTarget=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.lookFor(LOOK_STRUCTURES);
             var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
               WHITELIST[hostile.owner.username] == undefined 
               && hostile.pos.x > 0 && hostile.pos.y > 0 && hostile.pos.x < 49 && hostile.pos.y < 49 
@@ -173,17 +174,28 @@ module.exports = class{
             var closestStr =creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => (str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN || str.structureType == STRUCTURE_EXTENSION) && WHITELIST[str.owner.username] == undefined, ignoreDestructibleStructures: true});
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER && WHITELIST[str.owner.username] == undefined,ignoreDestructibleStructures: true});
             //console.log(closestHostile);
-            if(closestHostile){
+            if(priorityTarget[0]){
+                //console.log(creep.name);
+                //console.log(priorityTarget);
+                //console.log(creep.attack(priorityTarget));
+                if(creep.attack(priorityTarget[0]) == ERR_NOT_IN_RANGE){
+                        creep.moveTo(priorityTarget[0],{ignoreDestructibleStructures: true});
+                        //console.log(creep.moveTo(priorityTarget[0],{ignoreDestructibleStructures: true, ignoreCreeps: true}));
+                        creep.heal(creep);
+                        creep.say('prio 1');
+                    }
+            }
+            else if(closestHostile){
                 //console.log(creep.name);
                 //console.log('TEST2');
                 if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestHostile,{ignoreDestructibleStructures: true});
+                    creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
                     creep.say('attacking 1');
                 }
             }else if(closestHostile_all){
                 if(creep.attack(closestHostile_all) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: true});
+                    creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
                     creep.say('attacking 1');
                 }

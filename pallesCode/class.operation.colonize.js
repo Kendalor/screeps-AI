@@ -13,11 +13,11 @@ module.exports = class{
             }
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt)
-              creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
+              creep_body = [WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
             else if(Game.rooms[Memory.operations[id].roomName].controller.my)
-              creep_body = [WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
+              creep_body = [WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
             else
-              creep_body = [CLAIM,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
+              creep_body = [CLAIM,MOVE,WORK,CARRY];
             
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
@@ -178,9 +178,23 @@ module.exports = class{
               }
               else if (creep.carry.energy < creep.carryCapacity/2){ // HARVEST SOURCE
                 var dropped_ressource = creep.pos.findClosestByRange(FIND_DROPPED_ENERGY);
+                var containersWithEnergy = creep.room.find(FIND_STRUCTURES, {
+    filter: (i) => i.structureType == STRUCTURE_CONTAINER &&
+                   i.store[RESOURCE_ENERGY] > 0
+});
                 if(dropped_ressource != undefined){
                     creep.memory.targetId = dropped_ressource.id;
                     creep.say('Harvesting');
+                }else if(containersWithEnergy.length >0){
+                    if(containersWithEnergy.length == 1){
+                        var target = containersWithEnergy[0];
+                    }else {
+                        var target = creep.pos.findClosestByPath(containersWithEnergy);
+                    }
+                    if(creep.withdraw(target,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE){
+                        creep.moveTo(target);
+                    }
+
                 }else {
                     var source = creep.pos.findClosestByRange(FIND_SOURCES);
                     if (source != undefined)
@@ -229,13 +243,11 @@ module.exports = class{
                 } 
                 else if (creep.carry.energy < creep.carryCapacity) {
                  if(target.resourceType == RESOURCE_ENERGY){
-
                     if(creep.pickup(target) == ERR_NOT_IN_RANGE){
-
                         creep.moveTo(target);
                     }
                  }else{
-                    console.log('Pickup');
+                    //console.log('Pickup');
                     if(creep.harvest(target) == ERR_NOT_IN_RANGE){
                         creep.moveTo(target);
                     }
