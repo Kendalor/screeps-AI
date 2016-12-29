@@ -17,6 +17,11 @@ module.exports = {
           && hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
           && hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
         })
+		if (closestHostile == undefined) closestHostile = tower[i].pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
+          WHITELIST[hostile.owner.username] == undefined 
+          && hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
+          && hostile.body.filter((body) => body.type == 'claim' || body.type == 'work').length > 0
+        })
         if(closestHostile) {
             tower[i].attack(closestHostile);
         }else if(tower[i].room.energyAvailable == tower[i].room.energyCapacityAvailable){
