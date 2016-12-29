@@ -14,14 +14,15 @@ module.exports = {
       
       switch(creep.memory.role) {
         case creepRole[0].name:
-		/*
+		
 			if (creep.memory.spawn){
 				creep.room.memory.sources[creep.memory.source].minerId = creep.id;
 				delete creep.memory.spawn;
 			  }
+			/*
 			if (creep.room.controller.level == 1)
 				this.allrounder(creep);
-			else  */
+			else*/
 				this.miner(creep);
 		
 
