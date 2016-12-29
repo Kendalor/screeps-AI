@@ -454,8 +454,12 @@ module.exports = {
       
       if (targets[0] != undefined && targets[0] != null){
         target = creep.pos.findClosestByPath(targets);
-        creep.memory.targetId = target.id;
-        this.anounceJob(creep,'haul');
+		if (target != undefined){
+			creep.memory.targetId = target.id;
+			this.anounceJob(creep,'haul');
+		} else{
+			this.relax(creep);
+		}
       }
     }
     if (creep.memory.job == 'haul' && creep.carry.energy > 0){
