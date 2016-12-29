@@ -85,8 +85,7 @@ module.exports = {
           if(minerAmount > haulerAmount && haulerAmount < (Object.keys(sources).length)){
             for(id in sources){
               var found = true;
-              if(_.filter(Game.creeps, (creep) => creep.id == spawn.room.memory.sources[id].haulerId).length == 0
-              && found){
+              if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.sourceId == id && creep.role == 'hauler'}).length == 0 && found){
                 spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true, job: 'idle', targetId: null});
                 found = false;
               }
