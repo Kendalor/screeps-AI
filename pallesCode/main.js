@@ -17,11 +17,12 @@ module.exports.loop = function () {
   autoMemory.clearDeadCreeps();
   autoMemory.clearFlags();
   
+  
   for(var name in Game.rooms) {
   
     
     var room = Game.rooms[name];
-    
+    //autoMemory.fixSourceSlots(room);
     
     
     if(Game.time % 50 == 0){

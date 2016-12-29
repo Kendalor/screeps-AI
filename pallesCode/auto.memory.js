@@ -12,6 +12,14 @@ module.exports = {
     }
   },
   
+	fixSourceSlots: function(room){
+		for (var source in room.memory.sources){
+			var slotsUsed = room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.tmpSource == source}).length;
+			room.memory.sources[source].slotsUsed = slotsUsed;
+			console.log("Fixed 'slotsUsed' value of Source "+source);
+		}
+	},
+  
   clearFlags: function() {
     for(var name in Memory.flags) {
       if(!Game.flags[name]) {
