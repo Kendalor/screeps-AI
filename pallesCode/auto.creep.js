@@ -125,7 +125,6 @@ module.exports = {
   maintance: function(creep){
     this.harvestCancel(creep);
     this.haulCancel(creep);
-    console.log("maintenance");
     if(creep.room.controller.ticksToDowngrade < 1000)
       this.upgrade(creep);
     this.build(creep);
