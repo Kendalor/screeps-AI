@@ -359,8 +359,8 @@ module.exports = {
       if(constructions == null & creep.room.controller.level >= 3) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_TOWER});}
       if(constructions == null) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});}
       if(constructions == null) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_WALL});}
-      if(constructions != null) {constructions = creep.pos.findClosestByPath(FIND_CONSTRUCTION_SITES);} 
-      if(constructions != null){
+      if(constructions != null) {constructions = creep.pos.findClosestByPath(constructions);} 
+      if(constructions!= null){
         this.anounceJob(creep,'build');
         creep.memory.targetId = constructions.id;
       }
