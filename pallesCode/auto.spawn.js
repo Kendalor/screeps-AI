@@ -36,7 +36,7 @@ module.exports = {
       }
       
       var storage = spawn.room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_STORAGE && spawn.room.name == s.room.name});
-      if (storage <= 1) maintanceUnits = 3*minerAmount;
+      if (storage <= 1) maintanceUnits = 2*minerAmount;
       else maintanceUnits = 1;
       
       //for every type of creep
@@ -129,7 +129,7 @@ module.exports = {
     if (workParts > 6) workParts = 6;
 	if (spawn.room.controller.level <= 2) {moveParts=2;carryParts=1;workParts=1;}
 	if (spawn.room.controller.level == 2 && energyCap >= 500) {moveParts=4;carryParts=2;workParts=2;}
-    if (spawn.room.memory.activeCreepRoles.miner == 0) {moveParts=1;carryParts=1;workParts=2;}
+    if (spawn.room.controller.level > 2 && spawn.room.memory.activeCreepRoles.miner == 0 && spawn.energyAvailable < 300) {moveParts=1;carryParts=1;workParts=2;}
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   haulerPreset: function(spawn){
@@ -141,9 +141,9 @@ module.exports = {
     //var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)*2/3)/50)),10);
     //var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/2)/50)),10);
     var carryParts = Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),16);
-    if (spawn.room.memory.activeCreepRoles.hauler == 0) {moveParts=2;carryParts=1;workParts=1;}
 	if (spawn.room.controller.level <= 2) {moveParts=2;carryParts=1;workParts=1;}
 	if (spawn.room.controller.level == 2 && energyCap >= 500) {moveParts=4;carryParts=2;workParts=2;}
+	if (spawn.room.controller.level > 2 && spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.energyAvailable < 300) {moveParts=2;carryParts=1;workParts=1;}
       return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   maintancePreset: function(spawn){

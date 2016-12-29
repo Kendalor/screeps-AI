@@ -1,28 +1,28 @@
 module.exports = function(){
 
-    /*
-    GAME
-    */
+	/*
+	GAME
+	*/
 
-  /*
-  * ROOM
-  */
+	/*
+	* ROOM
+	*/
 
-  /*
-  * ROOM_POSITION
-  */
+	/*
+	* ROOM_POSITION
+	*/
 
-  /*
-  * ROOM_OBJECT
-  */
+	/*
+	* ROOM_OBJECT
+	*/
 
-  /*
-  * CONTRUCTION_SITE
-  */
+	/*
+	* CONTRUCTION_SITE
+	*/
 
-  /*
-  * CREEP
-  */
+	/*
+	* CREEP
+	*/
 		Creep.prototype.gather = function(target,resourceType,amount){
 			return false;
 		},
@@ -31,7 +31,7 @@ module.exports = function(){
 			return false;
 		},
 
-			Creep.prototype.getRandomName = function(){
+		Creep.prototype.getRandomName = function(){
 			var names1 = ["Jackson", "Aiden", "Liam", "Lucas", "Noah", "Mason", "Jayden", "Ethan", "Jacob", "Jack", "Caden", "Logan", "Benjamin", "Michael", "Caleb", "Ryan", "Alexander", "Elijah", "James", "William", "Oliver", "Connor", "Matthew", "Daniel", "Luke", "Brayden", "Jayce", "Henry", "Carter", "Dylan", "Gabriel", "Joshua", "Nicholas", "Isaac", "Owen", "Nathan", "Grayson", "Eli", "Landon", "Andrew", "Max", "Samuel", "Gavin", "Wyatt", "Christian", "Hunter", "Cameron", "Evan", "Charlie", "David", "Sebastian", "Joseph", "Dominic", "Anthony", "Colton", "John", "Tyler", "Zachary", "Thomas", "Julian", "Levi", "Adam", "Isaiah", "Alex", "Aaron", "Parker", "Cooper", "Miles", "Chase", "Muhammad", "Christopher", "Blake", "Austin", "Jordan", "Leo", "Jonathan", "Adrian", "Colin", "Hudson", "Ian", "Xavier", "Camden", "Tristan", "Carson", "Jason", "Nolan", "Riley", "Lincoln", "Brody", "Bentley", "Nathaniel", "Josiah", "Declan", "Jake", "Asher", "Jeremiah", "Cole", "Mateo", "Micah", "Elliot"]
 			var names2 = ["Sophia", "Emma", "Olivia", "Isabella", "Mia", "Ava", "Lily", "Zoe", "Emily", "Chloe", "Layla", "Madison", "Madelyn", "Abigail", "Aubrey", "Charlotte", "Amelia", "Ella", "Kaylee", "Avery", "Aaliyah", "Hailey", "Hannah", "Addison", "Riley", "Harper", "Aria", "Arianna", "Mackenzie", "Lila", "Evelyn", "Adalyn", "Grace", "Brooklyn", "Ellie", "Anna", "Kaitlyn", "Isabelle", "Sophie", "Scarlett", "Natalie", "Leah", "Sarah", "Nora", "Mila", "Elizabeth", "Lillian", "Kylie", "Audrey", "Lucy", "Maya", "Annabelle", "Makayla", "Gabriella", "Elena", "Victoria", "Claire", "Savannah", "Peyton", "Maria", "Alaina", "Kennedy", "Stella", "Liliana", "Allison", "Samantha", "Keira", "Alyssa", "Reagan", "Molly", "Alexandra", "Violet", "Charlie", "Julia", "Sadie", "Ruby", "Eva", "Alice", "Eliana", "Taylor", "Callie", "Penelope", "Camilla", "Bailey", "Kaelyn", "Alexis", "Kayla", "Katherine", "Sydney", "Lauren", "Jasmine", "London", "Bella", "Adeline", "Caroline", "Vivian", "Juliana", "Gianna", "Skyler", "Jordyn"]
 			var namesCombined = _.flatten(_.map(names1, function(v, i) { return [v, names2[i]]; }));
@@ -44,125 +44,124 @@ module.exports = function(){
 		},
 
 
+	/*
+	* FLAG
+	*/
 
-  /*
-  * FLAG
-  */
+	/*
+	* MINERAL
+	*/
 
-  /*
-  * MINERAL
-  */
+	/*
+	* NUKE
+	*/
 
-  /*
-  * NUKE
-  */
+	/*
+	* RESOURCE
+	*/
 
-  /*
-  * RESOURCE
-  */
+	/*
+	* SOURCE
+	*/
 
-  /*
-  * SOURCE
-  */
+	/*
+	* STUCTURE
+	*/
 
-  /*
-  * STUCTURE
-  */
+	/*
+	* OWNED_STRUCTURE
+	*/
 
-  /*
-  * OWNED_STRUCTURE
-  */
+	/*
+	* STRUCTURE_CONTROLLER
+	*/
 
-  /*
-  * STRUCTURE_CONTROLLER
-  */
+	/*
+	* STRUCTURE_EXTENSION
+	*/
 
-  /*
-  * STRUCTURE_EXTENSION
-  */
+	/*
+	* STRUCTURE_EXTRACTOR
+	*/
 
-  /*
-  * STRUCTURE_EXTRACTOR
-  */
+	/*
+	* STRUCTURE_KEEPER_LAIR
+	*/
 
-  /*
-  * STRUCTURE_KEEPER_LAIR
-  */
+	/*
+	* STRUCTURE_LAB
+	*/
 
-  /*
-  * STRUCTURE_LAB
-  */
+	/*
+	* STRUCTURE_LINK
+	*/
 
-  /*
-  * STRUCTURE_LINK
-  */
+	/*
+	* STRUCTURE_NUKER
+	*/
 
-  /*
-  * STRUCTURE_NUKER
-  */
+	/*
+	* STRUCTURE_OBSERVER
+	*/
 
-  /*
-  * STRUCTURE_OBSERVER
-  */
+	/*
+	* STRUCTURE_POWER_BANK
+	*/
 
-  /*
-  * STRUCTURE_POWER_BANK
-  */
+	/*
+	* STRUCTURE_POWER_SPAWN
+	*/
 
-  /*
-  * STRUCTURE_POWER_SPAWN
-  */
+	/*
+	* STRUCTURE_RAMPART
+	*/
 
-  /*
-  * STRUCTURE_RAMPART
-  */
+	/*
+	* STRUCTURE_SPAWN
+	*/
+		StructureSpawn.prototype.createCustomCreep = function(spawnEnergyCap, creepType){
+			//TODO
+			return false;
+		},
 
-  /*
-  * STRUCTURE_SPAWN
-  */
-	  StructureSpawn.prototype.createCustomCreep = function(spawnEnergyCap, creepType){
-		//TODO
-		return false;
-	  },
+		StructureSpawn.prototype.enQueueCreep = function(body, name,memory,priority){
+			//TODO
+			return false;
+		},
 
-	  StructureSpawn.prototype.enQueueCreep = function(body, name,memory,priority){
-	    //TODO
-		return false;
-	  },
+		StructureSpawn.prototype.isCreepInQueue = function(body, name,memory,priority){
+			return false;
+		},
 
-	  StructureSpawn.prototype.isCreepInQueue = function(body, name,memory,priority){
-		return false;
-	  },
+		StructureSpawn.prototype.deQueueCreep = function(body, name,memory,priority){
+			return false;
+		}
 
-	  StructureSpawn.prototype.deQueueCreep = function(body, name,memory,priority){
-		return false;
-	  }
+	/*
+	* STRUCTURE_STORAGE
+	*/
 
-  /*
-  * STRUCTURE_STORAGE
-  */
+	/*
+	* STRUCTURE_TERMINAL
+	*/
 
-  /*
-  * STRUCTURE_TERMINAL
-  */
+	/*
+	* STRUCTURE_TOWER
+	*/
 
-  /*
-  * STRUCTURE_TOWER
-  */
+	/*
+	* STRUCTURE_CONTAINER
+	*/
 
-  /*
-  * STRUCTURE_CONTAINER
-  */
+	/*
+	* STRUCTURE_PORTAL
+	*/
 
-  /*
-  * STRUCTURE_PORTAL
-  */
+	/*
+	* STRUCTURE_ROAD
+	*/
 
-  /*
-  * STRUCTURE_ROAD
-  */
-
-  /*
-  * STRUCTURE_WALL
-  */
+	/*
+	* STRUCTURE_WALL
+	*/
 }

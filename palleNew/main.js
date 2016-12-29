@@ -7,7 +7,6 @@ module.exports.loop = function () {
     for(var id in spawnList) {
       var spawn = spawnList[id];
       spawn.createCustomCreep(1,2);
-      spawn.createCustomCreep(1,2);
     }
   }
 }
