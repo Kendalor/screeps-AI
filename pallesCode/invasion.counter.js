@@ -13,7 +13,6 @@ module.exports = {
 	
     if (enemies.length > 0 && harmfulEnemies.length == 0){
         console.log("Harmless enemy in room "+room.name+" !")
-		console.log(harmfulEnemies);
 	}else if (harmfulEnemies.length == 1){
         console.log("Harmful enemy in room "+room.name+" !")
 		if (room.controller != undefined && room.controller.level < 3){
