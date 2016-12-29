@@ -1,9 +1,8 @@
+/*
+*   Add functions and/or constants to native Screeps objects
+*/
+
 module.exports = function(){
-
-    /*
-    GAME
-    */
-
   /*
   * ROOM
   */
@@ -11,24 +10,24 @@ module.exports = function(){
   /*
   * ROOM_POSITION
   */
-
+  
   /*
   * ROOM_OBJECT
   */
-
+  
   /*
   * CONTRUCTION_SITE
   */
-
+  
   /*
   * CREEP
   */
 		Creep.prototype.gather = function(target,resourceType,amount){
-			return false;
+			return false
 		},
 
 		Creep.prototype.chargeController = function(controller){
-			return false;
+			return false
 		},
 
 			Creep.prototype.getRandomName = function(){
@@ -40,7 +39,7 @@ module.exports = function(){
 			}else{
 				Memory.creepindex++
 			}
-			return namesCombined[Memory.creepindex % namesCombined.length];
+			return namesCombined[Memory.creepindex % namesCombined.length]
 		},
 
 
@@ -48,120 +47,106 @@ module.exports = function(){
   /*
   * FLAG
   */
-
+  
   /*
   * MINERAL
   */
-
+  
   /*
   * NUKE
   */
-
+  
   /*
   * RESOURCE
   */
-
+  
   /*
   * SOURCE
   */
-
+  
   /*
   * STUCTURE
   */
-
+  
   /*
   * OWNED_STRUCTURE
   */
-
+  
   /*
   * STRUCTURE_CONTROLLER
   */
-
+  
   /*
   * STRUCTURE_EXTENSION
   */
-
+  
   /*
   * STRUCTURE_EXTRACTOR
   */
-
+  
   /*
   * STRUCTURE_KEEPER_LAIR
   */
-
+  
   /*
   * STRUCTURE_LAB
   */
-
+  
   /*
   * STRUCTURE_LINK
   */
-
+  
   /*
   * STRUCTURE_NUKER
   */
-
+  
   /*
   * STRUCTURE_OBSERVER
   */
-
+  
   /*
   * STRUCTURE_POWER_BANK
   */
-
+  
   /*
   * STRUCTURE_POWER_SPAWN
   */
-
+  
   /*
   * STRUCTURE_RAMPART
   */
-
+  
   /*
   * STRUCTURE_SPAWN
   */
 	  StructureSpawn.prototype.createCustomCreep = function(spawnEnergyCap, creepType){
-		//TODO
-		return false;
-	  },
-
-	  StructureSpawn.prototype.enQueueCreep = function(body, name,memory,priority){
-	    //TODO
-		return false;
-	  },
-
-	  StructureSpawn.prototype.isCreepInQueue = function(body, name,memory,priority){
-		return false;
-	  },
-
-	  StructureSpawn.prototype.deQueueCreep = function(body, name,memory,priority){
-		return false;
+		return false
 	  }
-
+  
   /*
   * STRUCTURE_STORAGE
   */
-
+  
   /*
   * STRUCTURE_TERMINAL
   */
-
+  
   /*
   * STRUCTURE_TOWER
   */
-
+  
   /*
   * STRUCTURE_CONTAINER
   */
-
+  
   /*
   * STRUCTURE_PORTAL
   */
-
+  
   /*
   * STRUCTURE_ROAD
   */
-
+  
   /*
   * STRUCTURE_WALL
   */
