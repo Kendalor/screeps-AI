@@ -127,9 +127,9 @@ module.exports = {
     var carryParts= 1;
     var workParts = Math.max(1,parseInt(((energyCap-100)/100)));
     if (workParts > 6) workParts = 6;
+	if (spawn.room.controller.level <= 2) {moveParts=2;carryParts=1;workParts=1;}
 	if (spawn.room.controller.level == 2 && energyCap >= 500) {moveParts=4;carryParts=2;workParts=2;}
     if (spawn.room.memory.activeCreepRoles.miner == 0) {moveParts=1;carryParts=1;workParts=2;}
-	if (spawn.room.controller.level == 1) {moveParts=2;carryParts=1;workParts=1;}
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   haulerPreset: function(spawn){
@@ -142,8 +142,8 @@ module.exports = {
     //var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/2)/50)),10);
     var carryParts = Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),16);
     if (spawn.room.memory.activeCreepRoles.hauler == 0) {moveParts=2;carryParts=1;workParts=1;}
+	if (spawn.room.controller.level <= 2) {moveParts=2;carryParts=1;workParts=1;}
 	if (spawn.room.controller.level == 2 && energyCap >= 500) {moveParts=4;carryParts=2;workParts=2;}
-	if (spawn.room.controller.level == 1) {moveParts=2;carryParts=1;workParts=1;}
       return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   maintancePreset: function(spawn){
@@ -153,8 +153,8 @@ module.exports = {
     if (energyCap % 200 != 0) moveParts++;
     if (moveParts > 4) moveParts = 4;
     var carryParts= Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),4);
+	if (spawn.room.controller.level <= 2) {moveParts=2;carryParts=1;workParts=1;}
 	if (spawn.room.controller.level == 2 && energyCap >= 500) {moveParts=4;carryParts=2;workParts=2;}
-	if (spawn.room.controller.level == 1) {moveParts=2;carryParts=1;workParts=1;}
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   upgraderPreset: function(spawn){

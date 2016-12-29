@@ -6,18 +6,34 @@ module.exports = {
     var enemies = room.find(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
           WHITELIST[hostile.owner.username] == undefined 
         });
-    var harmfulEnemies = room.find(enemies,{filter: (hostile) =>
-          hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
-        });
+    var harmfulEnemies = enemies.filter((hostile) =>
+			hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack' || body.type == 'claim').length > 0
+        );
+	var invasor = harmfulEnemies.filter((hostile) => hostile.owner.username == 'Invasor');
         
-    if (enemies.length > 0){
+    if (enemies.length > 0 && harmfulEnemies.length == 0){
         console.log("Harmless enemy in room "+room.name+" !")
-      if (harmfulEnemies.length == 1){
+		console.log(harmfulEnemies);
+	}else if (harmfulEnemies.length == 1){
         console.log("Harmful enemy in room "+room.name+" !")
-      }
-      else if (harmfulEnemies.length > 1){
-        console.log("Invasion in room "+room.name+" !")
-        var safeMode = room.controller.safeMode
+		if (room.controller.level < 3){
+			this.trySafeMode(room);
+		}
+	}
+	else if (harmfulEnemies.length > 1){
+		if (invasor.length > 0){
+			console.log("NPC Invasion in room "+room.name+" !")
+			if (room.controller.level < 3)
+				this.trySafeMode(room);
+		} else{
+			console.log("Player Invasion in room "+room.name+" !")
+			this.trySafeMode(room);
+		}
+	}
+  },
+  
+  trySafeMode: function(room){
+	  var safeMode = room.controller.safeMode
         if (safeMode == undefined){//enemyPresent and safemode off
           if (room.controller.safeModeAvailable){//safemode available
             console.log("Safemode activated in room "+room.name+" !")
@@ -30,13 +46,5 @@ module.exports = {
         else{
           console.log("Safemode activated in room "+room.name+" : "+safeMode+" !")
         }
-      }
-    }
-  },
-  
-  placeWalls: function(room){
-    var exitList = Game.map.describeExits(room);
-    //console.log(exitList);
-    room.memory.walls == true;
   }
 };
