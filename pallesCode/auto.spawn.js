@@ -136,7 +136,7 @@ module.exports = {
 	if (energyCap < 700) {moveParts=1;carryParts=1;workParts=4;}
 	if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
 	
-    if (spawn.room.controller.level > 2 && spawn.room.memory.activeCreepRoles.miner == 0 && spawn.energyAvailable < 300) {moveParts=1;carryParts=1;workParts=2;}
+    if (spawn.room.memory.activeCreepRoles.miner == 0 && spawn.room.energyAvailable < energyCap) {moveParts=1;carryParts=1;workParts=2;}
 	
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
@@ -149,7 +149,8 @@ module.exports = {
     var carryParts = parseInt(moveParts*2);//Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),carryCap);
 	
 	if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
-	if (spawn.room.controller.level > 2 && spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.energyAvailable < 300) {moveParts=2;carryParts=1;workParts=1;}
+	if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.energyAvailable < energyCap) {moveParts=2;carryParts=1;workParts=1;}
+	
 	return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   maintancePreset: function(spawn){
@@ -160,8 +161,6 @@ module.exports = {
     if (moveParts > 4) moveParts = 4;
     var carryParts= Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),4);
 	if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
-	//if (spawn.room.controller.level <= 2) {moveParts=2;carryParts=1;workParts=1;}
-	//if (spawn.room.controller.level == 2 && energyCap >= 500) {moveParts=4;carryParts=2;workParts=2;}
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
   upgraderPreset: function(spawn){

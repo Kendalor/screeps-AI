@@ -32,7 +32,7 @@ module.exports.loop = function () {
     
     invasionCounter.run(room);
     
-    if(Game.time % 25 == 0){
+    if(Game.time % 10 == 0){
       var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
       autoSpawn.run(spawnList);
     }
