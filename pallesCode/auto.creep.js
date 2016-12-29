@@ -22,7 +22,7 @@ module.exports = {
 				delete creep.memory.spawn;
 			  }
 			
-			if (creep.room.controller.level < 3)
+			if (creep.room.energyCapacityAvailable < 500)
 				this.allrounder(creep);
 			else
 				this.miner(creep);
@@ -35,7 +35,7 @@ module.exports = {
 				delete creep.memory.spawn;
 			}
 			
-			if (creep.room.controller.level < 3){
+			if (creep.room.energyCapacityAvailable < 500 ){
 				this.allrounder(creep);
 			}else{
 				var containerPos = creep.room.memory.sources[creep.memory.source].containerPos

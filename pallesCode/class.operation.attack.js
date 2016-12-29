@@ -1,11 +1,16 @@
-var WHITELIST = {'Kendalor' : true,'Palle' : true};
+var WHITELIST = {'Palle' : true,'Kendalor' : true};
 
 module.exports = class{
+        
         constructor(){
 
         }
         static run(id){
+            //Memory.operations[id].members['David']= 'attacker';
+            //Memory.operations[id].size=4;
             //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK];
+            //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
+            //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
             var creep_body = Array(15).fill(MOVE).concat(Array(13).fill(ATTACK)).concat(Array(2).fill(HEAL)); // Needs 2290 Energy
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
@@ -104,7 +109,7 @@ module.exports = class{
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='attack';
-                Memory.operations[this.id].size=1;
+                Memory.operations[this.id].size=4;
                 Memory.operations[this.id].assembled=false;
                 Memory.operations[this.id].reached=false;
                 Memory.operations[this.id].refreshed=false;
@@ -151,6 +156,7 @@ module.exports = class{
         static creepTravel(creep,flag){
             creep.moveTo(flag);
             creep.heal(creep);
+            this.creepAttack(creep);
 
         }
         // ATTACK CODE

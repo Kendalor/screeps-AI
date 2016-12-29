@@ -4,7 +4,9 @@ module.exports = {
     for(var name in Memory.creeps) {
       if(!Game.creeps[name]) {
         if (Memory.creeps[name].tmpSource){
-          Game.getObjectById([Memory.creeps[name].tmpSource]).room.memory.sources[Memory.creeps[name].tmpSource].slotsUsed--
+			var tmpSource = Game.getObjectById([Memory.creeps[name].tmpSource])
+			if (tmpSource.room.memory.sources != undefined)
+				tmpSource.room.memory.sources[Memory.creeps[name].tmpSource].slotsUsed--;
         }
         delete Memory.creeps[name];
         console.log('Clearing non-existing creep memory:', name);
@@ -13,11 +15,21 @@ module.exports = {
   },
   
 	fixSourceSlots: function(room){
-		for (var source in room.memory.sources){
-			var slotsUsed = room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.tmpSource == source}).length;
-			room.memory.sources[source].slotsUsed = slotsUsed;
-			console.log("Fixed 'slotsUsed' value of Source "+source);
+		for (var sourceId in room.memory.sources){
+			this.fixSource(room,sourceId);
+			console.log("Fixed 'slotsUsed' value of Source "+sourceId);
 		}
+	},
+	
+	fixSource: function(room,sourceId){
+		var slotsUsed = room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.tmpSource == sourceId}).length;
+		room.memory.sources[sourceId].slotsUsed = slotsUsed;
+		
+		var miner = room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == sourceId && creep.role == 'miner'});
+		if (miner.length > 0) room.memory.sources[sourceId].minerId = miner[0].id;
+		
+		var hauler = room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == sourceId && creep.role == 'hauler'});
+		if (hauler.length > 0) room.memory.sources[sourceId].minerId = hauler[0].id;
 	},
   
   clearFlags: function() {
@@ -50,7 +62,7 @@ module.exports = {
             console.log("2");
           }
         }
-        else if (room.controller.level > 2){
+        else if (room.controller.level > 1){
           room.createConstructionSite(containerPos.x,containerPos.y,STRUCTURE_CONTAINER);
         }
       }
@@ -97,6 +109,7 @@ module.exports = {
         }
         source.memory.slots = 8-count;
         source.memory.slotsUsed = 0;
+		this.fixSource(room,source.id)
         
         // Calc ContainerPos
         var path = room.findPath(source.pos,source.room.controller.pos,{ignoreCreeps: true});
@@ -105,6 +118,7 @@ module.exports = {
         source.memory.containerPos.x = pathArray[0].x;
         source.memory.containerPos.y = pathArray[0].y;
         source.memory.containerPos.roomName = source.room.name;
+		source.memory.requiredCarryParts = Math.ceil((pathArray.length+5) * 20/50);
         for (var j=1;j<pathArray.length;j++){
         if (room.lookForAt(LOOK_TERRAIN,pathArray[j].x,pathArray[j].y) == "swamp")
           source.room.createConstructionSite(pathArray[j].x,pathArray[j].y,STRUCTURE_ROAD);

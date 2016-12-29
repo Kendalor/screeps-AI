@@ -12,6 +12,7 @@ var flagHandler       = require('flag.handler');
 Source.prototype.memory = undefined;
 
 
+
 module.exports.loop = function () {
   
   autoMemory.clearDeadCreeps();
@@ -23,7 +24,7 @@ module.exports.loop = function () {
     
     var room = Game.rooms[name];
     //autoMemory.fixSourceSlots(room);
-    
+	
     
     if(Game.time % 50 == 0){
       autoMemory.checkRoomMemory(room);
@@ -41,6 +42,7 @@ module.exports.loop = function () {
     
     var creepList = (room.find(FIND_MY_CREEPS,{filter: (creep) => creep.room.name == name}));
     autoCreep.run(creepList);
+	
   }
   
   //Kendalor Code
