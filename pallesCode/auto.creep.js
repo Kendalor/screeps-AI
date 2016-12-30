@@ -510,7 +510,9 @@ module.exports = {
           else{
             creep.moveTo(target);
           }
-        }
+        }else if (creep.room.storage == undefined){
+			creep.moveTo(target);
+		}
       }
     } 
     if((creep.carry.energy == 0 || (creep.memory.workModules != undefined && creep.carry.energy < creep.memory.workModules) ) && creep.memory.job == 'upgrade'){
