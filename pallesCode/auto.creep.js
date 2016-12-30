@@ -506,7 +506,7 @@ module.exports = {
           if(creep.memory.cFlag){
             creep.moveTo(Game.flags.Controller);
           }
-          else if(creep.memory.role != 'upgrader'){
+          else{
             creep.moveTo(target);
           }
         }else if (creep.room.storage == undefined){
