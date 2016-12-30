@@ -9,8 +9,8 @@ module.exports = class{
 
                 if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
                     var spawn = Game.getObjectById(this.findClosestSpawn(Memory.operations[id].flagName));
-                    if(spawn.canCreateCreep([MOVE,CLAIM,CLAIM,MOVE],undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=spawn.createCreep([MOVE,CLAIM,CLAIM,MOVE],undefined,{role: 'reserve', operation_id: id});
+                    if(spawn.canCreateCreep([MOVE,CLAIM],undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=spawn.createCreep([MOVE,CLAIM],undefined,{role: 'reserve', operation_id: id});
                         var creep=Game.creeps[name];
                         Memory.operations[id].creep=name;
                     }

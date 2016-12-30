@@ -157,7 +157,7 @@ module.exports = class{
         static creepTravel(creep,flag){
             creep.moveTo(flag);
             creep.heal(creep);
-            this.creepAttack(creep);
+            //this.creepAttack(creep);
 
         }
         // ATTACK CODE
