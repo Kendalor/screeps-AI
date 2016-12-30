@@ -1,4 +1,4 @@
-var WHITELIST = {'Kendalor' : true,'Palle' : true,'Cade' : true};
+var WHITELIST = {'Cade' : true,'Kendalor' : true,'Palle' : true};
 var LOG_COOLDOWN = 10;
 var minStructureHits = 1000;
 
