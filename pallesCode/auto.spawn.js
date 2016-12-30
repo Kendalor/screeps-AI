@@ -64,7 +64,7 @@ module.exports = {
           if(minerAmount < Object.keys(sources).length){
             for(id in sources){
               var found = true;
-              console.log(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
+              //console.log("miner: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
               if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}).length == 0 && found){
                 spawn.createCreep(this.minerPreset(spawn), undefined, {role: creepRole[0].name, source: id, spawn: true,job: 'idle', targetId: null, containerId: null});
                 found = false;
@@ -79,6 +79,7 @@ module.exports = {
           if(minerAmount > haulerAmount && haulerAmount < (Object.keys(sources).length)){
             for(id in sources){
               var found = true;
+			  //console.log("hauler: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}));
               if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}).length == 0 && found){
                 spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true, job: 'idle', targetId: null});
                 found = false;
@@ -169,9 +170,14 @@ module.exports = {
     var energyCap = spawn.room.energyCapacityAvailable;
     var moveParts = 2;
     var attackParts = 2;
-    var toughParts = 2;
-	if (energyCap < 500) {moveParts=2;attackParts=1;toughParts=1;}
-    return Array(toughParts).fill(TOUGH).concat(Array(moveParts).fill(MOVE)).concat(Array(attackParts).fill(ATTACK));
+    var toughParts = 0;
+	if (energyCap < 500) {moveParts=2;toughParts=0;attackParts=2;}
+	if (toughParts > 0){
+		return Array(toughParts).fill(TOUGH).concat(Array(moveParts).fill(MOVE)).concat(Array(attackParts).fill(ATTACK));
+	}
+	else {
+		return Array(moveParts).fill(MOVE).concat(Array(attackParts).fill(ATTACK));
+	}
   },
   
   expand: function(spawn){

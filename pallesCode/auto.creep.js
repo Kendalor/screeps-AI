@@ -186,7 +186,6 @@ module.exports = {
   mine: function(creep) {
     var tmpContainer = creep.pos.lookFor('structure').filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
     var pos = creep.room.memory.sources[creep.memory.source].containerPos;
-    //console.log(tmpContainer)
     if (creep.memory.job == 'idle' && creep.carry.energy == 0){
       this.anounceJob(creep,'mine');
     }
@@ -507,7 +506,7 @@ module.exports = {
           if(creep.memory.cFlag){
             creep.moveTo(Game.flags.Controller);
           }
-          else{
+          else if(creep.memory.role != 'upgrader'){
             creep.moveTo(target);
           }
         }else if (creep.room.storage == undefined){
@@ -580,6 +579,11 @@ module.exports = {
 		&& hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack' || body.type == 'claim').length > 0
 		,ignoreDestructibleStructures: true
 	});
+	if (!closestHostile) closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
+          WHITELIST[hostile.owner.username] == undefined 
+          && hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
+          && hostile.body.filter((body) => body.type == 'claim' || body.type == 'work').length > 0
+        })
     if(closestHostile){
       if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
           creep.moveTo(closestHostile);

@@ -11,21 +11,28 @@ module.exports = {
         );
 	var invader = harmfulEnemies.filter((hostile) => hostile.owner.username == 'Invader');
 	
-    if (enemies.length > 0 && harmfulEnemies.length == 0){
-        console.log("Harmless enemy in room "+room.name+" !")
-	}else if (harmfulEnemies.length == 1){
-        console.log("Harmful enemy in room "+room.name+" !")
-		if (room.controller != undefined && room.controller.level < 3){
-			this.trySafeMode(room);
+	// Console Info
+	if (Game.time % 50 == 0){
+		if (enemies.length > 0 && harmfulEnemies.length == 0){ // ONLY HARMLESS ENEMIES IN ROOM?
+			console.log("Harmless enemy in room "+room.name+" !")
+		}else if (harmfulEnemies.length == 1){
+			if (invader.length > 0){
+				console.log("Invader NPC creep in room "+room.name+" !")
+			} else{	
+				console.log("Harmful creep by in room "+room.name+" !")
+			}
+		}else if (harmfulEnemies.length > 1){
+			if (invader.length >= harmfulEnemies.length - 1){
+				console.log("NPC Invasion in room "+room.name+" !")
+			} else{
+				console.log("Player Invasion in room "+room.name+" !")
+			}
 		}
 	}
-	else if (harmfulEnemies.length > 1){
-		if (invader.length > 0){
-			console.log("NPC Invasion in room "+room.name+" !")
-			if (room.controller != undefined && room.controller.level < 3)
-				this.trySafeMode(room);
-		} else{
-			console.log("Player Invasion in room "+room.name+" !")
+    
+	if (harmfulEnemies.length > 0){ // HARMFUL ENEMIES ?
+		var towers = room.find(FIND_MY_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_TOWER && struct.energy > 200});
+		if (towers.length == 0){ // TOWER DEFENSE AVAILABLE?
 			this.trySafeMode(room);
 		}
 	}
@@ -48,4 +55,5 @@ module.exports = {
 			}
 		}else console.log("No controller")
 	}
+	
 };
