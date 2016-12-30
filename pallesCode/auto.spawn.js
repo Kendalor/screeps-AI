@@ -64,7 +64,6 @@ module.exports = {
           if(minerAmount < Object.keys(sources).length){
             for(id in sources){
               var found = true;
-              console.log('Test ' + String(id));
               console.log(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
               if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}).length == 0 && found){
                 spawn.createCreep(this.minerPreset(spawn), undefined, {role: creepRole[0].name, source: id, spawn: true,job: 'idle', targetId: null, containerId: null});
