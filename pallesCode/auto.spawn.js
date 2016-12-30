@@ -11,6 +11,7 @@ module.exports = {
     //for every spawn in the list
     for(var id in spawnList) {
       var spawn = spawnList[id];
+
       
       if (!spawn.room.memory.activeCreepRoles || !spawn.room.memory.sources || !spawn.room.memory.sources.requiredCarryParts){
         delete Memory.rooms[spawn.room.name];
