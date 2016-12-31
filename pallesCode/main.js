@@ -1,4 +1,3 @@
-
 var autoCreep         = require('auto.creep');
 var autoMemory        = require('auto.memory');
 var autoSpawn         = require('auto.spawn');
