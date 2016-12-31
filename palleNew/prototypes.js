@@ -23,8 +23,36 @@ module.exports = function(){
 	/*
 	* CREEP
 	*/
-		Creep.prototype.gather = function(target,resourceType,amount){
-			return false;
+		/** NEEDS TESTING
+		 * Reserves specific amount of specific resource for set amount of ticks on given container
+		 * Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
+		 *  or StructureContainer.prototype.reserveResource = function(objectId,resource,amount,ticks)
+		 * @param {Object} container or storage
+		 * @param {String} resource
+		 * @param {Number} amount
+		 * @param {Number} ticks
+		 * @return {Number} errorCode
+		 */
+		Creep.prototype.reserveResource = function(container,resource=RESOURCE_ENERGY,amount=this.carryCapacity,ticks=50){
+			if (container.structureType && (container.structureType == STRUCTURE_STORAGE || container.structureType == STRUCTURE_CONTAINER)) {
+				container.reserveResource(this.id,resource,amount,ticks);
+			}else {return ERR_INVALID_TARGET;}
+		},
+	
+		/** NEEDS TESTING
+		 * Creep moves to target container and reserves an amount of resource
+		 * Uppon reaching target the creep withdraws the reserved resource amount and cancels the reservation
+		 * Used by screep.reserveResource(container,[resource],[amount],[ticks])
+		 * @param {Number} objectId of reserver
+		 * @param {String} resource
+		 * @param {Number} amount
+		 * @param {Number} ticks
+		 * @return {Number} errorCode
+		 */
+		Creep.prototype.gather = function(objectId,resource,amount,ticks=50){
+			var errorCode = OK;
+			//TODO
+			return errorCode;
 		},
 
 		Creep.prototype.chargeController = function(controller){
@@ -135,11 +163,41 @@ module.exports = function(){
 
 		StructureSpawn.prototype.deQueueCreep = function(body, name,memory,priority){
 			return false;
-		}
+		},
 
 	/*
 	* STRUCTURE_STORAGE
 	*/
+		/** NEEDS TESTING
+		 * Identical to StructureContainer.prototype.reserveResource
+		 * Reserves specific amount of specific resource for set amount of ticks
+		 * Used by screep.reserveResource(container,[resource],[amount],[ticks])
+		 * @param {Number} objectId (of reserver)
+		 * @param {String} resource
+		 * @param {Number} amount
+		 * @param {Number} ticks
+		 * @return {Number} errorCode
+		 */
+		StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks){
+			var errorCode = OK;
+			//TODO
+			return errorCode;
+		},
+	
+		/** NEEDS TESTING
+		 * Checks for expired reservations and cancels them
+		 * Substracts stored resource with reserved resource
+		 * Identical to StructureContainer.prototype.availableResource
+		 * @param {String} resource
+		 * @return {Number} availableRes
+		 */
+		StructureStorage.prototype.availableResource = function(resource){
+			var availableRes = 0;
+			//TODO
+			return availableRes;
+		},
+		
+		
 
 	/*
 	* STRUCTURE_TERMINAL
@@ -152,6 +210,34 @@ module.exports = function(){
 	/*
 	* STRUCTURE_CONTAINER
 	*/
+		/** NEEDS TESTING
+		 * Identical to StructureStorage.prototype.reserveResource
+		 * Reserves specific amount of specific resource for set amount of ticks
+		 * Used by screep.reserveResource(container,[resource],[amount],[ticks])
+		 * @param {Number} objectId of reserver
+		 * @param {String} resource
+		 * @param {Number} amount
+		 * @param {Number} ticks
+		 * @return {Number} errorCode
+		 */
+		StructureContainer.prototype.reserveResource = function(objectId,resource,amount,ticks){
+			var errorCode = OK;
+			//TODO
+			return errorCode;
+		},
+	
+		/** NEEDS TESTING
+		 * Checks for expired reservations and cancels them
+		 * Substracts stored resource with reserved resource
+		 * Identical to StructureStorage.prototype.availableResource
+		 * @param {String} resource
+		 * @return {Number} availableRes
+		 */
+		StructureContainer.prototype.availableResource = function(resource){
+			var availableRes = 0;
+			//TODO
+			return availableRes;
+		},
 
 	/*
 	* STRUCTURE_PORTAL
@@ -164,4 +250,7 @@ module.exports = function(){
 	/*
 	* STRUCTURE_WALL
 	*/
+		StructureWall.prototype.stub = function(stub){
+			return false;
+		}
 }
