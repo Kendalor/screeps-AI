@@ -58,8 +58,10 @@ var spawn =Game.spawns['Spawn1'];
 
 
   //Kendalor Code
-  operationsHandler.run();
-  if(Game.time % 10 == 0)
+  
+  if(Game.time+5 % 10 == 0){
     flagHandler.run();
+  }
+  operationsHandler.run();
   //
 }
