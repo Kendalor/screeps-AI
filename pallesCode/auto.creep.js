@@ -127,6 +127,7 @@ module.exports = {
       this.upgrade(creep);
     this.build(creep);
     this.repair(creep);
+	this.haul(creep);
     this.upgrade(creep);
     this.salvage(creep);
     this.gather(creep);
@@ -449,7 +450,7 @@ module.exports = {
           }
         })
       }
-      if (targets[0] == undefined && creep.carry.energy > 0 ){//creep.carryCapacity/4){
+      if (creep. memory.role == 'hauler' && targets[0] == undefined && creep.carry.energy > 0 ){//creep.carryCapacity/4){
         targets = creep.room.find(FIND_MY_STRUCTURES, {
           filter: (structure) => {
             return (structure.structureType == STRUCTURE_STORAGE) && structure.store.energy < structure.storeCapacity && creep.room.name == structure.room.name;
