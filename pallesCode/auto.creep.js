@@ -1,7 +1,7 @@
 var constants  = require('var.const');
 var creepRole = constants.creepRole();
 
-var WHITELIST = {'Kendalor' : true,'Palle' : true};
+var WHITELIST = {'Cade' : true,'Kendalor' : true,'Palle' : true};
 
 module.exports = {
   /** @param {creepList} creepList **/
@@ -40,13 +40,11 @@ module.exports = {
 			}else{
 				var containerPos = creep.room.memory.sources[creep.memory.source].containerPos
 				containers = creep.room.find(FIND_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER && struct.pos.x == containerPos.x && struct.pos.y == containerPos.y});
-				if (containers[0] != null){
+				if (!creep.memory.containerId && containers.length > 0){
 					creep.memory.containerId = containers[0].id;
-				}
-				if (!creep.memory.containerId || containers[0].store.energy == 0){
+				}else if (!creep.memory.containerId || (containers[0] != undefined && containers[0].store.energy == 0)){
 					this.allrounder(creep);
-				}
-				else if(creep.memory.containerId != null && containers[0].store.energy> 0){
+				}else if(creep.memory.containerId != null && containers[0] != undefined && containers[0].store.energy> 0){
 					this.hauler(creep);
 				}
 			}
@@ -129,8 +127,8 @@ module.exports = {
       this.upgrade(creep);
     this.build(creep);
     this.repair(creep);
-    if (creep.room.memory.activeCreepRoles.upgrader != undefined && creep.room.memory.activeCreepRoles.upgrader == 0)
-      this.upgrade(creep);
+	this.haul(creep);
+    this.upgrade(creep);
     this.salvage(creep);
     this.gather(creep);
   },
@@ -355,6 +353,7 @@ module.exports = {
 	var constructions = [];
       if(constructions.length == 0 && creep.room.controller.level >= 2) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION });}
       if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});}
+	  if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_STORAGE});}
       if(constructions.length == 0 & creep.room.controller.level >= 3) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_TOWER});}
       if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});}
       if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_WALL});}
@@ -451,7 +450,7 @@ module.exports = {
           }
         })
       }
-      if (targets[0] == undefined && creep.carry.energy > 0 ){//creep.carryCapacity/4){
+      if (creep. memory.role == 'hauler' && targets[0] == undefined && creep.carry.energy > 0 ){//creep.carryCapacity/4){
         targets = creep.room.find(FIND_MY_STRUCTURES, {
           filter: (structure) => {
             return (structure.structureType == STRUCTURE_STORAGE) && structure.store.energy < structure.storeCapacity && creep.room.name == structure.room.name;
@@ -506,7 +505,7 @@ module.exports = {
           if(creep.memory.cFlag){
             creep.moveTo(Game.flags.Controller);
           }
-          else if(creep.memory.role != 'upgrader'){
+          else{
             creep.moveTo(target);
           }
         }else if (creep.room.storage == undefined){

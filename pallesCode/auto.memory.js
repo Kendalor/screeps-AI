@@ -127,7 +127,9 @@ module.exports = {
     }
   },
   
-  renewRoomMemory: function(room){
-    delete Memory.rooms[room.name].sources;
+  resetRoomMemory: function(room){
+	delete Memory.rooms[room.name];
+    autoMemory.initRoomMemory(room);
+	console.log("Resetted room memory of "+room.name)
   }
 };

@@ -13,9 +13,8 @@ module.exports = {
       var spawn = spawnList[id];
 
       
-      if (!spawn.room.memory.activeCreepRoles || !spawn.room.memory.sources || !spawn.room.memory.sources.requiredCarryParts){
-        delete Memory.rooms[spawn.room.name];
-        autoMemory.initRoomMemory(spawn.room);
+      if (!spawn.room.memory.activeCreepRoles || !spawn.room.memory.sources){
+        autoMemory.resetRoomMemory(spawn.room);
       }
             
       var minerAmount = spawn.room.memory.activeCreepRoles.miner = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[0].name).length;
@@ -81,6 +80,9 @@ module.exports = {
               var found = true;
 			  //console.log("hauler: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}));
               if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}).length == 0 && found){
+				  if(!spawn.room.memory.sources[id].requiredCarryParts){
+					  autoMemory.resetRoomMemory(spawn.room);
+				  }
                 spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true, job: 'idle', targetId: null});
                 found = false;
               }

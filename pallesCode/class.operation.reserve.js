@@ -1,16 +1,32 @@
-
-
 module.exports = class{
         constructor(){
         }
         static run(id){
             // DELETE NONEXISTING CREEPS FROM OPERATION
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-
-                if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
+				
+				var userName;
+				for (var i in Game.spawns){userName = Game.spawns[i].owner.username;break;}
+				var secondSpawnCondition = true;
+				/*
+				if (Game.flags[Memory.operations[id].flagName].room){
+					var reservation = Game.flags[Memory.operations[id].flagName].room.controller.reservation
+					secondSpawnCondition = reservation.ticksToEnd < (3500+Memory.operations[id].ticksToController) && (reservation.username == undefined || reservation.username == userName) // CHECK IF CONTROLLER RESERVATION IS HIGH ENOUGH
+				}
+				*/
+				//if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
+                if (!Memory.operations[id].creep && secondSpawnCondition){ //DOES THIS OPERATION ALREADY HAVE A CREEP?				
                     var spawn = Game.getObjectById(this.findClosestSpawn(Memory.operations[id].flagName));
+<<<<<<< HEAD
                     if(spawn.canCreateCreep([MOVE,CLAIM,MOVE,CLAIM],undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
                         var name=spawn.createCreep([MOVE,CLAIM,MOVE,CLAIM],undefined,{role: 'reserve', operation_id: id});
+=======
+					var body = [MOVE,CLAIM]
+					if (spawn.room.energyCapacityAvailable >= 1300)
+						body = [MOVE,CLAIM,MOVE,CLAIM]
+                    if(spawn.canCreateCreep(body,undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=spawn.createCreep(body,undefined,{role: 'reserve', operation_id: id});
+>>>>>>> b0a5ee416ccbfd306e83feac76ee2b21327fc4e6
                         var creep=Game.creeps[name];
                         Memory.operations[id].creep=name;
                     }

@@ -1,4 +1,4 @@
-var WHITELIST = {'Palle' : true,'Kendalor' : true};
+var WHITELIST = {'Cade' : true,'Kendalor' : true,'Palle' : true};
 
 module.exports = class{
         
