@@ -166,7 +166,7 @@ module.exports = class{
 				if(constructions.length > 0){
 					creep.memory.targetId = creep.pos.findClosestByRange(constructions).id;
 				}else{
-					Game.flags[Memory.operations[creep.memory.operation_id].flagName].remove();
+					//Game.flags[Memory.operations[creep.memory.operation_id].flagName].remove();
 					delete Memory.operations[creep.memory.operation_id];
 					creep.suicide();
 				}
