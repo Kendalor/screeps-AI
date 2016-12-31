@@ -127,8 +127,7 @@ module.exports = {
       this.upgrade(creep);
     this.build(creep);
     this.repair(creep);
-    if (creep.room.memory.activeCreepRoles.upgrader != undefined && creep.room.memory.activeCreepRoles.upgrader == 0)
-      this.upgrade(creep);
+    this.upgrade(creep);
     this.salvage(creep);
     this.gather(creep);
   },
