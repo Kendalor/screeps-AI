@@ -36,7 +36,7 @@ module.exports = {
 		if (spawn.room.controller.level == 1)maintanceUnits = 3*minerAmount;
 		else maintanceUnits = 3*minerAmount;
 	  }
-      else maintanceUnits = 1;
+      else maintanceUnits = 1+parseInt(Object.keys(spawn.room.find(FIND_CONSTRUCTION_SITES)).length)/10;
       
       //for every type of creep
       var canSpawnMaxModuleCreep = (0 == spawn.canCreateCreep(Array(Game.rooms[spawn.room.name].energyCapacityAvailable/50).fill(MOVE)));
