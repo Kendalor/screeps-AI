@@ -129,7 +129,7 @@ module.exports = {
   
   resetRoomMemory: function(room){
 	delete Memory.rooms[room.name];
-    autoMemory.initRoomMemory(room);
+    this.initRoomMemory(room);
 	console.log("Resetted room memory of "+room.name)
   }
 };
