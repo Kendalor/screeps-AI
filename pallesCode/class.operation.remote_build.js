@@ -167,7 +167,6 @@ module.exports = class{
 					creep.memory.targetId = creep.pos.findClosestByRange(constructions).id;
 				}else{
 					Game.flags[Memory.operations[creep.memory.operation_id].flagName].remove();
-					delete Memory.operations[creep.memory.operation_id];
 					creep.suicide();
 				}
 			}else{
