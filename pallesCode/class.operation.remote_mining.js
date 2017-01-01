@@ -669,14 +669,14 @@ module.exports = class{
                                     creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
                                 }
                             }else if (err == ERR_NOT_ENOUGH_ENERGY){
-                                if(creep.ticksToLive >= 2* Memory.operations[creep.memory.operation_id].sources[creep.memory.operation_id].ticksToSource){
+                                if(creep.ticksToLive >= 2* Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
                                 }else{
                                     console.log('suicide '+ creep.name)
                                     creep.suicide();
                                 }
-                                
+
                             }
                         }
                     }
