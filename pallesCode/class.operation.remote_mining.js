@@ -209,7 +209,42 @@ module.exports = class{
 
                 }
                 // HAULER CODE
-                if(!Memory.operations[id].sources[i].hauler){ //DOES THIS SOURCE HAVE A MINER
+
+                if(!Memory.operations[id].sources[i].ticksToSource){
+                    Memory.operations[id].sources[i].min_haulers=1;
+                }else{
+                    Memory.operations[id].sources[i].min_haulers=parseInt(Memory.operations[id].sources[i].ticksToSource*2/5/18);
+                }
+
+                if(!Memory.operations[id].sources[i].haulers){
+                    Memory.operations[id].sources[i].haulers={};
+                }
+
+                if(Object.keys(Memory.operations[id].sources[i].haulers).length < Memory.operations[id].sources[i].min_haulers){
+                //console.log('Spawning');
+                //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
+                    if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'hauling', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
+                            var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'hauling', operation_id: id, source_id: i});
+                            Memory.operations[id].sources[i].haulers[name]={};
+                    }
+
+                }
+                for(var cr in Memory.operations[id].sources[i].haulers){
+                    if(!Game.creeps[cr]){
+                        console.log('Deleted '+cr +' from memory')
+                        delete Memory.creeps[cr];
+                        delete Memory.operations[id].sources[i].haulers[cr];
+                    }else if(!Game.creeps[cr].spawning){
+                        this.creepHaul(Game.creeps[cr]);
+
+                    }
+                }
+
+
+
+
+
+                /*if(!Memory.operations[id].sources[i].hauler){ //DOES THIS SOURCE HAVE A MINER
                     // 1x WORK, 18 CARRY = 900 capacity, 10 MOVE = 1tile/tick on roads if full COST= 2000
                     if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'hauling', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
                         var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'hauling', operation_id: id, source_id: i});
@@ -222,7 +257,7 @@ module.exports = class{
                 }else if(!Game.creeps[Memory.operations[id].sources[i].hauler].spawning){
                     this.creepHaul(Game.creeps[Memory.operations[id].sources[i].hauler]);
 
-                }
+                }*/
 
             }
 
@@ -582,6 +617,10 @@ module.exports = class{
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
+                                }else{
+                                    if(!Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource || Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource > (1500-creep.ticksToLive)){
+                                        Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource=1500-creep.ticksToLive;
+                                    }
                                 }
                             }else{
                                 var err = creep.withdraw(target,RESOURCE_ENERGY);
@@ -590,6 +629,10 @@ module.exports = class{
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
+                                }else{// ADJUST TICKS TO SOURCE
+                                    if(!Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource || Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource > (1500-creep.ticksToLive)){
+                                        Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource=1500-creep.ticksToLive;
+                                    }
                                 }
                             }
                         } else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId).room.name){
