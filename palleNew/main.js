@@ -1,4 +1,5 @@
 var PROTOTYPES = require('prototypes')();
+var exampleExport = require('exampleExport')(PROTOTYPES); // EXAMPLE HOW TO COMMIT IMPORTS
 
 module.exports.loop = function () {
     for(var name in Game.rooms) {
@@ -8,5 +9,5 @@ module.exports.loop = function () {
 			var spawn = spawnList[id];
 			spawn.createCustomCreep(1,2);
 		}
-  }
+	}
 }

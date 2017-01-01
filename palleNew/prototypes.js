@@ -7,6 +7,7 @@ module.exports = function(){
 	/*
 	* ROOM
 	*/
+	Room.prototype.exampleAttribute = 'attribute';
 
 	/*
 	* ROOM_POSITION
