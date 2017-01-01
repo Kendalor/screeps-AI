@@ -196,6 +196,7 @@ module.exports = class{
                 // MINER CODE
                 if(!Memory.operations[id].sources[i].miner){ //DOES THIS SOURCE HAVE A MINER
                     // 7x WORK ( to make up for the walking distance ) , 1 CARRY,and 7 MOVE to assure walk speed = 1/tick COST = 1150
+
                     if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
                         var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i});
                         Memory.operations[id].sources[i].miner=name;
@@ -213,7 +214,15 @@ module.exports = class{
                 if(!Memory.operations[id].sources[i].ticksToSource){
                     Memory.operations[id].sources[i].min_haulers=1;
                 }else{
-                    Memory.operations[id].sources[i].min_haulers=parseInt(Memory.operations[id].sources[i].ticksToSource*2/5/18);
+                    Memory.operations[id].sources[i].carry_parts=Math.ceil(Memory.operations[id].sources[i].ticksToSource*2/5);
+                    Memory.operations[id].sources[i].min_haulers=Math.ceil(Memory.operations[id].sources[i].ticksToSource*2/5/18);
+                    var max_carry_moveSets=parseInt((Game.getObjectById(Memory.operations[id].nearest_spawnId).room.energyCapacityAvailable-150)/(150));
+                    Memory.operations[id].max_carry_moveSets=max_carry_moveSets;
+                    // CREATE BODY
+                    //TODO
+
+
+
                 }
 
                 if(!Memory.operations[id].sources[i].haulers){
@@ -223,8 +232,10 @@ module.exports = class{
                 if(Object.keys(Memory.operations[id].sources[i].haulers).length < Memory.operations[id].sources[i].min_haulers){
                 //console.log('Spawning');
                 //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
-                    if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'hauling', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
-                            var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'hauling', operation_id: id, source_id: i});
+                    var body=[WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+
+                    if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
+                            var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: i});
                             Memory.operations[id].sources[i].haulers[name]={};
                     }
 
@@ -658,8 +669,14 @@ module.exports = class{
                                     creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
                                 }
                             }else if (err == ERR_NOT_ENOUGH_ENERGY){
-                                creep.memory.targetId = null;
-                                return this.creepHaul(creep);
+                                if(creep.ticksToLive >= 2* Memory.operations[creep.memory.operation_id].sources[creep.memory.operation_id].ticksToSource){
+                                    creep.memory.targetId = null;
+                                    return this.creepHaul(creep);
+                                }else{
+                                    console.log('suicide '+ creep.name)
+                                    creep.suicide();
+                                }
+                                
                             }
                         }
                     }
@@ -692,6 +709,7 @@ module.exports = class{
             }
             if(creep.carry.energy > 0 && creep.room.name == pos.roomName){
                 var container = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
+                var rampart = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_RAMPART);
                 if(container.length == 0 && creep.carry.energy>35){ // NO CONTAINER & ENOUGH ENERGY FOR 1 BUILD ATTEMPTS
                     if(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId){ // DELETE GLOBAL OPERATION VAR
                       delete Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId;
@@ -710,6 +728,16 @@ module.exports = class{
                           creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_CONTAINER);
                         }
                     }
+                }else if(rampart.length == 0 && creep.carry.energy>35){
+                    if (containerConstruction[0] != null){
+                        if (creep.build(containerConstruction[0]) == ERR_NOT_IN_RANGE){
+                            creep.build(containerConstruction[0]);
+                        }else if(creep.room.find(FIND_STRUCTURE_KEEPER_LAIR).length >0 ){
+                            creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_RAMPART);
+                        }
+                    }
+
+
                 }else if(container.length){ // DROP ENERGY
                     if(!Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId){ // SET GLOBAL OPERATION VAR
                       Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId = container[0].id;
@@ -720,6 +748,11 @@ module.exports = class{
                         if(container[0].hits < container[0].hitsMax-700){
                             creep.repair(container[0]);
                             //creep.say('Repair');
+                        }else if(rampart.length){
+                            if(rampart[0].hits < 500000){
+                                creep.repair(rampart[0]);
+                            }
+
                         }else{
                             creep.drop(RESOURCE_ENERGY);
                         }
