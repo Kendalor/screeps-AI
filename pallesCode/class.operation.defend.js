@@ -41,12 +41,13 @@ module.exports = class{
                 }
                 if(!Game.creeps[cr].spawning){
                         Game.creeps[sLeader].moveTo(Memory.operations.rallyPoint);
+                }
             }
         }
 
         static traveling(id){
             var wait=false;
-            var err:
+            var err;
             for(var sLeader in Memory.operations[id].squads){
                 for(var cr in Memory.operations[id].squads[sLeader]){
                     Game.creeps[cr].moveTo(sLeader);
@@ -56,13 +57,12 @@ module.exports = class{
                     }
                 }
                 if(!wait && (Game.creeps[sLeader].pos.x > 47 || Game.creeps[sLeader].pos.x < 2 || Game.creeps[sLeader].pos.y > 47 || Game.creeps[sLeader].pos.y < 2)){
-                    Game.creeps[sLeader].moveTo(Game.flags{Memory.operations[id].flagName]);
+                    Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                 }
                 if(Game.creeps[sLeader].pos.roomName == Memory.operations[id].roomName){
                     Memory.operations[id].status='attack';
                 }
             }
-
         }
         static checkForCreeps(id){
             for(var sLeader in Memory.operations[id].squads){
@@ -128,7 +128,7 @@ module.exports = class{
                             }
                         }
                     }
-                }
+            
             }else{
                 out = false;
             }
