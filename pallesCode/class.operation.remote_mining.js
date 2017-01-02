@@ -728,14 +728,7 @@ module.exports = class{
                           creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_CONTAINER);
                         }
                     }
-                }else if(rampart.length == 0 && creep.carry.energy>35){
-                    if (containerConstruction[0] != null){
-                        if (creep.build(containerConstruction[0]) == ERR_NOT_IN_RANGE){
-                            creep.build(containerConstruction[0]);
-                        }else if(creep.room.find(FIND_STRUCTURE_KEEPER_LAIR).length >0 ){
-                            creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_RAMPART);
-                        }
-                    }
+                
 
 
                 }else if(container.length){ // DROP ENERGY
