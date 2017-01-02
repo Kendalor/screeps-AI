@@ -737,7 +737,7 @@ module.exports = class{
                           creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_CONTAINER);
                         }
                     }
-                
+
 
 
                 }else if(container.length){ // DROP ENERGY
