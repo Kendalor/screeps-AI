@@ -8,6 +8,7 @@ var devAidOperation = require('class.operation.developmentAid');
 var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteBuildOperation = require('class.operation.remote_build');
 var penetrationOperation = require('class.operation.penetration');
+var defendOperation = require('class.operation.defend');
 
 module.exports = {
 
@@ -51,6 +52,9 @@ module.exports = {
 				case 'penetration':
 					penetrationOperation.run(id);
 					break;
+                case 'defend':
+                    defendOperation.run(id);
+                    break;
 
             }
 

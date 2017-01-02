@@ -8,6 +8,7 @@ var devAidOperation = require('class.operation.developmentAid');
 var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteBuildOperation = require('class.operation.remote_build');
 var penetrationOperation = require('class.operation.penetration');
+var defendOperation = require('class.operation.defend');
 
 module.exports = {
 
@@ -15,9 +16,11 @@ module.exports = {
     run: function() {
         //Travel to Location
         for(var flag in Game.flags){
-            if(Game.flags[flag].color == COLOR_RED){
+            if(Game.flags[flag].color == COLOR_RED && Game.flags[flag].secondaryColor == COLOR_RED){
 
                 attackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+            }else if(Game.flags[flag].color == COLOR_RED && Game.flags[flag].secondaryColor == COLOR_BLUE){
+                defendOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
             }else if(Game.flags[flag].color == COLOR_WHITE && Game.flags[flag].secondaryColor == COLOR_WHITE){
                 scoutingOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
             }else if(Game.flags[flag].color == COLOR_WHITE && Game.flags[flag].secondaryColor == COLOR_GREY){

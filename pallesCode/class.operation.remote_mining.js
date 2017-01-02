@@ -20,8 +20,6 @@ module.exports = class{
                             this.buildAndRunCreeps(id);
                             break;
                         case 'Mining':
-                            //PALLES FUNKTION HIER
-                            //CREEP SPAWNING
                             this.buildAndRunCreeps(id);
                             break;
                     }
