@@ -7,6 +7,7 @@ var colonizeOperation = require('class.operation.colonize');
 var devAidOperation = require('class.operation.developmentAid');
 var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteBuildOperation = require('class.operation.remote_build');
+var penetrationOperation = require('class.operation.penetration');
 
 module.exports = {
 
@@ -43,6 +44,11 @@ module.exports = {
             }
             else if(Game.flags[flag].color == COLOR_BLUE && Game.flags[flag].secondaryColor == COLOR_BLUE){
                 remoteMiningOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+
+            }
+			
+			else if(Game.flags[flag].color == COLOR_RED && Game.flags[flag].secondaryColor == COLOR_BLUE){
+                penetrationOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
             }
         }

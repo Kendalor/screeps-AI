@@ -99,7 +99,7 @@ module.exports = {
 	
 	/** @param {towerList} towerList **/
 	towerRepair: function(towerList){
-		var offCooldown = Game.time % 5 == 0;
+		var offCooldown = Game.time % 10 == 0;
 		var tower = towerList;
 		if (tower.length > 0){
 			var spawnHasEnoughEnergy = (tower[0].room.energyAvailable == tower[0].room.energyCapacityAvailable && tower[0].room.energyAvailable > 300)
