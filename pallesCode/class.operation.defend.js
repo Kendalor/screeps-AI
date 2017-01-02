@@ -34,13 +34,15 @@ module.exports = class{
             }
             for(var sLeader in Memory.operations[id].squads){
                 for(var cr in Memory.operations[id].squads[sLeader]){
+
                     if(!Game.creeps[cr].spawning){
-                        Game.creeps[cr].moveTo(sLeader);
+                        Game.creeps[cr].moveTo(Game.creeps[sLeader]);
                         Game.creeps[cr].heal(sLeader);
                     }
                 }
-                if(!Game.creeps[cr].spawning){
-                        Game.creeps[sLeader].moveTo(Memory.operations.rallyPoint);
+                if(!Game.creeps[sLeader].spawning){
+
+                        Game.creeps[sLeader].moveTo(Game.getObjectById(Memory.operations[id].rallyPoint));
                 }
             }
         }
@@ -89,13 +91,13 @@ module.exports = class{
 
 
         static buildCreeps(id){
-            if(Object.keys(Memory.operations[id].squads).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
+            if(Object.keys(Memory.operations[id].squads).length < Memory.operations[id].size){
                 var creep_body=Memory.operations[id].default_Abody;
                 //console.log('Spawning');
                 //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
                 if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
                     var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
-                    Memory.operations[id].squads[name]= {};
+                    Memory.operations[id].squads[name]= [];
                     console.log('Did spawn creep '+name);
                 }
 
@@ -105,8 +107,13 @@ module.exports = class{
                     if(Object.keys(Memory.operations[id].squads[sLeader]).length < Memory.operations[id].healers){
                         if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'healer', operation: id, Leader: sLeader, target: Memory.operations[id].flagName}) == OK){
                             var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'healer', operation_id: id, Leader: sLeader, target: Memory.operations[id].flagName});
-                            Memory.operations[id].squads[sLeader].push(name);
                             console.log('Did spawn creep '+name);
+                            var list=Memory.operations[id].squads[sLeader];
+                            console.log(list);
+                            list.push(name);
+                            console.log(list);
+                            console.log(Memory.operations[id].squads[sLeader].push(name));
+
                         }
                     }
                 }
@@ -128,7 +135,7 @@ module.exports = class{
                             }
                         }
                     }
-            
+
             }else{
                 out = false;
             }
@@ -214,7 +221,7 @@ module.exports = class{
                 Memory.operations[this.id].default_Hbody=[MOVE,HEAL]; //TEST
                 Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
                 Memory.operations[this.id].status='assembling';
-                Memory.operations[this.id].squad= {};
+                Memory.operations[this.id].squads= {};
                 Memory.operations[this.id].rallyPoint=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
 
 
