@@ -85,6 +85,7 @@ module.exports = {
 				  if(!spawn.room.memory.sources[id].requiredCarryParts){
 					  autoMemory.resetRoomMemory(spawn.room);
 				  }
+				//console.log(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts))
                 spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true, job: 'idle', targetId: null});
                 found = false;
               }
@@ -143,12 +144,21 @@ module.exports = {
     if (spawn.room.controller.level > 1)
       workParts = 0
     var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/3)/50)),parseInt(Math.ceil(carryCap/2)));
-    var carryParts = parseInt(moveParts*2);//Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),carryCap);
+    var carryParts = parseInt(moveParts*2);
 	
-	if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
-	if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.energyAvailable < energyCap) {moveParts=2;carryParts=1;workParts=1;}
-	
-	return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
+	if (energyCap < 500) {
+		moveParts=2;carryParts=1;workParts=1;
+		return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
+	}else if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.energyAvailable < energyCap) {
+		moveParts=2;carryParts=1;workParts=1;
+		return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
+	}else{
+		var partArray = [];
+		for (let i = 0; i < moveParts; i++){
+			partArray = partArray.concat([CARRY,CARRY,MOVE]);
+		}
+		return partArray;
+	}
   },
   maintancePreset: function(spawn){
     var energyCap = spawn.room.energyCapacityAvailable;

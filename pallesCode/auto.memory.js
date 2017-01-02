@@ -44,31 +44,6 @@ module.exports = {
     }
   },
   
-  checkRoomMemory: function(room){
-    var sources = Game.rooms[room.name].memory.sources;
-    for (i in sources) {
-      if (sources[i].containerPos != undefined){
-        var containerPos = sources[i].containerPos;
-        var container = _.filter(FIND_STRUCTURES, (struct) => struct.type == STRUCTURE_CONTAINER && struct.pos.x == containerPos.x && struct.pos.y == containerPos.y)
-        var containerExists = container.length;
-        if (containerExists){
-          if(!room.memory.container){
-            room.memory.container = {};
-          }
-          console.log("1");
-          if(!room.memory.container[container.id]){
-            container.memory = room.memory.container[container.id] = {}
-            container.memory.type = 'sourceContainer';
-            console.log("2");
-          }
-        }
-        else if (room.controller.level > 1){
-          room.createConstructionSite(containerPos.x,containerPos.y,STRUCTURE_CONTAINER);
-        }
-      }
-    }
-  },
-  
   checkRoomMemoryBackup: function(room){
     var sources = Game.rooms[room.name].memory.sources;
     for (i in sources) {
@@ -118,7 +93,7 @@ module.exports = {
         source.memory.containerPos.x = pathArray[0].x;
         source.memory.containerPos.y = pathArray[0].y;
         source.memory.containerPos.roomName = source.room.name;
-		source.memory.requiredCarryParts = Math.ceil((pathArray.length+5) * 20/50);
+		source.memory.requiredCarryParts = Math.ceil((pathArray.length) * 2/5)+1;
         for (var j=1;j<pathArray.length;j++){
         if (room.lookForAt(LOOK_TERRAIN,pathArray[j].x,pathArray[j].y) == "swamp")
           source.room.createConstructionSite(pathArray[j].x,pathArray[j].y,STRUCTURE_ROAD);
