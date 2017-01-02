@@ -63,9 +63,12 @@ module.exports = {
         case 0: //miner
           if(minerAmount < Object.keys(sources).length){
             for(id in sources){
+			  if(!spawn.room.memory.sources[id].requiredCarryParts){
+				autoMemory.resetRoomMemory(spawn.room);
+			  }
               var found = true;
               //console.log("miner: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
-              if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner' && creep.ticksToLive > 24}).length == 0 && found){
+              if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner' && creep.ticksToLive > 24+2*spawn.room.memory.sources[id].requiredCarryParts}).length == 0 && found){
                 spawn.createCreep(this.minerPreset(spawn), undefined, {role: creepRole[0].name, source: id, spawn: true,job: 'idle', targetId: null, containerId: null});
                 found = false;
               }
@@ -83,7 +86,7 @@ module.exports = {
 			  }
               var found = true;
 			  //console.log("hauler: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}));
-              if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive > (6+3*spawn.room.memory.sources[id].requiredCarryParts) }).length == 0 && found){
+              if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive > (6+8*spawn.room.memory.sources[id].requiredCarryParts) }).length == 0 && found){
 				  
 				//console.log(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts))
                 spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true, job: 'idle', targetId: null});

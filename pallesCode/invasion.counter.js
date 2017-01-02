@@ -1,6 +1,6 @@
 var WHITELIST = {'Cade' : true,'Kendalor' : true,'Palle' : true};
 var LOG_COOLDOWN = 10;
-var minStructureHits = 1000;
+var MIN_DEF_STRUCTURE_HITS = 5000;
 
 
 module.exports = {
@@ -79,11 +79,13 @@ module.exports = {
 		var firstPriority = enemyList.filter( (hostile) =>
 			WHITELIST[hostile.owner.username] == undefined 
 			&& hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
-			&& hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0);
+			&& hostile.body.filter((body) => body.type == ATTACK || body.type == RANGED_ATTACK).length > 0);
 		var secondPriority = enemyList.filter( (hostile) =>
 			WHITELIST[hostile.owner.username] == undefined 
 			&& hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
 			&& hostile.body.filter((body) => body.type == 'claim' || body.type == 'work').length > 0); 
+		if (towerList.length > 0 && firstPriority.length > 0 && !room.memory.underAttack) room.memory.underAttack = true; //Set Memory Variable underAttack
+		else if (towerList.length > 0) delete tower[0].room.memory.underAttack;
 		for(var i in tower){
 			if(tower[i] != null) {
 				var closestHostile = tower[i].pos.findClosestByRange(firstPriority);
@@ -97,29 +99,32 @@ module.exports = {
 	
 	/** @param {towerList} towerList **/
 	towerRepair: function(towerList){
-		var offCooldown = Game.time % 10 == 0;
+		var offCooldown = Game.time % 5 == 0;
 		var tower = towerList;
 		if (tower.length > 0){
 			var spawnHasEnoughEnergy = (tower[0].room.energyAvailable == tower[0].room.energyCapacityAvailable && tower[0].room.energyAvailable > 300)
 			if (spawnHasEnoughEnergy){
-				if (!tower[0].room.memory.structureHitsMin || tower[0].room.memory.structureHitsMin < minStructureHits){
-					tower[0].room.memory.structureHitsMin = minStructureHits;
+				if (!tower[0].room.memory.structureHitsMin || tower[0].room.memory.structureHitsMin < MIN_DEF_STRUCTURE_HITS){
+					tower[0].room.memory.structureHitsMin = MIN_DEF_STRUCTURE_HITS;
 				}
 				var minHits = tower[0].room.memory.structureHitsMin;
-				var closestDamagedStructure = tower[0].pos.findClosestByRange(FIND_STRUCTURES, { // FIND NON DEFENSE STRUCTURES
-					filter: (structure) => (structure.hits < structure.hitsMax-1000 && structure.structureType != STRUCTURE_RAMPART && structure.structureType != STRUCTURE_WALL)
-				});
+				var closestDamagedStructure = undefined;
 				if(!closestDamagedStructure){
-					closestDamagedStructure = tower[0].pos.findClosestByRange(FIND_STRUCTURES, { // FIND BAD SHAPE RAMPARTS
-					filter: (structure) => (structure.hits < minStructureHits && (structure.structureType == STRUCTURE_RAMPART))// && structure.structureType != STRUCTURE_WALL)
+					closestDamagedStructure = tower[0].pos.findClosestByRange(FIND_STRUCTURES, { // FIND REALLY BAD SHAPE RAMPARTS
+					filter: (structure) => (structure.hits < MIN_DEF_STRUCTURE_HITS && (structure.structureType == STRUCTURE_RAMPART))
 					});
-					minHits = minStructureHits;
+					minHits = MIN_DEF_STRUCTURE_HITS;
 				}
 				if(!closestDamagedStructure){
-					closestDamagedStructure = tower[0].pos.findClosestByRange(FIND_STRUCTURES, { // FIND BAD SHAPE WALLS
-					filter: (structure) => (structure.hits < minStructureHits && (structure.structureType == STRUCTURE_WALL))// && structure.structureType != STRUCTURE_WALL)
+					closestDamagedStructure = tower[0].pos.findClosestByRange(FIND_STRUCTURES, { // FIND REALLY BAD SHAPE WALLS
+					filter: (structure) => (structure.hits < MIN_DEF_STRUCTURE_HITS && (structure.structureType == STRUCTURE_WALL))
 					});
-					minHits = minStructureHits;
+					minHits = MIN_DEF_STRUCTURE_HITS;
+				}
+				if(!closestDamagedStructure){
+					closestDamagedStructure = tower[0].pos.findClosestByRange(FIND_STRUCTURES, { // FIND NON DEFENSE STRUCTURES
+						filter: (structure) => (structure.hits < structure.hitsMax-1000 && structure.structureType != STRUCTURE_RAMPART && structure.structureType != STRUCTURE_WALL)
+					});
 				}
 				if(!closestDamagedStructure){
 					closestDamagedStructure = tower[0].pos.findClosestByRange(FIND_STRUCTURES, { // FIND RAMPARTS
@@ -138,7 +143,7 @@ module.exports = {
 						tower[i].repair(closestDamagedStructure); // ACTUALLY REPAIR SOMETHING
 					}
 					else if(tower[i].room.memory.structureHitsMin < 300000000 && offCooldown){ 
-						tower[i].room.memory.structureHitsMin += minStructureHits; // INCREASE THE REPAIR THRESHOLD FOR DEFENSE STRUCTURES
+						tower[i].room.memory.structureHitsMin += MIN_DEF_STRUCTURE_HITS; // INCREASE THE REPAIR THRESHOLD FOR DEFENSE STRUCTURES
 					}
 				}
 			}

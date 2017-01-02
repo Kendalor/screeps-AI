@@ -271,7 +271,7 @@ module.exports = {
   },
   
   salvage: function(creep) {
-    if (creep.memory.job == 'idle' && creep.carry.energy <= creep.carryCapacity/2){
+    if (!creep.room.memory.underAttack && creep.memory.job == 'idle' && creep.carry.energy <= creep.carryCapacity/2){
       var salvage = creep.pos.findClosestByPath(FIND_DROPPED_ENERGY, {filter: (s) => s.energy > creep.carryCapacity && creep.room.name == s.room.name});
       if (salvage != null){
         this.anounceJob(creep,'salvage');
@@ -289,7 +289,7 @@ module.exports = {
         creep.memory.targetId = null;
       }
     }
-    if(creep.memory.job == 'salvage' && (creep.memory.targetId == null || creep.carry.energy > 0)){
+    if(creep.memory.job == 'salvage' && (creep.room.memory.underAttack == true || creep.memory.targetId == null || creep.carry.energy > 0)){
       this.idle(creep);
     }
   },
@@ -395,8 +395,8 @@ module.exports = {
      if(creep.carry.energy > 0 && creep.memory.job == 'idle'){
       var target_repair = creep.pos.findClosestByPath(FIND_STRUCTURES, {
                             filter: (structure) => (structure.room.name == creep.room.name && structure.hits < structure.hitsMax-1500 && structure.structureType != STRUCTURE_WALL && structure.structureType != STRUCTURE_RAMPART) ||
-                            (structure.room.name == creep.room.name && structure.structureType == STRUCTURE_RAMPART && structure.hits < 1000*Game.spawns['Spawn1'].room.controller.level && creep.room.controller.level < 3) ||
-                            (structure.room.name == creep.room.name && structure.structureType == STRUCTURE_WALL && structure.hits < 1000*Game.spawns['Spawn1'].room.controller.level && creep.room.controller.level < 3)
+                            (structure.room.name == creep.room.name && structure.structureType == STRUCTURE_RAMPART && structure.hits < 5000 && creep.room.controller.level > 2) ||
+                            (structure.room.name == creep.room.name && structure.structureType == STRUCTURE_WALL && structure.hits < 5000 && creep.room.controller.level > 2)
                         });
       if(target_repair != null){
         this.anounceJob(creep,'repair');
