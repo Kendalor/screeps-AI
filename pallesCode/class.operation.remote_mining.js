@@ -143,9 +143,13 @@ module.exports = class{
             for(var i in Memory.operations[id].sources){
                 // HAULER CODE
                 if(!Memory.operations[id].sources[i].hauler){ //DOES THIS SOURCE HAVE A MINER
-                    // 1x WORK, 18 CARRY = 900 capacity, 10 MOVE = 1tile/tick on roads if full COST= 2000
-                    if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'hauling', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'hauling', operation_id: id, source_id: i});
+					var spawn = Game.getObjectById(Memory.operations[id].nearest_spawnId)
+                    // 1x WORK, 18 CARRY = 900 capacity, 10 MOVE = 1tile/tick on roads if full COST= 1500
+					var body = [WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+					// 1x WORK, 15 CARRY = 550 capacity, 8 MOVE = 1tile/tick on roads if full COST= 1250
+					if (spawn.room.energyCapacityAvailable < 2000) body = [CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,MOVE,WORK];
+                    if(spawn.canCreateCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=spawn.createCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: i});
                         Memory.operations[id].sources[i].hauler=name;
                     }
                 }else if(!Game.creeps[Memory.operations[id].sources[i].hauler]){
@@ -196,9 +200,9 @@ module.exports = class{
                 // MINER CODE
                 if(!Memory.operations[id].sources[i].miner){ //DOES THIS SOURCE HAVE A MINER
                     // 7x WORK ( to make up for the walking distance ) , 1 CARRY,and 7 MOVE to assure walk speed = 1/tick COST = 1150
-
-                    if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i});
+					var spawn = Game.getObjectById(Memory.operations[id].nearest_spawnId)
+                    if(spawn.canCreateCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=spawn.createCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i});
                         Memory.operations[id].sources[i].miner=name;
                     }
                 }else if(!Game.creeps[Memory.operations[id].sources[i].miner]){
@@ -232,10 +236,13 @@ module.exports = class{
                 if(Object.keys(Memory.operations[id].sources[i].haulers).length < Memory.operations[id].sources[i].min_haulers){
                 //console.log('Spawning');
                 //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
-                    var body=[WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
-
-                    if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
-                            var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: i});
+					var spawn = Game.getObjectById(Memory.operations[id].nearest_spawnId)
+                    // 1x WORK, 18 CARRY = 900 capacity, 10 MOVE = 1tile/tick on roads if full COST= 1500
+					var body = [WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+					// 1x WORK, 15 CARRY = 550 capacity, 8 MOVE = 1tile/tick on roads if full COST= 1250
+					if (spawn.room.energyCapacityAvailable < 2000) body = [CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,MOVE,WORK];
+                    if(spawn.canCreateCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
+                            var name=spawn.createCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: i});
                             Memory.operations[id].sources[i].haulers[name]={};
                     }
 
@@ -701,7 +708,9 @@ module.exports = class{
             if(creep.carry.energy < creep.carryCapacity){
                 var source = Game.getObjectById(creep.memory.source_id);
                 var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName];
-                if(creep.room.name != pos.roomName){
+				if (creep.room.storage != undefined){
+					creep.moveTo(flag,{reusePath: 5,ignoreCreeps: false});
+                }else if(creep.room.name != pos.roomName){
                     creep.moveTo(flag,{reusePath: 30,ignoreCreeps: true});
                 }else if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
                     creep.moveTo(source);
