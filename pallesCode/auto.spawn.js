@@ -31,9 +31,12 @@ module.exports = {
                     +"\nDefender :"+defenderAmount+" "+this.defenderPreset(spawn));
       }
       
-      if (spawn.room.storage != undefined) {
-		if (spawn.room.controller.level == 1)maintanceUnits = 3*minerAmount;
-		else maintanceUnits = 3*minerAmount;
+      if (spawn.room.storage == undefined) {
+		if (spawn.room.controller.level == 1){
+		    maintanceUnits = 3*minerAmount;
+		}else{
+		    maintanceUnits = 3*minerAmount;
+		}
 	  }else{
 	    maintanceUnits = 1+parseInt(Object.keys(spawn.room.find(FIND_CONSTRUCTION_SITES)).length)/10; // 1 +Constructionsites/10
 
