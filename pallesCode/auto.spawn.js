@@ -53,7 +53,7 @@ module.exports = {
         switch(i) {
           
         case 4: //defender
-        if (spawn.room.find(FIND_HOSTILE_CREEPS, {filter: (hostile) => hostile.owner.username != 'Kendalor' && spawn.room.controller.level <3}).length > 0 && defenderAmount == 0){
+        if (spawn.room.memory.underAttack && defenderAmount == 0){
           spawn.createCreep(this.defenderPreset(spawn), undefined, {role: creepRole[4].name, job: 'idle', targetId: null});
         }
         break;
@@ -130,7 +130,7 @@ module.exports = {
 	
 	if (energyCap >= 950) {moveParts=6;carryParts=1;workParts=6;}
 	if (energyCap < 950) {moveParts=1;carryParts=1;workParts=6;}
-	if (energyCap < 700) {moveParts=1;carryParts=1;workParts=5;}
+	if (energyCap < 800) {moveParts=1;carryParts=1;workParts=5;}
 	if (energyCap < 700) {moveParts=1;carryParts=1;workParts=4;}
 	if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
 	
@@ -185,7 +185,13 @@ module.exports = {
     var moveParts = 2;
     var attackParts = 2;
     var toughParts = 0;
+	
+	if (energyCap >= 1050) {moveParts=5;toughParts=0;attackParts=10;}
+	if (energyCap < 950) {moveParts=4;toughParts=0;attackParts=8;}
+	if (energyCap < 800) {moveParts=4;toughParts=0;attackParts=7;}
+	if (energyCap < 700) {moveParts=3;toughParts=0;attackParts=6;}
 	if (energyCap < 500) {moveParts=2;toughParts=0;attackParts=2;}
+	
 	if (toughParts > 0){
 		return Array(toughParts).fill(TOUGH).concat(Array(moveParts).fill(MOVE)).concat(Array(attackParts).fill(ATTACK));
 	}
