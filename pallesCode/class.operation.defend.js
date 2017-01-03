@@ -59,6 +59,8 @@ module.exports = class{
             for(var sLeader in Memory.operations[id].squads){
                 creep=Game.creeps[sLeader];
                 for(var cr in Memory.operations[id].squads[sLeader]){
+					if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name) // Just in case if leader is blocking the path, leave the edge of the map
+						this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
                     Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
                     err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
 
@@ -66,7 +68,7 @@ module.exports = class{
                         wait=true;
                     }
                 }
-                moving=(creep.pos.x == 49 || creep.pos.y == 49 || creep.pos.x == 0 || creep.pos.y == 0);
+                moving=(creep.pos.x >= 48 || creep.pos.y >= 48 || creep.pos.x <= 1 || creep.pos.y <= 1); // In some cases leader blocks followers (e.g. small passage or corner)
                 if(!wait){
                     Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                 }else if(moving){
@@ -88,6 +90,8 @@ module.exports = class{
                 for(var sLeader in Memory.operations[id].squads){
 
                     for(var cr in Memory.operations[id].squads[sLeader]){
+						if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name) // Just in case if leader is blocking the path, leave the edge of the map
+							this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
                         Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
                         err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
                         if(err == ERR_NOT_IN_RANGE){
@@ -102,6 +106,7 @@ module.exports = class{
                         //console.log(enemies);
                         if(enemies == undefined){
                             enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
+							//enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_STRUCTURES,{filter: (structure) => (structure.structureType == STRUCTURE_WALL)}); // ALTERNATIVE FOR DEMOLISHING WALLS
                             console.log(enemies);
                         }
                         if(enemies !=undefined){
@@ -113,6 +118,7 @@ module.exports = class{
                         }
                     }
                 }
+				//if(Game.flags[Memory.operations[id].flagName].room.name != Game.creeps[sLeader].room.name){ // If you want to avoid combat and just wanna move on.
                 if(enemies == undefined){
                     Memory.operations[id].status='traveling';
                 }
@@ -324,7 +330,33 @@ module.exports = class{
             }
         }
 
-
+		static creepLeaveBorder(creep){
+			if (creep.pos.x == 0){
+				switch(Game.time % 3){
+					case 0:	creep.move(TOP_RIGHT); break;
+					case 1: creep.move(RIGHT); break;
+					case 2: creep.move(BOTTOM_RIGHT); break;
+				}
+			}else if(creep.pos.y == 0){
+				switch(Game.time % 3){
+					case 0:	creep.move(BOTTOM_RIGHT); break;
+					case 1: creep.move(BOTTOM); break;
+					case 2: creep.move(BOTTOM_LEFT); break;
+				}
+			}else if(creep.pos.x == 49){
+				switch(Game.time % 3){
+					case 0:	creep.move(BOTTOM_LEFT); break;
+					case 1: creep.move(LEFT); break;
+					case 2: creep.move(TOP_LEFT); break;
+				}
+			}else if(creep.pos.y == 49){
+				switch(Game.time % 3){
+					case 0:	creep.move(TOP_LEFT); break;
+					case 1: creep.move(TOP); break;
+					case 2: creep.move(TOP_RIGHT); break;
+				}
+			}
+		}
 
 
 
