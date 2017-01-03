@@ -105,9 +105,9 @@ module.exports = class{
                         //console.log(enemies);
                         if(enemies == undefined){
                             enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
-							//enemies=Game.creeps[sLeader].room.find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_WALL}); // ALTERNATIVE FOR DEMOLISHING WALLS
+							//enemies=Game.creeps[sLeader].room.find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_WALL}); // ALTERNATIVE FOR DEMOLISHING WALLS - NOT WORKING PROPERLY ATM
 							Game.creeps[sLeader].say(enemies);
-                            console.log(enemies);
+                            //console.log(enemies);
                         }
                         if(enemies !=undefined){
                             target=Game.creeps[sLeader].pos.findClosestByPath(enemies);
