@@ -271,8 +271,8 @@ module.exports = class{
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='defend';
-                Memory.operations[this.id].size=1;
-                Memory.operations[this.id].healers=2;
+                Memory.operations[this.id].size=1; // NUMBER OF SQUADS ATTACKER = SQUAD LEADER
+                Memory.operations[this.id].healers=2; // NUMBER OF HEALERS PER SQUAD
                 //COST 12xMOVE = 600 + 12 ATTACK = 960 =1560
                 Memory.operations[this.id].default_Abody=[MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK];// COST
                 //Memory.operations[this.id].default_Abody=[MOVE,ATTACK]; //TEST
