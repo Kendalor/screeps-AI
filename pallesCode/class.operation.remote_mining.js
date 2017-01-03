@@ -175,6 +175,7 @@ module.exports = class{
                         delete Memory.creeps[Memory.operations[id].sources[i].builder];
                         delete Memory.operations[id].sources[i].builder;
                     }else if(!Game.creeps[Memory.operations[id].sources[i].builder].spawning){
+                        console.log('Run Build for '+Memory.operations[id].sources[i].builder);
                         this.creepBuild(Game.creeps[Memory.operations[id].sources[i].builder]);
 
                     }
@@ -442,7 +443,7 @@ module.exports = class{
                     if(target !=null){
                         creep.memory.targetId=target.id;
                     }else{
-                        creep.moveTo(targets[0]);
+                        creep.moveTo(target);
                     }
 
                     //console.log(JSON.stringify(creep.pos.findClosestByRange(targets).id));
@@ -455,17 +456,19 @@ module.exports = class{
                     return this.creepBuild(creep);
                 }
                 if(target.structureType == STRUCTURE_CONTAINER){
+
                     var err = creep.withdraw(target,RESOURCE_ENERGY);
                     if(err == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                        creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                     }else if (err == ERR_FULL){
                         creep.memory.targetId = null;
                         return this.creepBuild(creep);
                     }
                 }else{
+
                     var err = creep.build(target);
                     if(err == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                        creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                     }else if (err == ERR_INVALID_TARGET || err == ERR_NOT_ENOUGH_RESOURCES){
                         creep.memory.targetId = null;
                         return this.creepBuild(creep);

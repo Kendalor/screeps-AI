@@ -190,10 +190,11 @@ module.exports = class{
               && hostile.pos.x > 0 && hostile.pos.y > 0 && hostile.pos.x < 49 && hostile.pos.y < 49 });
             var closestStr =creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => (str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN || str.structureType == STRUCTURE_EXTENSION) && WHITELIST[str.owner.username] == undefined, ignoreDestructibleStructures: true});
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER && WHITELIST[str.owner.username] == undefined,ignoreDestructibleStructures: true});
-            //console.log(closestHostile);
+            var hostileConstruction=creep.pos.findClosestByRange(FIND_HOSTILE_CONSTRUCTION_SITES,{filter: (str) => WHITELIST[str.owner.username] == undefined,ignoreDestructibleStructures: true});
+            //console.log(hostileConstruction);
             if(priorityTarget[0]){
                 //console.log(creep.name);
-                //console.log(priorityTarget);
+                console.log(priorityTarget);
                 //console.log(creep.attack(priorityTarget));
                 if(creep.attack(priorityTarget[0]) == ERR_NOT_IN_RANGE){
                         creep.moveTo(priorityTarget[0],{ignoreDestructibleStructures: true});
@@ -214,7 +215,7 @@ module.exports = class{
                 if(creep.attack(closestHostile_all) == ERR_NOT_IN_RANGE){
                     creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
-                    creep.say('attacking 1');
+                    creep.say('attacking 2');
                 }
 
             }else if (creep.hits < creep.hitsMax){
@@ -225,7 +226,14 @@ module.exports = class{
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
                     creep.moveTo(closestStr,{ignoreDestructibleStructures: true});
                     creep.heal(creep);
-                    creep.say('attacking 2');
+                    creep.say('attacking 3');
+                }
+            }else if(hostileConstruction != null){
+
+                if(creep.attack(hostileConstruction) == ERR_NOT_IN_RANGE){
+                    creep.moveTo(hostileConstruction,{ignoreDestructibleStructures: true});
+                    creep.heal(creep);
+                    creep.say('attacking 4');
                 }
             }else{
                 //console.log('TEST3');
