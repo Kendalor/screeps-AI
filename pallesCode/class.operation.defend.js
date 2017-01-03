@@ -17,6 +17,7 @@ module.exports = class{
                     console.log('Run Travel');
                     break;
                 case 'combat':
+                    this.combat(id);
                     break;
                 default:
                     console.log('default');
@@ -53,22 +54,76 @@ module.exports = class{
         static traveling(id){
             var wait=false;
             var err;
+            var moving;
+            var creep;
             for(var sLeader in Memory.operations[id].squads){
+                creep=Game.creeps[sLeader];
                 for(var cr in Memory.operations[id].squads[sLeader]){
-                    console.log(Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]));
-                    err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(sLeader);
+                    Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
+                    err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
+
                     if(err == ERR_NOT_IN_RANGE){
                         wait=true;
                     }
                 }
-                if(!wait && (Game.creeps[sLeader].pos.x > 47 || Game.creeps[sLeader].pos.x < 2 || Game.creeps[sLeader].pos.y > 47 || Game.creeps[sLeader].pos.y < 2)){
+                moving=(creep.pos.x == 49 || creep.pos.y == 49 || creep.pos.x == 0 || creep.pos.y == 0);
+                if(!wait){
+                    Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
+                }else if(moving){
                     Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                 }
                 if(Game.creeps[sLeader].pos.roomName == Memory.operations[id].roomName){
-                    Memory.operations[id].status='attack';
+                    Memory.operations[id].status='combat';
                 }
             }
         }
+
+        static combat(id){
+            this.checkForCreeps(id);
+            var enemies=undefined;
+            var wait=false;
+            var err;
+            var target;
+            if(Object.keys(Memory.operations[id].squads).length > 0){
+                for(var sLeader in Memory.operations[id].squads){
+
+                    for(var cr in Memory.operations[id].squads[sLeader]){
+                        Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
+                        err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
+                        if(err == ERR_NOT_IN_RANGE){
+                            wait=true;
+                        }
+                    }
+                    if(!wait){
+                        Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
+                    }
+                    if(Game.creeps[sLeader].pos.roomName == Memory.operations[id].roomName){
+                        console.log('BUGFIX');
+                        console.log(enemies);
+                        if(enemies == undefined){
+                            enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
+                            console.log(enemies);
+                        }
+                        if(enemies !=undefined){
+                            target=Game.creeps[sLeader].pos.findClosestByPath(enemies);
+                            err=Game.creeps[sLeader].attack(target);
+                            if(err == ERR_NOT_IN_RANGE){
+                                Game.creeps[sLeader].moveTo(target);
+                            }
+                        }
+                    }
+                }
+                if(enemies == undefined){
+                    Memory.operations[id].status='traveling';
+                }
+            }else{
+                Memory.operations[id].status='assembling';
+            }
+
+        }
+        /*
+        TODO: REASSIGN HEALERS HEADLESS HEALERS TO FALL BACK AND ASSIGN THEM A NEW SQUAD
+        */
         static checkForCreeps(id){
             var creepName;
             for(var sLeader in Memory.operations[id].squads){
@@ -76,15 +131,16 @@ module.exports = class{
                 for(var cr in Memory.operations[id].squads[sLeader]){
                     creepName=Memory.operations[id].squads[sLeader][cr]
                     if(!Game.creeps[creepName]){
-                        console.log('Deleted '+cr +'from memory')
+                        console.log('Deleted Healer '+creepName +'from memory')
                         delete Memory.creeps[creepName];
                         Memory.operations[id].squads[sLeader].pop(creepName);
                     }
 
                 }
                 if(!Game.creeps[sLeader]) {
-                        console.log('Deleted '+cr +'from memory')
+                        console.log('Deleted '+ sLeader +' from memory')
                         delete Memory.creeps[sLeader];
+
 
                         for(var cr in Memory.operations[id].squads[sLeader]){
                                 console.log('Deleted '+cr +'from memory')
@@ -92,6 +148,7 @@ module.exports = class{
                                 Game.creeps[creepName].suicide();
                                 delete Memory.creeps[creepName];
                         }
+                        delete Memory.operations[id].squads[sLeader];
                 }
             }
         }
@@ -215,13 +272,13 @@ module.exports = class{
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='defend';
                 Memory.operations[this.id].size=1;
-                Memory.operations[this.id].healers=3;
-                //COST 1800
-                //Memory.operations[this.id].default_Abody=[MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK];// COST
-                Memory.operations[this.id].default_Abody=[MOVE,ATTACK]; //TEST
-                // COST 1800
-                //Memory.operations[this.id].default_Hbody=[MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL];
-                Memory.operations[this.id].default_Hbody=[MOVE,HEAL]; //TEST
+                Memory.operations[this.id].healers=2;
+                //COST 12xMOVE = 600 + 12 ATTACK = 960 =1560
+                Memory.operations[this.id].default_Abody=[MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK];// COST
+                //Memory.operations[this.id].default_Abody=[MOVE,ATTACK]; //TEST
+                // COST 1800 6xHEAL= 1500 + 6xMOVE = 300   == 1800
+                Memory.operations[this.id].default_Hbody=[MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL];
+                //Memory.operations[this.id].default_Hbody=[MOVE,HEAL]; //TEST
                 Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
                 Memory.operations[this.id].status='assembling';
                 Memory.operations[this.id].squads= {};
