@@ -60,18 +60,18 @@ module.exports = class{
             for(var cr in Memory.operations[id].members){
                 if(!Game.creeps[cr].spawning && Game.creeps[cr]){
                     if(Memory.operations[id].assembled==false){
-                        console.log('Running Refresh for'+cr);
+                        //console.log('Running Refresh for'+cr);
                         if(Game.creeps[cr].ticksToLive < 1400){
                             this.refreshTimer(Game.creeps[cr]);
                         }else{
                             this.creepIdle(Game.creeps[cr]);
                         }
                     }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==false){
-                        console.log('Running Travel for '+cr);
+                        //console.log('Running Travel for '+cr);
                         this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
                     }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
-                        console.log('Running Attack for '+cr);
+                        //console.log('Running Attack for '+cr);
                         this.creepAttack(Game.creeps[cr]);
                     }
                 }
