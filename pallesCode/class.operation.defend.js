@@ -98,8 +98,8 @@ module.exports = class{
                         Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                     }
                     if(Game.creeps[sLeader].pos.roomName == Memory.operations[id].roomName){
-                        console.log('BUGFIX');
-                        console.log(enemies);
+                        //console.log('BUGFIX');
+                        //console.log(enemies);
                         if(enemies == undefined){
                             enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
                             console.log(enemies);
