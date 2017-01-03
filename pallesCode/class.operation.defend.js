@@ -60,7 +60,7 @@ module.exports = class{
                 creep=Game.creeps[sLeader];
                 for(var cr in Memory.operations[id].squads[sLeader]){
 					if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name) // Just in case if leader is blocking the path, leave the edge of the map
-						this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
+						this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]],Game.creeps[sLeader].pos);
                     Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
                     err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
 
@@ -74,7 +74,7 @@ module.exports = class{
                 }else if(moving){
                     Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                 }
-                if(Game.creeps[sLeader].pos.roomName == Memory.operations[id].roomName){
+                if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].room.name){ 
                     Memory.operations[id].status='combat';
                 }
             }
@@ -88,10 +88,9 @@ module.exports = class{
             var target;
             if(Object.keys(Memory.operations[id].squads).length > 0){
                 for(var sLeader in Memory.operations[id].squads){
-
                     for(var cr in Memory.operations[id].squads[sLeader]){
 						if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name) // Just in case if leader is blocking the path, leave the edge of the map
-							this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
+							this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]],Game.creeps[sLeader].pos);
                         Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
                         err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
                         if(err == ERR_NOT_IN_RANGE){
@@ -106,7 +105,8 @@ module.exports = class{
                         //console.log(enemies);
                         if(enemies == undefined){
                             enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
-							//enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_STRUCTURES,{filter: (structure) => (structure.structureType == STRUCTURE_WALL)}); // ALTERNATIVE FOR DEMOLISHING WALLS
+							//enemies=Game.creeps[sLeader].room.find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_WALL}); // ALTERNATIVE FOR DEMOLISHING WALLS
+							Game.creeps[sLeader].say(enemies);
                             console.log(enemies);
                         }
                         if(enemies !=undefined){
@@ -330,30 +330,55 @@ module.exports = class{
             }
         }
 
-		static creepLeaveBorder(creep){
+		static creepLeaveBorder(creep,leaderPos){
+			var pos = new RoomPosition(leaderPos.x,leaderPos.y,leaderPos.roomName)
 			if (creep.pos.x == 0){
-				switch(Game.time % 3){
-					case 0:	creep.move(TOP_RIGHT); break;
-					case 1: creep.move(RIGHT); break;
-					case 2: creep.move(BOTTOM_RIGHT); break;
+				switch(creep.pos.y - leaderPos.y){
+					case -1: creep.move(RIGHT); break;
+					case  0: 
+						pos.y = pos.y-1;
+						if (creep.moveTo(pos) == ERR_NO_PATH){
+							pos.y = pos.y+2;
+							creep.moveTo(pos);
+						}
+					break;
+					case  1: creep.move(RIGHT); break;
 				}
 			}else if(creep.pos.y == 0){
-				switch(Game.time % 3){
-					case 0:	creep.move(BOTTOM_RIGHT); break;
-					case 1: creep.move(BOTTOM); break;
-					case 2: creep.move(BOTTOM_LEFT); break;
+				switch(creep.pos.x - leaderPos.x){
+					case -1: creep.move(BOTTOM); break;
+					case  0: 
+						pos.x = pos.x-1;
+						if (creep.moveTo(pos) == ERR_NO_PATH){
+							pos.x = pos.x+2;
+							creep.moveTo(pos);
+						}
+					break;
+					case  1: creep.move(BOTTOM); break;
 				}
 			}else if(creep.pos.x == 49){
-				switch(Game.time % 3){
-					case 0:	creep.move(BOTTOM_LEFT); break;
+				switch(creep.pos.y - leaderPos.y){
+					case -1:	creep.move(LEFT); break;
+					case  0: 
+						pos.y = pos.y-1;
+						if (creep.moveTo(pos) == ERR_NO_PATH){
+							pos.y = pos.y+2;
+							creep.moveTo(pos);
+						}
+					break;
 					case 1: creep.move(LEFT); break;
-					case 2: creep.move(TOP_LEFT); break;
 				}
 			}else if(creep.pos.y == 49){
-				switch(Game.time % 3){
-					case 0:	creep.move(TOP_LEFT); break;
-					case 1: creep.move(TOP); break;
-					case 2: creep.move(TOP_RIGHT); break;
+				switch(creep.pos.x - leaderPos.x){
+					case -1: creep.move(TOP); break;
+					case  0: 
+						pos.x = pos.x-1;
+						if (creep.moveTo(pos) == ERR_NO_PATH){
+							pos.x = pos.x+2;
+							creep.moveTo(pos);
+						}
+					break;
+					case  1: creep.move(TOP); break;
 				}
 			}
 		}
