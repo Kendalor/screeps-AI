@@ -42,8 +42,12 @@ module.exports = {
 	}
 	if (enemies.length > 0) {
 		this.towerDefense(towers,enemies);
+		if (!room.memory.underAttack)
+			room.memory.underAttack == true; //Set Memory Variable underAttack
 	}else{
 		this.towerRepair(towers);
+		if (room.memory.underAttack)
+			delete room.memory.underAttack;
 	}
   },
   
@@ -84,8 +88,6 @@ module.exports = {
 			WHITELIST[hostile.owner.username] == undefined 
 			&& hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
 			&& hostile.body.filter((body) => body.type == 'claim' || body.type == 'work').length > 0); 
-		if (towerList.length > 0 && firstPriority.length > 0 && !tower[0].room.memory.underAttack) tower[0].room.memory.underAttack = true; //Set Memory Variable underAttack
-		else if (towerList.length > 0) delete tower[0].room.memory.underAttack;
 		for(var i in tower){
 			if(tower[i] != null) {
 				var closestHostile = tower[i].pos.findClosestByRange(firstPriority);
