@@ -58,6 +58,7 @@ module.exports = {
   initRoomMemory: function(room) {
     var spawn = _.filter(Game.spawns, (spawn) => spawn.room.name == room.name)
     if(!room.memory.sources && spawn.length){//If this room has no sources memory yet
+	  console.log("Initializing room "+room.name);
       room.memory.sources = {}; //Add it
       var sources = room.find(FIND_SOURCES);//Find all sources in the current room
       //var spawn = _.filter(Game.spawns, (spawn) => spawn.room.name == room.name) //Find Room Spawn
