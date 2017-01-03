@@ -12,7 +12,7 @@ module.exports = {
     //for every spawn in the list
     for(var id in spawnList) {
       var spawn = spawnList[id];
-
+        this.roomProfiler(spawn);
       
       if (!spawn.room.memory.activeCreepRoles || !spawn.room.memory.sources){
         autoMemory.resetRoomMemory(spawn.room);
@@ -36,7 +36,7 @@ module.exports = {
 		maintanceUnits = 3*minerAmount;
 		upgradeUnits = 1;
 	  }else{
-	    upgradeUnits = Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-2,0);
+	    upgradeUnits = Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0);
 	    maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.find(FIND_CONSTRUCTION_SITES)).length)/10); // 1 +Constructionsites/10
 	  }
       
@@ -244,6 +244,39 @@ module.exports = {
           pathArrayArray[i] = source.room.createConstructionSite(pathArray[j].x,pathArray[j].y,STRUCTURE_ROAD);
       }
     }
+  },
+
+  roomProfiler: function(spawn){
+    var room = spawn.room.name;
+    if(!Memory.rooms[room].stats){
+        Memory.rooms[room].stats={};
+    }else{
+        if(!Memory.rooms[room].stats.spawns){
+            Memory.rooms[room].stats.spawns ={};
+        }else{
+            if(!Memory.rooms[room].stats.spawns[spawn.name]){
+                Memory.rooms[room].stats.spawns[spawn.name] = {};
+            }
+        }
+
+    }
+
+    if(spawn.spawning != null){
+        if(Game.ticks % 500 == 0){
+            Memory.rooms[room].stats.spawns[spawn.name].utilization=Memory.rooms[room].stats.spawns[spawn.name].ticks_s/1000;
+            Memory.rooms[room].stats.spawns[spawn.name].ticks_s=0;
+        }else{
+            Memory.rooms[room].stats.spawns[spawn.name].ticks_s=Memory.rooms[room].stats.spawns[spawn.name].ticks_s+1;
+        }
+    }else if(spawn.room.energyAvailable < spawn.room.energyCapacityAvailable){
+        if(Game.ticks % 500 == 0){
+            Memory.rooms[room].stats.spawns[spawn.name].waitingForEnergy=Memory.rooms[room].stats.spawns[spawn.name].ticks_e/1000;
+            Memory.rooms[room].stats.spawns[spawn.name].ticks_e=0;
+        }else{
+            Memory.rooms[room].stats.spawns[spawn.name].ticks_e=Memory.rooms[room].stats.spawns[spawn.name].ticks_e+1;
+        }
+    }
+
   }
   
 };
