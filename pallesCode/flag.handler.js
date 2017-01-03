@@ -7,7 +7,6 @@ var colonizeOperation = require('class.operation.colonize');
 var devAidOperation = require('class.operation.developmentAid');
 var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteBuildOperation = require('class.operation.remote_build');
-var penetrationOperation = require('class.operation.penetration');
 var defendOperation = require('class.operation.defend');
 
 module.exports = {
@@ -45,9 +44,6 @@ module.exports = {
 
             }else if (this.colorMatch(flag,COLOR_BLUE,COLOR_BLUE)){ //BLUE/BLUE
                 remoteMiningOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
-
-            }else if (this.colorMatch(flag,COLOR_RED,COLOR_GREEN)){ //RED/GREEN
-                penetrationOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
             }
         }
