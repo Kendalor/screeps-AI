@@ -194,7 +194,7 @@ module.exports = class{
             //console.log(hostileConstruction);
             if(priorityTarget[0]){
                 //console.log(creep.name);
-                console.log(priorityTarget);
+                //console.log(priorityTarget);
                 //console.log(creep.attack(priorityTarget));
                 if(creep.attack(priorityTarget[0]) == ERR_NOT_IN_RANGE){
                         creep.moveTo(priorityTarget[0],{ignoreDestructibleStructures: true});
@@ -212,6 +212,7 @@ module.exports = class{
                     creep.say('attacking 1');
                 }
             }else if(closestHostile_all){
+                //console.log('TEST3');
                 if(creep.attack(closestHostile_all) == ERR_NOT_IN_RANGE){
                     creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
@@ -219,22 +220,19 @@ module.exports = class{
                 }
 
             }else if (creep.hits < creep.hitsMax){
+                //console.log('TEST4');
                 creep.heal(creep);
 
             }else if(closestStr){
-
+                //console.log('TEST5');
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
                     creep.moveTo(closestStr,{ignoreDestructibleStructures: true});
                     creep.heal(creep);
                     creep.say('attacking 3');
                 }
             }else if(hostileConstruction != null){
+                creep.moveTo(hostileConstruction);
 
-                if(creep.attack(hostileConstruction) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(hostileConstruction,{ignoreDestructibleStructures: true});
-                    creep.heal(creep);
-                    creep.say('attacking 4');
-                }
             }else{
                 //console.log('TEST3');
                 creep.memory.reached=false;
