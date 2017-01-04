@@ -1,23 +1,22 @@
-
-
 module.exports = class{
         constructor(){
 
         }
         static run(id){
             //this.checkForInvaders(Game.flags[Memory.operations[id].flagName].room);
-          
-            if (!Memory.operations[id].spawnBuilt && Game.flags[Memory.operations[id].flagName].room.controller.my){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
-              Memory.operations[id].spawn = true; 
-              Game.flags[Memory.operations[id].flagName].room.createConstructionSite(Game.flags[Memory.operations[id].flagName].pos.x,Game.flags[Memory.operations[id].flagName].pos.y,STRUCTURE_SPAWN); 
+            if (!Memory.operations[id].spawnBuilt && Game.flags[Memory.operations[id].flagName].room != undefined){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
+				if(Game.flags[Memory.operations[id].flagName].room.controller.my){
+					Memory.operations[id].spawn = true; 
+					Game.flags[Memory.operations[id].flagName].room.createConstructionSite(Game.flags[Memory.operations[id].flagName].pos.x,Game.flags[Memory.operations[id].flagName].pos.y,STRUCTURE_SPAWN); 
+				}
             }
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt)
-              creep_body = [WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
-            else if(Game.rooms[Memory.operations[id].roomName].controller.my)
-              creep_body = [WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
+              creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
+            else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my)
+				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
             else
-              creep_body = [CLAIM,MOVE,WORK,CARRY];
+              creep_body = [CLAIM,WORK,CARRY,MOVE,MOVE,MOVE];
             
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
