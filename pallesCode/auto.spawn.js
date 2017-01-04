@@ -36,7 +36,7 @@ module.exports = {
 		maintanceUnits = 3*minerAmount;
 		upgradeUnits = 1;
 	  }else{
-	    upgradeUnits = Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0);
+	    upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
 	    maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.find(FIND_CONSTRUCTION_SITES)).length)/10); // 1 +Constructionsites/10
 	  }
       
@@ -104,7 +104,7 @@ module.exports = {
         break;
         
         case 3: //upgrader
-        if(upgraderAmount <= upgradeUnits && spawn.room.storage != undefined && minerAmount == Object.keys(sources).length && haulerAmount == Object.keys(sources).length){
+        if(upgraderAmount < upgradeUnits && spawn.room.storage != undefined && minerAmount == Object.keys(sources).length && haulerAmount == Object.keys(sources).length){
           spawn.createCreep(this.upgraderPreset(spawn), undefined, {role: creepRole[3].name, source: id, spawn:true, job: 'idle', workModules: 15, targetId: null});
         }
         break;
@@ -261,21 +261,19 @@ module.exports = {
 
     }
 
-    if(spawn.spawning != null){
-        if(Game.ticks % 500 == 0){
+
+        if(Game.ticks % 1000 == 0){
             Memory.rooms[room].stats.spawns[spawn.name].utilization=Memory.rooms[room].stats.spawns[spawn.name].ticks_s/1000;
             Memory.rooms[room].stats.spawns[spawn.name].ticks_s=0;
-        }else{
-            Memory.rooms[room].stats.spawns[spawn.name].ticks_s=Memory.rooms[room].stats.spawns[spawn.name].ticks_s+1;
-        }
-    }else if(spawn.room.energyAvailable < spawn.room.energyCapacityAvailable){
-        if(Game.ticks % 500 == 0){
             Memory.rooms[room].stats.spawns[spawn.name].waitingForEnergy=Memory.rooms[room].stats.spawns[spawn.name].ticks_e/1000;
             Memory.rooms[room].stats.spawns[spawn.name].ticks_e=0;
         }else{
-            Memory.rooms[room].stats.spawns[spawn.name].ticks_e=Memory.rooms[room].stats.spawns[spawn.name].ticks_e+1;
+            if(spawn.spawning != null){
+                Memory.rooms[room].stats.spawns[spawn.name].ticks_s=Memory.rooms[room].stats.spawns[spawn.name].ticks_s+1;
+            }else if(spawn.room.energyAvailable < spawn.room.energyCapacityAvailable){
+                Memory.rooms[room].stats.spawns[spawn.name].ticks_e=Memory.rooms[room].stats.spawns[spawn.name].ticks_e+1;
+            }
         }
-    }
 
   }
   
