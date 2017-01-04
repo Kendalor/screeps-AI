@@ -97,7 +97,7 @@ module.exports = class{
                     var source = sources[i];
                     source.memory = Game.rooms[Memory.operations[id].roomName].sources[source.id] = {}; //Create a new empty memory object for this source
                     // GET ACCESSIBLE POSITIONS FOR EACH SOURCE
-                    var positions=Game.rooms[Memory.operations[id].roomName].lookAtArea(25-1,36-1,25+1,36+1,{asArry: true}), (temp) => temp.type == 'terrain' && temp.terrain != 'wall').length
+                    var positions=_.filter(Game.rooms[Memory.operations[id].roomName].lookAtArea(25-1,36-1,25+1,36+1,{asArry: true}), (temp) => temp.type == 'terrain' && temp.terrain != 'wall').length
                     Game.rooms[Memory.operations[id].roomName].sources[source.id].slots=positions;
                     Game.rooms[Memory.operations[id].roomName].sources[source.id].harvesters=[];
                 }
