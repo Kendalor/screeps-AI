@@ -72,7 +72,7 @@ module.exports = class{
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='base';
-                this.initMemory(id);
+                this.initMemory(this.id);
                 console.log(JSON.stringify(Memory.operations[this.id]));
             }
         }
@@ -88,48 +88,53 @@ module.exports = class{
         }
         // INIT ROOM MEMORY FOR EVERYTHING HERE
         static initMemory(id){
+			console.log(!Game.rooms[Memory.operations[id].roomName].sources)
         // SOURCES ( OLD CODE)
-            if(!Game.rooms[Memory.operations[id].roomName].sources){//If this room has no sources memory yet
-                Game.rooms[Memory.operations[id].roomName].sources = {}; //Add it
+            if(!Game.rooms[Memory.operations[id].roomName].memory.sources){//If this room has no sources memory yet
+                Game.rooms[Memory.operations[id].roomName].memory.sources = {}; //Add it
                 var room= Game.rooms[Memory.operations[id].roomName];
                 var sources = room.find(FIND_SOURCES);//Find all sources in the current room
                 for(var i in sources){
                     var source = sources[i];
-                    source.memory = Game.rooms[Memory.operations[id].roomName].sources[source.id] = {}; //Create a new empty memory object for this source
+                    source.memory = Game.rooms[Memory.operations[id].roomName].memory.sources[source.id] = {}; //Create a new empty memory object for this source
                     // GET ACCESSIBLE POSITIONS FOR EACH SOURCE
-                    var positions=_.filter(Game.rooms[Memory.operations[id].roomName].lookAtArea(25-1,36-1,25+1,36+1,{asArry: true}), (temp) => temp.type == 'terrain' && temp.terrain != 'wall').length
-                    Game.rooms[Memory.operations[id].roomName].sources[source.id].slots=positions;
-                    Game.rooms[Memory.operations[id].roomName].sources[source.id].harvesters=[];
+                    var positions=_.filter(Game.rooms[Memory.operations[id].roomName].lookAtArea(source.pos.x-1,source.pos.y-1,source.pos.x+1,source.pos.y+1,{asArry: true}), (temp) => temp.type == 'terrain' && temp.terrain != 'wall').length
+                    Game.rooms[Memory.operations[id].roomName].memory.sources[source.id].slots=positions;
+                    Game.rooms[Memory.operations[id].roomName].memory.sources[source.id].harvesters=[];
                 }
             }
         // SPAWNS
-            if(!Game.rooms[Memory.operations[id].roomName].spawns){//If this room has no sources memory yet
-                Game.rooms[Memory.operations[id].roomName].spawns = {}; //Add it
+            if(!Game.rooms[Memory.operations[id].roomName].memory.spawns){//If this room has no sources memory yet
+                Game.rooms[Memory.operations[id].roomName].memory.spawns = {}; //Add it
                 var room= Game.rooms[Memory.operations[id].roomName];
                 var spawns = room.find(FIND_MY_SPAWNS);//Find all sources in the current room
                 for(var i in spawns){
                     var spawn = spawns[i];
-                    Game.rooms[Memory.operations[id].roomName].spawns[spawn.id] = spawn.memory = {} //Create a new empty memory object for this source
+                    Game.rooms[Memory.operations[id].roomName].memory.spawns[spawn.id] = spawn.memory = {} //Create a new empty memory object for this source
                 }
             }
         // CONSTRUCTION SITES AS ID HASH LIST
-            if(!Game.rooms[Memory.operations[id].roomName].constructionSites){//If this room has no sources memory yet
-                Game.rooms[Memory.operations[id].roomName].constructionSites = {}
+            if(!Game.rooms[Memory.operations[id].roomName].memory.constructionSites){//If this room has no construction sites memory yet
+                Game.rooms[Memory.operations[id].roomName].memory.constructionSites = {}
             }
-        // CREEPS AS LIST WITH NAMES(HASK KEYS)
-            if(!Game.rooms[Memory.operations[id].roomName].creeps){//If this room has no sources memory yet
-                Game.rooms[Memory.operations[id].roomName].creeps = {}
+        // MY CREEPS AS LIST WITH NAMES(HASK KEYS)
+            if(!Game.rooms[Memory.operations[id].roomName].memory.creeps){//If this room has no creep memory yet
+                Game.rooms[Memory.operations[id].roomName].memory.creeps = {}
             }
+		// HOSTILE CREEPS AS LIST WITH NAMES(HASK KEYS)
+			if(!Game.rooms[Memory.operations[id].roomName].memory.hostileCreeps){//If this room has no hostile creep memory yet
+				Game.rooms[Memory.operations[id].roomName].memory.hostileCreeps = {}
+			}
         // BUILDINGS AS ID LIST
-            if(!Game.rooms[Memory.operations[id].roomName].structures){//If this room has no sources memory yet
-                Game.rooms[Memory.operations[id].roomName].structures = {}
+            if(!Game.rooms[Memory.operations[id].roomName].memory.structures){//If this room has no structures memory yet
+                Game.rooms[Memory.operations[id].roomName].memory.structures = {}
             }
 
         // PARAMETERS
-            if(!Game.rooms[Memory.operations[id].roomName].baseSpecs){
-                Game.rooms[Memory.operations[id].roomName].specs = {}
-                Game.rooms[Memory.operations[id].roomName].specs.mode='default';
-                Game.rooms[Memory.operations[id].roomName].specs.security='safe';
+            if(!Game.rooms[Memory.operations[id].roomName].memory.baseSpecs){
+                Game.rooms[Memory.operations[id].roomName].memory.specs = {}
+                Game.rooms[Memory.operations[id].roomName].memory.specs.mode='default';
+                Game.rooms[Memory.operations[id].roomName].memory.specs.security='safe';
             }
         }
 
@@ -139,7 +144,7 @@ module.exports = class{
             var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
             var structures=Game.rooms[Memory.operations[id].roomName].find(FIND_STRUCTURES);
             for(var i in creeps){
-                Game.rooms[Memory.operations[id].roomName].creeps[creeps[i].name]=creeps[i];
+                Game.rooms[Memory.operations[id].roomName].memory.creeps[creeps[i].name]=creeps[i];
 
 
             }

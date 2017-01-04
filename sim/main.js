@@ -16,5 +16,11 @@ module.exports.loop = function () {
     operationsHandler.init();
     operationsHandler.run();
   //  
+  
+  // for testing purposes
+  var sources = Game.rooms['sim'].find(FIND_SOURCES);
+		for (var i in sources){
+			//console.log(sources[i].hasFreeSlots());
+	}
 
 }
