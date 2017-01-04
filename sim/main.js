@@ -13,8 +13,8 @@ module.exports.loop = function () {
 
   
   //Kendalor Code
-
-  operationsHandler.run();
+    operationsHandler.init();
+    operationsHandler.run();
   //  
 
 }
