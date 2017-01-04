@@ -1,4 +1,4 @@
-var scoutingOperation = require('class.operation.scouting');
+var baseOperation = require('class.operation.base');
 
 
 module.exports = {

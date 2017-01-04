@@ -1,13 +1,5 @@
 var scoutingOperation = require('class.operation.scouting');
-var attackOperation = require('class.operation.attack');
-var tankOperation = require('class.operation.tank');
-var thiefOperation = require('class.operation.steal');
-var reserveOperation = require('class.operation.reserve');
-var colonizeOperation = require('class.operation.colonize');
-var devAidOperation = require('class.operation.developmentAid');
-var remoteMiningOperation = require('class.operation.remote_mining');
-var remoteBuildOperation = require('class.operation.remote_build');
-var defendOperation = require('class.operation.defend');
+
 
 module.exports = {
 
