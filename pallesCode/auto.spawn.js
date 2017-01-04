@@ -177,9 +177,11 @@ module.exports = {
     var energyCap = spawn.room.energyCapacityAvailable;
     var workParts = Math.max(1,parseInt(((energyCap-100)/100)));
     if (workParts > 15) workParts = 15;
-    var moveParts = 1;
-    var carryParts= Math.max(parseInt((energyCap-(100*workParts)-50)/50));
+    var carryParts = parseInt((energyCap-(100*workParts)-50)/50);
     if (carryParts > 3) carryParts = 3;
+	//var moveParts = 1;
+	var moveParts = parseInt((energyCap-(100*workParts)-50*carryParts)/50);
+	if (moveParts > 6) moveParts = 6;
     if (spawn.room.memory.activeCreepRoles.miner == 0) {moveParts=1;carryParts=1;workParts=1;}
     return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
   },
