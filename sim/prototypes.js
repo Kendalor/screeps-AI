@@ -132,6 +132,47 @@ module.exports = function(){
 			},
 			writable: true,
 			enumerable: true
+		},
+		
+		/**
+		 * Adds creepName to room.memory.sources
+		 * @param {String} creepName
+		 * @return {Boolean} 
+		 */
+		"occupy" : {
+			value: function(creepName){
+				if (this.hasFreeSlots()){
+					this.room.memory.sources[this.id].harvesters.push(creepName);
+					return true;
+				}else{
+					return false;
+				}
+			},
+			writable: true,
+			enumerable: true
+		},
+		
+		/**
+		 * Removes creep with given name from room.memory.sources
+		 * @param {String} creepName
+		 * @return {Boolean} 
+		 */
+		"deOccupy" : {
+			value: function(creepName){
+				if (this.room // Check if memory entrys exist
+					&& this.room.memory.sources 
+					&& this.room.memory.sources[this.id]
+					&& this.room.memory.sources[this.id].harvesters)
+				{
+					this.room.memory.sources[this.id].harvesters.pop(creepName);
+					return true;
+				}
+				else{
+					return false;
+				}
+			},
+			writable: true,
+			enumerable: true
 		}
 	});
 
