@@ -179,6 +179,9 @@ module.exports = class{
         }
         // ATTACK CODE
         static creepAttack(creep){
+            if(_.filter(creep.body, (part) => part.type == HEAL ).length >0){
+                var healables=creep.pos.findClosestByPath(FIND_MY_CREEPS,{filter: (creep) => creep.hits < creep.hitsMax})
+            }
             var priorityTarget=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.lookFor(LOOK_STRUCTURES);
             var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
               WHITELIST[hostile.owner.username] == undefined 
@@ -232,6 +235,12 @@ module.exports = class{
                 }
             }else if(hostileConstruction != null){
                 creep.moveTo(hostileConstruction);
+
+            }else if(healables != null){
+
+                if(creep.heal(healables) == ERR_NOT_IN_RANGE){
+                    creep.moveTo(healables);
+                }
 
             }else{
                 //console.log('TEST3');
