@@ -107,17 +107,24 @@ module.exports = class{
                     Game.rooms[Memory.operations[id].roomName].spawns[spawn.id] = spawn.memory = {} //Create a new empty memory object for this source
                 }
             }
-        // CONSTRUCTION SITES AS ID LIST
-
+        // CONSTRUCTION SITES AS ID HASH LIST
+            if(!Game.rooms[Memory.operations[id].roomName].constructionSites){//If this room has no sources memory yet
+                Game.rooms[Memory.operations[id].roomName].constructionSites = {}
+            }
         // CREEPS AS LIST WITH NAMES(HASK KEYS)
-
+            if(!Game.rooms[Memory.operations[id].roomName].creeps){//If this room has no sources memory yet
+                Game.rooms[Memory.operations[id].roomName].creeps = {}
+            }
         // BUILDINGS AS ID LIST
+            if(!Game.rooms[Memory.operations[id].roomName].structures){//If this room has no sources memory yet
+                Game.rooms[Memory.operations[id].roomName].structures = {}
+            }
 
         // PARAMETERS
             if(!Game.rooms[Memory.operations[id].roomName].baseSpecs){
                 Game.rooms[Memory.operations[id].roomName].specs = {}
                 Game.rooms[Memory.operations[id].roomName].specs.mode='default';
-
+                Game.rooms[Memory.operations[id].roomName].specs.security='safe';
             }
 
 
