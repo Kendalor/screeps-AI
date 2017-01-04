@@ -9,8 +9,9 @@ module.exports = class{
             SWITCH CASE OVER CURRENT STATUS AND CONTROLLER LEVEL
             */
             if(!this.checkForDelete(id)){
+                this.refreshMemory(id);
                 switch(Game.rooms[Memory.operations[id].roomName].controller.level){
-                    //                              EVERYTHING SUBEJCT TO CHANGE
+                    //                              EVERYTHING SUBECET TO CHANGE
                     //CONTROLLER LEVEL 1
                     //IN: AT START OF ROOM
                     //OUT: IF CONTROLLER REACHES LEVEL 2
@@ -19,6 +20,7 @@ module.exports = class{
                     //       2) BUILD APPROPRIATE NUMBER OF CREEPS
                     //       3) UPGRADE CONTROLLER LEVEL
                     case 1:
+                        this.runLvl1(id);
                         break;
                     //CONTROLLER LEVEL 2
                     //IN: AFTER REACHING CONTROLLER LEVEL 2, NOT @ MAX EXTENSIONS
@@ -43,6 +45,25 @@ module.exports = class{
 
                 }
             }
+        }
+
+        static runLvl1(id){
+            var room=Game.rooms[Memory.operations[id].roomName];
+            //SPAWNING CREEPS
+            var body=[WORK,CARRY,MOVE,MOVE];
+            //var body=[WORK,WORK,CARRY,MOVE];
+            var units=Object.keys(Game.rooms[Memory.operations[id].roomName].memory.creeps).length;
+            var spawn=Game.getObjectById(Object.keys(room.memory.spawns)[0]);
+            if(room.memory.baseSpecs.max_workers > units && room.energyAvailable >= 250 && !spawn.spawning){
+                spawn.createCreep(body,{job: 'harvest', operation_id: id});
+            }
+
+            var energyLessCreeps=_.filter(room.memory.creeps, (cr) => cr.carry.energy == 0);
+            var sources;
+            for(var i in energyLessCreeps){
+                console.log(energyLessCreeps[i]);
+            }
+
         }
 
         static init(roomName,flag){
@@ -94,6 +115,7 @@ module.exports = class{
                 Game.rooms[Memory.operations[id].roomName].memory.sources = {}; //Add it
                 var room= Game.rooms[Memory.operations[id].roomName];
                 var sources = room.find(FIND_SOURCES);//Find all sources in the current room
+                var spawns = room.find(FIND_MY_SPAWNS)
                 for(var i in sources){
                     var source = sources[i];
                     source.memory = Game.rooms[Memory.operations[id].roomName].memory.sources[source.id] = {}; //Create a new empty memory object for this source
@@ -101,6 +123,8 @@ module.exports = class{
                     var positions=_.filter(Game.rooms[Memory.operations[id].roomName].lookAtArea(source.pos.y-1,source.pos.x-1,source.pos.y+1,source.pos.x+1,{asArray: true}), (temp) => temp.type == 'terrain' && temp.terrain != 'wall').length
                     Game.rooms[Memory.operations[id].roomName].memory.sources[source.id].slots=positions;
                     Game.rooms[Memory.operations[id].roomName].memory.sources[source.id].harvesters=[];
+                    Game.rooms[Memory.operations[id].roomName].memory.sources[source.id].d_spawn=PathFinder.search(source.pos,{pos: spawns[0].pos, range: 1}).path.length;
+                    Game.rooms[Memory.operations[id].roomName].memory.sources[source.id].d_controller=PathFinder.search(source.pos,{pos: source.room.controller.pos, range: 3}).path.length;
                 }
             }
         // SPAWNS
@@ -132,35 +156,75 @@ module.exports = class{
 
         // PARAMETERS
             if(!Game.rooms[Memory.operations[id].roomName].memory.baseSpecs){
-                Game.rooms[Memory.operations[id].roomName].memory.specs = {}
-                Game.rooms[Memory.operations[id].roomName].memory.specs.mode='default';
-                Game.rooms[Memory.operations[id].roomName].memory.specs.security='safe';
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs = {}
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.mode='default';
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.security='safe';
+                var max_workers=0;
+                for(var i in Game.rooms[Memory.operations[id].roomName].memory.sources){
+                    max_workers=max_workers+Game.rooms[Memory.operations[id].roomName].memory.sources[i].slots;
+                }
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers=max_workers;
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp_slot_counter=0;
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp={};
             }
         }
 
         // RUN EVERYTICK
         //TO READ EVERYTHING FROM ROOM INTO MEMORY
         static refreshMemory(id){
-            var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
-            var hostile_creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
+            console.log('refreshing Memory');
+            var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS,{filter: (cr) => cr.memory.operation_id == id});
+            var hostile_creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_HOSTILE_CREEPS);
             var structures=Game.rooms[Memory.operations[id].roomName].find(FIND_STRUCTURES);
             var constructions=Game.rooms[Memory.operations[id].roomName].find(FIND_CONSTRUCTION_SITES);
+            delete Game.rooms[Memory.operations[id].roomName].memory.creeps;
+            Game.rooms[Memory.operations[id].roomName].memory.creeps={};
             for(var i in creeps){
                 Game.rooms[Memory.operations[id].roomName].memory.creeps[creeps[i].name]=creeps[i];
+            }
+            delete Game.rooms[Memory.operations[id].roomName].memory.structures;
+            Game.rooms[Memory.operations[id].roomName].memory.structures={};
             for(var i in structures){
                 Game.rooms[Memory.operations[id].roomName].memory.structures[structures[i].id]=structures[i];
             }
-                        for(var i in structures){
-                Game.rooms[Memory.operations[id].roomName].memory.structures[structures[i].id]=structures[i];
+            delete Game.rooms[Memory.operations[id].roomName].memory.hostileCreeps;
+            Game.rooms[Memory.operations[id].roomName].memory.hostileCreeps={};
+            for(var i in hostile_creeps){
+                Game.rooms[Memory.operations[id].roomName].memory.hostileCreeps[hostile_creeps[i].id]=hostile_creeps[i];
             }
-                        for(var i in structures){
-                Game.rooms[Memory.operations[id].roomName].memory.structures[structures[i].id]=structures[i];
-            }
-
-
+            delete Game.rooms[Memory.operations[id].roomName].memory.constructionSites;
+            Game.rooms[Memory.operations[id].roomName].memory.constructionSites={};
+            for(var i in constructions){
+                Game.rooms[Memory.operations[id].roomName].memory.constructionSites[constructions[i].id]=constructions[i];
             }
         }
 
+        static temp_slot_counter(id){
+            var hasFreeSlots=false;
+            for(var i in Game.rooms[Memory.operations[id].roomName].memory.sources){
+                    if(Game.getObjectById(i).hasFreeSlots == true){
+                        hasFreeSlots=true;
+
+                    }else if(Game.getObjectById(i).hasFreeSlots == undefined){
+                        console.log('Error');
+                    }
+            }
+
+            if(Game.ticks % 50 == 0){
+                var units=Object.keys(Game.rooms[Memory.operations[id].roomName].memory.creeps).length;
+                if(units == Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers && Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp_slot_counter >= 40){
+                    Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers=Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers-1;
+
+                }else if(units == Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers && Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp_slot_counter <= 20){
+                    Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers=Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers+1;
+                }
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp_slot_counter=0;
+            }else{
+                if(hasFreeSlots){
+                    Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp_slot_counter=Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp_slot_counter+1;
+                }
+            }
+        }
 
         static checkForDelete(id){
             var flagname =  Memory.operations[id].flagName;
