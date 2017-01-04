@@ -499,7 +499,7 @@ module.exports = {
           creep.memory.cFlagId = controllerFlag[0].id;
         }
       }
-      if (creep.memory.job == 'upgrade'){
+      if (creep.memory.job == 'upgrade' && !(creep.room.controller.level == 0)){
         var target=Game.getObjectById(creep.memory.targetId);
         if(creep.upgradeController(target) == ERR_NOT_IN_RANGE) {
           if(creep.memory.cFlag){
@@ -511,6 +511,9 @@ module.exports = {
         }else if (creep.room.storage == undefined){
 			creep.moveTo(target);
 		}
+      }else if(creep.room.controller.level == 0){
+        creep.moveTo(Game.spawns['Spawn3']);
+
       }
     } 
     if((creep.carry.energy == 0 || (creep.memory.workModules != undefined && creep.carry.energy < creep.memory.workModules) ) && creep.memory.job == 'upgrade'){
