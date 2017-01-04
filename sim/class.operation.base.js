@@ -7,40 +7,41 @@ module.exports = class{
             /*
             SWITCH CASE OVER CURRENT STATUS AND CONTROLLER LEVEL
             */
-            switch(Game.rooms[Memory.operations[id].roomName].controller.level){
-                //                              EVERYTHING SUBEJCT TO CHANGE
-                //CONTROLLER LEVEL 1
-                //IN: AT START OF ROOM
-                //OUT: IF CONTROLLER REACHES LEVEL 2
-                //GOAL: (IN ORDER)
-                //       1) INITIALIZE MEMORY
-                //       2) BUILD APPROPRIATE NUMBER OF CREEPS
-                //       3) UPGRADE CONTROLLER LEVEL
-                case 1:
-                    break;
-                //CONTROLLER LEVEL 2
-                //IN: AFTER REACHING CONTROLLER LEVEL 2, NOT @ MAX EXTENSIONS
-                //OUT: IF CONTROLLER REACHES LEVEL 3
-                //GOAL: (IN ORDER)
-                //      BUILD EXTENSIONS
-                //      RUSH TO CONTROLLER LEVEL 3
-                case 2:
-                    break;
-                //CONTROLLER LEVEL 3
-                //IN: AFTER REACHING CONTROLLER LEVEL 3, NOT @ MAX EXTENSIONS
-                //OUT: IF CONTROLLER REACHES LEVEL 4
-                //GOAL: (IN ORDER)
-                //      BUILD EXTENSIONS
-                //      BUILD TOWER
-                //      BUILD CONTAINER
-                //      BUILD ROADS
-                //      CONVERT TO MINER/HAULER SETUP
-                //      RUSH TO CONTROLLER LEVEL 4
-                case 3:
-                    break;
+            if(!this.checkForDelete(id)){
+                switch(Game.rooms[Memory.operations[id].roomName].controller.level){
+                    //                              EVERYTHING SUBEJCT TO CHANGE
+                    //CONTROLLER LEVEL 1
+                    //IN: AT START OF ROOM
+                    //OUT: IF CONTROLLER REACHES LEVEL 2
+                    //GOAL: (IN ORDER)
+                    //       1) INITIALIZE MEMORY
+                    //       2) BUILD APPROPRIATE NUMBER OF CREEPS
+                    //       3) UPGRADE CONTROLLER LEVEL
+                    case 1:
+                        break;
+                    //CONTROLLER LEVEL 2
+                    //IN: AFTER REACHING CONTROLLER LEVEL 2, NOT @ MAX EXTENSIONS
+                    //OUT: IF CONTROLLER REACHES LEVEL 3
+                    //GOAL: (IN ORDER)
+                    //      BUILD EXTENSIONS
+                    //      RUSH TO CONTROLLER LEVEL 3
+                    case 2:
+                        break;
+                    //CONTROLLER LEVEL 3
+                    //IN: AFTER REACHING CONTROLLER LEVEL 3, NOT @ MAX EXTENSIONS
+                    //OUT: IF CONTROLLER REACHES LEVEL 4
+                    //GOAL: (IN ORDER)
+                    //      BUILD EXTENSIONS
+                    //      BUILD TOWER
+                    //      BUILD CONTAINER
+                    //      BUILD ROADS
+                    //      CONVERT TO MINER/HAULER SETUP
+                    //      RUSH TO CONTROLLER LEVEL 4
+                    case 3:
+                        break;
 
+                }
             }
-
         }
 
         static init(roomName,flag){
@@ -95,11 +96,33 @@ module.exports = class{
                     var source = sources[i];
                     source.memory = Memory.operations[id].sources[source.id] = {}; //Create a new empty memory object for this source
                 }
+            }
         // SPAWNS
+            if(!Game.rooms[Memory.operations[id].roomName].spawns){//If this room has no sources memory yet
+                Game.rooms[Memory.operations[id].roomName].spawns = {}; //Add it
+                var room= Game.rooms[Memory.operations[id].roomName];
+                var spawns = room.find(FIND_MY_SPAWNS);//Find all sources in the current room
+                for(var i in spawns){
+                    var spawn = spawns[i];
+                    Game.rooms[Memory.operations[id].roomName].spawns[spawn.id] = spawn.memory = {} //Create a new empty memory object for this source
+                }
+            }
+        // CONSTRUCTION SITES AS ID LIST
+
+        // CREEPS AS LIST WITH NAMES(HASK KEYS)
+
+        // BUILDINGS AS ID LIST
+
+        // PARAMETERS
+            if(!Game.rooms[Memory.operations[id].roomName].baseSpecs){
+                Game.rooms[Memory.operations[id].roomName].specs = {}
+                Game.rooms[Memory.operations[id].roomName].specs.mode='default';
+
+            }
 
 
         }
-
+        // RUN EVERYTICK TO READ EVERYTHING FROM ROOM INTO MEMORY
         static refreshMemory(id){
             var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
             var structures=Game.rooms[Memory.operations[id].roomName].find(FIND_STRUCTURES);
