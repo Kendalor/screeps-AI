@@ -9,19 +9,26 @@ var operationsHandler = require('operations.handler');
 
 
 Source.prototype.memory = undefined;
-
+var cpu=0;
+var cpu_old=0;
 
 
 module.exports.loop = function () {
-  
+    cpu=Game.cpu.getUsed();
   autoMemory.clearDeadCreeps();
   autoMemory.clearFlags();
-  
+    cpu_old=cpu-Game.cpu.getUsed();
+  console.log('AutoMemory Code: '+cpu_old);
+
   //Kendalor Code
+  cpu=Game.cpu.getUsed();
   operationsHandler.init();
   operationsHandler.run();
+  cpu_old=cpu-Game.cpu.getUsed();
+  console.log('Kendalor Code: '+cpu_old);
   //  
-  
+
+  cpu=Game.cpu.getUsed();
   for(var name in Game.rooms) {
   
     
@@ -38,5 +45,7 @@ module.exports.loop = function () {
     var creepList = (room.find(FIND_MY_CREEPS,{filter: (creep) => creep.room.name == name}));
     autoCreep.run(creepList);
 	
-  } 
+  }
+  cpu_old=cpu-Game.cpu.getUsed();
+  console.log('BaseCode uses: '+cpu_old);
 }
