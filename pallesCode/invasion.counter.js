@@ -2,7 +2,6 @@ var WHITELIST = {'Cade' : true,'Kendalor' : true,'Palle' : true};
 var LOG_COOLDOWN = 10;
 var MIN_DEF_STRUCTURE_HITS = 5000;
 
-
 module.exports = {
   /** @param {towerList} towerList **/
   run: function(room) {
@@ -82,11 +81,11 @@ module.exports = {
 		var tower = towerList;
 		var firstPriority = enemyList.filter( (hostile) =>
 			WHITELIST[hostile.owner.username] == undefined 
-			&& hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
+			&& hostile.pos.x > 0 && hostile.pos.y > 0 && hostile.pos.x < 49 && hostile.pos.y < 49 
 			&& hostile.body.filter((body) => body.type == ATTACK || body.type == RANGED_ATTACK).length > 0);
 		var secondPriority = enemyList.filter( (hostile) =>
 			WHITELIST[hostile.owner.username] == undefined 
-			&& hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
+			&& hostile.pos.x > 0 && hostile.pos.y > 0 && hostile.pos.x < 49 && hostile.pos.y < 49 
 			&& hostile.body.filter((body) => body.type == 'claim' || body.type == 'work').length > 0); 
 		for(var i in tower){
 			if(tower[i] != null) {
