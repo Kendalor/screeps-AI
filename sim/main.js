@@ -1,4 +1,4 @@
-
+require('prototypes')();
 
 //Kendalor Code
 var operationsHandler = require('operations.handler');
