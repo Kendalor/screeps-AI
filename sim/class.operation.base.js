@@ -129,7 +129,8 @@ module.exports = class{
 
 
         }
-        // RUN EVERYTICK TO READ EVERYTHING FROM ROOM INTO MEMORY
+        // RUN EVERYTICK
+        //TO READ EVERYTHING FROM ROOM INTO MEMORY
         static refreshMemory(id){
             var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
             var structures=Game.rooms[Memory.operations[id].roomName].find(FIND_STRUCTURES);
