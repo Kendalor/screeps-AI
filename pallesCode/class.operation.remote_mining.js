@@ -287,9 +287,7 @@ module.exports = class{
                         Memory.operations[id].sources[s_id].containerPos = {};
                         Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
                         Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
-
                             if(Game.rooms[path[i].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != OK){
-
                                 var temp_id=Game.rooms[path[i].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
                                 if(temp_id.length >0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
                                     Memory.operations[id].constructionSites[temp_id[0].id]={};
@@ -550,9 +548,9 @@ module.exports = class{
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
-                                }else
+                                }
                             }
-                        } else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId).room.name){
+                        }else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId).room.name){
                             creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                         }
                         else{
