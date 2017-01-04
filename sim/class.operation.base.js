@@ -98,7 +98,7 @@ module.exports = class{
                     var source = sources[i];
                     source.memory = Game.rooms[Memory.operations[id].roomName].memory.sources[source.id] = {}; //Create a new empty memory object for this source
                     // GET ACCESSIBLE POSITIONS FOR EACH SOURCE
-                    var positions=_.filter(Game.rooms[Memory.operations[id].roomName].lookAtArea(source.pos.x-1,source.pos.y-1,source.pos.x+1,source.pos.y+1,{asArry: true}), (temp) => temp.type == 'terrain' && temp.terrain != 'wall').length
+                    var positions=_.filter(Game.rooms[Memory.operations[id].roomName].lookAtArea(source.pos.y-1,source.pos.x-1,source.pos.y+1,source.pos.x+1,{asArray: true}), (temp) => temp.type == 'terrain' && temp.terrain != 'wall').length
                     Game.rooms[Memory.operations[id].roomName].memory.sources[source.id].slots=positions;
                     Game.rooms[Memory.operations[id].roomName].memory.sources[source.id].harvesters=[];
                 }
@@ -142,9 +142,20 @@ module.exports = class{
         //TO READ EVERYTHING FROM ROOM INTO MEMORY
         static refreshMemory(id){
             var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
+            var hostile_creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
             var structures=Game.rooms[Memory.operations[id].roomName].find(FIND_STRUCTURES);
+            var constructions=Game.rooms[Memory.operations[id].roomName].find(FIND_CONSTRUCTION_SITES);
             for(var i in creeps){
                 Game.rooms[Memory.operations[id].roomName].memory.creeps[creeps[i].name]=creeps[i];
+            for(var i in structures){
+                Game.rooms[Memory.operations[id].roomName].memory.structures[structures[i].id]=structures[i];
+            }
+                        for(var i in structures){
+                Game.rooms[Memory.operations[id].roomName].memory.structures[structures[i].id]=structures[i];
+            }
+                        for(var i in structures){
+                Game.rooms[Memory.operations[id].roomName].memory.structures[structures[i].id]=structures[i];
+            }
 
 
             }
