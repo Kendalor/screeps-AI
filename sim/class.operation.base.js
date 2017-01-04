@@ -3,6 +3,7 @@
 module.exports = class{
         constructor(){
         }
+
         static run(id){
             /*
             SWITCH CASE OVER CURRENT STATUS AND CONTROLLER LEVEL
@@ -94,7 +95,11 @@ module.exports = class{
                 var sources = room.find(FIND_SOURCES);//Find all sources in the current room
                 for(var i in sources){
                     var source = sources[i];
-                    source.memory = Memory.operations[id].sources[source.id] = {}; //Create a new empty memory object for this source
+                    source.memory = Game.rooms[Memory.operations[id].roomName].sources[source.id] = {}; //Create a new empty memory object for this source
+                    // GET ACCESSIBLE POSITIONS FOR EACH SOURCE
+                    var positions=Game.rooms[Memory.operations[id].roomName].lookAtArea(25-1,36-1,25+1,36+1,{asArry: true}), (temp) => temp.type == 'terrain' && temp.terrain != 'wall').length
+                    Game.rooms[Memory.operations[id].roomName].sources[source.id].slots=positions;
+                    Game.rooms[Memory.operations[id].roomName].sources[source.id].harvesters=[];
                 }
             }
         // SPAWNS
@@ -126,22 +131,26 @@ module.exports = class{
                 Game.rooms[Memory.operations[id].roomName].specs.mode='default';
                 Game.rooms[Memory.operations[id].roomName].specs.security='safe';
             }
-
-
         }
+
         // RUN EVERYTICK
         //TO READ EVERYTHING FROM ROOM INTO MEMORY
         static refreshMemory(id){
             var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
             var structures=Game.rooms[Memory.operations[id].roomName].find(FIND_STRUCTURES);
+            for(var i in creeps){
+                Game.rooms[Memory.operations[id].roomName].creeps[creeps[i].name]=creeps[i];
 
+
+            }
         }
+
+
         static checkForDelete(id){
             var flagname =  Memory.operations[id].flagName;
             if(!Game.flags[flagname] && !Memory.operations[id].permanent){
                 delete Memory.flags[flagname];
                 delete Memory.operations[id];
-
                 return true;
             }else {
                 return false;
