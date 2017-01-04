@@ -4,20 +4,25 @@ module.exports = class{
         }
         static run(id){
             //this.checkForInvaders(Game.flags[Memory.operations[id].flagName].room);
+			//Memory.operations[id].size = 3
             if (!Memory.operations[id].spawnBuilt && Game.flags[Memory.operations[id].flagName].room != undefined){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
 				if(Game.flags[Memory.operations[id].flagName].room.controller.my){
 					Memory.operations[id].spawn = true; 
 					Game.flags[Memory.operations[id].flagName].room.createConstructionSite(Game.flags[Memory.operations[id].flagName].pos.x,Game.flags[Memory.operations[id].flagName].pos.y,STRUCTURE_SPAWN); 
 				}
+				if(!Memory.operations[id].spawnBuilt) Memory.operations[id].spawnBuilt = Game.flags[Memory.operations[id].flagName].room.find(FIND_MY_SPAWNS).length > 0;
             }
             var creep_body = undefined;
-            if (Memory.operations[id].spawnBuilt)
-              creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-            else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my)
+            if (Memory.operations[id].spawnBuilt){
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
+				Memory.operations[id].size = 2
+            }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
+				Memory.operations[id].size = 4
 				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
-            else
-              creep_body = [CLAIM,WORK,CARRY,MOVE,MOVE,MOVE];
-            
+            }else{
+				Memory.operations[id].size = 1
+				creep_body = [CLAIM,WORK,CARRY,MOVE,MOVE,MOVE];
+			}
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 
@@ -175,12 +180,11 @@ module.exports = class{
               if (creep.carry.energy == creep.carryCapacity && creep.room.controller.ticksToDowngrade < 500){ // CHARGE CONTROLLER
                 creep.memory.targetId = creep.room.controller.id;
               }
-              else if (creep.carry.energy < creep.carryCapacity/2){ // HARVEST SOURCE
+              else if (creep.carry.energy < creep.carryCapacity/2){ // SALVAGE
                 var dropped_ressource = creep.pos.findClosestByRange(FIND_DROPPED_ENERGY);
                 var containersWithEnergy = creep.room.find(FIND_STRUCTURES, {
-    filter: (i) => i.structureType == STRUCTURE_CONTAINER &&
-                   i.store[RESOURCE_ENERGY] > 0
-});
+					filter: (i) => i.structureType == STRUCTURE_CONTAINER && i.store[RESOURCE_ENERGY] > 0
+				});
                 if(dropped_ressource != undefined){
                     creep.memory.targetId = dropped_ressource.id;
                     creep.say('Harvesting');
@@ -195,20 +199,20 @@ module.exports = class{
                     }
 
                 }else {
-                    var source = creep.pos.findClosestByPath(FIND_SOURCES);
+                    var source = creep.pos.findClosestByPath(FIND_SOURCES,{filter: (s) => s.energy > 0});// HARVEST SOURCE
                     if (source != undefined)
                       creep.memory.targetId = source.id;
                       creep.say('Harvesting');
                     }
               }
-              if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/2){ // BUILD SPAWN
+              if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // BUILD SPAWN
                 var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_SPAWN});
                 if (structure.length){
                   creep.memory.targetId = creep.pos.findClosestByRange(structure).id;
                   creep.say('Building');
                 }
               }
-              if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/2){ // CHARGE SPAWN & EXTENSIONS
+              if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // CHARGE SPAWN & EXTENSIONS
                 var structure = creep.room.find(FIND_STRUCTURES, {filter: (struct) => (struct.structureType == STRUCTURE_EXTENSION ||
                     struct.structureType == STRUCTURE_SPAWN) && struct.energy < struct.energyCapacity});
                 if (structure.length > 0){
@@ -216,18 +220,18 @@ module.exports = class{
                   creep.say('Hauling');
                 }
               }
-              if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/2){ // BUILD INFRASTRUCTURE
+              if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // BUILD INFRASTRUCTURE
                 var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});
                 if (structure.length == 0)
-                  structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});
-                if (structure.length == 0)
                   structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION});
+				if (structure.length == 0)
+                  structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});
                 if (structure.length){
                   creep.memory.targetId = creep.pos.findClosestByRange(structure).id;
                   creep.say('Building');
                 }
               }
-              if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/2){ // CHARGE CONTROLLER
+              if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // CHARGE CONTROLLER
                 creep.memory.targetId = creep.room.controller.id;
                 creep.say('Upgrading');
               }
