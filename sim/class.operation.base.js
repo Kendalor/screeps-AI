@@ -72,7 +72,7 @@ module.exports = class{
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='base';
-
+                this.initMemory(id);
                 console.log(JSON.stringify(Memory.operations[this.id]));
             }
         }
