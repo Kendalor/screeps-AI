@@ -6,8 +6,7 @@ var invasionCounter   = require('invasion.counter');
 
 //Kendalor Code
 var operationsHandler = require('operations.handler');
-var flagHandler       = require('flag.handler');
-//
+
 
 Source.prototype.memory = undefined;
 
@@ -19,7 +18,7 @@ module.exports.loop = function () {
   autoMemory.clearFlags();
   
   //Kendalor Code
-  flagHandler.run();
+  operationsHandler.init();
   operationsHandler.run();
   //  
   
