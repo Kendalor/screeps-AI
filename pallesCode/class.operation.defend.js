@@ -98,7 +98,7 @@ module.exports = class{
                             Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
                         }
                     }
-                    console.log('BUGFIX');
+                    //console.log('BUGFIX');
                     if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
                         //console.log('BUGFIX');
                         //console.log(enemies);
