@@ -116,6 +116,10 @@ module.exports = class{
                                     Game.creeps[sLeader].moveTo(target);
                                 }
                             }
+                        }else{
+                            if(!wait){
+                                Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
+                            }
                         }
                     }
                 }
