@@ -57,7 +57,17 @@ module.exports = class{
             if(room.memory.baseSpecs.max_workers > units && room.energyAvailable >= 250 && !spawn.spawning){
                 spawn.createCreep(body,{job: 'harvest', operation_id: id});
             }
+            // NEED TO SPAWN ?
+            if(Object.keys(room.memory.baseSpecs.members).length < room.memory.baseSpecs.max_workers){
+                // CAN SPAWN ?
+                if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {job: 'harvest', operation_id: id}) == OK){
+                    // SPAWN !
+                    var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{job: 'harvest', operation_id: id});
+                    room.memory.baseSpecs.members[name]= 'harvest';
+                    console.log('Did spawn creep '+name);
+                }
 
+            }
             var energyLessCreeps=_.filter(room.memory.creeps, (cr) => cr.carry.energy == 0);
             var sources;
             for(var i in energyLessCreeps){
@@ -166,6 +176,7 @@ module.exports = class{
                 Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers=max_workers;
                 Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp_slot_counter=0;
                 Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp={};
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.members={};
             }
         }
 
@@ -173,7 +184,7 @@ module.exports = class{
         //TO READ EVERYTHING FROM ROOM INTO MEMORY
         static refreshMemory(id){
             console.log('refreshing Memory');
-            var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS,{filter: (cr) => cr.memory.operation_id == id});
+            var creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_MY_CREEPS);
             var hostile_creeps=Game.rooms[Memory.operations[id].roomName].find(FIND_HOSTILE_CREEPS);
             var structures=Game.rooms[Memory.operations[id].roomName].find(FIND_STRUCTURES);
             var constructions=Game.rooms[Memory.operations[id].roomName].find(FIND_CONSTRUCTION_SITES);
