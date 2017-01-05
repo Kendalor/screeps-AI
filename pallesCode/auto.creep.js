@@ -204,7 +204,7 @@ module.exports = {
               creep.build(constructions[0]);
             }
           } else{
-			  creep.room.createConstructionSite(containerPos.x,containerPos.y,STRUCTURE_CONTAINER);
+			  creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_CONTAINER);
 		  }
         }
         else{
