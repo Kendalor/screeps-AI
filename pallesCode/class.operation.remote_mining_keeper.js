@@ -12,28 +12,35 @@ module.exports = class{
                     if(Memory.operations[id].keeperRoom == undefined){
                         Memory.operations[id].keeperRoom=(room.find(FIND_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR}).length >0);
                     }
+                    if(Memory.operations[id].keeperRoom && !Memory.operations[id].defendOperationId){
+                        var defFlag = room.find(FIND_FLAGS,{filter: (f) => f.color==COLOR_RED && f.secondaryColor == COLOR_BLUE});
+                        if(defFlag.length >0){
+                            Memory.operations[id].defendOperationId=defFlag[0].memory.operation_id;
+                        }else{
+                            console.log('Place a RED/BLUE Flag in the Room to Defend your Mining Op');
+                        }
+                    }
 
-                    if(Object.keys(Memory.operations[id].sources).length >0){
+
+                    if(Object.keys(Memory.operations[id].sources).length >0 && (Memory.operations[id].defendOperationId || !Memory.operations[id].keeperRoom)){
                         this.addSourceToOperation(room,id);
-
-
-
-
-                        /*switch (Memory.operations[id].sources[i].status) {
-                            case 'createConstructionSites':
-                                //this.buildRoadAndContainer(id);
-                                break;
-                            case 'BuildingContainer':
-                                //this.buildAndRunMiner(id);
-                                break;
-                            case 'BuildingRoad':
-                                //this.buildAndRunBuilder(id);
-                                //this.buildAndRunCreeps(id);
-                                break;
-                            case 'Mining':
-                                //this.buildAndRunCreeps(id);
-                                break;
-                        }*/
+                        for(var i in Memory.operations[id].sources){
+                            /*switch (Memory.operations[id].sources[i].status) {
+                                case 'createConstructionSites':
+                                    //this.buildRoadAndContainer(id);
+                                    break;
+                                case 'BuildingContainer':
+                                    //this.buildAndRunMiner(id);
+                                    break;
+                                case 'BuildingRoad':
+                                    //this.buildAndRunBuilder(id);
+                                    //this.buildAndRunCreeps(id);
+                                    break;
+                                case 'Mining':
+                                    //this.buildAndRunCreeps(id);
+                                    break;
+                            }*/
+                        }
                     }else{
                         this.addSourceToOperation(room,id);
                         console.log('No Sources for Operation ' + id+ ' place a Blue/Purple Flag on a Source to Add');
@@ -68,6 +75,7 @@ module.exports = class{
                     Memory.operations[id].sources[source.id].nearest_spawnId=this.findClosestSpawn(Memory.operations[id].flagName);
                     Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
                     Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
+                    Memory.operations[id].sources[source.id].status='createConstructionSites';
                     flags[i].remove();
                 }
 
