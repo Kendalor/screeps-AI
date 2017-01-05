@@ -1,7 +1,7 @@
 var constants  = require('var.const');
 var creepRole = constants.creepRole();
 
-var WHITELIST = {'Cade' : true,'Kendalor' : true,'Palle' : true};
+var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
 module.exports = {
   /** @param {creepList} creepList **/

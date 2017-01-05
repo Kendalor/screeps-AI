@@ -33,7 +33,7 @@ module.exports = {
       }
       
       if (spawn.room.storage == undefined) {
-		maintanceUnits = 3*minerAmount;
+		maintanceUnits = 2*minerAmount+Math.ceil(Math.ceil(parseInt(Object.keys(spawn.room.find(FIND_CONSTRUCTION_SITES)).length)/10));;
 		upgradeUnits = 1;
 	  }else{
 	    upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);

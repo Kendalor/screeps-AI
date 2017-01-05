@@ -1,3 +1,4 @@
+var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 module.exports = class{
         constructor(){
         }
