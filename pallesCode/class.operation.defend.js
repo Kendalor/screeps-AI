@@ -94,9 +94,13 @@ module.exports = class{
 						if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name) // Just in case if leader is blocking the path, leave the edge of the map
 							this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]],Game.creeps[sLeader].pos);
                         Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
+
                         err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
                         if(err == ERR_NOT_IN_RANGE){
                             wait=true;
+                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
+                        }
+                        if(Game.creeps[sLeader].hits == Game.creeps[sLeader].hitsMax ){
                             Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
                         }
                     }
@@ -283,6 +287,7 @@ module.exports = class{
                 //DEFINE ALL OP VARIABLES HERE
                 Memory.operations[this.id].roomName=roomName;
                 Memory.operations[this.id].flagName=flag;
+                Memory.operations[this.id].flagPos= Game.flags[flag].pos;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='defend';
                 Memory.operations[this.id].size=1; // NUMBER OF SQUADS ATTACKER = SQUAD LEADER
@@ -292,7 +297,7 @@ module.exports = class{
                 //Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,20).fill(MOVE,20,30).fill(ATTACK,30,50);// COST 2300
                 //Memory.operations[this.id].default_Abody=[MOVE,ATTACK]; //TEST
                 // COST 1800 6xHEAL= 1500 + 6xMOVE = 300   == 1800
-                Memory.operations[this.id].default_Hbody=Array(20).fill(TOUGH,0,9).fill(MOVE,10,16).fill(HEAL,17,20);
+                Memory.operations[this.id].default_Hbody=Array(20).fill(TOUGH,0,10).fill(MOVE,10,16).fill(HEAL,17,20);
                 //Memory.operations[this.id].default_Hbody=[MOVE,HEAL]; //TEST
                 Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
                 Memory.operations[this.id].status='assembling';
@@ -324,6 +329,24 @@ module.exports = class{
                 delete Memory.operations[id];
 
                 return true;
+            }else {
+                return false;
+            }
+
+        }
+
+        static checkForDelete_new(id){
+
+            if(!Memory.operations[id].flagName && !Memory.operations[id].permanent && Object.keys(Memory.operations[id].squads).length == 0){
+                delete Memory.flags[flagname];
+                delete Memory.operations[id];
+
+                return true;
+            }else if(!Game.flags[Memory.operations[id].flagName] && !Memory.operations[id].permanent && Object.keys(Memory.operations[id].squads).length > 0){
+                delete Memory.operations[id].flagName;
+
+                return false;
+
             }else {
                 return false;
             }
