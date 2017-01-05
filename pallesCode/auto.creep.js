@@ -203,7 +203,9 @@ module.exports = {
             if (creep.build(constructions[0]) == ERR_NOT_IN_RANGE){
               creep.build(constructions[0]);
             }
-          }
+          } else{
+			  creep.room.createConstructionSite(containerPos.x,containerPos.y,STRUCTURE_CONTAINER);
+		  }
         }
         else{
           creep.memory.containerId = containers[0].id;
