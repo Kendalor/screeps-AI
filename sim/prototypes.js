@@ -179,7 +179,7 @@ module.exports = function(){
 	/*
 	* STUCTURE
 	*/
-	Object.defineProperties(Structure.prototype,{
+	Object.defineProperties(Structure.prototype,{ 
 		'memory' : {
 			get: function() {
 				if (Memory.structures === undefined) {
@@ -196,7 +196,7 @@ module.exports = function(){
 			configurable: true,
 			enumerable: false
 		}
-	});
+	);
 
 	/*
 	* OWNED_STRUCTURE
