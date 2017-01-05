@@ -1,4 +1,4 @@
-var WHITELIST = {'Cade' : true,'Kendalor' : true,'Palle' : true};
+var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 var LOG_COOLDOWN = 10;
 var MIN_DEF_STRUCTURE_HITS = 5000;
 
@@ -100,10 +100,10 @@ module.exports = {
 	
 	/** @param {towerList} towerList **/
 	towerRepair: function(towerList){
-		var offCooldown = Game.time % 40 == 0;
+		var offCooldown = Game.time % 20 == 0;
 		var tower = towerList;
 		if (tower.length > 0){
-			var spawnHasEnoughEnergy = (tower[0].room.energyAvailable > 300)
+			var spawnHasEnoughEnergy = (tower[0].room.energyAvailable > 700)
 			if (spawnHasEnoughEnergy){
 				if (!tower[0].room.memory.structureHitsMin || tower[0].room.memory.structureHitsMin < MIN_DEF_STRUCTURE_HITS){
 					tower[0].room.memory.structureHitsMin = MIN_DEF_STRUCTURE_HITS;
