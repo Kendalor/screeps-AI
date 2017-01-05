@@ -58,12 +58,12 @@ module.exports = class{
                 spawn.createCreep(body,{job: 'harvest', operation_id: id});
             }
             // NEED TO SPAWN ?
-            if(Object.keys(room.memory.baseSpecs.members).length < room.memory.baseSpecs.max_workers){
+            if(Object.keys(room.memory.baseSpecs.peasants).length < room.memory.baseSpecs.max_workers){
                 // CAN SPAWN ?
                 if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {job: 'harvest', operation_id: id}) == OK){
                     // SPAWN !
                     var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{job: 'harvest', operation_id: id});
-                    room.memory.baseSpecs.members[name]= 'harvest';
+                    room.memory.baseSpecs.peasants[name]= 'harvest';
                     console.log('Did spawn creep '+name);
                 }
 
@@ -176,7 +176,7 @@ module.exports = class{
                 Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.max_workers=max_workers;
                 Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp_slot_counter=0;
                 Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.temp={};
-                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.members={};
+                Game.rooms[Memory.operations[id].roomName].memory.baseSpecs.peasants={};
             }
         }
 
