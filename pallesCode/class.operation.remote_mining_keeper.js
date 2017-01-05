@@ -16,6 +16,7 @@ module.exports = class{
                         var defFlag = room.find(FIND_FLAGS,{filter: (f) => f.color==COLOR_RED && f.secondaryColor == COLOR_BLUE});
                         if(defFlag.length >0){
                             Memory.operations[id].defendOperationId=defFlag[0].memory.operation_id;
+                            Memory.operations[Memory.operations[id].defendOperationId].toDefend=id;
                         }else{
                             console.log('Place a RED/BLUE Flag in the Room to Defend your Mining Op');
                         }
