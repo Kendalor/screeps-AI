@@ -6,7 +6,13 @@ module.exports = class{
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 if(!Game.rooms[Memory.operations[id].roomName]){
                     this.scouting(id);
+                    console.log('Moving Scout');
                 }else{
+                    var room=Game.rooms[Memory.operations[id].roomName];
+                    if(Memory.operations[id].keeperRoom == undefined){
+                        Memory.operations[id].keeperRoom=(room.find(FIND_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR}).length >0);
+                    }
+
                     if(Object.keys(Memory.operations[id].sources).length >0){
 
 
@@ -28,14 +34,26 @@ module.exports = class{
                                 break;
                         }
                     }else{
-                        console.log('No Sources for Operation' + id);
+                        console.log('No Sources for Operation ' + id+ ' place a Blue/Purple Flag on a Source to Add');
 
                     }
                 }
             }
         }
-        static init_source_mem(id){
+        static addSourceToOperation(room){
+            var flags=room.find(FIND_FLAGS,{filter: f => f.color == COLOR_BLUE && f.secondaryColor == COLOR_PURPLE});
+            if(flags.length >0){
+                for(var i in flags){
+                    var sources=flags[i].pos.lookForAt(LOOK_SOURCES);
+                    if(sources.length > 0){
+                        var source=sources[0];
+                    }
 
+
+                }
+
+
+            }
 
         }
 
@@ -692,7 +710,8 @@ module.exports = class{
                     creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
                     creep.say('scouting');
                     if(creep.room.name == Memory.operations[id].roomName){
-                        Memory.operations[id].scouting=false;
+
+                        creep.moveTo(Game.flags[Memory.operations[id].flagName]);
                     }
                 }
 
