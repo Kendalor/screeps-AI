@@ -12,8 +12,8 @@ module.exports = class{
 				if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size){
 					//console.log('Spawning');
 					//console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'remoteBuilder', operation: id, target: Memory.operations[id].flagName}) == OK);
-					if(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'remoteBuilder', operation: id, target: Memory.operations[id].flagName}) == OK){
-						var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'remoteBuilder', operation_id: id, target: Memory.operations[id].flagName});
+					if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'remoteBuilder', operation: id, target: Memory.operations[id].flagName}) == OK){
+						var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'remoteBuilder', operation_id: id, target: Memory.operations[id].flagName});
 						Memory.operations[id].members[name]= 'remoteBuilder';
 						console.log('Did spawn creep '+name);
 					}
@@ -106,6 +106,7 @@ module.exports = class{
                 Memory.operations[this.id].size=1;
                 Memory.operations[this.id].assembled=false;
                 Memory.operations[this.id].reached=false;
+                Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
                 Memory.operations[this.id].refreshed=false;
                 Memory.operations[this.id].members= {};
                 Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
@@ -140,6 +141,21 @@ module.exports = class{
                 return false;
             }
 
+        }
+        static findClosestSpawn(flagName){
+            var min_length;
+            var best_spawn;
+            var length;
+            for(var i in Game.spawns){
+                console.log('length from '+Game.spawns[i].pos.roomName+' to '+Game.flags[flagName].pos.roomName);
+                console.log( Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length < min_length  || min_length == undefined);
+                length= Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length;
+                if(length < min_length  || min_length == undefined){
+                    min_length=length;
+                    best_spawn=Game.spawns[i].id;
+                }
+            }
+            return best_spawn;
         }
         // IDLE MOVESET
         static creepIdle(creep){
