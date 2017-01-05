@@ -74,7 +74,7 @@ module.exports = class{
                 }else if(moving){
                     Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                 }
-                if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].room.name){ 
+                if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
                     Memory.operations[id].status='combat';
                 }
             }
@@ -95,25 +95,26 @@ module.exports = class{
                         err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
                         if(err == ERR_NOT_IN_RANGE){
                             wait=true;
+                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
                         }
                     }
-                    if(!wait){
-                        Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
-                    }
-                    if(Game.creeps[sLeader].pos.roomName == Memory.operations[id].roomName){
+                    console.log('BUGFIX');
+                    if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
                         //console.log('BUGFIX');
                         //console.log(enemies);
                         if(enemies == undefined){
                             enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
 							//enemies=Game.creeps[sLeader].room.find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_WALL}); // ALTERNATIVE FOR DEMOLISHING WALLS - NOT WORKING PROPERLY ATM
-							Game.creeps[sLeader].say(enemies);
+							//Game.creeps[sLeader].say(enemies);
                             //console.log(enemies);
                         }
                         if(enemies !=undefined){
                             target=Game.creeps[sLeader].pos.findClosestByPath(enemies);
                             err=Game.creeps[sLeader].attack(target);
                             if(err == ERR_NOT_IN_RANGE){
-                                Game.creeps[sLeader].moveTo(target);
+                                if(!wait){
+                                    Game.creeps[sLeader].moveTo(target);
+                                }
                             }
                         }
                     }
