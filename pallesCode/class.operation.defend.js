@@ -75,7 +75,7 @@ module.exports = class{
                     Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                 }
                 if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
-                    
+
                     creep.moveTo(Game.flags[Memory.operations[id].flagName]);
                     Memory.operations[id].status='combat';
                 }
