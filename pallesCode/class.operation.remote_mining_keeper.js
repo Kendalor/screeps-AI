@@ -4,23 +4,32 @@ module.exports = class{
         static run(id){
             // DELETE NONEXISTING CREEPS FROM OPERATION
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-                if(Memory.operations[id].scouting){
+                if(!Game.rooms[Memory.operations[id].roomName]){
                     this.scouting(id);
                 }else{
-                    switch (Memory.operations[id].status) {
-                        case 'createConstructionSites':
-                            this.buildRoadAndContainer(id);
-                            break;
-                        case 'BuildingContainer':
-                            this.buildAndRunMiner(id);
-                            break;
-                        case 'BuildingRoad':
-                            this.buildAndRunBuilder(id);
-                            this.buildAndRunCreeps(id);
-                            break;
-                        case 'Mining':
-                            this.buildAndRunCreeps(id);
-                            break;
+                    if(Object.keys(Memory.operations[id].sources).length >0){
+
+
+
+
+                        switch (Memory.operations[id].sources[i].status) {
+                            case 'createConstructionSites':
+                                //this.buildRoadAndContainer(id);
+                                break;
+                            case 'BuildingContainer':
+                                //this.buildAndRunMiner(id);
+                                break;
+                            case 'BuildingRoad':
+                                //this.buildAndRunBuilder(id);
+                                //this.buildAndRunCreeps(id);
+                                break;
+                            case 'Mining':
+                                //this.buildAndRunCreeps(id);
+                                break;
+                        }
+                    }else{
+                        console.log('No Sources for Operation' + id);
+
                     }
                 }
             }
@@ -59,23 +68,21 @@ module.exports = class{
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='remote_mining_keeper';
                 console.log(!Game.rooms[roomName])
+                Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
+                Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
+                Memory.operations[this.id].status='createConstructionSites';
+                Memory.operations[this.id].constructionSites={};
+                Memory.operations[this.id].sources = {};
+
+
+
                 if(!Game.rooms[roomName]){
                     Memory.operations[this.id].scouting=true;
-                    Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
-                    Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
-                    Memory.operations[this.id].roadsBuild=false;
-                    Memory.operations[this.id].status='createConstructionSites';
-                    Memory.operations[this.id].constructionSites={};
-
-
                 }else{
                     Memory.operations[this.id].scouting=false;
-                    Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
-                    Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
-                    Memory.operations[this.id].roadsBuild=false;
-                    Memory.operations[this.id].status='createConstructionSites';
-                    Memory.operations[this.id].constructionSites={};
+
                 }
+
 
 
                 console.log(JSON.stringify(Memory.operations[this.id]));
@@ -278,7 +285,7 @@ module.exports = class{
             if(!Memory.operations[id].sources){//If this room has no sources memory yet
                 Memory.operations[id].sources = {}; //Add it
                 var room= Game.rooms[Memory.operations[id].roomName];
-                var flags=room.find(FIND_FLAGS,{filter (flag) => flag.color == COLOR_BLUE && flag.secondaryColor == COLOR_WHITE})
+                var flags=room.find(FIND_FLAGS,{filter: (flag) => flag.color == COLOR_BLUE && flag.secondaryColor == COLOR_WHITE});
                 var sources = room.find(FIND_SOURCES);//Find all sources in the current room
                 for(var i in sources){
                     var source = sources[i];

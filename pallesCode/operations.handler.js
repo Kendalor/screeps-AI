@@ -8,6 +8,8 @@ var devAidOperation = require('class.operation.developmentAid');
 var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteBuildOperation = require('class.operation.remote_build');
 var defendOperation = require('class.operation.defend');
+var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
+
 
 module.exports = {
 
@@ -51,6 +53,9 @@ module.exports = {
                 case 'defend':
                     defendOperation.run(id);
                     break;
+                case 'remote_mining_keeper':
+                    remoteMiningKeeperOperation.run(id);
+                    break;
 
             }
         }
@@ -73,9 +78,6 @@ module.exports = {
             }else if (this.colorMatch(flag,COLOR_GREEN,COLOR_GREEN)){ //GREEN/GREEN
                 tankOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if (this.colorMatch(flag,COLOR_BLUE,COLOR_RED)){ //BLUE/RED
-                thiefOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
-
             }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_GREEN)){ // WHITE/GREEN
                 colonizeOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
@@ -88,6 +90,8 @@ module.exports = {
             }else if (this.colorMatch(flag,COLOR_BLUE,COLOR_BLUE)){ //BLUE/BLUE
                 remoteMiningOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
+            }else if(this.colorMatch(flag,COLOR_BLUE,COLOR_RED)){
+                remoteMiningKeeperOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
             }
         }
     },
