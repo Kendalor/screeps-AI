@@ -170,8 +170,9 @@ module.exports = class{
         static buildCreeps(id){
             if(Object.keys(Memory.operations[id].squads).length < Memory.operations[id].size){
                 var creep_body=Memory.operations[id].default_Abody;
-                //console.log('Spawning');
-                //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
+                //console.log(creep_body);
+                //console.log(Array(10).fill('TOUGH',0,5).fill('MOVE',5,8).fill('ATTACK',8,10))
+                //console.log(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}));
                 if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
                     var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
                     Memory.operations[id].squads[name]= [];
@@ -287,10 +288,10 @@ module.exports = class{
                 Memory.operations[this.id].size=1; // NUMBER OF SQUADS ATTACKER = SQUAD LEADER
                 Memory.operations[this.id].healers=1; // NUMBER OF HEALERS PER SQUAD
                 //COST 12xMOVE = 600 + 12 ATTACK = 960 =1560
-                Memory.operations[this.id].default_Abody=[TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK];// COST
+                Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,20).fill(MOVE,20,30).fill(ATTACK,30,50);// COST 2300
                 //Memory.operations[this.id].default_Abody=[MOVE,ATTACK]; //TEST
                 // COST 1800 6xHEAL= 1500 + 6xMOVE = 300   == 1800
-                Memory.operations[this.id].default_Hbody=[MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL];
+                Memory.operations[this.id].default_Hbody=Array(20).fill(TOUGH,0,9).fill(MOVE,10,16).fill(HEAL,17,20);
                 //Memory.operations[this.id].default_Hbody=[MOVE,HEAL]; //TEST
                 Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
                 Memory.operations[this.id].status='assembling';
