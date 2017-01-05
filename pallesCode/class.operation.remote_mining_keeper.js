@@ -14,11 +14,12 @@ module.exports = class{
                     }
 
                     if(Object.keys(Memory.operations[id].sources).length >0){
+                        this.addSourceToOperation(room,id);
 
 
 
 
-                        switch (Memory.operations[id].sources[i].status) {
+                        /*switch (Memory.operations[id].sources[i].status) {
                             case 'createConstructionSites':
                                 //this.buildRoadAndContainer(id);
                                 break;
@@ -32,24 +33,42 @@ module.exports = class{
                             case 'Mining':
                                 //this.buildAndRunCreeps(id);
                                 break;
-                        }
+                        }*/
                     }else{
+                        this.addSourceToOperation(room,id);
                         console.log('No Sources for Operation ' + id+ ' place a Blue/Purple Flag on a Source to Add');
 
                     }
                 }
             }
         }
-        static addSourceToOperation(room){
+        static addSourceToOperation(room,id){
             var flags=room.find(FIND_FLAGS,{filter: f => f.color == COLOR_BLUE && f.secondaryColor == COLOR_PURPLE});
+            /* FOR LATER
+            var spawnList=_.map(Game.spawns, function(spawn) {
+                return {pos: spawn.pos, range: 1};
+            });
+
+            var storageList= _.map(Game.spawns, function(spawn) {
+                if(spawn.room.controller != undefined){
+                    return {pos: spawn.room.controller.pos, range: 1};
+                }
+            });*/
             if(flags.length >0){
                 for(var i in flags){
-                    var sources=flags[i].pos.lookForAt(LOOK_SOURCES);
+                    var sources=flags[i].pos.lookFor(LOOK_SOURCES);
+                    console.log(sources.length);
                     if(sources.length > 0){
                         var source=sources[0];
+                        console.log(source);
                     }
-
-
+                    console.log(JSON.stringify(source));
+                    source.memory = Memory.operations[id].sources[source.id] = {};
+                    //TODO SEARCH FORE NEAREST SPAWN/STORAGE WITH PATHFINDER
+                    Memory.operations[id].sources[source.id].nearest_spawnId=this.findClosestSpawn(Memory.operations[id].flagName);
+                    Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
+                    Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
+                    flags[i].remove();
                 }
 
 
