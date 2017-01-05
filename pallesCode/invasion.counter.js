@@ -100,7 +100,7 @@ module.exports = {
 	
 	/** @param {towerList} towerList **/
 	towerRepair: function(towerList){
-		var offCooldown = Game.time % 1 == 0;
+		var offCooldown = Game.time % 40 == 0;
 		var tower = towerList;
 		if (tower.length > 0){
 			var spawnHasEnoughEnergy = (tower[0].room.energyAvailable > 300)
@@ -143,7 +143,7 @@ module.exports = {
 							tower[i].room.memory.structureHitsMin = closestDamagedStructure.hits; // SET NEW MINIMUM HITS FOR DEFENSE STRUCTURES
 						tower[i].repair(closestDamagedStructure); // ACTUALLY REPAIR SOMETHING
 					}
-					else if(tower[i].room.memory.structureHitsMin < 300000000 && offCooldown){ 
+					else if(tower[i].room.memory.structureHitsMin < 300000 && offCooldown){
 						tower[i].room.memory.structureHitsMin += MIN_DEF_STRUCTURE_HITS; // INCREASE THE REPAIR THRESHOLD FOR DEFENSE STRUCTURES
 					}
 				}
