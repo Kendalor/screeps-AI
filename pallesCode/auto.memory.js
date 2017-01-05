@@ -5,7 +5,7 @@ module.exports = {
       if(!Game.creeps[name]) {
         if (Memory.creeps[name].tmpSource){
 			var tmpSource = Game.getObjectById([Memory.creeps[name].tmpSource])
-			if (!tmpSource && tmpSource.room.memory.sources != undefined)
+			if (tmpSource && tmpSource.room && tmpSource.room.memory.sources)
 				tmpSource.room.memory.sources[Memory.creeps[name].tmpSource].slotsUsed--;
         }
         delete Memory.creeps[name];
