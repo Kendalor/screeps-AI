@@ -6,7 +6,7 @@ module.exports = class{
         static run(){
         //TODO
         }
-        // 
+        //
         static enQueueCreep(){
         //TODO
         }
