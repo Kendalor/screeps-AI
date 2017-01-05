@@ -75,6 +75,8 @@ module.exports = class{
                     Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                 }
                 if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
+                    
+                    creep.moveTo(Game.flags[Memory.operations[id].flagName]);
                     Memory.operations[id].status='combat';
                 }
             }
@@ -103,12 +105,11 @@ module.exports = class{
                         //console.log('BUGFIX');
                         //console.log(enemies);
                         if(enemies == undefined){
-                            enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
+                            var enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
 							//enemies=Game.creeps[sLeader].room.find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_WALL}); // ALTERNATIVE FOR DEMOLISHING WALLS - NOT WORKING PROPERLY ATM
-							//Game.creeps[sLeader].say(enemies);
-                            //console.log(enemies);
                         }
-                        if(enemies !=undefined){
+                        if(enemies.length >0){
+                            console.log('rly');
                             target=Game.creeps[sLeader].pos.findClosestByPath(enemies);
                             err=Game.creeps[sLeader].attack(target);
                             if(err == ERR_NOT_IN_RANGE){
@@ -117,6 +118,7 @@ module.exports = class{
                                 }
                             }
                         }else{
+
                             if(!wait){
                                 Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                             }
