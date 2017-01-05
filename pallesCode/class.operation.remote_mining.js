@@ -193,6 +193,8 @@ module.exports = class{
 
         }
         static buildAndRunCreeps(id){
+
+            var hostiles=Game.rooms[Memory.operations[id].roomName].find(FIND_HOSTILE_CREEPS).length;
             // ITERATE OVER SOURCES
             for(var i in Memory.operations[id].sources){
                 // MINER CODE
@@ -207,6 +209,8 @@ module.exports = class{
                     console.log('Deleted '+Memory.operations[id].sources[i].miner +' from memory')
                     delete Memory.creeps[Memory.operations[id].sources[i].miner];
                     delete Memory.operations[id].sources[i].miner;
+                }else if(hostiles > 0){
+                        Game.creeps[Memory.operations[id].sources[i].miner].moveTo(Game.getObjectById(Memory.operations[id].nearest_storageId));
                 }else if(!Game.creeps[Memory.operations[id].sources[i].miner].spawning){
                     this.creepMine(Game.creeps[Memory.operations[id].sources[i].miner]);
 
@@ -250,6 +254,8 @@ module.exports = class{
                         console.log('Deleted '+cr +' from memory')
                         delete Memory.creeps[cr];
                         delete Memory.operations[id].sources[i].haulers[cr];
+                    }else if(hostiles > 0){
+                        Game.creeps[cr].moveTo(Game.getObjectById(Memory.operations[id].nearest_storageId));
                     }else if(!Game.creeps[cr].spawning){
                         this.creepHaul(Game.creeps[cr]);
 
