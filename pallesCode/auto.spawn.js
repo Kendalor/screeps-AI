@@ -150,16 +150,10 @@ module.exports = {
 	haulerPreset: function(spawn,carryCap){
 		if (carryCap < 10) carryCap += 2;
 		var energyCap = spawn.room.energyCapacityAvailable;
-		var workParts = 1
-		if (spawn.room.controller.level > 1)
-			workParts = 0
-		var moveParts= Math.min(Math.max(1,parseInt(((energyCap-workParts*100)/3)/50)),parseInt(Math.ceil(carryCap/2)));
+		var moveParts= Math.min(Math.max(2,parseInt(energyCap/150)),parseInt(Math.ceil(carryCap/2)));
 		var carryParts = parseInt(moveParts*2);
 
-		if (energyCap < 500) {
-			moveParts=2;carryParts=1;workParts=1;
-			return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
-		}else if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.memory.activeCreepRoles.maintance == 0 && spawn.room.energyAvailable < energyCap) {
+		if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.memory.activeCreepRoles.maintance == 0 && spawn.room.energyAvailable < energyCap) {
 			moveParts=2;carryParts=4;
 			return Array(carryParts).fill(CARRY).concat(Array(moveParts).fill(MOVE));
 		}else{
@@ -173,12 +167,20 @@ module.exports = {
 	
 	maintancePreset: function(spawn){
 		var energyCap = spawn.room.energyCapacityAvailable;
-		var workParts = Math.min(Math.max(1,parseInt(((energyCap/2)/100))),4);
-		var moveParts = Math.max(1,parseInt(((energyCap/4)/50)));
-		if (energyCap % 200 != 0) moveParts++;
-		if (moveParts > 4) moveParts = 4;
-		var carryParts= Math.min(Math.max(1,parseInt((energyCap-workParts*100-moveParts*50)/50)),4);
-		if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
+		if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.memory.activeCreepRoles.maintance == 0 && spawn.room.energyAvailable < energyCap)
+			energyCap = spawn.room.energyAvailable;
+		var moveParts = Math.max(1,parseInt(energyCap/200));
+		var carryParts = moveParts;
+		var workParts = moveParts;
+		if (energyCap <= 300) {
+			moveParts=2;carryParts=1;workParts=1;
+		}else{
+			var partArray = [];
+			for (let i = 0; i < moveParts; i++){
+				partArray = partArray.concat([WORK,CARRY,MOVE]);
+			}
+			return partArray;
+		}
 		return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
 	},
 	
