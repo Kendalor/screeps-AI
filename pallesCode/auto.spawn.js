@@ -155,7 +155,7 @@ module.exports = {
 		moveParts=2;carryParts=1;workParts=1;
 		return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
 	}else if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.energyAvailable < energyCap) {
-		moveParts=2;carryParts=1;workParts=1;
+		moveParts=3;carryParts=3;workParts=0;
 		return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
 	}else{
 		var partArray = [];
