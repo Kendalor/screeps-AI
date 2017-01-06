@@ -325,7 +325,7 @@ module.exports = {
 
 	gather: function(creep) {
 		if (!creep.memory.job && creep.carry.energy < creep.carryCapacity){
-			if (creep.ticksToLife > 30){
+			if (creep.ticksToLive > 30){
 				this.anounceJob(creep,'gather');
 			}else{
 				creep.suicide();
