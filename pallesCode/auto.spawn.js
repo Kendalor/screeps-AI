@@ -217,7 +217,6 @@ module.exports = {
 		for (let i = 0; i < moveParts; i++){
 			partArray = partArray.concat([CARRY,CARRY,MOVE]);
 		}
-		console.log("And that costs: "+(50*partArray.length));
 		return partArray;
 	},
 
