@@ -5,11 +5,12 @@ module.exports = class{
 
         }
         static run(id){
-            var creep_body = [WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
             //var creep_body = [WORK,CARRY,MOVE];//only for testing
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 				if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size){
+					// BODY COST 1150: 4xWORK= 400 + 6*CARRY = 300 + 5xMOVE= 250 
+					var creep_body = [WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
 					//console.log('Spawning');
 					//console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'remoteBuilder', operation: id, target: Memory.operations[id].flagName}) == OK);
 					if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'remoteBuilder', operation: id, target: Memory.operations[id].flagName}) == OK){

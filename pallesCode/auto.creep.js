@@ -26,15 +26,15 @@ module.exports = {
 		switch(creep.memory.role) {
 			case creepRole[0].name:
 
-			if (creep.memory.spawn){
-				creep.room.memory.sources[creep.memory.source].minerId = creep.id;
-				delete creep.memory.spawn;
-			}
+				if (creep.memory.spawn){
+					creep.room.memory.sources[creep.memory.source].minerId = creep.id;
+					delete creep.memory.spawn;
+				}
 
-			if (creep.room.energyCapacityAvailable < 500)
-				this.allrounder(creep);
-			else
-				this.miner(creep);
+				if (creep.room.energyCapacityAvailable < 500)
+					this.allrounder(creep);
+				else
+					this.miner(creep);
 
 
 				break;
@@ -78,7 +78,12 @@ module.exports = {
 			case creepRole[4].name:
 				this.defender(creep);
 				break;
-			}
+				
+			case creepRole[5].name:
+				this.supplier(creep);
+				break;
+			
+			}			
 		}
 	},
 
@@ -150,6 +155,11 @@ module.exports = {
 
 	defender: function(creep){
 		this.defend(creep);
+	},
+	
+	supplier: function(creep){
+		this.haul(creep);
+		this.gather(creep);
 	},
 
 	harvest: function(creep) {
@@ -313,17 +323,18 @@ module.exports = {
 	},
 
 	gather: function(creep) {
-		if (creep.memory.job == undefined && creep.carry.energy < creep.carryCapacity/4){
-			this.anounceJob(creep,'gather');
+		if (creep.memory.job == undefined && ( (creep.carry.energy == creep.carryCapacity/4 && creep.memory.role != 'supplier') || (creep.carry.energy < creep.carryCapacity && creep.memory.role == 'supplier') ) ){
+			if (creep.ticksToLife > 30){
+				this.anounceJob(creep,'gather');
+			}else{
+				creep.suicide();
+			}
 		}
 
 		if (!creep.memory.containerId){
 			if (creep.role == 'hauler') {
 				var pos = creep.room.memory.sources[creep.memory.source].containerPos;
 				creep.memory.containerId = creep.room.find(FIND_STRUCTURES,{filter: (struct) => struct.struct.structureType == STRUCTURE_CONTAINER && struct.pos.x == pos.x && struct.pos.y == pos.y})[0];
-				var salvage = container.room.find(FIND_DROPPED_ENERGY, {filter: (s) => container.pos.x ==s.pos.x && container.pos.y == s.pos.y});
-				if (salvage[0] != undefined)
-					creep.memory.targetId = salvage[0].id;
 			}
 			else{
 				var noHaulContainer = creep.pos.findClosestByPath(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_STORAGE && s.store[RESOURCE_ENERGY] > creep.carryCapacity && creep.room.name == s.room.name})
@@ -434,37 +445,26 @@ module.exports = {
 
 	haul: function(creep) {
 		var target = Game.getObjectById(creep.memory.targetId);
-		if (creep.memory.job == 'haul' && (/*creep.carry.energy <= creep.carryCapacity/2*/creep.carry.energy == 0 || target == null 
+		if (creep.memory.job == 'haul' && (creep.carry.energy == 0 || target == null 
 			|| (target.structureType != STRUCTURE_STORAGE && target.energy == target.energyCapacity) 
 			|| (target.structureType == STRUCTURE_STORAGE && target.store.energy == target.storeCapacity))){
 			this.idle(creep);
 		}
-			if (creep.memory.job == undefined && creep.carry.energy > 0){
-			/*
-			var targets = creep.room.find(FIND_MY_STRUCTURES, {
-			filter: (structure) => {
-			return (
-			((structure.structureType == STRUCTURE_EXTENSION || structure.structureType == STRUCTURE_SPAWN) && structure.energy < structure.energyCapacity) ||
-			(structure.structureType == STRUCTURE_TOWER && structure.energy < structure.energyCapacity-200) ||
-			(structure.structureType == STRUCTURE_STORAGE && structure.store.energy < structure.storeCapacity) 
-			) && creep.room.name == structure.room.name;
-			}
-			});
-			*/
+		if (creep.memory.job == undefined && creep.carry.energy > 0){
 			var targets = creep.room.find(FIND_MY_STRUCTURES, {
 				filter: (structure) => {
 					return (structure.structureType == STRUCTURE_EXTENSION || structure.structureType == STRUCTURE_SPAWN) 
 						&& structure.energy < structure.energyCapacity && creep.room.name == structure.room.name;
 				}
 			});
-			if (targets[0] == null && creep.carry.energy > 0 ){//creep.carryCapacity/4){
+			if (creep.memory.role != 'supplier' && targets[0] == null && creep.carry.energy > 0 ){//creep.carryCapacity/4){
 				targets = creep.room.find(FIND_MY_STRUCTURES, {
 					filter: (structure) => {
 						return (structure.structureType == STRUCTURE_TOWER) && structure.energy < structure.energyCapacity-200 && creep.room.name == structure.room.name;
 					}
 				})
 			}
-			if (creep. memory.role == 'hauler' && targets[0] == undefined && creep.carry.energy > 0 ){//creep.carryCapacity/4){
+			if (creep.memory.role == 'hauler' && targets[0] == undefined && creep.carry.energy > 0 ){//creep.carryCapacity/4){
 				targets = creep.room.find(FIND_MY_STRUCTURES, {
 				filter: (structure) => {
 					return (structure.structureType == STRUCTURE_STORAGE) && structure.store.energy < structure.storeCapacity && creep.room.name == structure.room.name;
@@ -479,6 +479,18 @@ module.exports = {
 					this.anounceJob(creep,'haul');
 				} else{
 					this.relax(creep);
+				}
+			}
+			else{
+				if (creep.memory.role == 'supplier'){
+					let target = Game.getObjectById(creep.memory.spawnId);
+					if (!target){
+						creep.memory.spawnId = creep.pos.findClosestByPath(FIND_MY_STRUCTURES, {filter: (structure) => structure.structureType == STRUCTURE_SPAWN});
+					}else{
+						creep.moveTo(target);
+					}
+				}else{
+					this.idle(creep);
 				}
 			}
 		}
