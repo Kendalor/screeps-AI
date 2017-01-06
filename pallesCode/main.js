@@ -27,15 +27,27 @@ module.exports.loop = function () {
 	operationsHandler.init();
 	operationsHandler.run();
 
+	if(!Memory.myRooms){
+	    Memory.myRooms={};
+	    for (var name in Game.rooms){
+
+	        if(Game.rooms[name].controller.my){
+	            Memory.myRooms[name]=Game.rooms[name].memory;
+            }
+	    }
+
+	}
 
 
-	for(var name in Game.rooms) {
+
+	for(var name in Memory.myRooms) {
 
 
 		var room = Game.rooms[name];
 		
 		//autoMemory.fixSourceSlots(room);
-		 
+        var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
+		autoSpawn.run(spawnList);
 		invasionCounter.run(room);
 
 		//if(Game.time % 10 == 0){

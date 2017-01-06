@@ -328,8 +328,8 @@ module.exports = class{
                 Memory.operations[this.id].size=1; // NUMBER OF SQUADS ATTACKER = SQUAD LEADER
                 Memory.operations[this.id].healers=1; // NUMBER OF HEALERS PER SQUAD
                 //COST 12xMOVE = 600 + 12 ATTACK = 960 =1560
-                Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,28).fill(MOVE,28,36).fill(ATTACK,36,50);// COST 2300
-                //Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,20).fill(MOVE,20,30).fill(ATTACK,30,50);// COST 2300
+                //Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,28).fill(MOVE,28,36).fill(ATTACK,36,50);// COST 2300
+                Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,20).fill(MOVE,20,30).fill(ATTACK,30,50);// COST 2300
                 //Memory.operations[this.id].default_Abody=[MOVE,ATTACK]; //TEST
                 // COST 1800 6xHEAL= 1500 + 6xMOVE = 300   == 1800
                 Memory.operations[this.id].default_Hbody=Array(20).fill(TOUGH,0,10).fill(MOVE,10,16).fill(HEAL,16,20);
