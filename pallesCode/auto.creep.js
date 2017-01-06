@@ -143,7 +143,7 @@ module.exports = {
   },
   
   harvest: function(creep) {
-    if(creep.memory.job == 'idle' && creep.carry.energy < creep.carryCapacity){
+    if(creep.memory.job == undefined && creep.carry.energy < creep.carryCapacity){
       var sources = creep.room.find(FIND_SOURCES,{filter: (source) => (creep.room.memory.sources[source.id].slots > creep.room.memory.sources[source.id].slotsUsed && source.energy > 0)});
       if (sources.length > 0){
         var source = creep.pos.findClosestByPath(sources);//creep.pos.findClosestByPath(sources);
@@ -184,7 +184,7 @@ module.exports = {
   mine: function(creep) {
     var tmpContainer = creep.pos.lookFor('structure').filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
     var pos = creep.room.memory.sources[creep.memory.source].containerPos;
-    if (creep.memory.job == 'idle' && creep.carry.energy == 0){
+    if (creep.memory.job == undefined && creep.carry.energy == 0){
       this.anounceJob(creep,'mine');
     }
     if(creep.memory.job == 'mine' && creep.carry.energy < creep.carryCapacity){
@@ -249,7 +249,7 @@ module.exports = {
         creep.room.memory.sources[creep.memory.source].containerId = containers[0].id;
       }
     }
-    if(creep.memory.job == 'idle'){
+    if(creep.memory.job == undefined){
       this.anounceJob(creep,'containerize');
     }
     if(creep.carry.energy > 0 && creep.memory.job == 'containerize'){
@@ -273,14 +273,14 @@ module.exports = {
   },
   
   salvage: function(creep) {
-    if (!creep.room.memory.underAttack && creep.memory.job == 'idle' && creep.carry.energy <= creep.carryCapacity/2){
+    if (!creep.room.memory.underAttack && creep.memory.job == undefined && creep.carry.energy <= creep.carryCapacity/2){
       var salvage = creep.pos.findClosestByPath(FIND_DROPPED_ENERGY, {filter: (s) => s.energy > creep.carryCapacity && creep.room.name == s.room.name});
       if (salvage != null){
         this.anounceJob(creep,'salvage');
         creep.memory.targetId = salvage.id;
       }
     }
-    if(creep.memory.job == 'salvage' && creep.memory.targetId != null){
+    if(creep.memory.job == 'salvage' && creep.memory.targetId){
       var salvage = Game.getObjectById(creep.memory.targetId);
       if (salvage != null){
         if(creep.pickup(salvage,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
@@ -288,10 +288,10 @@ module.exports = {
         }
       }
       else{
-        creep.memory.targetId = null;
+        delete creep.memory.targetId;
       }
     }
-    if(creep.memory.job == 'salvage' && (creep.room.memory.underAttack == true || creep.memory.targetId == null || creep.carry.energy > 0)){
+    if(creep.memory.job == 'salvage' && (creep.room.memory.underAttack == true || !creep.memory.targetId || creep.carry.energy > 0)){
       this.idle(creep);
     }
   },
@@ -303,7 +303,7 @@ module.exports = {
   },
   
   gather: function(creep) {
-    if (creep.memory.job == 'idle' && creep.carry.energy < creep.carryCapacity/4){
+    if (creep.memory.job == undefined && creep.carry.energy < creep.carryCapacity/4){
       this.anounceJob(creep,'gather');
     }
     
@@ -351,7 +351,7 @@ module.exports = {
   },
   
   build: function(creep) {
-    if((creep.carry.energy > 0)&&(creep.memory.job == 'idle')){
+    if((creep.carry.energy > 0)&&(creep.memory.job == undefined)){
 	var constructions = [];
       if(constructions.length == 0 && creep.room.controller.level >= 2) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION });}
       if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});}
@@ -394,7 +394,7 @@ module.exports = {
   },
   
   repair: function(creep) {
-     if(creep.carry.energy > 0 && creep.memory.job == 'idle'){
+     if(creep.carry.energy > 0 && creep.memory.job == undefined){
       var target_repair = creep.pos.findClosestByPath(FIND_STRUCTURES, {
                             filter: (structure) => (structure.room.name == creep.room.name && structure.hits < structure.hitsMax-1500 && structure.structureType != STRUCTURE_WALL && structure.structureType != STRUCTURE_RAMPART) ||
                             (structure.room.name == creep.room.name && structure.structureType == STRUCTURE_RAMPART && structure.hits < 5000 && creep.room.controller.level > 2) ||
@@ -427,7 +427,7 @@ module.exports = {
     if (creep.memory.job == 'haul' && (/*creep.carry.energy <= creep.carryCapacity/2*/creep.carry.energy == 0 || target == null || (target.structureType != STRUCTURE_STORAGE && target.energy == target.energyCapacity) || (target.structureType == STRUCTURE_STORAGE && target.store.energy == target.storeCapacity))){
       this.idle(creep);
     }
-    if (creep.memory.job == 'idle' && creep.carry.energy > 0){
+    if (creep.memory.job == undefined && creep.carry.energy > 0){
       /*
       var targets = creep.room.find(FIND_MY_STRUCTURES, {
         filter: (structure) => {
@@ -493,7 +493,7 @@ module.exports = {
     
   upgrade: function(creep) {
     if (creep.room.controller.level < 8 && creep.carry.energy > 0){
-      if (creep.memory.job == 'idle'){
+      if (creep.memory.job == undefined){
         this.anounceJob(creep,'upgrade');
         creep.memory.targetId=creep.room.controller.id;
         var controllerFlag = _.filter(Game.flags, (flag) => flag.name == 'Controller' && flag.room.name==creep.room.name);
@@ -534,7 +534,7 @@ module.exports = {
   
   recharge: function(creep) {
     if (creep.carry.energy > 0){
-      if (creep.memory.job == 'idle'){
+      if (creep.memory.job == undefined){
         this.anounceJob(creep,'recharge');
         creep.memory.targetId=creep.room.controller.id;
         var controllerFlag = _.filter(Game.flags, (flag) => flag.name == 'Controller' && flag.room.name==creep.room.name);
@@ -601,8 +601,13 @@ module.exports = {
   },
   
   anounceJob: function(creep,job){
-    creep.memory.job=job;
-    creep.say(job);
+	if(job){
+	  creep.memory.job=job;
+	  creep.say(job);
+	}else{
+	  this.idle(creep);
+	}
+    
   },
   
   relax: function(creep){
@@ -612,8 +617,13 @@ module.exports = {
   },
   
   idle: function(creep){
-    creep.memory.targetId=null;
-    creep.memory.job='idle';
+	creep.say("idle")
+    if (creep.memory.targetId){
+	  delete creep.memory.targetId;
+	}
+	if (creep.memory.job){
+	  delete creep.memory.job;
+	}
   }
 
 };
