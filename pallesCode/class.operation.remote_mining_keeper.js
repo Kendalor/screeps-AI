@@ -22,16 +22,21 @@ module.exports = class{
                             console.log('Place a RED/BLUE Flag in the Room to Defend your Mining Op');
                         }
                     }
-
-
                     if(Object.keys(Memory.operations[id].sources).length >0 && (Memory.operations[id].defendOperationId || !Memory.operations[id].keeperRoom)){
                         this.addSourceToOperation(room,id);
                         for(var i in Memory.operations[id].sources){
                             var source=Game.getObjectById(i);
                             var storage=Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId);
                             var enemies=source.pos.findInRange(FIND_HOSTILE_CREEPS,5);
+                            console.log('BLUBB');
+                            console.log(enemies[0]);
                             if(enemies.length >0 && !Memory.operations[id].sources[source.id].keeper){
                                     Memory.operations[id].sources[source.id].keeper=enemies[0].id;
+                            }else if(enemies.length >0 && Memory.operations[id].sources[source.id].keeper){
+                                    if(enemies[0].id == Memory.operations[id].sources[source.id].keeper){
+                                        console.log('ID DIfferent');
+                                        Memory.operations[id].sources[source.id].keeper=enemies[0].id;
+                                    }
                             }else if(!enemies.length >0){
                                 delete Memory.operations[id].sources[source.id].keeper;
                             }
@@ -205,6 +210,7 @@ module.exports = class{
                 }else{
                     var creep=Game.creeps[Memory.operations[id].sources[source.id].miner];
                     var keeper=Game.getObjectById(Memory.operations[id].sources[source.id].keeper);
+                    console.log(keeper);
                     creep.moveByPath(PathFinder.search(creep.pos,{pos:keeper.pos, range:4},{flee: true}).path);
                 }
             }
