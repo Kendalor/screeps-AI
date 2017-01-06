@@ -545,7 +545,7 @@ module.exports = class{
                             if (salvage.length > 0){
                                 var err = creep.pickup(salvage[0],RESOURCE_ENERGY)
                                 if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                                    creep.moveTo(target,{reusePath: 1,ignoreCreeps: false});
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
@@ -553,7 +553,7 @@ module.exports = class{
                             }else{
                                 var err = creep.withdraw(target,RESOURCE_ENERGY);
                                 if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                    creep.moveTo(target,{reusePath: 1,ignoreCreeps: false});
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
@@ -563,7 +563,7 @@ module.exports = class{
                             creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                         }
                         else{
-                            creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                            creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                         }
                     }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
                         var roadConstructions = creep.pos.lookFor(LOOK_CONSTRUCTION_SITES).filter((struct) => struct.structureType == STRUCTURE_ROAD);
@@ -579,7 +579,7 @@ module.exports = class{
                                 if (creep.room.name == target.room.name){
                                     creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                                 }else{
-                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                                 }
                             }else if (err == ERR_NOT_ENOUGH_ENERGY){
                                 if(creep.ticksToLive >= 2* Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource){
@@ -617,7 +617,7 @@ module.exports = class{
 				if (creep.room.storage != undefined){
 					creep.moveTo(flag,{reusePath: 5,ignoreCreeps: false});
                 }else if(creep.room.name != pos.roomName){
-                    creep.moveTo(flag,{reusePath: 30,ignoreCreeps: true});
+                    creep.moveTo(flag,{reusePath: 30,ignoreCreeps: false});
                 }else if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
                     creep.moveTo(source);
                 }
