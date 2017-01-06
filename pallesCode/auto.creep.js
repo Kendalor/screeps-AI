@@ -235,6 +235,7 @@ module.exports = {
 		if(creep.memory.job == 'mine' && creep.carry.energy >= 0){
 			if(!creep.memory.containerId && creep.carry.energy > 30){
 				var containers = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
+
 				if (!containers[0]){
 					if (creep.room.memory.sources[creep.memory.source].container){
 						delete creep.room.memory.sources[creep.memory.source].container;

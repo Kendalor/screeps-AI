@@ -84,16 +84,21 @@ module.exports = {
 
 
 					case 1: //hauler
-						if(minerAmount > haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
+					    //console.log('need to spawn?');
+					    //console.log(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length));
+						if(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
 							for(id in sources){
 								if(!spawn.room.memory.sources[id].requiredCarryParts){
 									autoMemory.resetRoomMemory(spawn.room);
 								}
 								var found = true;
 								//console.log("hauler: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}));
+								//console.log('container existis ? in room '+ spawn.room.name);
+								//console.log(spawn.room.memory.sources[id].container);
 								if (spawn.room.memory.sources[id].container){
 									if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive > (6+8*spawn.room.memory.sources[id].requiredCarryParts) }).length == 0 && found){
 										//console.log(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts))
+										console.log(spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true}));
 										spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true});
 										found = false;
 									}
@@ -168,7 +173,7 @@ module.exports = {
 	maintancePreset: function(spawn){
 		var energyCap = spawn.room.energyCapacityAvailable;
 		if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.memory.activeCreepRoles.maintance == 0 && spawn.room.energyAvailable < energyCap)
-			energyCap = spawn.room.energyAvailable;
+			energyCap = Math.min(spawn.room.energyAvailable,1200);
 		var moveParts = Math.max(1,parseInt(energyCap/200));
 		var carryParts = moveParts;
 		var workParts = moveParts;
