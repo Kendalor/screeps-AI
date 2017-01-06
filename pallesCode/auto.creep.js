@@ -126,7 +126,7 @@ module.exports = {
 		this.gather(creep);
 		if (!creep.memory.job){
 			if (0 == creep.carry.energy && creep.memory.containerId){
-				this.travel(creep,containerId);
+				this.travel(creep,creep.memory.containerId);
 			}else if(!creep.room.storage && creep.carryCapacity == creep.carry.energy){
 				if (!creep.memory.spawnId){
 					let spawn = creep.pos.findClosestByPath(FIND_MY_STRUCTURES, {filter: (structure) => structure.structureType == STRUCTURE_SPAWN});
