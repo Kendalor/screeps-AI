@@ -4,10 +4,13 @@ module.exports = {
     for(var name in Memory.creeps) {
       if(!Game.creeps[name]) {
         if (Memory.creeps[name].tmpSource){
-			var tmpSource = Game.getObjectById([Memory.creeps[name].tmpSource])
+			let tmpSource = Game.getObjectById([Memory.creeps[name].tmpSource])
 			if (tmpSource && tmpSource.room && tmpSource.room.memory && tmpSource.room.memory.sources)
 				tmpSource.room.memory.sources[Memory.creeps[name].tmpSource].slotsUsed--;
-        }
+        }else if(Memory.creeps[name].role == 'miner' && Memory.creeps[name].role == 'mine' && Memory.creeps[name].source){
+			let source = Game.getObjectById([Memory.creeps[name].tmpSource])
+			source.room.memory.sources[Memory.creeps[name].source].slotsUsed--;
+		}
         delete Memory.creeps[name];
         console.log('Clearing non-existing creep memory:', name);
       }
@@ -22,7 +25,7 @@ module.exports = {
 	},
 	
 	fixSource: function(room,sourceId){
-		var slotsUsed = room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.tmpSource == sourceId}).length;
+		var slotsUsed = room.find(FIND_MY_CREEPS,{filter: (creep) => (creep.memory.tmpSource == sourceId) || (creep.memory.job == 'mine' && creep.memory.source == sourceId)}).length;
 		room.memory.sources[sourceId].slotsUsed = slotsUsed;
 		
 		var miner = room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == sourceId && creep.role == 'miner'});
