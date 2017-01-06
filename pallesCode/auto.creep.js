@@ -4,6 +4,7 @@ var creepRole = constants.creepRole();
 var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
 module.exports = {
+<<<<<<< HEAD
 	/** @param {creepList} creepList **/
 		run: function(creepList) {
 		for (var id in creepList){
@@ -18,6 +19,21 @@ module.exports = {
 		/*
 		 * if no creep is left with 'idle' status
 		 */
+=======
+  /** @param {creepList} creepList **/
+  run: function(creepList) {
+    for (var id in creepList){
+      var creep = creepList[id];
+      var job = creep.memory.job;
+      //creep.say(job);
+      
+      
+      var containers = creep.room.find(FIND_MY_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER});
+      var containersAmount = containers.length;
+      
+      switch(creep.memory.role) {
+        case creepRole[0].name:
+>>>>>>> origin/master
 		
 		
 		var containers = creep.room.find(FIND_MY_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER});
