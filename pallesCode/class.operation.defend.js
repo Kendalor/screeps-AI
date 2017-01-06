@@ -45,11 +45,11 @@ module.exports = class{
                     }
                 }
                 if(!Game.creeps[sLeader].spawning){
-                        if(Game.creeps[sLeader].ticksToLive < 1400){
-                            this.refreshTimer(Game.creeps[sLeader]);
-                        }else{
+                        /*if(Game.creeps[sLeader].ticksToLive < 1400){
+                            //this.refreshTimer(Game.creeps[sLeader]);
+                        }else{*/
                             Game.creeps[sLeader].moveTo(Game.getObjectById(Memory.operations[id].rallyPoint));
-                        }
+                        //}
 
                 }
             }
@@ -81,6 +81,7 @@ module.exports = class{
                 if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
 
                     creep.moveTo(Game.flags[Memory.operations[id].flagName]);
+                    //console.log('Set to Combat');
                     Memory.operations[id].status='combat';
                 }
             }
@@ -93,37 +94,33 @@ module.exports = class{
             var err;
             var target;
             if(Object.keys(Memory.operations[id].squads).length > 0){
-                for(var sLeader in Memory.operations[id].squads){
-                    for(var cr in Memory.operations[id].squads[sLeader]){
-						if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name) // Just in case if leader is blocking the path, leave the edge of the map
-							this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]],Game.creeps[sLeader].pos);
-                        Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
 
-                        err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
-                        if(err == ERR_NOT_IN_RANGE){
-                            wait=true;
-                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
-                        }
-                        if(Game.creeps[sLeader].hits == Game.creeps[sLeader].hitsMax ){
-                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
-                        }
+                for(var sLeader in Memory.operations[id].squads){
+                    console.log(Memory.operations[id].squads[sLeader].length < Memory.operations[id].healers );
+                    if(Memory.operations[id].squads[sLeader].length < Memory.operations[id].healers ){
+                        console.log('Building Healers Again');
+                        this.buildCreeps(id);
                     }
-                    //console.log('BUGFIX');
+
+
                     if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
                         //console.log('BUGFIX');
                         //console.log(enemies);
                         var timeToSpawn=300;
                         var spawn;
-                        if(enemies.length < 0){
+                        if(!enemies.length > 0){
                             if(!Memory.operations[id].toDefend){
                                 var enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
                             }else{
+                                //console.log('BUGFIX');
                                 var timeToSpawn=300;
                                 var spawn;
                                 for(var sources in Memory.operations[Memory.operations[id].toDefend].sources){
                                     var source=Game.getObjectById(sources);
                                     if(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeper){
-                                        enemies.push(Game.getObejctById(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeper));
+                                        console.log('Push enemy');
+
+                                        enemies.push(Game.getObjectById(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeper));
                                     }else{
                                         var lair=Game.getObjectById(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeperLair);
                                         if(lair.ticksToSpawn < timeToSpawn){
@@ -133,11 +130,12 @@ module.exports = class{
                                     }
                                 }
                             }
-
 							//enemies=Game.creeps[sLeader].room.find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_WALL}); // ALTERNATIVE FOR DEMOLISHING WALLS - NOT WORKING PROPERLY ATM
                         }
-                        if(enemies.length >0){
+                        //console.log(enemies[0] != null);
+                        if(enemies[0] != null){
                             //console.log('rly');
+                            //console.log(JSON.stringify(enemies));
                             target=Game.creeps[sLeader].pos.findClosestByPath(enemies);
                             err=Game.creeps[sLeader].attack(target);
                             if(err == ERR_NOT_IN_RANGE){
@@ -147,31 +145,75 @@ module.exports = class{
                             }
                         }else{
                             if(!Memory.operations[id].toDefend){
+
                                 if(!wait){
                                     Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
                                 }
                             }else{
+                                //console.log(spawn);
                                 if(spawn){
+                                        if(spawn.ticksToSpawn >= Game.creeps[sLeader].ticksToLive){
+                                            Game.creeps[sLeader].suicide();
+                                        }
+                                        //console.log(wait);
                                         if(!wait){
-                                            Game.creeps[sLeader].moveTo(target);
+                                            //console.log('moveout');
+                                            Game.creeps[sLeader].moveTo(spawn);
                                         }
                                     }
                             }
+                        }
+                    }
 
+
+                    for(var cr in Memory.operations[id].squads[sLeader]){
+						if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name){ // Just in case if leader is blocking the path, leave the edge of the map
+							this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]],Game.creeps[sLeader].pos);
+						}
+                        if(enemies[0] != null){
+                            var range=Game.creeps[Memory.operations[id].squads[sLeader][cr]].pos.inRangeTo(enemies[0],2);
+                            if(range){
+                                path=PathFinder.search(Game.creeps[Memory.operations[id].squads[sLeader][cr]].pos,{pos: enemies[0].pos, range:1},{flee: true});
+                                Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveByPath(path.path);
+                            }else{
+                                Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
+                            }
+                        }else{
+                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
                         }
 
+                        Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
 
-
+                        err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
+                        if(err == ERR_NOT_IN_RANGE){
+                            wait=true;
+                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
+                        }
+                        if(Game.creeps[sLeader].hits == Game.creeps[sLeader].hitsMax ){
+                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
+                            if(Game.creeps[Memory.operations[id].squads[sLeader][cr]].hits == Game.creeps[Memory.operations[id].squads[sLeader][cr]].hitsMax ){
+                                var damagedCreep=Game.creeps[Memory.operations[id].squads[sLeader][cr]].pos.findClosestByPath(FIND_MY_CREEPS,{filter: (cr) => cr.hits < cr.hitsMax});
+                                if(damagedCreep){
+                                    err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(damagedCreep);
+                                    if(err == ERR_NOT_IN_RANGE){
+                                        Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(damagedCreep);
+                                    }
+                                }
+                            }
+                        }
                     }
+                    //console.log('BUGFIX');
+
                 }
 				//if(Game.flags[Memory.operations[id].flagName].room.name != Game.creeps[sLeader].room.name){ // If you want to avoid combat and just wanna move on.
-                if(enemies == undefined && spawn == undefined){
+				//console.log(enemies == undefined);
+				//console.log(spawn == undefined);
+                if(!enemies.length >0 && spawn == undefined){
                     Memory.operations[id].status='traveling';
                 }
             }else{
                 Memory.operations[id].status='assembling';
             }
-
         }
         /*
         TODO: REASSIGN HEALERS HEADLESS HEALERS TO FALL BACK AND ASSIGN THEM A NEW SQUAD

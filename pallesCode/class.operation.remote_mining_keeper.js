@@ -8,6 +8,7 @@ module.exports = class{
                     this.scouting(id);
                     console.log('Moving Scout');
                 }else{
+                    this.scouting(id);
                     var room=Game.rooms[Memory.operations[id].roomName];
                     if(Memory.operations[id].keeperRoom == undefined){
                         Memory.operations[id].keeperRoom=(room.find(FIND_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR}).length >0);
@@ -39,14 +40,14 @@ module.exports = class{
                                     this.buildRoadAndContainer(id,source,storage);
                                     break;
                                 case 'BuildingContainer':
-                                    //this.buildAndRunMiner(id,source);
+                                    this.buildAndRunMiner(id,source);
                                     break;
                                 case 'BuildingRoad':
-                                    //this.buildAndRunBuilder(id,source);
-                                    //this.buildAndRunCreeps(id);
+                                    this.buildAndRunBuilder(id,source);
+                                    this.buildAndRunCreeps(id);
                                     break;
                                 case 'Mining':
-                                    //this.buildAndRunCreeps(id);
+                                    this.buildAndRunCreeps(id);
                                     break;
                             }
                         }
@@ -203,7 +204,7 @@ module.exports = class{
                     this.creepMine(Game.creeps[Memory.operations[id].sources[source.id].miner]);
                 }else{
                     var creep=Game.creeps[Memory.operations[id].sources[source.id].miner];
-                    var keeper=Game.creeps[Memory.operations[id].sources[source.id].keeper];
+                    var keeper=Game.getObjectById(Memory.operations[id].sources[source.id].keeper);
                     creep.moveByPath(PathFinder.search(creep.pos,{pos:keeper.pos, range:4},{flee: true}).path);
                 }
             }
@@ -224,8 +225,8 @@ module.exports = class{
                 if(!Memory.operations[id].sources[source.id].ticksToSource){
                     Memory.operations[id].sources[source.id].min_haulers=1;
                 }else{
-                    Memory.operations[id].sources[source.id].carry_parts=Math.ceil(Memory.operations[id].sources[source.id].ticksToSource*2/5);
-                    Memory.operations[id].sources[source.id].min_haulers=Math.ceil(Memory.operations[id].sources[source.id].ticksToSource*2/5/18);
+                    Memory.operations[id].sources[source.id].carry_parts=Math.ceil(Memory.operations[id].sources[source.id].ticksToSource*2*(4000/(300*50)));
+                    Memory.operations[id].sources[source.id].min_haulers=Math.ceil(Memory.operations[id].sources[source.id].ticksToSource*2(4000/(300*50)));
                     var max_carry_moveSets=parseInt((Game.getObjectById(Memory.operations[id].nearest_spawnId).room.energyCapacityAvailable-150)/(150));
                     Memory.operations[id].max_carry_moveSets=max_carry_moveSets;
                     // CREATE BODY
@@ -422,7 +423,7 @@ module.exports = class{
                 }
 
             if(done){
-                Memory.operations[id].status='BuildingContainer';
+                Memory.operations[id].sources[source.id].status='BuildingContainer';
             }
 
         }
@@ -772,22 +773,26 @@ module.exports = class{
         }
 
         static scouting(id){
+
             if(!Memory.operations[id].s_creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
                 if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([MOVE],undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
                     var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([MOVE],undefined,{role: 'scout', operation_id: id});
                     var creep=Game.creeps[name];
                     Memory.operations[id].s_creep=name;
                 }
+                }else if(!Game.creeps[Memory.operations[id].s_creep]){
+                    delete Game.creeps[Memory.operations[id].s_creep];
+
+
                 }else if(!Game.creeps[Memory.operations[id].s_creep].spawning){ //IF CREEP FINISHED SPAWNING
+
+
                     var creep= Game.creeps[Memory.operations[id].s_creep];
                     creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
-                    creep.say('scouting');
-                    if(creep.room.name == Memory.operations[id].roomName){
-
-                        creep.moveTo(Game.flags[Memory.operations[id].flagName]);
+                    if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
+                        //Game.flags[Memory.operations[id].flagName].remove();
                     }
                 }
-
         }
 
         static checkForDelete(id){

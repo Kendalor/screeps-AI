@@ -171,9 +171,9 @@ module.exports = {
 	},
 	
 	maintancePreset: function(spawn){
-		var energyCap = spawn.room.energyCapacityAvailable;
+		var energyCap = Math.min(spawn.room.energyCapacityAvailable,1200);
 		if (spawn.room.memory.activeCreepRoles.hauler == 0 && spawn.room.memory.activeCreepRoles.maintance == 0 && spawn.room.energyAvailable < energyCap)
-			energyCap = Math.min(spawn.room.energyAvailable,1200);
+			energyCap = Math.min(spawn.room.energyAvailable,1500);
 		var moveParts = Math.max(1,parseInt(energyCap/200));
 		var carryParts = moveParts;
 		var workParts = moveParts;
