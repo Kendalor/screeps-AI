@@ -145,10 +145,10 @@ module.exports = {
 		this.harvestCancel(creep);
 		this.haulCancel(creep);
 		if(creep.room.controller.ticksToDowngrade < 1000)
-		this.upgrade(creep);
-		this.build(creep);
-		this.repair(creep);
+			this.upgrade(creep);
 		this.haul(creep);
+		this.repair(creep);
+		this.build(creep);
 		this.upgrade(creep);
 		this.salvage(creep);
 		this.gather(creep);
