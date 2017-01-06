@@ -26,12 +26,14 @@ module.exports = class{
                     if(Object.keys(Memory.operations[id].sources).length >0 && (Memory.operations[id].defendOperationId || !Memory.operations[id].keeperRoom)){
                         this.addSourceToOperation(room,id);
                         for(var i in Memory.operations[id].sources){
-                            /*switch (Memory.operations[id].sources[i].status) {
+                            var source=Game.getObjectById(i);
+                            var storage=Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId);
+                            switch (Memory.operations[id].sources[i].status) {
                                 case 'createConstructionSites':
-                                    //this.buildRoadAndContainer(id);
+                                    this.buildRoadAndContainer(id,source,storage);
                                     break;
                                 case 'BuildingContainer':
-                                    //this.buildAndRunMiner(id);
+                                    //this.buildAndRunMiner(id,source);
                                     break;
                                 case 'BuildingRoad':
                                     //this.buildAndRunBuilder(id);
@@ -40,7 +42,7 @@ module.exports = class{
                                 case 'Mining':
                                     //this.buildAndRunCreeps(id);
                                     break;
-                            }*/
+                            }
                         }
                     }else{
                         this.addSourceToOperation(room,id);
@@ -77,6 +79,12 @@ module.exports = class{
                     Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
                     Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
                     Memory.operations[id].sources[source.id].status='createConstructionSites';
+                    if(Memory.operations[id].keeperRoom){
+                        var lair=source.pos.findInRange(FIND_STRUCTURES,5,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR });
+                        if(lair.length>0){
+                             Memory.operations[id].sources[source.id].keeperLair=lair[0].id;
+                        }
+                    }
                     flags[i].remove();
                 }
 
@@ -164,32 +172,43 @@ module.exports = class{
             return best_spawn;
         }
         // BUILD CREEPS FOR HAULING AND MINING
-        static buildAndRunMiner(id){
+        static buildAndRunMiner(id,source){
             var temp=true;
-            for(var i in Memory.operations[id].sources){
-                // MINER CODE
-                if(!Memory.operations[id].sources[i].miner){ //DOES THIS SOURCE HAVE A MINER
-                    // 7x WORK ( to make up for the walking distance ) , 1 CARRY,and 7 MOVE to assure walk speed = 1/tick COST = 1150
-                    if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i});
-                        Memory.operations[id].sources[i].miner=name;
-                    }
-                }else if(!Game.creeps[Memory.operations[id].sources[i].miner]){
-                    console.log('Deleted '+Memory.operations[id].sources[i].miner +' from memory')
-                    delete Memory.creeps[Memory.operations[id].sources[i].miner];
-                    delete Memory.operations[id].sources[i].miner;
-                }else if(!Game.creeps[Memory.operations[id].sources[i].miner].spawning){
-                    this.creepMine(Game.creeps[Memory.operations[id].sources[i].miner]);
+            if(!Memory.operations[id].sources[source.id].keeper){
+                var enemies=source.pos.findInRange(FIND_HOSTILE_CREEPS,5);
+                if(enemies.length >0){
+                    Memory.operations[id].sources[source.id].keeper=enemies[0].id;
+                }else{
+                    // STANDART CODE IF NO ENEMY IS NEAR
+                    if(Memory.operations[id].sources[source.id].keeper)
+                    // MINER CODE
+                    if(!Memory.operations[id].sources[source.id].miner){ //DOES THIS SOURCE HAVE A MINER
+                        // 7x WORK ( to make up for the walking distance ) , 1 CARRY,and 7 MOVE to assure walk speed = 1/tick COST = 1150
+                        if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
+                            var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i});
+                            Memory.operations[id].sources[source.id].miner=name;
+                        }
+                    }else if(!Game.creeps[Memory.operations[id].sources[source.id].miner]){
+                        console.log('Deleted '+Memory.operations[id].sources[source.id].miner +' from memory')
+                        delete Memory.creeps[Memory.operations[id].sources[source.id].miner];
+                        delete Memory.operations[id].sources[source.id].miner;
+                    }else if(!Game.creeps[Memory.operations[id].sources[source.id].miner].spawning){
+                        this.creepMine(Game.creeps[Memory.operations[id].sources[source.id].miner]);
 
+                    }
+                    if(!Memory.operations[id].sources[source.id].containerId){
+                        temp=false;
+                        //console.log('test temp to false');
+                    }
+                    if(temp){
+                        console.log('Set Operation Status to Building Road');
+                        Memory.operations[id].status='BuildingRoad';
+                    }
                 }
-                if(!Memory.operations[id].sources[i].containerId){
-                    temp=false;
-                    //console.log('test temp to false');
-                }
-            }
-            if(temp){
-                console.log('Set Operation Status to Building Road');
-                Memory.operations[id].status='BuildingRoad';
+            }else{
+                var creep=Game.creeps[Memory.operations[id].sources[source.id].miner];
+                var keeper=Game.creeps[Memory.operations[id].sources[source.id].keeper];
+                creep.moveByPath(PathFinder.search(creep.pos,{pos:keeper.pos, range:4},{flee: true}).path);
             }
         }
 
@@ -327,59 +346,47 @@ module.exports = class{
 
         // COMPLETE REWRITE
         //TODO MERGE SCOUT AND BUILDROAD/CONTAINER FUNCTION
-        static buildRoadAndContainer(id){
-            if(!Memory.operations[id].sources){//If this room has no sources memory yet
-                Memory.operations[id].sources = {}; //Add it
-                var room= Game.rooms[Memory.operations[id].roomName];
-                var flags=room.find(FIND_FLAGS,{filter: (flag) => flag.color == COLOR_BLUE && flag.secondaryColor == COLOR_WHITE});
-                var sources = room.find(FIND_SOURCES);//Find all sources in the current room
-                for(var i in sources){
-                    var source = sources[i];
-                    source.memory = Memory.operations[id].sources[source.id] = {}; //Create a new empty memory object for this source
-                }
-            }else{
-                var sources = Memory.operations[id].sources;
-                var storage=Game.getObjectById(Memory.operations[id].nearest_storageId);
-                var done=true;
-                for(var s_id in sources){
-                 var source=Game.getObjectById(s_id);
-                 var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCos: 1, swampCost: 1}).path;
-                 Memory.operations[id].sources[s_id].ticksToSource=Object.keys(path).length;
-                     for(var i in path){
-                        //console.log(JSON.stringify(path));
-                        if(i==0){
-                        //console.log('create Container');
-                        //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
-                        Memory.operations[id].sources[s_id].containerPos = {};
-                        Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
-                        Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
-                            if(Game.rooms[path[i].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != OK){
-                                var temp_id=Game.rooms[path[i].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                if(temp_id.length >0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
-                                    Memory.operations[id].constructionSites[temp_id[0].id]={};
-                                }
-                            }else{
-                                    done=false;
+        static buildRoadAndContainer(id,source,storage){
+            var done=true;
+
+
+            var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCos: 1, swampCost: 1}).path;
+
+                 for(var i in path){
+                    //console.log(JSON.stringify(path));
+                    if(i==0){
+                    //console.log('create Container');
+                    //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
+                    Memory.operations[id].sources[source.id].containerPos = {};
+                    Memory.operations[id].sources[source.id].containerPos.x = path[0].x;
+                    Memory.operations[id].sources[source.id].containerPos.y = path[0].y;
+                        if(Game.rooms[path[i].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != OK){
+                            var temp_id=Game.rooms[path[i].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
+                            if(temp_id.length >0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
+                                Memory.operations[id].constructionSites[temp_id[0].id]={};
                             }
                         }else{
-                            //console.log('create Road');
-                            //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                            if(Game.rooms[path[i].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
-
-                                var temp_id=Game.rooms[path[i].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
-                                if(temp_id.length >0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
-                                    Memory.operations[id].constructionSites[temp_id[0].id]={};
-                                }
-                            }else{
                                 done=false;
+                        }
+                    }else{
+                        //console.log('create Road');
+                        //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
+                        if(Game.rooms[path[i].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
+
+                            var temp_id=Game.rooms[path[i].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
+                            if(temp_id.length >0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
+                                Memory.operations[id].constructionSites[temp_id[0].id]={};
                             }
+                        }else{
+                            done=false;
                         }
                     }
                 }
-                if(done){
-                    Memory.operations[id].status='BuildingContainer';
-                }
+
+            if(done){
+                Memory.operations[id].status='BuildingContainer';
             }
+
         }
 
           /*CONSTANTS TO REPLACE:

@@ -45,8 +45,12 @@ module.exports = class{
                     }
                 }
                 if(!Game.creeps[sLeader].spawning){
+                        if(Game.creeps[sLeader].ticksToLive < 1400){
+                            this.refreshTimer(Game.creeps[sLeader]);
+                        }else{
+                            Game.creeps[sLeader].moveTo(Game.getObjectById(Memory.operations[id].rallyPoint));
+                        }
 
-                        Game.creeps[sLeader].moveTo(Game.getObjectById(Memory.operations[id].rallyPoint));
                 }
             }
         }
@@ -84,7 +88,7 @@ module.exports = class{
 
         static combat(id){
             this.checkForCreeps(id);
-            var enemies=undefined;
+            var enemies=[];
             var wait=false;
             var err;
             var target;
@@ -108,12 +112,31 @@ module.exports = class{
                     if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
                         //console.log('BUGFIX');
                         //console.log(enemies);
-                        if(enemies == undefined){
-                            var enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
+                        var timeToSpawn=300;
+                        var spawn;
+                        if(enemies.length < 0){
+                            if(!Memory.operations[id].toDefend){
+                                var enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
+                            }else{
+
+                                for(var sources in Memory.operations[Memory.operations[id].toDefend].sources){
+                                    var source=Game.getObjectById(sources);
+                                    if(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeper){
+                                        enemies.push(Game.getObejctById(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeper));
+                                    }else{
+                                        var lair=Game.getObjectById(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeperLair);
+                                        if(lair.ticksToSpawn < timeToSpawn){
+                                            timeToSpawn=lair.ticksToSpawn;
+                                            spawn=lair;
+                                        }
+                                    }
+                                }
+                            }
+
 							//enemies=Game.creeps[sLeader].room.find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_WALL}); // ALTERNATIVE FOR DEMOLISHING WALLS - NOT WORKING PROPERLY ATM
                         }
                         if(enemies.length >0){
-                            console.log('rly');
+                            //console.log('rly');
                             target=Game.creeps[sLeader].pos.findClosestByPath(enemies);
                             err=Game.creeps[sLeader].attack(target);
                             if(err == ERR_NOT_IN_RANGE){
@@ -122,9 +145,14 @@ module.exports = class{
                                 }
                             }
                         }else{
+                            if(!Memory.operations[id].toDefend){
+                                if(!wait){
+                                    Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
+                            }else{
 
-                            if(!wait){
-                                Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
+                            }
+
+
                             }
                         }
                     }
@@ -297,7 +325,7 @@ module.exports = class{
                 //Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,20).fill(MOVE,20,30).fill(ATTACK,30,50);// COST 2300
                 //Memory.operations[this.id].default_Abody=[MOVE,ATTACK]; //TEST
                 // COST 1800 6xHEAL= 1500 + 6xMOVE = 300   == 1800
-                Memory.operations[this.id].default_Hbody=Array(20).fill(TOUGH,0,10).fill(MOVE,10,16).fill(HEAL,17,20);
+                Memory.operations[this.id].default_Hbody=Array(20).fill(TOUGH,0,10).fill(MOVE,10,16).fill(HEAL,16,20);
                 //Memory.operations[this.id].default_Hbody=[MOVE,HEAL]; //TEST
                 Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
                 Memory.operations[this.id].status='assembling';
@@ -354,7 +382,7 @@ module.exports = class{
         }
 
         static refreshTimer(creep){
-            var target = Game.spawns['Spawn1'];
+            var target = Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_spawnId);
             if(target.renewCreep(creep) == ERR_NOT_IN_RANGE){
                 creep.moveTo(target)
             }else if(target.renewCreep(creep) == ERR_FULL){
