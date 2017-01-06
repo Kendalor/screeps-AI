@@ -324,7 +324,7 @@ module.exports = {
 	},
 
 	gather: function(creep) {
-		if (!creep.memory.job && ( (creep.carry.energy == creep.carryCapacity/4 && creep.memory.role != 'supplier') || (creep.carry.energy < creep.carryCapacity && creep.memory.role == 'supplier') ) ){
+		if (!creep.memory.job && creep.carry.energy < creep.carryCapacity){
 			if (creep.ticksToLife > 30){
 				this.anounceJob(creep,'gather');
 			}else{
@@ -356,7 +356,7 @@ module.exports = {
 			}
 			if(creep.withdraw(container,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
 				creep.moveTo(container);
-			} 
+			}
 		}
 		if(creep.memory.job == 'gather' && (creep.carry.energy == creep.carryCapacity || creep.memory.containerId == null || container == null || container.store[RESOURCE_ENERGY] < creep.carryCapacity/4)){
 			if (creep.role != 'hauler'){
