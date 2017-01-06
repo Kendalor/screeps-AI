@@ -38,9 +38,11 @@ module.exports.loop = function () {
 	var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
 	autoSpawn.run(spawnList);
     //}
-    
-    var creepList = (room.find(FIND_MY_CREEPS,{filter: (creep) => creep.room.name == name}));
-    autoCreep.run(creepList);
+    if(spawnList >0){
+        var creepList = (room.find(FIND_MY_CREEPS,{filter: (creep) => creep.room.name == name}));
+        autoCreep.run(creepList);
+    }
+
 	
   }
 

@@ -118,7 +118,8 @@ module.exports = class{
                             if(!Memory.operations[id].toDefend){
                                 var enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
                             }else{
-
+                                var timeToSpawn=300;
+                                var spawn;
                                 for(var sources in Memory.operations[Memory.operations[id].toDefend].sources){
                                     var source=Game.getObjectById(sources);
                                     if(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeper){
@@ -148,17 +149,23 @@ module.exports = class{
                             if(!Memory.operations[id].toDefend){
                                 if(!wait){
                                     Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
+                                }
                             }else{
-
+                                if(spawn){
+                                        if(!wait){
+                                            Game.creeps[sLeader].moveTo(target);
+                                        }
+                                    }
                             }
 
-
-                            }
                         }
+
+
+
                     }
                 }
 				//if(Game.flags[Memory.operations[id].flagName].room.name != Game.creeps[sLeader].room.name){ // If you want to avoid combat and just wanna move on.
-                if(enemies == undefined){
+                if(enemies == undefined && spawn == undefined){
                     Memory.operations[id].status='traveling';
                 }
             }else{
@@ -385,8 +392,6 @@ module.exports = class{
             var target = Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_spawnId);
             if(target.renewCreep(creep) == ERR_NOT_IN_RANGE){
                 creep.moveTo(target)
-            }else if(target.renewCreep(creep) == ERR_FULL){
-                this.creep.Idle(creep);
             }
         }
 

@@ -9,6 +9,7 @@ module.exports = {
     for (var id in creepList){
       var creep = creepList[id];
       var job = creep.memory.job;
+      //creep.say(job);
       
       
       var containers = creep.room.find(FIND_MY_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER});
