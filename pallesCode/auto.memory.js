@@ -7,7 +7,7 @@ module.exports = {
 			let tmpSource = Game.getObjectById([Memory.creeps[name].tmpSource])
 			if (tmpSource && tmpSource.room && tmpSource.room.memory && tmpSource.room.memory.sources)
 				tmpSource.room.memory.sources[Memory.creeps[name].tmpSource].slotsUsed--;
-        }else if(Memory.creeps[name].role == 'miner' && Memory.creeps[name].role == 'mine' && Memory.creeps[name].source){
+        }else if(Memory.creeps[name].role == 'miner' && Memory.creeps[name].job == 'mine' && Memory.creeps[name].source){
 			let source = Game.getObjectById([Memory.creeps[name].tmpSource])
 			source.room.memory.sources[Memory.creeps[name].source].slotsUsed--;
 		}

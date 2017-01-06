@@ -33,6 +33,7 @@ module.exports.loop = function () {
 
 
 		var room = Game.rooms[name];
+		
 		//autoMemory.fixSourceSlots(room);
 		 
 		invasionCounter.run(room);
