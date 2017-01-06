@@ -626,6 +626,9 @@ module.exports = {
 			if(destination){
 				if (!creep.pos.inRangeTo(destination,1)){
 					creep.moveTo(destination);
+					return true;
+				}else{
+					return false;
 				}
 			}
 		}

@@ -192,7 +192,6 @@ module.exports = {
 		if (carryParts > 3) carryParts = 3;
 		var moveParts = parseInt((energyCap-(100*workParts)-50*carryParts)/50);
 		if (moveParts > 6) moveParts = 6;
-		if (spawn.room.memory.activeCreepRoles.miner == 0) {moveParts=1;carryParts=1;workParts=1;}
 		return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
 	},
 	
