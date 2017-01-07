@@ -7,6 +7,25 @@ module.exports = function(){
 	/*
 	* ROOM
 	*/
+	/*
+	Object.defineProperties(Room.prototype,{
+		'memory' : {
+			get: function() {
+				if (Memory.rooms === undefined) {
+					Memory.rooms = {};
+				}
+				if (Memory.rooms[this.room.name] === undefined) {
+					Memory.rooms[this.room.name] = {};
+				}
+				return Memory.rooms[this.room.name];
+			},
+			set: function(v) {
+				return _.set(Memory, 'structures.' + this.id, v);
+			},
+			configurable: true,
+			enumerable: false
+		}
+	});*/
 
 	/*
 	* ROOM_POSITION
@@ -24,6 +43,7 @@ module.exports = function(){
 	* CREEP
 	*/
 	Object.defineProperties(Creep.prototype,{
+		
 		/** NEEDS TESTING
 		 * Reserves specific amount of specific resource for set amount of ticks on given container
 		 * Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
@@ -100,6 +120,24 @@ module.exports = function(){
 	/*
 	* MINERAL
 	*/
+	Object.defineProperties(Mineral.prototype,{
+		'memory' : {
+			get: function() {
+				if (this.room.memory.mineral === undefined) {
+					this.room.memory.mineral = {};
+				}
+				if (this.room.memory.mineral[this.id] === undefined) {
+					this.room.memory.mineral[this.id] = {};
+				}
+				return this.room.memory.mineral[this.id];
+			},
+			set: function(v) {
+				return _.set(Memory.rooms[this.room.name], 'mineral.' + this.id, v);
+			},
+			configurable: true,
+			enumerable: false
+		}
+	});
 
 	/*
 	* NUKE
@@ -113,6 +151,24 @@ module.exports = function(){
 	* SOURCE
 	*/
 	Object.defineProperties(Source.prototype,{
+		
+		'memory' : {
+			get: function() {
+				if (this.room.memory.sources === undefined) {
+					this.room.memory.sources = {};
+				}
+				if (this.room.memory.sources[this.id] === undefined) {
+					this.room.memory.sources[this.id] = {};
+				}
+				return this.room.memory.sources[this.id];
+			},
+			set: function(v) {
+				return _.set(Memory.rooms[this.room.name], 'sources.' + this.id, v);
+			},
+			configurable: true,
+			enumerable: false
+		},
+		
 		/**
 		 * Checks if source has free slots for creeps to harvest
 		 * @return {Boolean} or undefined
@@ -179,24 +235,27 @@ module.exports = function(){
 	/*
 	* STUCTURE
 	*/
-	Object.defineProperties(Structure.prototype,{ 
+	Object.defineProperties(Structure.prototype,{
 		'memory' : {
 			get: function() {
-				if (Memory.structures === undefined) {
-					Memory.structures = {};
+				if (this.room.memory.structures === undefined) {
+					this.room.memory.structures = {};
 				}
-				if (Memory.structures[this.id] === undefined) {
-					Memory.structures[this.id] = {};
+				if (this.room.memory.structures[this.structureType] === undefined) {
+					this.room.memory.structures[this.structureType] = {};
 				}
-				return Memory.structures[this.id];
+				if (this.room.memory.structures[this.structureType][this.id] === undefined) {
+					this.room.memory.structures[this.structureType][this.id] = {};
+				}
+				return this.room.memory.structures[this.structureType][this.id];
 			},
 			set: function(v) {
-				return _.set(Memory, 'structures.' + this.id, v);
+				return _.set(Memory, this.room.memory.structures[this.structureType][this.id], v);
 			},
 			configurable: true,
 			enumerable: false
 		}
-	);
+	});
 
 	/*
 	* OWNED_STRUCTURE
@@ -250,6 +309,26 @@ module.exports = function(){
 	* STRUCTURE_SPAWN
 	*/
 	Object.defineProperties(StructureSpawn.prototype,{
+		'roomMemory' : {
+			get: function() {
+				if (this.room.memory.structures === undefined) {
+					this.room.memory.structures = {};
+				}
+				if (this.room.memory.structures[this.structureType] === undefined) {
+					this.room.memory.structures[this.structureType] = {};
+				}
+				if (this.room.memory.structures[this.structureType][this.id] === undefined) {
+					this.room.memory.structures[this.structureType][this.id] = {};
+				}
+				return this.room.memory.structures[this.structureType][this.id];
+			},
+			set: function(v) {
+				return _.set(Memory, this.room.memory.structures[this.structureType][this.id], v);
+			},
+			configurable: true,
+			enumerable: false
+		},
+		
 		"createCustomCreep" : {
 			value: function(spawnEnergyCap, creepType){
 				//TODO
