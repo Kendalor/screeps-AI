@@ -617,7 +617,7 @@ module.exports = class{
 				if (creep.room.storage != undefined){
 					creep.moveTo(flag,{reusePath: 5,ignoreCreeps: false});
                 }else if(creep.room.name != pos.roomName){
-                    creep.moveTo(flag,{reusePath: 30,ignoreCreeps: false});
+                    creep.moveTo(pos,{reusePath: 30,ignoreCreeps: false});
                 }else if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
                     creep.moveTo(source);
                 }
@@ -698,4 +698,5 @@ module.exports = class{
                 return false;
             }
         }
+		
 };
