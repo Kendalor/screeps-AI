@@ -9,6 +9,7 @@ var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteBuildOperation = require('class.operation.remote_build');
 var defendOperation = require('class.operation.defend');
 var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
+var focusEnergyOperation = require('class.operation.focusEnergy');
 
 
 module.exports = {
@@ -56,6 +57,9 @@ module.exports = {
                 case 'remote_mining_keeper':
                     remoteMiningKeeperOperation.run(id);
                     break;
+                case 'focusEnergy':
+                    focusEnergyOperation.run(id);
+                    break;
 
             }
         }
@@ -92,6 +96,8 @@ module.exports = {
 
             }else if(this.colorMatch(flag,COLOR_BLUE,COLOR_RED)){
                 remoteMiningKeeperOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+            }else if(this.colorMatch(flag,COLOR_BLUE,COLOR_WHITE)){
+                focusEnergyOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
             }
         }
     },
