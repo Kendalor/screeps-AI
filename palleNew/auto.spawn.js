@@ -14,10 +14,6 @@ module.exports = {
 			var spawn = spawnList[id];
 			this.roomProfiler(spawn);
 
-			if (!spawn.room.memory.activeCreepRoles || !spawn.room.memory.sources){
-				autoMemory.resetRoomMemory(spawn.room);
-			}
-			
 			if (!spawn.room.memory.activeCreepRoles){
 				spawn.room.memory.activeCreepRoles = {};
 			}
@@ -69,7 +65,7 @@ module.exports = {
 						if(minerAmount < Object.keys(sources).length){
 							for(id in sources){
 								if(!spawn.room.memory.sources[id].requiredCarryParts){
-									autoMemory.resetRoomMemory(spawn.room);
+									autoMemory.resetSourceMemory(spawn.room);
 								}
 								var found = true;
 								//console.log("miner: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
@@ -89,7 +85,7 @@ module.exports = {
 						if(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
 							for(id in sources){
 								if(!spawn.room.memory.sources[id].requiredCarryParts){
-									autoMemory.resetRoomMemory(spawn.room);
+									autoMemory.resetSourceMemory(spawn.room);
 								}
 								var found = true;
 								//console.log("hauler: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}));

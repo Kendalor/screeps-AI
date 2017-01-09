@@ -58,7 +58,7 @@ module.exports = {
     }
   },
   
-  initRoomMemory: function(room) {
+  initSourceMemory: function(room) {
     var spawn = _.filter(Game.spawns, (spawn) => spawn.room.name == room.name)
     if(!room.memory.sources && spawn.length){//If this room has no sources memory yet
 	  console.log("Initializing room "+room.name);
@@ -76,7 +76,6 @@ module.exports = {
         source.memory = room.memory.sources[source.id] = {}; //Create a new empty memory object for this source
         //Now you can do anything you want to do with this source
         //for example you could add a worker counter:
-        room.memory.activeCreepRoles = {}
         
         //Calc Slots & used Slots
         var count = 0;
@@ -106,9 +105,9 @@ module.exports = {
     }
   },
   
-  resetRoomMemory: function(room){
-	delete Memory.rooms[room.name];
-    this.initRoomMemory(room);
+  resetSourceMemory: function(room){
+	delete Memory.rooms[room.name].sources;
+    this.initSourceMemory(room);
 	console.log("Resetted room memory of "+room.name)
   }
 };
