@@ -49,10 +49,10 @@ module.exports = class{
                                     break;
                                 case 'BuildingRoad':
                                     this.buildAndRunBuilder(id,source);
-                                    this.buildAndRunCreeps(id);
+                                    this.buildAndRunCreeps(id,source);
                                     break;
                                 case 'Mining':
-                                    this.buildAndRunCreeps(id);
+                                    this.buildAndRunCreeps(id,source);
                                     break;
                             }
                         }
@@ -220,7 +220,7 @@ module.exports = class{
             }
             if(temp){
                 console.log('Set Operation Status to Building Road');
-                Memory.operations[id].status='BuildingRoad';
+                Memory.operations[id].sources[source.id].status='BuildingRoad';
             }
 
 
