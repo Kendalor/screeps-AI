@@ -1,19 +1,27 @@
-var PROTOTYPES = require('prototypes')();
-var exampleExport = require('exampleExport')(PROTOTYPES); // EXAMPLE HOW TO COMMIT IMPORTS
+//PROTOTYPE ADDITIONS
+require('prototypes')();
 
-var operationManager = require('operationManager');
+//Kendalor Code
+var operationsHandler = require('operations.handler');
+//
+
 
 module.exports.loop = function () {
-
-	/*
-    for(var name in Game.rooms) {
-		var room = Game.rooms[name];
-		var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
-		for(var id in spawnList) {
-			var spawn = spawnList[id];
-			spawn.createCustomCreep(1,2);
-		}
-	}
-	*/
 	
+	//Kendalor Code
+	operationsHandler.init();
+	operationsHandler.run();
+	//  
+	
+	
+	/* // only for debug
+		var sources = Game.rooms['sim'].find(FIND_SOURCES);
+		for (var i in sources){
+			console.log(sources[i].hasFreeSlots());
+			//console.log(sources[i].occupy("Peter"));
+			console.log(sources[i].deOccupy("Peter"));
+		}
+	/**/
+	
+	//console.log(Game.rooms['sim'].sources());
 }

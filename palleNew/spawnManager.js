@@ -2,9 +2,11 @@ module.exports = class{
         constructor(){
         }
 
+        //THIS FUNCTION SHOULD HANDLE ALL THE SPAWNING FOR YOU
         static run(){
         //TODO
         }
+        //
         static enQueueCreep(){
         //TODO
         }

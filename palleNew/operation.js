@@ -1,5 +1,6 @@
-var Operation = new Object();
+var Operation = {};
 Object.defineProperties(Operation,{
+	
 	'memory' : {
 		get: function() {
 			if (Memory.operations === undefined) {
@@ -74,4 +75,4 @@ Object.defineProperties(Operation,{
 	}
 	
 });
-module.exports = new Operation()
+module.exports = Operation;

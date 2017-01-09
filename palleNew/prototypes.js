@@ -7,6 +7,501 @@ module.exports = function(){
 	/*
 	* ROOM
 	*/
+	
+	Object.defineProperties(Room.prototype,{
+		
+		'findAll' : {
+			value: function() {
+				this.findMinerals();
+				this.findResources();
+				this.findSources();
+				this.findStructures();
+			},
+			writable: true,
+			enumerable: false
+		},
+		
+		'findMinerals' : {
+			value: function(filter) {
+				var objectArray = this.find(FIND_MINERALS,filter);
+				for (let i in objectArray){
+					objectArray[i].memory;
+				}
+				return objectArray;
+			},
+			writable: true,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns array of the minerals of this room if present
+		 * @return {[Minerals]} objectArray
+		 */
+		'minerals' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.minerals){
+					for (let id in this.memory.minerals){
+						let obj = Game.getObjectById(id);
+						if (obj && Mineral.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.minerals[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		'findResources' : {
+			value: function(filter) {
+				var objectArray = this.find(FIND_DROPPED_RESOURCES,filter);
+				for (let i in objectArray){
+					objectArray[i].memory;
+				}
+				return objectArray;
+			},
+			writable: true,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns array of the resources of this room if present
+		 * @return {[Resource]} objectArray
+		 */
+		'resources' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.resources){
+					for (let id in this.memory.resources){
+						let obj = Game.getObjectById(id);
+						if (obj && Resource.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.resources[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		'findSources' : {
+			value: function(filter) {
+				var objectArray = this.find(FIND_SOURCES,filter);
+				for (let i in objectArray){
+					objectArray[i].memory;
+				}
+				return objectArray;
+			},
+			writable: true,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns array of the sources of this room if present
+		 * @return {[Source]} objectArray
+		 */
+		'sources' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.sources){
+					for (let id in this.memory.sources){
+						let obj = Game.getObjectById(id);
+						if (obj && Source.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.sources[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		'findStructures' : {
+			value: function(filter) {
+				var objectArray = this.find(FIND_STRUCTURES,filter);
+				for (let i in objectArray){
+					objectArray[i].memory;
+				}
+				return objectArray;
+			},
+			writable: true,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns array of the extensions of this room if present
+		 * @return {[StructureExtensions]} objectArray
+		 */
+		'extensions' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.extension){
+					for (let id in this.memory.structures.extension){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureExtension.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.extension[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the extractor of this room if present
+		 * @return {StructureExtractor} obj
+		 */
+		'extractor' : {
+			get: function() {
+				let obj;
+				if (this.memory && this.memory.structures && this.memory.structures.extractor){
+					let keys = Object.keys(this.memory.structures.extractor);
+					if(keys >0){
+						let obj = Game.getObjectById(keys[0]);
+						if (!obj || !StructureExtractor.prototype.isPrototypeOf(obj)){
+							delete this.memory.structures.extractor[id];
+						}
+					}
+				}
+				return obj;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the keeperLairs of this room if present
+		 * @return {StructureKeeperLair} obj
+		 */
+		'keeperLairs' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.keeperLair){
+					for (let id in this.memory.structures.keeperLair){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureKeeperLair.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.keeperLair[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the labs of this room if present
+		 * @return {StructureLab} obj
+		 */
+		'labs' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.lab){
+					for (let id in this.memory.structures.lab){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureLab.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.lab[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the links of this room if present
+		 * @return {StructureLink} obj
+		 */
+		'links' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.link){
+					for (let id in this.memory.structures.link){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureLink.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.link[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the nuker of this room if present
+		 * @return {StructureNuker} obj
+		 */
+		'nuker' : {
+			get: function() {
+				let obj;
+				if (this.memory && this.memory.structures && this.memory.structures.nuker){
+					let keys = Object.keys(this.memory.structures.nuker);
+					if(keys >0){
+						let obj = Game.getObjectById(keys[0]);
+						if (!obj || !StructureNuker.prototype.isPrototypeOf(obj)){
+							delete this.memory.structures.nuker[id];
+						}
+					}
+				}
+				return obj;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the observer of this room if present
+		 * @return {StructureObserver} obj
+		 */
+		'observer' : {
+			get: function() {
+				let obj;
+				if (this.memory && this.memory.structures && this.memory.structures.observer){
+					let keys = Object.keys(this.memory.structures.observer);
+					if(keys >0){
+						let obj = Game.getObjectById(keys[0]);
+						if (!obj || !StructureObserver.prototype.isPrototypeOf(obj)){
+							delete this.memory.structures.observer[id];
+						}
+					}
+				}
+				return obj;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the powerBank of this room if present
+		 * @return {StructurePowerBank} obj
+		 */
+		'powerBank' : {
+			get: function() {
+				let obj;
+				if (this.memory && this.memory.structures && this.memory.structures.powerBank){
+					let keys = Object.keys(this.memory.structures.powerBank);
+					if(keys >0){
+						let obj = Game.getObjectById(keys[0]);
+						if (!obj || !StructurePowerBank.prototype.isPrototypeOf(obj)){
+							delete this.memory.structures.powerBank[id];
+						}
+					}
+				}
+				return obj;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the powerSpawn of this room if present
+		 * @return {StructurePowerSpawn} obj
+		 */
+		'powerSpawn' : {
+			get: function() {
+				let obj;
+				if (this.memory && this.memory.structures && this.memory.structures.powerSpawn){
+					let keys = Object.keys(this.memory.structures.powerSpawn);
+					if(keys >0){
+						let obj = Game.getObjectById(keys[0]);
+						if (!obj || !StructurePowerSpawn.prototype.isPrototypeOf(obj)){
+							delete this.memory.structures.powerSpawn[id];
+						}
+					}
+				}
+				return obj;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the ramparts of this room if present
+		 * @return {[StructureRampart]} objectArray
+		 */
+		'ramparts' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.rampart){
+					for (let id in this.memory.structures.rampart){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureRampart.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.rampart[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the spawns of this room if present
+		 * @return {[StructureSpawn]} objectArray
+		 */
+		'spawns' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.spawn){
+					for (let id in this.memory.structures.spawn){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureSpawn.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.spawn[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the towers of this room if present
+		 * @return {[StructureTower]} objectArray
+		 */
+		'towers' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.tower){
+					for (let id in this.memory.structures.tower){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureTower.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.tower[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the containers of this room if present
+		 * @return {[StructureContainer]} objectArray
+		 */
+		'containers' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.container){
+					for (let id in this.memory.structures.container){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureContainer.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.container[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the portals of this room if present
+		 * @return {[StructurePortal]} objectArray
+		 */
+		'portals' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.portal){
+					for (let id in this.memory.structures.portal){
+						let obj = Game.getObjectById(id);
+						if (obj && StructurePortal.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.portal[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the roads of this room if present
+		 * @return {[StructureRoad]} objectArray
+		 */
+		'roads' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.road){
+					for (let id in this.memory.structures.road){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureRoad.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.road[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+		/** 
+		 * Returns the constructed walls of this room if present
+		 * @return {[StructureWall]} objectArray
+		 */
+		'constructedWalls' : {
+			get: function() {
+				var objectArray = [];
+				if (this.memory && this.memory.structures && this.memory.structures.constructedWall){
+					for (let id in this.memory.structures.constructedWall){
+						let obj = Game.getObjectById(id);
+						if (obj && StructureWall.prototype.isPrototypeOf(obj)){
+							objectArray.push(obj);
+						}else{
+							delete this.memory.structures.constructedWall[id];
+						}
+					}
+				}
+				return objectArray;
+			},
+			configurable: false,
+			enumerable: false
+		},
+		
+	});
 
 	/*
 	* ROOM_POSITION
@@ -24,6 +519,7 @@ module.exports = function(){
 	* CREEP
 	*/
 	Object.defineProperties(Creep.prototype,{
+		
 		/** NEEDS TESTING
 		 * Reserves specific amount of specific resource for set amount of ticks on given container
 		 * Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
@@ -100,6 +596,24 @@ module.exports = function(){
 	/*
 	* MINERAL
 	*/
+	Object.defineProperties(Mineral.prototype,{
+		'memory' : {
+			get: function() {
+				if (this.room.memory.minerals === undefined) {
+					this.room.memory.minerals = {};
+				}
+				if (this.room.memory.minerals[this.id] === undefined) {
+					this.room.memory.minerals[this.id] = {};
+				}
+				return this.room.memory.minerals[this.id];
+			},
+			set: function(v) {
+				return _.set(Memory.rooms[this.room.name], 'minerals.' + this.id, v);
+			},
+			configurable: true,
+			enumerable: false
+		}
+	});
 
 	/*
 	* NUKE
@@ -108,11 +622,47 @@ module.exports = function(){
 	/*
 	* RESOURCE
 	*/
+	Object.defineProperties(Resource.prototype,{
+		'memory' : {
+			get: function() {
+				if (this.room.memory.resource === undefined) {
+					this.room.memory.resource = {};
+				}
+				if (this.room.memory.resource[this.id] === undefined) {
+					this.room.memory.resource[this.id] = {};
+				}
+				return this.room.memory.resource[this.id];
+			},
+			set: function(v) {
+				return _.set(Memory.rooms[this.room.name], 'resource.' + this.id, v);
+			},
+			configurable: true,
+			enumerable: false
+		}
+	});
 
 	/*
 	* SOURCE
 	*/
 	Object.defineProperties(Source.prototype,{
+		
+		'memory' : {
+			get: function() {
+				if (this.room.memory.sources === undefined) {
+					this.room.memory.sources = {};
+				}
+				if (this.room.memory.sources[this.id] === undefined) {
+					this.room.memory.sources[this.id] = {};
+				}
+				return this.room.memory.sources[this.id];
+			},
+			set: function(v) {
+				return _.set(Memory.rooms[this.room.name], 'sources.' + this.id, v);
+			},
+			configurable: true,
+			enumerable: false
+		},
+		
 		/**
 		 * Checks if source has free slots for creeps to harvest
 		 * @return {Boolean} or undefined
@@ -132,12 +682,74 @@ module.exports = function(){
 			},
 			writable: true,
 			enumerable: true
+		},
+		
+		/**
+		 * Adds creepName to room.memory.sources
+		 * @param {String} creepName
+		 * @return {Boolean} 
+		 */
+		"occupy" : {
+			value: function(creepName){
+				if (this.hasFreeSlots()){
+					this.room.memory.sources[this.id].harvesters.push(creepName);
+					return true;
+				}else{
+					return false;
+				}
+			},
+			writable: true,
+			enumerable: true
+		},
+		
+		/**
+		 * Removes creep with given name from room.memory.sources
+		 * @param {String} creepName
+		 * @return {Boolean} 
+		 */
+		"deOccupy" : {
+			value: function(creepName){
+				if (this.room // Check if memory entrys exist
+					&& this.room.memory.sources 
+					&& this.room.memory.sources[this.id]
+					&& this.room.memory.sources[this.id].harvesters)
+				{
+					this.room.memory.sources[this.id].harvesters.pop(creepName);
+					return true;
+				}
+				else{
+					return false;
+				}
+			},
+			writable: true,
+			enumerable: true
 		}
 	});
 
 	/*
 	* STUCTURE
 	*/
+	Object.defineProperties(Structure.prototype,{
+		'memory' : {
+			get: function() {
+				if (this.room.memory.structures === undefined) {
+					this.room.memory.structures = {};
+				}
+				if (this.room.memory.structures[this.structureType] === undefined) {
+					this.room.memory.structures[this.structureType] = {};
+				}
+				if (this.room.memory.structures[this.structureType][this.id] === undefined) {
+					this.room.memory.structures[this.structureType][this.id] = {};
+				}
+				return this.room.memory.structures[this.structureType][this.id];
+			},
+			set: function(v) {
+				return _.set(Memory, this.room.memory.structures[this.structureType][this.id], v);
+			},
+			configurable: true,
+			enumerable: false
+		}
+	});
 
 	/*
 	* OWNED_STRUCTURE
@@ -191,6 +803,26 @@ module.exports = function(){
 	* STRUCTURE_SPAWN
 	*/
 	Object.defineProperties(StructureSpawn.prototype,{
+		'roomMemory' : {
+			get: function() {
+				if (this.room.memory.structures === undefined) {
+					this.room.memory.structures = {};
+				}
+				if (this.room.memory.structures[this.structureType] === undefined) {
+					this.room.memory.structures[this.structureType] = {};
+				}
+				if (this.room.memory.structures[this.structureType][this.id] === undefined) {
+					this.room.memory.structures[this.structureType][this.id] = {};
+				}
+				return this.room.memory.structures[this.structureType][this.id];
+			},
+			set: function(v) {
+				return _.set(Memory, this.room.memory.structures[this.structureType][this.id], v);
+			},
+			configurable: true,
+			enumerable: false
+		},
+		
 		"createCustomCreep" : {
 			value: function(spawnEnergyCap, creepType){
 				//TODO
