@@ -74,7 +74,7 @@ module.exports = function(){
 			 * @param {String} structureType
 			 * @return {[constructionSite]} objectArray
 			 */
-			'constructionSites' : {
+			'constructionSitesByType' : {
 				value: function(structureType) {
 					var objectArray = [];
 					if (this.memory && this.memory.constructionSites && this.memory.constructionSites[structureType]){
