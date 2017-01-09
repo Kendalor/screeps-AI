@@ -1,33 +1,14 @@
-
-
 module.exports = class{
         constructor(){
         }
         static run(id){
-            // tank
-            var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH];
-            // scout
-            //var creep_body = [MOVE];
+            // DELETE NONEXISTING CREEPS FROM OPERATION
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-                if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
-                    if(Game.spawns['Spawn3'].canCreateCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.spawns['Spawn3'].createCreep(creep_body,undefined,{role: 'scout', operation_id: id});
-                        var creep=Game.creeps[name];
-                        Memory.operations[id].creep=name;
-                    }
-                }else if(!Game.creeps[Memory.operations[id].creep]){
-                    delete Memory.operations[id].creep;
 
-                }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
-                
-                    var creep= Game.creeps[Memory.operations[id].creep];
-                    creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
-                    if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
-                        //Game.flags[Memory.operations[id].flagName].remove();
-                    }
                 }
             }
         }
+
 
         static init(roomName,flag){
             if(!Game.flags[flag].memory.operation_id){
@@ -52,10 +33,28 @@ module.exports = class{
                     Memory.operations[this.id]={}
                 }
                 //DEFINE ALL OP VARIABLES HERE
+                //Memory.operations[this.id].containerId=undefined;
                 Memory.operations[this.id].roomName=roomName;
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
-                Memory.operations[this.id].type='scouting';
+                Memory.operations[this.id].type='transfer_Energy';
+                console.log(!Game.rooms[roomName])
+                Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
+                Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
+                Memory.operations[this.id].status='initalize';
+
+
+
+
+                if(!Game.rooms[roomName]){
+                    Memory.operations[this.id].scouting=true;
+                }else{
+                    Memory.operations[this.id].scouting=false;
+
+                }
+
+
+
                 console.log(JSON.stringify(Memory.operations[this.id]));
             }
         }
@@ -69,6 +68,28 @@ module.exports = class{
             }
             return out;
         }
+
+
+        //FIND CLOSEST ACROOS ROOMS
+
+        static findClosestSpawn(flagName){
+            var min_length;
+            var best_spawn;
+            var length;
+            for(var i in Game.spawns){
+                console.log('length from '+Game.spawns[i].pos.roomName+' to '+Game.flags[flagName].pos.roomName);
+                console.log( Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length < min_length  || min_length == undefined);
+                length= Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length;
+                if(length < min_length  || min_length == undefined){
+                    min_length=length;
+                    best_spawn=Game.spawns[i].id;
+                }
+            }
+            return best_spawn;
+        }
+        // BUILD CREEPS FOR HAULING AND MINING
+
+
         static checkForDelete(id){
             var flagname =  Memory.operations[id].flagName;
             if(!Game.flags[flagname] && !Memory.operations[id].permanent){

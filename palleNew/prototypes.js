@@ -413,6 +413,31 @@ module.exports = function(){
 			},
 			
 			/** 
+			* Returns array of the sources whose ids are saved in room memory
+			* @return {[Source]} objectArray
+			*/
+			'structures' : {
+				get: function() {
+					let objectArray = [];
+					if (this.memory && this.memory.structures){
+						for (let key in this.memory.structures){
+							for (let id in this.memory.structures[key]){
+								let obj = Game.getObjectById(id);
+								if (obj && Structure.prototype.isPrototypeOf(obj)){
+									objectArray.push(obj);
+								}else{
+									delete this.memory.structures[key][id];
+								}
+							}
+						}
+					}
+					return objectArray;
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** 
 			* Returns array of the extensions whose ids are saved in room memory
 			* @return {[StructureExtensions]} objectArray
 			*/
