@@ -1,5 +1,6 @@
 //PROTOTYPE ADDITIONS
 require('prototypes')();
+require('globals')();
 
 //Kendalor Code
 var operationsHandler = require('operations.handler');

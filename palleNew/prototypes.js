@@ -1,9 +1,9 @@
 module.exports = function(){
 
 	/*
-	 * GAME (cannot be edited)
-	 */
-
+	* GAME (cannot be edited)
+	*/
+	
 	/*
 	* ROOM
 	*/
@@ -11,31 +11,32 @@ module.exports = function(){
 		Object.defineProperties(Room.prototype,{
 			
 			/** 
-			 * Finds all constructionSites, minerals, resources, sources and structures in room to add their ids to room memory
-			 * Returns numbers of found objects in array
-			 * @return {[Number]}
-			 */
+			* Finds all constructionSites, minerals, resources, sources and structures in room to add their ids to room memory
+			* Returns numbers of found objects in array
+			* @return {[Number]}
+			*/
 			'findAll' : {
 				value: function() {
 					let cS = this.findConstructionSites();
+					let c = this.findCreeps();
 					let m = this.findMinerals();
 					let r = this.findResources();
 					let s = this.findSources();
 					let str = this.findStructures();
-					return [cS.length,m.length,r.length,s.length,str.length];
+					return [cS.length,c.length,m.length,r.length,s.length,str.length];
 				},
 				writable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns array of the constructionSites found in room and saves their id in room memory
-			 * @param {filter} filter
-			 * @return {[ConstructionSite]} objectArray
-			 */
+			* Returns array of the constructionSites found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[ConstructionSite]} objectArray
+			*/
 			'findConstructionSites' : {
 				value: function(filter) {
-					var objectArray = this.find(FIND_CONSTRUCTION_SITES,filter);
+					let objectArray = this.find(FIND_CONSTRUCTION_SITES,filter);
 					for (let i in objectArray){
 						objectArray[i].memory;
 					}
@@ -46,12 +47,46 @@ module.exports = function(){
 			},
 			
 			/** 
-			 * Returns array of the constructionSites whose ids are saved in room memory
-			 * @return {[constructionSite]} objectArray
-			 */
+			* Returns array of the constructionSites found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[ConstructionSite]} objectArray
+			*/
+			'findConstructionSites' : {
+				value: function(filter) {
+					let objectArray = this.find(FIND_CONSTRUCTION_SITES,filter);
+					for (let i in objectArray){
+						objectArray[i].memory;
+					}
+					return objectArray;
+				},
+				writable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the constructionSites found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[ConstructionSite]} objectArray
+			*/
+			'findConstructionSites' : {
+				value: function(filter) {
+					let objectArray = this.find(FIND_CONSTRUCTION_SITES,filter);
+					for (let i in objectArray){
+						objectArray[i].memory;
+					}
+					return objectArray;
+				},
+				writable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the constructionSites whose ids are saved in room memory
+			* @return {[constructionSite]} objectArray
+			*/
 			'constructionSites' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.constructionSites){
 						let keys = Object.keys(this.memory.constructionSites);
 						for (let i in keys){
@@ -74,18 +109,18 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns array of the constructionSites of given structureType whose ids are saved in room memory
-			 * @param {String} structureType
-			 * @return {[constructionSite]} objectArray
-			 */
+			* Returns array of the constructionSites of given structureType whose ids are saved in room memory
+			* @param {String} structureType
+			* @return {[constructionSite]} objectArray
+			*/
 			'constructionSitesByType' : {
 				value: function(structureType) {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.constructionSites && this.memory.constructionSites[structureType]){
 						for (let id in this.memory.constructionSites[structureType]){
 							let obj = Game.getObjectById(id);
@@ -103,13 +138,146 @@ module.exports = function(){
 			},
 			
 			/** 
-			 * Returns array of the minerals found in room and saves their id in room memory
-			 * @param {filter} filter
-			 * @return {[Mineral]} objectArray
-			 */
+			* Returns array of the creeps found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[Creep]} objectArray
+			*/
+			'findCreeps' : {
+				value: function(filter) {
+					let objectArray = this.find(FIND_CREEPS,filter);
+					for (let i in objectArray){
+						objectArray[i].roomMemory;
+					}
+					return objectArray;
+				},
+				writable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the creeps whose ids are saved in room memory
+			* @return {[Creep]} objectArray
+			*/
+			'creeps' : {
+				get: function() {
+					let objectArray = this.hostileCreeps.concat(this.alliedCreeps).concat(this.myCreeps);
+					return objectArray;
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the hostile creeps found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[Creep]} objectArray
+			*/
+			'findHostileCreeps' : {
+				value: function(filter) {
+					let objectArray = this.find(FIND_HOSTILE_CREEPS,filter);
+					for (let i in objectArray){
+						objectArray[i].roomMemory;
+					}
+					return objectArray;
+				},
+				writable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the hostile creeps whose ids are saved in room memory
+			* @return {[Creep]} objectArray
+			*/
+			'hostileCreeps' : {
+				get: function() {
+					let objectArray = [];
+					if (this.memory && this.memory.hostileCreeps){
+						for (let id in this.memory.hostileCreeps){
+							let obj = Game.getObjectById(id);
+							if (obj && Creep.prototype.isPrototypeOf(obj)){
+								objectArray.push(obj);
+							}else{
+								delete this.memory.hostileCreeps[id];
+							}
+						}
+					}
+					return objectArray;
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the hostile creeps of allied players whose ids are saved in room memory
+			* @return {[Creep]} objectArray
+			*/
+			'alliedCreeps' : {
+				get: function() {
+					let objectArray = [];
+					if (this.memory && this.memory.alliedCreeps){
+						for (let id in this.memory.alliedCreeps){
+							let obj = Game.getObjectById(id);
+							if (obj && Creep.prototype.isPrototypeOf(obj)){
+								objectArray.push(obj);
+							}else{
+								delete this.memory.alliedCreeps[id];
+							}
+						}
+					}
+					return objectArray;
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the your creeps found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[Creep]} objectArray
+			*/
+			'findMyCreeps' : {
+				value: function(filter) {
+					let objectArray = this.find(FIND_MY_CREEPS,filter);
+					for (let i in objectArray){
+						objectArray[i].roomMemory;
+					}
+					return objectArray;
+				},
+				writable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the hostile creeps whose ids are saved in room memory
+			* @return {[Creep]} objectArray
+			*/
+			'myCreeps' : {
+				get: function() {
+					let objectArray = [];
+					if (this.memory && this.memory.myCreeps){
+						for (let id in this.memory.myCreeps){
+							let obj = Game.getObjectById(id);
+							if (obj && Creep.prototype.isPrototypeOf(obj)){
+								objectArray.push(obj);
+							}else{
+								delete this.memory.myCreeps[id];
+							}
+						}
+					}
+					return objectArray;
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** 
+			* Returns array of the minerals found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[Mineral]} objectArray
+			*/
 			'findMinerals' : {
 				value: function(filter) {
-					var objectArray = this.find(FIND_MINERALS,filter);
+					let objectArray = this.find(FIND_MINERALS,filter);
 					for (let i in objectArray){
 						objectArray[i].memory;
 					}
@@ -120,12 +288,12 @@ module.exports = function(){
 			},
 			
 			/** 
-			 * Returns array of the minerals whose ids are saved in room memory
-			 * @return {[Mineral]} objectArray
-			 */
+			* Returns array of the minerals whose ids are saved in room memory
+			* @return {[Mineral]} objectArray
+			*/
 			'minerals' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.minerals){
 						for (let id in this.memory.minerals){
 							let obj = Game.getObjectById(id);
@@ -138,18 +306,18 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns array of the constructionSites found in room and saves their id in room memory
-			 * @param {filter} filter
-			 * @return {[Resource]} objectArray
-			 */
+			* Returns array of the constructionSites found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[Resource]} objectArray
+			*/
 			'findResources' : {
 				value: function(filter) {
-					var objectArray = this.find(FIND_DROPPED_RESOURCES,filter);
+					let objectArray = this.find(FIND_DROPPED_RESOURCES,filter);
 					for (let i in objectArray){
 						objectArray[i].memory;
 					}
@@ -160,12 +328,12 @@ module.exports = function(){
 			},
 			
 			/** 
-			 * Returns array of the resources whose ids are saved in room memory
-			 * @return {[Resource]} objectArray
-			 */
+			* Returns array of the resources whose ids are saved in room memory
+			* @return {[Resource]} objectArray
+			*/
 			'resources' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.resources){
 						for (let id in this.memory.resources){
 							let obj = Game.getObjectById(id);
@@ -178,18 +346,18 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns array of the sources found in room and saves their id in room memory
-			 * @param {filter} filter
-			 * @return {[Source]} objectArray
-			 */
+			* Returns array of the sources found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[Source]} objectArray
+			*/
 			'findSources' : {
 				value: function(filter) {
-					var objectArray = this.find(FIND_SOURCES,filter);
+					let objectArray = this.find(FIND_SOURCES,filter);
 					for (let i in objectArray){
 						objectArray[i].memory;
 					}
@@ -200,12 +368,12 @@ module.exports = function(){
 			},
 			
 			/** 
-			 * Returns array of the sources whose ids are saved in room memory
-			 * @return {[Source]} objectArray
-			 */
+			* Returns array of the sources whose ids are saved in room memory
+			* @return {[Source]} objectArray
+			*/
 			'sources' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.sources){
 						for (let id in this.memory.sources){
 							let obj = Game.getObjectById(id);
@@ -218,18 +386,18 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns array of the structures found in room and saves their id in room memory
-			 * @param {filter} filter
-			 * @return {[structure]} objectArray
-			 */
+			* Returns array of the structures found in room and saves their id in room memory
+			* @param {filter} filter
+			* @return {[structure]} objectArray
+			*/
 			'findStructures' : {
 				value: function(filter) {
-					var objectArray = this.find(FIND_STRUCTURES,filter);
+					let objectArray = this.find(FIND_STRUCTURES,filter);
 					for (let i in objectArray){
 						if (objectArray[i].structureType == STRUCTURE_SPAWN){
 							objectArray[i].roomMemory;
@@ -245,12 +413,12 @@ module.exports = function(){
 			},
 			
 			/** 
-			 * Returns array of the extensions whose ids are saved in room memory
-			 * @return {[StructureExtensions]} objectArray
-			 */
+			* Returns array of the extensions whose ids are saved in room memory
+			* @return {[StructureExtensions]} objectArray
+			*/
 			'extensions' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.extension){
 						for (let id in this.memory.structures.extension){
 							let obj = Game.getObjectById(id);
@@ -263,14 +431,14 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the extractor whose ids are saved in room memory
-			 * @return {StructureExtractor} obj
-			 */
+			* Returns the extractor whose ids are saved in room memory
+			* @return {StructureExtractor} obj
+			*/
 			'extractor' : {
 				get: function() {
 					let obj;
@@ -286,17 +454,17 @@ module.exports = function(){
 					}
 					return obj;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the keeperLairs whose ids are saved in room memory
-			 * @return {StructureKeeperLair} obj
-			 */
+			* Returns the keeperLairs whose ids are saved in room memory
+			* @return {StructureKeeperLair} obj
+			*/
 			'keeperLairs' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.keeperLair){
 						for (let id in this.memory.structures.keeperLair){
 							let obj = Game.getObjectById(id);
@@ -309,17 +477,17 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the labs whose ids are saved in room memory
-			 * @return {StructureLab} obj
-			 */
+			* Returns the labs whose ids are saved in room memory
+			* @return {StructureLab} obj
+			*/
 			'labs' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.lab){
 						for (let id in this.memory.structures.lab){
 							let obj = Game.getObjectById(id);
@@ -332,17 +500,17 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the links whose ids are saved in room memory
-			 * @return {StructureLink} obj
-			 */
+			* Returns the links whose ids are saved in room memory
+			* @return {StructureLink} obj
+			*/
 			'links' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.link){
 						for (let id in this.memory.structures.link){
 							let obj = Game.getObjectById(id);
@@ -355,14 +523,14 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the nuker whose ids are saved in room memory
-			 * @return {StructureNuker} obj
-			 */
+			* Returns the nuker whose ids are saved in room memory
+			* @return {StructureNuker} obj
+			*/
 			'nuker' : {
 				get: function() {
 					let obj;
@@ -378,14 +546,14 @@ module.exports = function(){
 					}
 					return obj;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the observer whose ids are saved in room memory
-			 * @return {StructureObserver} obj
-			 */
+			* Returns the observer whose ids are saved in room memory
+			* @return {StructureObserver} obj
+			*/
 			'observer' : {
 				get: function() {
 					let obj;
@@ -401,14 +569,14 @@ module.exports = function(){
 					}
 					return obj;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the powerBank whose ids are saved in room memory
-			 * @return {StructurePowerBank} obj
-			 */
+			* Returns the powerBank whose ids are saved in room memory
+			* @return {StructurePowerBank} obj
+			*/
 			'powerBank' : {
 				get: function() {
 					let obj;
@@ -424,14 +592,14 @@ module.exports = function(){
 					}
 					return obj;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the powerSpawn whose ids are saved in room memory
-			 * @return {StructurePowerSpawn} obj
-			 */
+			* Returns the powerSpawn whose ids are saved in room memory
+			* @return {StructurePowerSpawn} obj
+			*/
 			'powerSpawn' : {
 				get: function() {
 					let obj;
@@ -447,17 +615,17 @@ module.exports = function(){
 					}
 					return obj;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the ramparts whose ids are saved in room memory
-			 * @return {[StructureRampart]} objectArray
-			 */
+			* Returns the ramparts whose ids are saved in room memory
+			* @return {[StructureRampart]} objectArray
+			*/
 			'ramparts' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.rampart){
 						for (let id in this.memory.structures.rampart){
 							let obj = Game.getObjectById(id);
@@ -470,17 +638,17 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the spawns whose ids are saved in room memory
-			 * @return {[StructureSpawn]} objectArray
-			 */
+			* Returns the spawns whose ids are saved in room memory
+			* @return {[StructureSpawn]} objectArray
+			*/
 			'spawns' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.spawn){
 						for (let id in this.memory.structures.spawn){
 							let obj = Game.getObjectById(id);
@@ -493,17 +661,17 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the towers whose ids are saved in room memory
-			 * @return {[StructureTower]} objectArray
-			 */
+			* Returns the towers whose ids are saved in room memory
+			* @return {[StructureTower]} objectArray
+			*/
 			'towers' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.tower){
 						for (let id in this.memory.structures.tower){
 							let obj = Game.getObjectById(id);
@@ -516,17 +684,17 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the containers whose ids are saved in room memory
-			 * @return {[StructureContainer]} objectArray
-			 */
+			* Returns the containers whose ids are saved in room memory
+			* @return {[StructureContainer]} objectArray
+			*/
 			'containers' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.container){
 						for (let id in this.memory.structures.container){
 							let obj = Game.getObjectById(id);
@@ -539,17 +707,17 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the portals whose ids are saved in room memory
-			 * @return {[StructurePortal]} objectArray
-			 */
+			* Returns the portals whose ids are saved in room memory
+			* @return {[StructurePortal]} objectArray
+			*/
 			'portals' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.portal){
 						for (let id in this.memory.structures.portal){
 							let obj = Game.getObjectById(id);
@@ -562,17 +730,17 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the roads whose ids are saved in room memory
-			 * @return {[StructureRoad]} objectArray
-			 */
+			* Returns the roads whose ids are saved in room memory
+			* @return {[StructureRoad]} objectArray
+			*/
 			'roads' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.road){
 						for (let id in this.memory.structures.road){
 							let obj = Game.getObjectById(id);
@@ -585,17 +753,17 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			 * Returns the constructed walls whose ids are saved in room memory
-			 * @return {[StructureWall]} objectArray
-			 */
+			* Returns the constructed walls whose ids are saved in room memory
+			* @return {[StructureWall]} objectArray
+			*/
 			'constructedWalls' : {
 				get: function() {
-					var objectArray = [];
+					let objectArray = [];
 					if (this.memory && this.memory.structures && this.memory.structures.constructedWall){
 						for (let id in this.memory.structures.constructedWall){
 							let obj = Game.getObjectById(id);
@@ -608,7 +776,7 @@ module.exports = function(){
 					}
 					return objectArray;
 				},
-				configurable: false,
+				configurable: true,
 				enumerable: false
 			},
 			
@@ -653,15 +821,77 @@ module.exports = function(){
 		Object.defineProperties(Creep.prototype,{
 			
 			/** NEEDS TESTING
-			 * Reserves specific amount of specific resource for set amount of ticks on given container
-			 * Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
-			 *  or StructureContainer.prototype.reserveResource = function(objectId,resource,amount,ticks)
-			 * @param {Object} container or storage
-			 * @param {String} resource
-			 * @param {Number} amount
-			 * @param {Number} ticks
-			 * @return {Number} errorCode
-			 */
+			* Memory which is located in room memory
+			*/
+			'roomMemory' : {
+				get: function() {
+					if (this.my){
+						if (this.room.memory.myCreeps === undefined) {
+							this.room.memory.myCreeps = {};
+						}
+						if (this.room.memory.myCreeps[this.id] === undefined) {
+							this.room.memory.myCreeps[this.id] = {};
+						}
+						return this.room.memory.myCreeps[this.id];
+					}else if(Memory.globals && Memory.globals.friend && Memory.globals.friend[this.owner.username]){
+						if (this.room.memory.alliedCreeps === undefined) {
+							this.room.memory.alliedCreeps = {};
+						}
+						if (this.room.memory.alliedCreeps[this.id] === undefined) {
+							this.room.memory.alliedCreeps[this.id] = {};
+						}
+						return this.room.memory.alliedCreeps[this.id];
+					}else{
+						if (this.room.memory.hostileCreeps === undefined) {
+							this.room.memory.hostileCreeps = {};
+						}
+						if (this.room.memory.hostileCreeps[this.id] === undefined) {
+							this.room.memory.hostileCreeps[this.id] = {};
+						}
+						return this.room.memory.hostileCreeps[this.id];
+					}
+				},
+				set: function(v) {
+					if (this.my){
+						if (this.room.memory.myCreeps === undefined) {
+							this.room.memory.myCreeps = {};
+						}
+						if (this.room.memory.myCreeps[this.id] === undefined) {
+							this.room.memory.myCreeps[this.id] = {};
+						}
+						return _.set(Memory, this.room.memory.myCreeps[this.id], v);
+					}else if(Memory.globals && Memory.globals.friend && Memory.globals.friend[this.owner.username]){
+						if (this.room.memory.alliedCreeps === undefined) {
+							this.room.memory.alliedCreeps = {};
+						}
+						if (this.room.memory.alliedCreeps[this.id] === undefined) {
+							this.room.memory.alliedCreeps[this.id] = {};
+						}
+						return _.set(Memory, this.room.memory.alliedCreeps[this.id], v);
+					}else{
+						if (this.room.memory.hostileCreeps === undefined) {
+							this.room.memory.hostileCreeps = {};
+						}
+						if (this.room.memory.hostileCreeps[this.id] === undefined) {
+							this.room.memory.hostileCreeps[this.id] = {};
+						}
+						return _.set(Memory, this.room.memory.hostileCreeps[this.id], v);
+					}
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** NEEDS TESTING
+			* Reserves specific amount of specific resource for set amount of ticks on given container
+			* Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
+			*  or StructureContainer.prototype.reserveResource = function(objectId,resource,amount,ticks)
+			* @param {Object} container or storage
+			* @param {String} resource
+			* @param {Number} amount
+			* @param {Number} ticks
+			* @return {Number} errorCode
+			*/
 			"reserveResource" : {
 				value: function(container,resource=RESOURCE_ENERGY,amount=this.carryCapacity,ticks=50){
 					if (container.structureType && (container.structureType == STRUCTURE_STORAGE || container.structureType == STRUCTURE_CONTAINER)) {
@@ -675,18 +905,18 @@ module.exports = function(){
 			},
 			
 			/** NEEDS TESTING
-			 * Creep moves to target container and reserves an amount of resource
-			 * Uppon reaching target the creep withdraws the reserved resource amount and cancels the reservation
-			 * Used by screep.reserveResource(container,[resource],[amount],[ticks])
-			 * @param {Number} objectId of reserver
-			 * @param {String} resource
-			 * @param {Number} amount
-			 * @param {Number} ticks
-			 * @return {Number} errorCode
-			 */
+			* Creep moves to target container and reserves an amount of resource
+			* Uppon reaching target the creep withdraws the reserved resource amount and cancels the reservation
+			* Used by screep.reserveResource(container,[resource],[amount],[ticks])
+			* @param {Number} objectId of reserver
+			* @param {String} resource
+			* @param {Number} amount
+			* @param {Number} ticks
+			* @return {Number} errorCode
+			*/
 			"gather" : {
 				value: function(container,resource=RESOURCE_ENERGY,amount=this.carryCapacity,ticks=50){
-					var errorCode = OK;
+					let errorCode = OK;
 					//TODO
 					return errorCode;
 				},
@@ -696,7 +926,7 @@ module.exports = function(){
 			
 			"chargeController" : {
 				value: function(controller){
-					var errorCode = OK;
+					let errorCode = OK;
 					//TODO
 					return errorCode;
 				},
@@ -706,9 +936,9 @@ module.exports = function(){
 			
 			"getRandomName" : {
 				value: function(){
-					var names1 = ["Jackson", "Aiden", "Liam", "Lucas", "Noah", "Mason", "Jayden", "Ethan", "Jacob", "Jack", "Caden", "Logan", "Benjamin", "Michael", "Caleb", "Ryan", "Alexander", "Elijah", "James", "William", "Oliver", "Connor", "Matthew", "Daniel", "Luke", "Brayden", "Jayce", "Henry", "Carter", "Dylan", "Gabriel", "Joshua", "Nicholas", "Isaac", "Owen", "Nathan", "Grayson", "Eli", "Landon", "Andrew", "Max", "Samuel", "Gavin", "Wyatt", "Christian", "Hunter", "Cameron", "Evan", "Charlie", "David", "Sebastian", "Joseph", "Dominic", "Anthony", "Colton", "John", "Tyler", "Zachary", "Thomas", "Julian", "Levi", "Adam", "Isaiah", "Alex", "Aaron", "Parker", "Cooper", "Miles", "Chase", "Muhammad", "Christopher", "Blake", "Austin", "Jordan", "Leo", "Jonathan", "Adrian", "Colin", "Hudson", "Ian", "Xavier", "Camden", "Tristan", "Carson", "Jason", "Nolan", "Riley", "Lincoln", "Brody", "Bentley", "Nathaniel", "Josiah", "Declan", "Jake", "Asher", "Jeremiah", "Cole", "Mateo", "Micah", "Elliot"]
-				var names2 = ["Sophia", "Emma", "Olivia", "Isabella", "Mia", "Ava", "Lily", "Zoe", "Emily", "Chloe", "Layla", "Madison", "Madelyn", "Abigail", "Aubrey", "Charlotte", "Amelia", "Ella", "Kaylee", "Avery", "Aaliyah", "Hailey", "Hannah", "Addison", "Riley", "Harper", "Aria", "Arianna", "Mackenzie", "Lila", "Evelyn", "Adalyn", "Grace", "Brooklyn", "Ellie", "Anna", "Kaitlyn", "Isabelle", "Sophie", "Scarlett", "Natalie", "Leah", "Sarah", "Nora", "Mila", "Elizabeth", "Lillian", "Kylie", "Audrey", "Lucy", "Maya", "Annabelle", "Makayla", "Gabriella", "Elena", "Victoria", "Claire", "Savannah", "Peyton", "Maria", "Alaina", "Kennedy", "Stella", "Liliana", "Allison", "Samantha", "Keira", "Alyssa", "Reagan", "Molly", "Alexandra", "Violet", "Charlie", "Julia", "Sadie", "Ruby", "Eva", "Alice", "Eliana", "Taylor", "Callie", "Penelope", "Camilla", "Bailey", "Kaelyn", "Alexis", "Kayla", "Katherine", "Sydney", "Lauren", "Jasmine", "London", "Bella", "Adeline", "Caroline", "Vivian", "Juliana", "Gianna", "Skyler", "Jordyn"]
-				var namesCombined = _.flatten(_.map(names1, function(v, i) { return [v, names2[i]]; }));
+					let names1 = ["Jackson", "Aiden", "Liam", "Lucas", "Noah", "Mason", "Jayden", "Ethan", "Jacob", "Jack", "Caden", "Logan", "Benjamin", "Michael", "Caleb", "Ryan", "Alexander", "Elijah", "James", "William", "Oliver", "Connor", "Matthew", "Daniel", "Luke", "Brayden", "Jayce", "Henry", "Carter", "Dylan", "Gabriel", "Joshua", "Nicholas", "Isaac", "Owen", "Nathan", "Grayson", "Eli", "Landon", "Andrew", "Max", "Samuel", "Gavin", "Wyatt", "Christian", "Hunter", "Cameron", "Evan", "Charlie", "David", "Sebastian", "Joseph", "Dominic", "Anthony", "Colton", "John", "Tyler", "Zachary", "Thomas", "Julian", "Levi", "Adam", "Isaiah", "Alex", "Aaron", "Parker", "Cooper", "Miles", "Chase", "Muhammad", "Christopher", "Blake", "Austin", "Jordan", "Leo", "Jonathan", "Adrian", "Colin", "Hudson", "Ian", "Xavier", "Camden", "Tristan", "Carson", "Jason", "Nolan", "Riley", "Lincoln", "Brody", "Bentley", "Nathaniel", "Josiah", "Declan", "Jake", "Asher", "Jeremiah", "Cole", "Mateo", "Micah", "Elliot"]
+				let names2 = ["Sophia", "Emma", "Olivia", "Isabella", "Mia", "Ava", "Lily", "Zoe", "Emily", "Chloe", "Layla", "Madison", "Madelyn", "Abigail", "Aubrey", "Charlotte", "Amelia", "Ella", "Kaylee", "Avery", "Aaliyah", "Hailey", "Hannah", "Addison", "Riley", "Harper", "Aria", "Arianna", "Mackenzie", "Lila", "Evelyn", "Adalyn", "Grace", "Brooklyn", "Ellie", "Anna", "Kaitlyn", "Isabelle", "Sophie", "Scarlett", "Natalie", "Leah", "Sarah", "Nora", "Mila", "Elizabeth", "Lillian", "Kylie", "Audrey", "Lucy", "Maya", "Annabelle", "Makayla", "Gabriella", "Elena", "Victoria", "Claire", "Savannah", "Peyton", "Maria", "Alaina", "Kennedy", "Stella", "Liliana", "Allison", "Samantha", "Keira", "Alyssa", "Reagan", "Molly", "Alexandra", "Violet", "Charlie", "Julia", "Sadie", "Ruby", "Eva", "Alice", "Eliana", "Taylor", "Callie", "Penelope", "Camilla", "Bailey", "Kaelyn", "Alexis", "Kayla", "Katherine", "Sydney", "Lauren", "Jasmine", "London", "Bella", "Adeline", "Caroline", "Vivian", "Juliana", "Gianna", "Skyler", "Jordyn"]
+				let namesCombined = _.flatten(_.map(names1, function(v, i) { return [v, names2[i]]; }));
 				if(!Memory.creepindex || Memory.creepindex >= namesCombined.length) {
 					Memory.creepindex = 0
 				}else{
@@ -796,9 +1026,9 @@ module.exports = function(){
 			},
 			
 			/**
-			 * Checks if source has free slots for creeps to harvest
-			 * @return {Boolean} or undefined
-			 */
+			* Checks if source has free slots for creeps to harvest
+			* @return {Boolean} or undefined
+			*/
 			"hasFreeSlots" : {
 				value: function(){
 					if (this.room // Check if memory entrys exist
@@ -817,10 +1047,10 @@ module.exports = function(){
 			},
 			
 			/**
-			 * Adds creepName to room.memory.sources
-			 * @param {String} creepName
-			 * @return {Boolean} 
-			 */
+			* Adds creepName to room.memory.sources
+			* @param {String} creepName
+			* @return {Boolean} 
+			*/
 			"occupy" : {
 				value: function(creepName){
 					if (this.hasFreeSlots()){
@@ -835,10 +1065,10 @@ module.exports = function(){
 			},
 			
 			/**
-			 * Removes creep with given name from room.memory.sources
-			 * @param {String} creepName
-			 * @return {Boolean} 
-			 */
+			* Removes creep with given name from room.memory.sources
+			* @param {String} creepName
+			* @return {Boolean} 
+			*/
 			"deOccupy" : {
 				value: function(creepName){
 					if (this.room // Check if memory entrys exist
@@ -949,6 +1179,15 @@ module.exports = function(){
 					return this.room.memory.structures[this.structureType][this.id];
 				},
 				set: function(v) {
+					if (this.room.memory.structures === undefined) {
+						this.room.memory.structures = {};
+					}
+					if (this.room.memory.structures[this.structureType] === undefined) {
+						this.room.memory.structures[this.structureType] = {};
+					}
+					if (this.room.memory.structures[this.structureType][this.id] === undefined) {
+						this.room.memory.structures[this.structureType][this.id] = {};
+					}
 					return _.set(Memory, this.room.memory.structures[this.structureType][this.id], v);
 				},
 				configurable: true,
@@ -998,17 +1237,17 @@ module.exports = function(){
 		Object.defineProperties(StructureStorage.prototype,{
 			"reserveResource" : {
 				/** NEEDS TESTING
-				 * Identical to StructureContainer.prototype.reserveResource
-				 * Reserves specific amount of specific resource for set amount of ticks
-				 * Used by screep.reserveResource(container,[resource],[amount],[ticks])
-				 * @param {Number} objectId (of reserver)
-				 * @param {String} resource
-				 * @param {Number} amount
-				 * @param {Number} ticks
-				 * @return {Number} errorCode
-				 */
+				* Identical to StructureContainer.prototype.reserveResource
+				* Reserves specific amount of specific resource for set amount of ticks
+				* Used by screep.reserveResource(container,[resource],[amount],[ticks])
+				* @param {Number} objectId (of reserver)
+				* @param {String} resource
+				* @param {Number} amount
+				* @param {Number} ticks
+				* @return {Number} errorCode
+				*/
 				value: function(objectId,resource,amount,ticks){
-					var errorCode = OK;
+					let errorCode = OK;
 					//TODO
 					return errorCode;
 				},
@@ -1018,14 +1257,14 @@ module.exports = function(){
 			
 			"reserveResource" : {
 				/** NEEDS TESTING
-				 * Checks for expired reservations and cancels them
-				 * Substracts stored resource with reserved resource
-				 * Identical to StructureContainer.prototype.availableResource
-				 * @param {String} resource
-				 * @return {Number} availableRes
-				 */
+				* Checks for expired reservations and cancels them
+				* Substracts stored resource with reserved resource
+				* Identical to StructureContainer.prototype.availableResource
+				* @param {String} resource
+				* @return {Number} availableRes
+				*/
 				value: function(resource){
-					var availableRes = 0;
+					let availableRes = 0;
 					//TODO
 					return availableRes;
 				},
@@ -1048,17 +1287,17 @@ module.exports = function(){
 		Object.defineProperties(StructureContainer.prototype,{
 			"reserveResource" : {
 				/** NEEDS TESTING
-				 * Identical to StructureContainer.prototype.reserveResource
-				 * Reserves specific amount of specific resource for set amount of ticks
-				 * Used by screep.reserveResource(container,[resource],[amount],[ticks])
-				 * @param {Number} objectId (of reserver)
-				 * @param {String} resource
-				 * @param {Number} amount
-				 * @param {Number} ticks
-				 * @return {Number} errorCode
-				 */
+				* Identical to StructureContainer.prototype.reserveResource
+				* Reserves specific amount of specific resource for set amount of ticks
+				* Used by screep.reserveResource(container,[resource],[amount],[ticks])
+				* @param {Number} objectId (of reserver)
+				* @param {String} resource
+				* @param {Number} amount
+				* @param {Number} ticks
+				* @return {Number} errorCode
+				*/
 				value: function(objectId,resource,amount,ticks){
-					var errorCode = OK;
+					let errorCode = OK;
 					//TODO
 					return errorCode;
 				},
@@ -1068,14 +1307,14 @@ module.exports = function(){
 			
 			"reserveResource" : {
 				/** NEEDS TESTING
-				 * Checks for expired reservations and cancels them
-				 * Substracts stored resource with reserved resource
-				 * Identical to StructureContainer.prototype.availableResource
-				 * @param {String} resource
-				 * @return {Number} availableRes
-				 */
+				* Checks for expired reservations and cancels them
+				* Substracts stored resource with reserved resource
+				* Identical to StructureContainer.prototype.availableResource
+				* @param {String} resource
+				* @return {Number} availableRes
+				*/
 				value: function(resource){
-					var availableRes = 0;
+					let availableRes = 0;
 					//TODO
 					return availableRes;
 				},
