@@ -196,7 +196,8 @@ module.exports = class{
         static buildAndRunCreeps(id){
 			var hostiles = 0;
 			if (Game.rooms[Memory.operations[id].roomName] != undefined){
-				hostiles=Game.rooms[Memory.operations[id].roomName].find(FIND_HOSTILE_CREEPS).length;
+				hostiles=Game.rooms[Memory.operations[id].roomName].find(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
+              WHITELIST[hostile.owner.username] == undefined}).length;
 			}
             // ITERATE OVER SOURCES
             for(var i in Memory.operations[id].sources){

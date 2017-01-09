@@ -5,18 +5,22 @@ module.exports = class{
             // DELETE NONEXISTING CREEPS FROM OPERATION
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 for(var i in Memory.operations[id].rooms){
-                    var room=Game.rooms[i];
-                    this.buildAndRunCreeps(id,room);
+                    if(Game.rooms[i]){
+                        var room=Game.rooms[i];
+                        this.buildAndRunCreeps(id,room);
+                    }
                     if(Memory.operations[id].rooms[i].type == 'focus'){
                         var room_focus=i;
                     }
 
                 }
                 for(var i in Memory.operations[id].rooms){
-                    var room=Game.rooms[i];
-                    if(Memory.operations[id].rooms[i].type == 'supply'){
-                        if(room.terminal.store[RESOURCE_ENERGY]>5000){
-                            room.terminal.send(RESOURCE_ENERGY,room.terminal.store[RESOURCE_ENERGY]-Game.market.calcTransactionCost(room.terminal.store[RESOURCE_ENERGY],room.name,room_focus),room_focus);
+                    if(Game.rooms[i]){
+                        var room=Game.rooms[i];
+                        if(Memory.operations[id].rooms[i].type == 'supply'){
+                            if(room.terminal.store[RESOURCE_ENERGY]>5000){
+                                room.terminal.send(RESOURCE_ENERGY,room.terminal.store[RESOURCE_ENERGY]-Game.market.calcTransactionCost(room.terminal.store[RESOURCE_ENERGY],room.name,room_focus),room_focus);
+                            }
                         }
                     }
                 }
@@ -51,12 +55,13 @@ module.exports = class{
                 Memory.operations[this.id].type='focusEnergy';
                 console.log(!Game.rooms[roomName])
                 Memory.operations[this.id].status='default';
+                Memory.operations[this.id].targetRoom=Game.flags[flag].pos.roomName;
                 Memory.operations[this.id].rooms={};
                 Memory.operations[this.id].hauler_body=[CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE];
 
                 for(var i in Game.rooms){
-                    if(Game.rooms[i].terminal != undefined && Game.rooms[i].terminal != undefined){
-                        if(Game.rooms[i].terminal.pos.lookFor(LOOK_FLAGS).length >0){
+                    if(Game.rooms[i].terminal != undefined && Game.rooms[i].terminal != undefined && i != Memory.operations[this.id].targetRoom){
+                        if(i != Memory.operations[this.id].targetRoom){
                             Memory.operations[this.id].rooms[i]={};
                             Memory.operations[this.id].rooms[i].type='focus'
                         }else{
