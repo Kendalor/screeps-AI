@@ -69,7 +69,7 @@ module.exports = class{
                         }
                     }
                 }
-                If(!Memory.operations[this.id].rooms[Memory.operations[this.id].targetRoom]){
+                if(!Memory.operations[this.id].rooms[Memory.operations[this.id].targetRoom]){
                             Memory.operations[this.id].rooms[Memory.operations[this.id].targetRoom]={};
                             Memory.operations[this.id].rooms[Memory.operations[this.id].targetRoom].type='focus'
                 }
