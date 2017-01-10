@@ -12,7 +12,6 @@ module.exports = class{
                     if(Memory.operations[id].rooms[i].type == 'focus'){
                         var room_focus=i;
                     }
-
                 }
                 for(var i in Memory.operations[id].rooms){
                     if(Game.rooms[i]){
@@ -69,6 +68,10 @@ module.exports = class{
                             Memory.operations[this.id].rooms[i].type='supply'
                         }
                     }
+                }
+                If(!Memory.operations[this.id].rooms[Memory.operations[this.id].targetRoom]){
+                            Memory.operations[this.id].rooms[Memory.operations[this.id].targetRoom]={};
+                            Memory.operations[this.id].rooms[Memory.operations[this.id].targetRoom].type='focus'
                 }
                 console.log('Created New Operation');
                 console.log(JSON.stringify(Memory.operations[this.id]));
