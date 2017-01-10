@@ -19,7 +19,7 @@ module.exports = class{
                         var room=Game.rooms[i];
                         if(Memory.operations[id].rooms[i].type == 'supply'){
                             if(room.terminal.store[RESOURCE_ENERGY]>5000){
-                                room.terminal.send(RESOURCE_ENERGY,room.terminal.store[RESOURCE_ENERGY]-Game.market.calcTransactionCost(room.terminal.store[RESOURCE_ENERGY],room.name,room_focus),room_focus);
+                                console.log(room.terminal.send(RESOURCE_ENERGY,room.terminal.store[RESOURCE_ENERGY]-Game.market.calcTransactionCost(room.terminal.store[RESOURCE_ENERGY],room.name,room_focus),room_focus));
                             }
                         }
                     }
