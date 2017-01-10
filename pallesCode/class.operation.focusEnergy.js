@@ -61,7 +61,7 @@ module.exports = class{
 
                 for(var i in Game.rooms){
                     if(Game.rooms[i].terminal != undefined && Game.rooms[i].terminal != undefined && i != Memory.operations[this.id].targetRoom){
-                        if(i != Memory.operations[this.id].targetRoom){
+                        if(i == Memory.operations[this.id].targetRoom){
                             Memory.operations[this.id].rooms[i]={};
                             Memory.operations[this.id].rooms[i].type='focus'
                         }else{
