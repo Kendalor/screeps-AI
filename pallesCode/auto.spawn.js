@@ -98,7 +98,7 @@ module.exports = {
 								if (spawn.room.memory.sources[id].container){
 									if(spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive > (6+8*spawn.room.memory.sources[id].requiredCarryParts) }).length == 0 && found){
 										//console.log(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts))
-										console.log(spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true}));
+										//console.log(spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true}));
 										spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true});
 										found = false;
 									}
