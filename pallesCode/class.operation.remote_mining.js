@@ -344,7 +344,7 @@ module.exports = class{
 
             }
             if(creep.memory.targetId == null){
-                if(creep.carry.energy == 0){
+                if(creep.carry.energy == 0 && container){
                     creep.memory.targetId=container.id;
                 }else{
                     var target=creep.pos.findClosestByRange(targets);
