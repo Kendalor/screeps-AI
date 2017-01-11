@@ -13,7 +13,7 @@ module.exports = {
         );
 	var invader = harmfulEnemies.filter((hostile) => hostile.owner.username == 'Invader');
 	
-	var towers = room.find(FIND_MY_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_TOWER && struct.energy > 0});
+	var towers = room.find(FIND_MY_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_TOWER && struct.energy > 9});
 	
 	// Console Info
 	if (Game.time % LOG_COOLDOWN == 0){
