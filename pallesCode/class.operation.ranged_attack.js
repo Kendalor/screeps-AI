@@ -1,4 +1,4 @@
-
+var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
 module.exports = class{
         constructor(){
@@ -40,10 +40,11 @@ module.exports = class{
             if(creep.room.name != flag.pos.roomName){
                 creep.moveTo(Game.flags[Memory.operations[id].flagName]);
             }else{
-                var target=flag.pos.lookFor(LOOK_CREEPS)[0];
-                if(creep.room.name == flag.pos.roomName && target){
-                    creep.ranged_attack(target);
-                    creep.move(creep.pos.getDirection(target));
+                creep.moveTo(flag);
+                var target=creep.pos.findInRange(FIND_HOSTILE_CREEPS,3,{filter: (hostile) => WHITELIST[hostile.owner.username] == undefined });
+                if(target.length >0){
+                    console.log(target);
+                    creep.rangedAttack(target[0]);
                 }
             }
         }

@@ -43,12 +43,18 @@ module.exports = class{
                     creep.heal(creep);
                 }else{
                     creep.heal(creep);
+                    creep.drop(RESOURCE_ENERGY);
                 }
             }else{
                 if(creep.room.name == flag.pos.roomName){
                     //creep.move(home);
                     creep.heal(creep);
+                    creep.drop(RESOURCE_ENERGY);
                 }else{
+                    var sources=creep.pos.findInRange(FIND_DROPPED_ENERGY,1);
+                    if(sources.length >0){
+                        creep.pickup(sources[0]);
+                    }
                     if(creep.pos.x == 49){
                         creep.move(RIGHT);
                         creep.heal(creep);
