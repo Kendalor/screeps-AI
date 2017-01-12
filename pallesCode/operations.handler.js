@@ -7,7 +7,7 @@ var colonizeOperation = require('class.operation.colonize');
 var devAidOperation = require('class.operation.developmentAid');
 var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteBuildOperation = require('class.operation.remote_build');
-var defendOperation = require('class.operation.defend');
+var defendKeeperOperation = require('class.operation.defend_keeper');
 var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
 var focusEnergyOperation = require('class.operation.focusEnergy');
 var rangedAttackOperation = require('class.operation.ranged_attack');
@@ -20,50 +20,55 @@ module.exports = {
         //Travel to Location
 
         for(var id in Memory.operations){
-            switch (Memory.operations[id].type) {
-                case 'scouting':
-                    //console.log('Case: Scouting');
-                    scoutingOperation.run(id);
-                    break;
-                case 'attack':
+            try {
+                switch (Memory.operations[id].type) {
+                    case 'scouting':
+                        //console.log('Case: Scouting');
+                        scoutingOperation.run(id);
+                        break;
+                    case 'attack':
 
-                    attackOperation.run(id);
-                    break;
-                case 'tank':
-                    tankOperation.run(id);
-                    break;
-                case 'steal':
-                    //console.log('Case: Steal');
-                    thiefOperation.run(id);
-                    break;
-                case 'reserve':
-                    reserveOperation.run(id);
-                    break;
-                case 'colonize':
-                    colonizeOperation.run(id);
-                    break;
-                case 'devAid':
-                    devAidOperation.run(id);
-                    break;
-                case 'remote_mining':
-                    remoteMiningOperation.run(id);
-                    break;
-				case 'remote_build':
-					remoteBuildOperation.run(id);
-					break;
-                case 'defend':
-                    defendOperation.run(id);
-                    break;
-                case 'remote_mining_keeper':
-                    remoteMiningKeeperOperation.run(id);
-                    break;
-                case 'focusEnergy':
-                    focusEnergyOperation.run(id);
-                    break;
-                case 'ranged_attack':
-                    rangedAttackOperation.run(id);
-                    break;
+                        attackOperation.run(id);
+                        break;
+                    case 'tank':
+                        tankOperation.run(id);
+                        break;
+                    case 'steal':
+                        //console.log('Case: Steal');
+                        thiefOperation.run(id);
+                        break;
+                    case 'reserve':
+                        reserveOperation.run(id);
+                        break;
+                    case 'colonize':
+                        colonizeOperation.run(id);
+                        break;
+                    case 'devAid':
+                        devAidOperation.run(id);
+                        break;
+                    case 'remote_mining':
+                        remoteMiningOperation.run(id);
+                        break;
+                    case 'remote_build':
+                        remoteBuildOperation.run(id);
+                        break;
+                    case 'defendKeeper':
+                        defendKeeperOperation.run(id);
+                        break;
+                    case 'remote_mining_keeper':
+                        remoteMiningKeeperOperation.run(id);
+                        break;
+                    case 'focusEnergy':
+                        focusEnergyOperation.run(id);
+                        break;
+                    case 'ranged_attack':
+                        rangedAttackOperation.run(id);
+                        break;
 
+                }
+            }
+            catch(err) {
+                console.log(err);
             }
         }
     },
@@ -74,7 +79,7 @@ module.exports = {
                 attackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
             }else if (this.colorMatch(flag,COLOR_RED,COLOR_BLUE)){ //RED/BLUE
-                defendOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                defendKeeperOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
             }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_WHITE)){ //WHITE/WHITE
                 scoutingOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
