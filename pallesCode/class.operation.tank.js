@@ -37,7 +37,6 @@ module.exports = class{
         static creepHandle(creep,id){
             var flag=Game.flags[Memory.operations[id].flagName];
             var home=Game.getObjectById(Memory.operations[id].nearestSpawnId);
-            console.log(flag);
             if(creep.hits == creep.hitsMax){
                 if(creep.room.name != flag.pos.roomName){
                     creep.moveTo(Game.flags[Memory.operations[id].flagName]);
@@ -47,7 +46,7 @@ module.exports = class{
                 }
             }else{
                 if(creep.room.name == flag.pos.roomName){
-                    creep.move(home);
+                    //creep.move(home);
                     creep.heal(creep);
                 }else{
                     if(creep.pos.x == 49){
@@ -115,7 +114,7 @@ module.exports = class{
                 Memory.operations[this.id].size=1;
                 Memory.operations[this.id].members= {};
                 Memory.operations[this.id].nearestSpawnId=Game.spawns['Spawn4'].id;
-                Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,15).fill(MOVE,15,40).fill(HEAL,40,50);
+                Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,23).fill(MOVE,23,40).fill(HEAL,40,50);
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
