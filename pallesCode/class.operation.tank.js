@@ -41,6 +41,10 @@ module.exports = class{
                 if(creep.room.name != flag.pos.roomName){
                     creep.moveTo(Game.flags[Memory.operations[id].flagName]);
                     creep.heal(creep);
+                    var sources=creep.pos.findInRange(FIND_DROPPED_ENERGY,1);
+                    if(sources.length >0){
+                        creep.pickup(sources[0]);
+                    }
                 }else{
                     creep.heal(creep);
                     creep.drop(RESOURCE_ENERGY);
