@@ -221,7 +221,7 @@ module.exports = {
 	},
 	
 	supplierPreset: function(spawn){
-		var energyCap = spawn.room.energyCapacityAvailable;
+		var energyCap = Math.min(spawn.room.energyCapacityAvailable,2500);
 		var moveParts= Math.max(2,Math.floor(parseInt(((energyCap)/3)/50)));
 		var partArray = [];
 		for (let i = 0; i < moveParts; i++){

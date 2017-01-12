@@ -29,7 +29,6 @@ module.exports = {
                     attackOperation.run(id);
                     break;
                 case 'tank':
-                    console.log('Case: Tanking');
                     tankOperation.run(id);
                     break;
                 case 'steal':

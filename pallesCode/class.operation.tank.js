@@ -5,95 +5,84 @@ module.exports = class{
 
         }
         static run(id){
-            var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL];
+
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 
             if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
-                console.log('Spawning');
-                //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'tank', operation: id, target: Memory.operations[id].flagName}));
-                if(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'heal', operation: id, target: Memory.operations[id].flagName}) == OK){
-                    var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'heal', operation_id: id, target: Memory.operations[id].flagName});
-                    Memory.operations[id].members[name]= 'heal';
+                var spawn = Game.getObjectById(Memory.operations[id].nearestSpawnId);
+                var body = Memory.operations[id].default_body;
+                if(spawn.canCreateCreep(body, undefined, {role: 'heal', operation: id, target: Memory.operations[id].flagName}) == OK){
+                    var name=spawn.createCreep(body,undefined,{role: 'heal', operation_id: id, target: Memory.operations[id].flagName});
+                    Memory.operations[id].members[name]= 'tank';
                     console.log('Did spawn creep '+name);
                 }
-
-            }else if(Object.keys(Memory.operations[id].members).length == Memory.operations[id].size && !Memory.operations[id].assembled){
-                var assembled =0;
-                for(var cr in Memory.operations[id].members){
-                    if(!Game.creeps[cr].spawning){
-                        assembled=assembled+1;
-                    }
-                }
-                if(assembled == Memory.operations[id].size){
-                    Memory.operations[id].assembled = true;
-                    console.log('Squad assembled');
-                }
-
             }
-            // CHECK IF REACHED OR FLAG POSITION CHANGED
-            var reached=0;
-            var lowestHP = undefined
-            for(var cr in Memory.operations[id].members){
-                // DELETE NONEXISTING CREEPS FROM OPERATION
-                if(!Game.creeps[cr]) {
-                    console.log('Deleted '+cr +'from memory')
-                    delete Memory.creeps[cr];
-                    delete Memory.operations[id].members[cr];
-                }
-
-
-
-                if(lowestHP == undefined){
-                    lowestHP =Game.creeps[cr]
-                }
-                if(Game.creeps[cr].hits < lowestHP.hits){
-                    lowestHP =Game.creeps[cr];
-                }
-
-
-                if(Memory.operations[id].reached==false && Memory.operations[id].assembled==true){
-                    if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],2)){
-                        reached = reached+1;
-                    }
-                    if(reached == Object.keys(Memory.operations[id].members).length){
-                        Memory.operations[id].reached=true;
-                    }
-                }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
-                    if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
-                        reached = reached+1;
-                    }
-                    if(reached != Object.keys(Memory.operations[id].members).length){
-                        Memory.operations[id].reached=false;
-                    }
-                }
-            }
-            // RUN CREEP JOBS
-            for(var cr in Memory.operations[id].members){
-                if(!Game.creeps[cr].spawning && Game.creeps[cr]){
-                    if(Memory.operations[id].assembled==false){
-                        if(Game.creeps[cr].ticksToLive < 1400){
-                            console.log('Running Refresh for '+cr);
-                            this.refreshTimer(Game.creeps[cr]);
-                        }else{
-                            console.log('Running Idle for '+cr);
-                            this.creepIdle(Game.creeps[cr]);
-                        }
-                    }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==false){
-                        console.log('Running Travel for '+cr);
-                        this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
-
-                    }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
-                        console.log('Running Heal for '+cr);
-                        this.creepHeal(Game.creeps[cr],lowestHP);
-                    }
+            for(var i in Memory.operations[id].members){
+                if(!Game.creeps[i]){
+                    console.log('Deleted '+i +' from memory')
+                    delete Memory.creeps[i];
+                    delete Memory.operations[id].members[i];
+                }else if(!Game.creeps[i].spawning){
+                    var creep=Game.creeps[i];
+                    this.creepHandle(creep,id);
                 }
             }
 
 
 
-
             }
+        }
+
+        static creepHandle(creep,id){
+            var flag=Game.flags[Memory.operations[id].flagName];
+            var home=Game.getObjectById(Memory.operations[id].nearestSpawnId);
+            console.log(flag);
+            if(creep.hits == creep.hitsMax){
+                if(creep.room.name != flag.pos.roomName){
+                    creep.moveTo(Game.flags[Memory.operations[id].flagName]);
+                    creep.heal(creep);
+                }else{
+                    creep.heal(creep);
+                }
+            }else{
+                if(creep.room.name == flag.pos.roomName){
+                    creep.move(home);
+                    creep.heal(creep);
+                }else{
+                    if(creep.pos.x == 49){
+                        creep.move(RIGHT);
+                        creep.heal(creep);
+                    }else if(creep.pos.x == 0){
+                        creep.move(LEFT);
+                        creep.heal(creep);
+                    }else if(creep.pos.y == 0){
+                        creep.move(BOTTOM);
+                        creep.heal(creep);
+                    }else if(creep.pos.y == 49){
+                        creep.move(TOP);
+                        creep.heal(creep);
+                    }else{
+                        creep.heal(creep);
+                    }
+                }
+            }
+        }
+
+        static findClosestSpawn(flagName){
+            var min_length;
+            var best_spawn;
+            var length;
+            for(var i in Game.spawns){
+                console.log('length from '+Game.spawns[i].pos.roomName+' to '+Game.flags[flagName].pos.roomName);
+                console.log( Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length < min_length  || min_length == undefined);
+                length= Object.keys(Game.map.findRoute(Game.spawns[i].pos.roomName,Game.flags[flagName].pos.roomName)).length;
+                if(length < min_length  || min_length == undefined){
+                    min_length=length;
+                    best_spawn=Game.spawns[i].id;
+                }
+            }
+            return best_spawn;
         }
 
         static init(roomName,flag){
@@ -123,12 +112,10 @@ module.exports = class{
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='tank';
-                Memory.operations[this.id].size=4;
-                Memory.operations[this.id].assembled=false;
-                Memory.operations[this.id].reached=false;
-
+                Memory.operations[this.id].size=1;
                 Memory.operations[this.id].members= {};
-                Memory.operations[this.id].rallyPoint=Game.flags[flag].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
+                Memory.operations[this.id].nearestSpawnId=Game.spawns['Spawn4'].id;
+                Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,15).fill(MOVE,15,40).fill(HEAL,40,50);
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
@@ -161,64 +148,6 @@ module.exports = class{
 
         }
         // IDLE MOVESET
-        static creepIdle(creep){
-            var target = Game.getObjectById(Memory.operations[creep.memory.operation_id].rallyPoint);
-            creep.moveTo(target);
-
-        }
-        // TRAVEL TO FLAG
-        static creepTravel(creep,flag){
-            creep.moveTo(flag);
-
-        }
-        // ATTACK CODE
-        static creepHeal(creep,lowestHP){
-
-            switch (creep.pos.getRangeTo(lowestHP)){
-                case 0:
-                    console.log(creep.name+'0: Heals '+ creep.name);
-                    console.log(creep.heal(creep));
-                    break;
-                case 1:
-                    console.log(creep.heal(lowestHP));
-                    console.log(creep.name+'1: Heals '+ lowestHP.name);
-                    break;
-                case 2:
-                    creep.moveTo(lowestHP);
-                    creep.heal(lowestHP);
-                    console.log(creep.name+'2: Heals '+ lowestHP.name);
-                    break;
-                case 3:
-                    creep.moveTo(lowestHP);
-                    creep.rangedHeal(lowestHP);
-                    console.log(creep.name+'3: Heals Ranged '+ lowestHP.name);
-                    break;
-                case 4:
-                    creep.moveTo(lowestHP);
-                    creep.rangedHeal(lowestHP);
-                    console.log(creep.name+'4: Heals Ranged '+ lowestHP.name);
-                    break;
-                default:
-                    creep.moveTo(lowestHP);
-                    if(creep.hits < creep.hitsMax){
-                        console.log(creep.heal(creep));
-                        console.log(creep.name+'default: Heals '+ creep.name);
-                    }
-                    break;
-
-            }
-
-        }
-
-        static refreshTimer(creep){
-            var target = Game.spawns['Spawn1'];
-            console.log(Game.spawns['Spawn1']);
-            if( target.renewCreep(creep) == ERR_NOT_IN_RANGE && !target.spawning){
-                creep.moveTo(target)
-            }else if(target.renewCreep(creep) == ERR_FULL || target.spawning){
-                this.creepIdle(creep);
-            }
-        }
 
 
 
