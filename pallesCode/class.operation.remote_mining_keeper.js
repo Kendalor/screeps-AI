@@ -4,19 +4,20 @@ module.exports = class{
         static run(id){
             // DELETE NONEXISTING CREEPS FROM OPERATION
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
+                //IF NOT AVAILABLE
                 if(!Game.rooms[Memory.operations[id].roomName]){
                     this.scouting(id);
                     console.log('Moving Scout');
-                }else{
+                }else{// IF AVAILABLE
                     this.scouting(id);
                     var room=Game.rooms[Memory.operations[id].roomName];
-                    if(Memory.operations[id].keeperRoom == undefined){
+                    if(Memory.operations[id].keeperRoom == undefined){ // CHECK IF KEEPER ROOM
                         Memory.operations[id].keeperRoom=(room.find(FIND_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR}).length >0);
                     }
-                    if(Memory.operations[id].keeperRoom && !Memory.operations[id].defendOperationId){
-                        var defFlag = room.find(FIND_FLAGS,{filter: (f) => f.color==COLOR_RED && f.secondaryColor == COLOR_BLUE});
+                    if(Memory.operations[id].keeperRoom && !Memory.operations[id].defendOperationId){ // IF KEEPER ROOM AND NO DEFEND OPERATION FOUND
+                        var defFlag = room.find(FIND_FLAGS,{filter: (f) => f.color==COLOR_RED && f.secondaryColor == COLOR_BLUE}); // LOOK FOR DEF FLAGS
                         if(defFlag.length >0){
-                            Memory.operations[id].defendOperationId=defFlag[0].memory.operation_id;
+                            Memory.operations[id].defendOperationId=defFlag[0].memory.operation_id; // WRITE OWN ID INTO DEFEND OPERATION
                             Memory.operations[Memory.operations[id].defendOperationId].toDefend=id;
                         }else{
                             console.log('Place a RED/BLUE Flag in the Room to Defend your Mining Op');
@@ -395,7 +396,40 @@ module.exports = class{
             var done=true;
 
 
-            var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCos: 1, swampCost: 1}).path;
+            var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCos: 1, swampCost: 1,
+                  roomCallback: function(roomName) {
+                  let room = Game.rooms[roomName];
+                  if(!room) return;
+                  let costs = new PathFinder.CostMatrix;
+                  room.find(FIND_STRUCTURES).forEach(function(structure) {
+                    if(structure.structureType == STRUCTURE_ROAD)  {
+                        costs.set(structure.pos.x, structure.pos.y, 0.2);
+                    }else if(structure.structureType == STRUCTURE_CONTAINER) {
+                        costs.set(structure.pos.x, structure.pos.y,0.5);
+                    }else if(structure.structureType == STRUCTURE_RAMPART) {
+                        costs.set(structure.pos.x, structure.pos.y,0.5);
+                    }else{
+                        costs.set(structure.pos.x, structure.pos.y,0xff);
+                    }
+                  });
+
+                  room.find(FIND_CONSTRUCTION_SITES).forEach(function(constr) {
+                    if(constr.structureType == STRUCTURE_ROAD)  {
+                        costs.set(constr.pos.x, constr.pos.y, 0.2);
+                    }else if(constr.structureType == STRUCTURE_CONTAINER) {
+                        costs.set(constr.pos.x, constr.pos.y,0.5);
+                    }else if(structure.structureType == STRUCTURE_RAMPART) {
+                        costs.set(constr.pos.x, constr.pos.y,0.5);
+                    }else{
+                        costs.set(constr.pos.x, constr.pos.y,0xff);
+                    }
+                  });
+
+                  return costs;
+
+                  }}).path;
+
+                  Memory.operations[id].source[source.id].path=path;
 
                  for(var i in path){
                     //console.log(JSON.stringify(path));

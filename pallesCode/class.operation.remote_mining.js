@@ -378,9 +378,12 @@ module.exports = class{
                 if(creep.carry.energy == 0 && container){
                     creep.memory.targetId=container.id;
                 }else{
-                    var target=creep.pos.findClosestByRange(targets);
+                    var target=creep.pos.findClosestByPath(targets);
+                    console.log(JSON.stringify(targets));
                     if(target !=null){
                         creep.memory.targetId=target.id;
+                    }else if(targets.length >0 && target == null){
+                        creep.moveTo(targets[0]);
                     }else{
                         creep.moveTo(target);
                     }

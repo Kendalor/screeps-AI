@@ -60,10 +60,10 @@ module.exports = class{
                         creep.pickup(sources[0]);
                     }
                     if(creep.pos.x == 49){
-                        creep.move(RIGHT);
+                        creep.move(LEFT);
                         creep.heal(creep);
                     }else if(creep.pos.x == 0){
-                        creep.move(LEFT);
+                        creep.move(RIGHT);
                         creep.heal(creep);
                     }else if(creep.pos.y == 0){
                         creep.move(BOTTOM);

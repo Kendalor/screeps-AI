@@ -7,212 +7,19 @@ module.exports = class{
         }
         static run(id){
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-            // BUILD CREEPS UNTIL SQUAD SIZE REACHED
-            switch (Memory.operations[id].status){
-                case 'assembling':
-                    this.assembling(id);
-                    break;
-                case 'traveling':
-                    this.traveling(id);
-                    console.log('Run Travel');
-                    break;
-                case 'combat':
-                    this.combat(id);
-                    break;
-                default:
-                    console.log('default');
-                    break;
-            }
-
-
-
-
-
-            }
-        }
-        static assembling(id){
-            this.buildCreeps(id);
-            this.checkForCreeps(id);
-            if(this.checkAssembled_ByRallyPoint(id)){
-                Memory.operations[id].status='traveling';
-            }
-            for(var sLeader in Memory.operations[id].squads){
-                for(var cr in Memory.operations[id].squads[sLeader]){
-
-                    if(!Game.creeps[Memory.operations[id].squads[sLeader][cr]].spawning){
-                        Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
-                        Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(sLeader);
+                this.buildCreeps(id);
+                if(!Memory.operations[id].toDefend){
+                    if(Game.ticks % 50 == 0){
+                        console.log('DEFEND OPERATION '+id+' HAS NOTHING TO DO');
                     }
+                }else{
+                    let defendId=Memory.operations[id].toDefend;
                 }
-                if(!Game.creeps[sLeader].spawning){
-                        /*if(Game.creeps[sLeader].ticksToLive < 1400){
-                            //this.refreshTimer(Game.creeps[sLeader]);
-                        }else{*/
-                            Game.creeps[sLeader].moveTo(Game.getObjectById(Memory.operations[id].rallyPoint));
-                        //}
-
-                }
-            }
-        }
-
-        static traveling(id){
-            var wait=false;
-            var err;
-            var moving;
-            var creep;
-            for(var sLeader in Memory.operations[id].squads){
-                creep=Game.creeps[sLeader];
-                for(var cr in Memory.operations[id].squads[sLeader]){
-					if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name) // Just in case if leader is blocking the path, leave the edge of the map
-						this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]],Game.creeps[sLeader].pos);
-                    Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
-                    err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
-
-                    if(err == ERR_NOT_IN_RANGE){
-                        wait=true;
-                    }
-                }
-                moving=(creep.pos.x >= 48 || creep.pos.y >= 48 || creep.pos.x <= 1 || creep.pos.y <= 1); // In some cases leader blocks followers (e.g. small passage or corner)
-                if(!wait){
-                    Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
-                }else if(moving){
-                    Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
-                }
-                if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
-
-                    creep.moveTo(Game.flags[Memory.operations[id].flagName]);
-                    //console.log('Set to Combat');
-                    Memory.operations[id].status='combat';
-                }
-            }
-        }
-
-        static combat(id){
-            this.checkForCreeps(id);
-            var enemies=[];
-            var wait=false;
-            var err;
-            var target;
-            if(Object.keys(Memory.operations[id].squads).length > 0){
-
-                for(var sLeader in Memory.operations[id].squads){
-                    console.log(Memory.operations[id].squads[sLeader].length < Memory.operations[id].healers );
-                    if(Memory.operations[id].squads[sLeader].length < Memory.operations[id].healers ){
-                        console.log('Building Healers Again');
-                        this.buildCreeps(id);
-                    }
 
 
-                    if(Game.creeps[sLeader].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
-                        //console.log('BUGFIX');
-                        //console.log(enemies);
-                        var timeToSpawn=300;
-                        var spawn;
-                        if(!enemies.length > 0){
-                            if(!Memory.operations[id].toDefend){
-                                var enemies=Game.creeps[sLeader].room.find(FIND_HOSTILE_CREEPS);
-                            }else{
-                                //console.log('BUGFIX');
-                                var timeToSpawn=300;
-                                var spawn;
-                                for(var sources in Memory.operations[Memory.operations[id].toDefend].sources){
-                                    var source=Game.getObjectById(sources);
-                                    if(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeper){
-                                        console.log('Push enemy');
-
-                                        enemies.push(Game.getObjectById(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeper));
-                                    }else{
-                                        var lair=Game.getObjectById(Memory.operations[Memory.operations[id].toDefend].sources[source.id].keeperLair);
-                                        if(lair.ticksToSpawn < timeToSpawn){
-                                            timeToSpawn=lair.ticksToSpawn;
-                                            spawn=lair;
-                                        }
-                                    }
-                                }
-                            }
-							//enemies=Game.creeps[sLeader].room.find(FIND_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_WALL}); // ALTERNATIVE FOR DEMOLISHING WALLS - NOT WORKING PROPERLY ATM
-                        }
-                        //console.log(enemies[0] != null);
-                        if(enemies[0] != null){
-                            //console.log('rly');
-                            //console.log(JSON.stringify(enemies));
-                            target=Game.creeps[sLeader].pos.findClosestByPath(enemies);
-                            err=Game.creeps[sLeader].attack(target);
-                            if(err == ERR_NOT_IN_RANGE){
-                                if(!wait){
-                                    Game.creeps[sLeader].moveTo(target);
-                                }
-                            }
-                        }else{
-                            if(!Memory.operations[id].toDefend){
-
-                                if(!wait){
-                                    Game.creeps[sLeader].moveTo(Game.flags[Memory.operations[id].flagName]);
-                                }
-                            }else{
-                                //console.log(spawn);
-                                if(spawn){
-                                        if(spawn.ticksToSpawn >= Game.creeps[sLeader].ticksToLive){
-                                            Game.creeps[sLeader].suicide();
-                                        }
-                                        //console.log(wait);
-                                        if(!wait){
-                                            //console.log('moveout');
-                                            Game.creeps[sLeader].moveTo(spawn);
-                                        }
-                                    }
-                            }
-                        }
-                    }
 
 
-                    for(var cr in Memory.operations[id].squads[sLeader]){
-						if (Game.creeps[Memory.operations[id].squads[sLeader][cr]].room.name == Game.creeps[sLeader].room.name){ // Just in case if leader is blocking the path, leave the edge of the map
-							this.creepLeaveBorder(Game.creeps[Memory.operations[id].squads[sLeader][cr]],Game.creeps[sLeader].pos);
-						}
-                        if(enemies[0] != null){
-                            var range=Game.creeps[Memory.operations[id].squads[sLeader][cr]].pos.inRangeTo(enemies[0],2);
-                            if(range){
-                                path=PathFinder.search(Game.creeps[Memory.operations[id].squads[sLeader][cr]].pos,{pos: enemies[0].pos, range:1},{flee: true});
-                                Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveByPath(path.path);
-                            }else{
-                                Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
-                            }
-                        }else{
-                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
-                        }
 
-                        Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(Game.creeps[sLeader]);
-
-                        err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[sLeader]);
-                        if(err == ERR_NOT_IN_RANGE){
-                            wait=true;
-                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
-                        }
-                        if(Game.creeps[sLeader].hits == Game.creeps[sLeader].hitsMax ){
-                            Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(Game.creeps[Memory.operations[id].squads[sLeader][cr]]);
-                            if(Game.creeps[Memory.operations[id].squads[sLeader][cr]].hits == Game.creeps[Memory.operations[id].squads[sLeader][cr]].hitsMax ){
-                                var damagedCreep=Game.creeps[Memory.operations[id].squads[sLeader][cr]].pos.findClosestByPath(FIND_MY_CREEPS,{filter: (cr) => cr.hits < cr.hitsMax});
-                                if(damagedCreep){
-                                    err=Game.creeps[Memory.operations[id].squads[sLeader][cr]].heal(damagedCreep);
-                                    if(err == ERR_NOT_IN_RANGE){
-                                        Game.creeps[Memory.operations[id].squads[sLeader][cr]].moveTo(damagedCreep);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    //console.log('BUGFIX');
-
-                }
-				//if(Game.flags[Memory.operations[id].flagName].room.name != Game.creeps[sLeader].room.name){ // If you want to avoid combat and just wanna move on.
-				//console.log(enemies == undefined);
-				//console.log(spawn == undefined);
-                if(!enemies.length >0 && spawn == undefined){
-                    Memory.operations[id].status='traveling';
-                }
-            }else{
-                Memory.operations[id].status='assembling';
             }
         }
         /*
@@ -249,76 +56,24 @@ module.exports = class{
 
 
         static buildCreeps(id){
-            if(Object.keys(Memory.operations[id].squads).length < Memory.operations[id].size){
+            if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size){
                 var creep_body=Memory.operations[id].default_Abody;
-                //console.log(creep_body);
-                //console.log(Array(10).fill('TOUGH',0,5).fill('MOVE',5,8).fill('ATTACK',8,10))
-                //console.log(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}));
-                if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
-                    var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
+                if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'MineDefender', operation: id, target: Memory.operations[id].flagName}) == OK){
+                    var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'MineDefender', operation_id: id, target: Memory.operations[id].flagName});
                     Memory.operations[id].squads[name]= [];
-                    console.log('Did spawn Squad Captain '+name);
+                    console.log('Did spawn Op Defender'+name);
                 }
 
             }else{
-                var creep_body=Memory.operations[id].default_Hbody;
-                for(var sLeader in Memory.operations[id].squads){
-                    if(Object.keys(Memory.operations[id].squads[sLeader]).length < Memory.operations[id].healers){
-                        if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'healer', operation: id, Leader: sLeader, target: Memory.operations[id].flagName}) == OK){
-                            var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'healer', operation_id: id, Leader: sLeader, target: Memory.operations[id].flagName});
-
-                            Memory.operations[id].squads[sLeader].push(name);
-
-                        }
+                for(var i in Memory.operations[id].members){
+                    if(!Game.creeps[i]){
+                        delete Memory.creeps[i];
+                        delete Memory.operations[id].members[i];
                     }
+
                 }
             }
             // CHECK IF REACHED OR FLAG POSITION CHANGED
-        }
-
-        static checkAssembled(id){
-            var out=true;
-            if(Object.keys(Memory.operations[id].squads).length == Memory.operations[id].size){
-                    for(var sLeader in Memory.operations[id].squads){
-                        if(Memory.operations[id].squads[sLeader].length != Memory.operations[id].healers){
-                            out=false;
-                        }else{
-                            for(var cr in Memory.operations[id].squads[sLeader]){
-                                if(Game.creeps[cr].spawning){
-                                    out = false;
-                                }
-                            }
-                        }
-                    }
-
-            }else{
-                out = false;
-            }
-            return out;
-
-        }
-
-        static checkAssembled_ByRallyPoint(id){
-            var out=true;
-            if(Object.keys(Memory.operations[id].squads).length == Memory.operations[id].size){
-                for(var sLeader in Memory.operations[id].squads){
-                    if(Memory.operations[id].squads[sLeader].length == Memory.operations[id].healers){
-                        for(var cr in Memory.operations[id].squads[sLeader]){
-                            if(!Game.creeps[Memory.operations[id].squads[sLeader][cr]].pos.inRangeTo(Game.getObjectById(Memory.operations[id].rallyPoint),3)){
-                                out=false;
-                            }
-                        }
-                    }else{
-                        out=false;
-                    }
-                }
-                if(!Game.creeps[sLeader].pos.inRangeTo(Game.getObjectById(Memory.operations[id].rallyPoint),3)){
-                        out=false;
-                }
-            }else{
-                out = false;
-            }
-            return out;
         }
 
         static findClosestSpawn(flagName){
@@ -336,8 +91,6 @@ module.exports = class{
             }
             return best_spawn;
         }
-
-
 
         static init(roomName,flag){
             if(!Game.flags[flag].memory.operation_id){
@@ -370,8 +123,9 @@ module.exports = class{
                 Memory.operations[this.id].size=1; // NUMBER OF SQUADS ATTACKER = SQUAD LEADER
                 //COST 12xMOVE = 600 + 12 ATTACK = 960 =1560
                 //Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,28).fill(MOVE,28,36).fill(ATTACK,36,50);// COST 2300
-                Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,20).fill(MOVE,20,30).fill(ATTACK,30,50);// COST 2300
+                Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,3).fill(MOVE,3,20).fill(ATTACK,20,45).fill(HEAL,45,50);// COST 2300
                 Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
+                Memory.operations[this.id].members={};
 
 
 
@@ -405,83 +159,6 @@ module.exports = class{
 
         }
 
-        static checkForDelete_new(id){
-
-            if(!Memory.operations[id].flagName && !Memory.operations[id].permanent && Object.keys(Memory.operations[id].squads).length == 0){
-                delete Memory.flags[flagname];
-                delete Memory.operations[id];
-
-                return true;
-            }else if(!Game.flags[Memory.operations[id].flagName] && !Memory.operations[id].permanent && Object.keys(Memory.operations[id].squads).length > 0){
-                delete Memory.operations[id].flagName;
-
-                return false;
-
-            }else {
-                return false;
-            }
-
-        }
-
-        static refreshTimer(creep){
-            var target = Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_spawnId);
-            if(target.renewCreep(creep) == ERR_NOT_IN_RANGE){
-                creep.moveTo(target)
-            }
-        }
-
-		static creepLeaveBorder(creep,leaderPos){
-			var pos = new RoomPosition(leaderPos.x,leaderPos.y,leaderPos.roomName)
-			if (creep.pos.x == 0){
-				switch(creep.pos.y - leaderPos.y){
-					case -1: creep.move(RIGHT); break;
-					case  0: 
-						pos.y = pos.y-1;
-						if (creep.moveTo(pos) == ERR_NO_PATH){
-							pos.y = pos.y+2;
-							creep.moveTo(pos);
-						}
-					break;
-					case  1: creep.move(RIGHT); break;
-				}
-			}else if(creep.pos.y == 0){
-				switch(creep.pos.x - leaderPos.x){
-					case -1: creep.move(BOTTOM); break;
-					case  0: 
-						pos.x = pos.x-1;
-						if (creep.moveTo(pos) == ERR_NO_PATH){
-							pos.x = pos.x+2;
-							creep.moveTo(pos);
-						}
-					break;
-					case  1: creep.move(BOTTOM); break;
-				}
-			}else if(creep.pos.x == 49){
-				switch(creep.pos.y - leaderPos.y){
-					case -1:	creep.move(LEFT); break;
-					case  0: 
-						pos.y = pos.y-1;
-						if (creep.moveTo(pos) == ERR_NO_PATH){
-							pos.y = pos.y+2;
-							creep.moveTo(pos);
-						}
-					break;
-					case 1: creep.move(LEFT); break;
-				}
-			}else if(creep.pos.y == 49){
-				switch(creep.pos.x - leaderPos.x){
-					case -1: creep.move(TOP); break;
-					case  0: 
-						pos.x = pos.x-1;
-						if (creep.moveTo(pos) == ERR_NO_PATH){
-							pos.x = pos.x+2;
-							creep.moveTo(pos);
-						}
-					break;
-					case  1: creep.move(TOP); break;
-				}
-			}
-		}
 
 
 
