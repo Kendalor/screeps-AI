@@ -10,7 +10,9 @@ module.exports = class{
 			// 50 PARTS - NO RANGED ATTACK BUILD COSTS: 2300 = 28xTOUGH + 4xATTACK +1xCARRY 13xMOVE 4xHEAL
 			// 47 PARTS - RANGED ATTACK COSTS: 2300 = 26xTOUGH + 3xATTACK + 1xRANGED_ATTACK +1xCARRY 12xMOVE 4xHEAL
 			// 26 PARTS - BULLDOZER COSTS: 2300 = 20xWORK + 6xMOVE
-			var creep_body = Array(26).fill(WORK,0,20).fill(MOVE,20,26);
+			//var creep_body = Array(26).fill(WORK,0,20).fill(MOVE,20,26);
+			// 50 PARTS - BULLDOZER COSTS: 4150 = 33xWORK + 17xMOVE
+			var creep_body = Array(50).fill(WORK,0,33).fill(MOVE,33,50);
 			// TEST BODY : var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,HEAL];
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
 				// BUILD CREEPS UNTIL SQUAD SIZE REACHED
@@ -63,7 +65,7 @@ module.exports = class{
 							}else{
 								this.creepIdle(Game.creeps[cr]);
 							}
-						}else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==false){
+						}else if(Memory.operations[id].assembled==true && Game.creeps[cr].pos.roomName != Game.flags[Memory.operations[id].flagName].pos.roomName){
 							console.log('Running Travel for '+cr);
 							if (Game.creeps[cr].hits == Game.creeps[cr].hitsMax)
 								this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
@@ -73,7 +75,7 @@ module.exports = class{
 								Game.creeps[cr].heal(Game.creeps[cr]);
 							}
 
-						}else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
+						}else {
 							console.log('Running demolish for '+cr);
 							if (Game.creeps[cr].hits > (Game.creeps[cr].body.filter((body) => body.type == HEAL).length * 200 + 150))
 								this.creepAttack(Game.creeps[cr]);
