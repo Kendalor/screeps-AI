@@ -143,7 +143,7 @@ module.exports = {
 							tower[i].room.memory.structureHitsMin = closestDamagedStructure.hits; // SET NEW MINIMUM HITS FOR DEFENSE STRUCTURES
 						tower[i].repair(closestDamagedStructure); // ACTUALLY REPAIR SOMETHING
 					}
-					else if(tower[i].room.memory.structureHitsMin < 300000 && offCooldown){
+					else if(tower[i].room.memory.structureHitsMin < 500000 && offCooldown){
 						tower[i].room.memory.structureHitsMin += MIN_DEF_STRUCTURE_HITS; // INCREASE THE REPAIR THRESHOLD FOR DEFENSE STRUCTURES
 					}
 				}
