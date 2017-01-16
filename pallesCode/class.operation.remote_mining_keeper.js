@@ -31,16 +31,6 @@ module.exports = class{
                             var enemies=source.pos.findInRange(FIND_HOSTILE_CREEPS,5);
                             console.log('BLUBB');
                             console.log(enemies[0]);
-                            if(enemies.length >0 && !Memory.operations[id].sources[source.id].keeper){
-                                    Memory.operations[id].sources[source.id].keeper=enemies[0].id;
-                            }else if(enemies.length >0 && Memory.operations[id].sources[source.id].keeper){
-                                    if(enemies[0].id == Memory.operations[id].sources[source.id].keeper){
-                                        console.log('ID DIfferent');
-                                        Memory.operations[id].sources[source.id].keeper=enemies[0].id;
-                                    }
-                            }else if(!enemies.length >0){
-                                delete Memory.operations[id].sources[source.id].keeper;
-                            }
                             switch (Memory.operations[id].sources[i].status) {
                                 case 'createConstructionSites':
                                     this.buildRoadAndContainer(id,source,storage);

@@ -14,6 +14,62 @@ module.exports = class{
                     }
                 }else{
                     let defendId=Memory.operations[id].toDefend;
+                    let keepers=[]
+                    let lairs=[]
+                    //search Sources in Operation for Keepers
+                    for(var i in Memory.operations[defendId].sources){
+                        let lair= Game.getObjectById(Memory.operations[defendId].sources[i].keeperLair);
+                        let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,5);
+                        if(enemy.length >0){
+                            keepers.put(enemy[0]);
+                        }else{
+                            lairs.put(lair);
+                        }
+                    }
+                    for(var j in Memory.operations[id].members){
+                        var creep=Game.creeps[j];
+                        if(keepers.length >0){
+                            var target=creep.pos.findClosestByRange(keepers);
+                        }else if(lairs.length >0 || target == undefined){
+                            for(var i in lairs){
+                                if(target == undefined || target.ticksToSpawn > i.ticksToSpawn){
+                                    var targetLair=i;
+                                }
+                            }
+                        }
+                        if(creep.hits == creep.hitsMax){
+                            if(target){
+                                let err=creep.attack(target);
+                                if(err == ERR_NOT_IN_RANGE){
+                                    creep.moveTo(target);
+                                    creep.heal(creep);
+                                }
+                            }else if(targetLair){
+                                creep.moveTo(targetLair);
+                                creep.heal(creep);
+                            }else{
+                                creep.heal(creep);
+                            }
+                        }else{
+                            if(target){
+                                let range=creep.pos.getRangeTo(target);
+                                creep.heal(creep);
+                                if(range > 4){
+                                    creep.moveTo(target);
+                                }
+                            }else if(targetLair){
+                                creep.moveTo(targetLair);
+                                creep.heal(creep);
+                            }else{
+                                creep.heal(creep);
+                            }
+                        }
+                        if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == 1){
+                            Memory.operations[id].size=2;
+                        }else if(Object.keys(Memory.operations[id].members).length >= 2){
+                            Memory.operations[id].size=1;
+                        }
+                    }
                 }
 
 
@@ -25,6 +81,10 @@ module.exports = class{
         /*
         TODO: REASSIGN HEALERS HEADLESS HEALERS TO FALL BACK AND ASSIGN THEM A NEW SQUAD
         */
+        static creepHandle(creep,id){
+
+
+        }
         static checkForCreeps(id){
             var creepName;
             for(var sLeader in Memory.operations[id].squads){

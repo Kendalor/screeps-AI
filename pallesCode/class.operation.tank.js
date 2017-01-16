@@ -6,6 +6,7 @@ module.exports = class{
         }
         static run(id){
 
+
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 
