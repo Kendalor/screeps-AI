@@ -5,9 +5,9 @@ module.exports = class{
         }
         static run(id){
             // tank
-            var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH];
+            //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH];
             // scout
-            //var creep_body = [MOVE];
+            var creep_body = [MOVE];
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
                     if(Game.spawns['Spawn3'].canCreateCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
