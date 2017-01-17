@@ -196,7 +196,8 @@ module.exports = class{
         static buildAndRunCreeps(id){
 			var hostiles = 0;
 			if (Game.rooms[Memory.operations[id].roomName] != undefined){
-				hostiles=Game.rooms[Memory.operations[id].roomName].find(FIND_HOSTILE_CREEPS).length;
+				hostiles=Game.rooms[Memory.operations[id].roomName].find(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
+              WHITELIST[hostile.owner.username] == undefined}).length;
 			}
             // ITERATE OVER SOURCES
             for(var i in Memory.operations[id].sources){
@@ -286,7 +287,38 @@ module.exports = class{
                 var done=true;
                 for(var s_id in sources){
                  var source=Game.getObjectById(s_id);
-                 var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCos: 1, swampCost: 1}).path;
+                 var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCos: 1, swampCost: 1,
+                  roomCallback: function(roomName) {
+                  let room = Game.rooms[roomName];
+                  if(!room) return;
+                  let costs = new PathFinder.CostMatrix;
+                  room.find(FIND_STRUCTURES).forEach(function(structure) {
+                    if(structure.structureType == STRUCTURE_ROAD)  {
+                        costs.set(structure.pos.x, structure.pos.y, 0.2);
+                    }else if(structure.structureType == STRUCTURE_CONTAINER) {
+                        costs.set(structure.pos.x, structure.pos.y,0.5);
+                    }else if(structure.structureType == STRUCTURE_RAMPART) {
+                        costs.set(structure.pos.x, structure.pos.y,0.5);
+                    }else{
+                        costs.set(structure.pos.x, structure.pos.y,0xff);
+                    }
+                  });
+
+                  room.find(FIND_CONSTRUCTION_SITES).forEach(function(constr) {
+                    if(constr.structureType == STRUCTURE_ROAD)  {
+                        costs.set(constr.pos.x, constr.pos.y, 0.2);
+                    }else if(constr.structureType == STRUCTURE_CONTAINER) {
+                        costs.set(constr.pos.x, constr.pos.y,0.5);
+                    }else if(structure.structureType == STRUCTURE_RAMPART) {
+                        costs.set(constr.pos.x, constr.pos.y,0.5);
+                    }else{
+                        costs.set(constr.pos.x, constr.pos.y,0xff);
+                    }
+                  });
+
+                  return costs;
+
+                  }}).path;
                  Memory.operations[id].sources[s_id].ticksToSource=Object.keys(path).length;
                      for(var i in path){
                         //console.log(JSON.stringify(path));
@@ -343,12 +375,15 @@ module.exports = class{
 
             }
             if(creep.memory.targetId == null){
-                if(creep.carry.energy == 0){
+                if(creep.carry.energy == 0 && container){
                     creep.memory.targetId=container.id;
                 }else{
-                    var target=creep.pos.findClosestByRange(targets);
+                    var target=creep.pos.findClosestByPath(targets);
+                    console.log(JSON.stringify(targets));
                     if(target !=null){
                         creep.memory.targetId=target.id;
+                    }else if(targets.length >0 && target == null){
+                        creep.moveTo(targets[0]);
                     }else{
                         creep.moveTo(target);
                     }
@@ -676,7 +711,12 @@ module.exports = class{
                     var creep=Game.creeps[name];
                     Memory.operations[id].s_creep=name;
                 }
+                }else if(!Game.creeps[Memory.operations[id].s_creep]){
+                    delete Memory.creeps[Memory.operations[id].s_creep];
+                    delete Memory.operations[id].s_creep;
+
                 }else if(!Game.creeps[Memory.operations[id].s_creep].spawning){ //IF CREEP FINISHED SPAWNING
+
                     var creep= Game.creeps[Memory.operations[id].s_creep];
                     creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
                     creep.say('scouting');

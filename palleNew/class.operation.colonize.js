@@ -21,7 +21,7 @@ module.exports = class{
 				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
             }else{
 				Memory.operations[id].size = 1
-				creep_body = [CLAIM,WORK,CARRY,MOVE,MOVE,MOVE];
+				creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
 			}
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
@@ -163,12 +163,16 @@ module.exports = class{
         // TRAVEL TO FLAG
         static creepTravel(creep,flag){
             creep.moveTo(flag);
+            creep.say('travel');
 
         }
         // COLONIZE CODE
         static creepColonize(creep){
           // CLAIM IF NOT MY CONTROLLER
+          creep.say('colonize');
+          console.log(!creep.room.controller.my);
           if (!creep.room.controller.my){
+            console.log(creep.claimController(creep.room.controller));
             if(creep.claimController(creep.room.controller) == ERR_NOT_IN_RANGE){
               creep.moveTo(creep.room.controller);
               creep.say('Claiming');

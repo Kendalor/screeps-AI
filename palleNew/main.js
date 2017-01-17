@@ -26,23 +26,23 @@ module.exports.loop = function () {
 	if(!Memory.myRooms){
 	    Memory.myRooms={};
 	    for (var name in Game.rooms){
-
 	        if(Game.rooms[name].controller.my){
 	            Memory.myRooms[name]={};
 				Game.rooms[name].findMinerals();
 				Game.rooms[name].findSources();
             }
 	    }
-
 	}
 
 	for(var name in Memory.myRooms) {
 
 		var room = Game.rooms[name];
 		
-		room.findConstructionSites();
-		room.findResources();
-		room.findStructures();
+		//if(Game.time % 5 == 0){
+			room.findConstructionSites();
+			room.findResources();
+			room.findStructures();
+		//}
 		room.findHostileCreeps();
 		room.findMyCreeps();
 		

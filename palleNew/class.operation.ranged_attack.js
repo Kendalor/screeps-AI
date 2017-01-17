@@ -1,4 +1,4 @@
-
+var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
 module.exports = class{
         constructor(){
@@ -6,15 +6,14 @@ module.exports = class{
         }
         static run(id){
 
-
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 
             if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
                 var spawn = Game.getObjectById(Memory.operations[id].nearestSpawnId);
                 var body = Memory.operations[id].default_body;
-                if(spawn.canCreateCreep(body, undefined, {role: 'heal', operation: id, target: Memory.operations[id].flagName}) == OK){
-                    var name=spawn.createCreep(body,undefined,{role: 'heal', operation_id: id, target: Memory.operations[id].flagName});
+                if(spawn.canCreateCreep(body, undefined, {role: 'ranged_attack', operation: id, target: Memory.operations[id].flagName}) == OK){
+                    var name=spawn.createCreep(body,undefined,{role: 'ranged_attack', operation_id: id, target: Memory.operations[id].flagName});
                     Memory.operations[id].members[name]= 'tank';
                     console.log('Did spawn creep '+name);
                 }
@@ -38,66 +37,16 @@ module.exports = class{
         static creepHandle(creep,id){
             var flag=Game.flags[Memory.operations[id].flagName];
             var home=Game.getObjectById(Memory.operations[id].nearestSpawnId);
-			if(flag.pos.x == 0 || flag.pos.y == 0 || flag.pos.x == 49 || flag.pos.y == 49){// Is Flag placed on exit zone?
-				if(creep.hits == creep.hitsMax){
-					if(creep.room.name != flag.pos.roomName || !creep.room.controller.owner){
-						creep.moveTo(Game.flags[Memory.operations[id].flagName]);
-						creep.heal(creep);
-						var sources=creep.pos.findInRange(FIND_DROPPED_ENERGY,1);
-						if(sources.length >0){
-							creep.pickup(sources[0]);
-						}
-					}else{
-						creep.heal(creep);
-						creep.drop(RESOURCE_ENERGY);
-					}
-				}else{
-					if(creep.room.name == flag.pos.roomName){
-						//creep.move(home);
-						creep.heal(creep);
-						creep.drop(RESOURCE_ENERGY);
-					}else{
-						var sources=creep.pos.findInRange(FIND_DROPPED_ENERGY,1);
-						if(sources.length >0){
-							creep.pickup(sources[0]);
-						}
-						if(creep.pos.x == 49){
-							creep.move(LEFT);
-							creep.heal(creep);
-						}else if(creep.pos.x == 0){
-							creep.move(RIGHT);
-							creep.heal(creep);
-						}else if(creep.pos.y == 0){
-							creep.move(BOTTOM);
-							creep.heal(creep);
-						}else if(creep.pos.y == 49){
-							creep.move(TOP);
-							creep.heal(creep);
-						}else{
-							creep.heal(creep);
-						}
-					}
-				}
-			}else{ // Flag is not placed on exit zone
-				if(creep.pos.findInRange(FIND_HOSTILE_STRUCTURES,5,{filter: (s) => s.structureType == STRUCTURE_TOWER && s.energy > 9}).length){ // tower in max dmg distance?
-					creep.say("flee");
-					creep.moveTo(home);
-					creep.heal(creep);
-				}else if(creep.hits == creep.hitsMax){ // creep fully alive?
-					let wounded = creep.pos.findInRange(FIND_MY_CREEPS,1,{filter: (c) => c.hits < c.hitsMax});
-					if (wounded.length){ // found a wounded neighbour to heal?
-						creep.say("aid");
-						creep.heal(wounded[0]);
-					}else{ // try to engage the flag
-						creep.say("Charge!");
-						creep.moveTo(flag);
-						creep.heal(creep);
-					}
-				}else{ // wounded itself -> heal
-					creep.say("heal");
-					creep.heal(creep);
-				}
-			}
+            if(creep.room.name != flag.pos.roomName){
+                creep.moveTo(Game.flags[Memory.operations[id].flagName]);
+            }else{
+                creep.moveTo(flag);
+                var target=creep.pos.findInRange(FIND_HOSTILE_CREEPS,3,{filter: (hostile) => WHITELIST[hostile.owner.username] == undefined });
+                if(target.length >0){
+                    console.log(target);
+                    creep.rangedAttack(target[0]);
+                }
+            }
         }
 
         static findClosestSpawn(flagName){
@@ -142,11 +91,12 @@ module.exports = class{
                 Memory.operations[this.id].roomName=roomName;
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
-                Memory.operations[this.id].type='tank';
+                Memory.operations[this.id].type='ranged_attack';
                 Memory.operations[this.id].size=1;
                 Memory.operations[this.id].members= {};
-                Memory.operations[this.id].nearestSpawnId=Game.spawns['Spawn4'].id;
-                Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,23).fill(MOVE,23,40).fill(HEAL,40,50);
+                Memory.operations[this.id].nearestSpawnId=Game.spawns['Spawn3'].id;
+                //Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,15).fill(MOVE,15,40).fill(RANGED_ATTACK,40,50);
+				Memory.operations[this.id].default_body=Array(10).fill(MOVE,0,5).fill(RANGED_ATTACK,5,10); // 1000
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));

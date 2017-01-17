@@ -59,14 +59,14 @@ module.exports = {
 					
 				case creepRole[2].name:
 					//var container = creep.room.find(FIND_STRUCTURES, {filter: (s) => (s.structureType == STRUCTURE_CONTAINER || s.structureType == STRUCTURE_STORAGE) && s.store[RESOURCE_ENERGY] > creep.carryCapacity});
-					var container;
-					if (creep.room.memory.structures.storage){ 
-						container = creep.room.storage.filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
+					var container = [];
+					if (creep.room.storage){ 
+						container = [creep.room.storage].filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
 					}
-					if (!container && creep.room.memory.structures.container){
+					if (container.length == 0 && creep.room.memory.structures.container){
 						container = creep.room.containers.filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
 					}
-					if (!container || (creep.room.memory.activeCreepRoles.miner == 0 && creep.room.memory.activeCreepRoles.hauler == 0)){
+					if (container.length == 0 || (creep.room.memory.activeCreepRoles.miner == 0 && creep.room.memory.activeCreepRoles.hauler == 0)){
 						this.allrounder(creep);
 					}
 					else {
@@ -371,7 +371,8 @@ module.exports = {
 				var pos = creep.room.memory.sources[creep.memory.source].containerPos;
 				creep.memory.containerId = containers.filter((struct) => struct.pos.x == pos.x && struct.pos.y == pos.y)[0];
 			}else{
-				var noHaulContainer = creep.pos.findClosestByPath(creep.room.storage, {filter: (s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity && creep.room.name == s.room.name})
+				var noHaulContainer;
+				if (creep.room.storage && creep.room.storage.store[RESOURCE_ENERGY] > creep.carryCapacity) noHaulContainer = creep.room.storage;
 				if (noHaulContainer == null && creep.role != 'upgrader') 
 					noHaulContainer = creep.pos.findClosestByPath(creep.room.containers, {filter: (s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity && creep.room.name == s.room.name})
 				if (noHaulContainer != null){
@@ -532,26 +533,17 @@ module.exports = {
 			if (!creep.memory.job){
 				this.anounceJob(creep,'upgrade');
 				creep.memory.targetId=creep.room.controller.id;
-				var controllerFlag = _.filter(Game.flags, (flag) => flag.name == 'Controller' && flag.room.name==creep.room.name);
-				if (controllerFlag[0] != null){
-					creep.memory.cFlagId = controllerFlag[0].id;
-				}
 			}
-			if (creep.memory.job == 'upgrade' && !(creep.room.controller.level == 0)){
+			if (creep.memory.job == 'upgrade'){
 				var target=Game.getObjectById(creep.memory.targetId);
 				if(creep.upgradeController(target) == ERR_NOT_IN_RANGE) {
-					if(creep.memory.cFlag){
-						creep.moveTo(Game.flags.Controller);
-					}
-					else{
-						creep.moveTo(target);
-					}
+					creep.moveTo(target);
 				}else if (creep.memory.role == 'maintance'){
 					creep.moveTo(target);
 				}
 			}
 		} 
-		if((creep.carry.energy == 0 || (creep.memory.workModules != undefined && creep.carry.energy < creep.memory.workModules) ) && creep.memory.job == 'upgrade'){
+		if((creep.carry.energy == 0 || (creep.memory.workModules && creep.carry.energy < creep.memory.workModules) ) && creep.memory.job == 'upgrade'){
 			if (!(!creep.memory.cFlagId)){
 				delete creep.memory.cFlagId;
 			}
