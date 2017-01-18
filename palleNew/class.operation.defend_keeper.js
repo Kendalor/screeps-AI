@@ -25,6 +25,8 @@ module.exports = class{
                     var lairs=[];
                     var creeps=[]
                     //search Sources in Operation for Keepers
+                    1+parseInt(Object.keys(Memory.operations[defendId].sources).length/2);
+
                     for(var i in Memory.operations[defendId].sources){
                         let lair= Game.getObjectById(Memory.operations[defendId].sources[i].keeperLair);
                         let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,5);
@@ -58,10 +60,10 @@ module.exports = class{
                                     creep.memory.target=target.id;
                                 }
                             }
-                            if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == 1){
-                                Memory.operations[id].size=2;
-                            }else if(Object.keys(Memory.operations[id].members).length >= 2){
-                                Memory.operations[id].size=1;
+                            if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == 1+parseInt(Object.keys(Memory.operations[defendId].sources).length/2)){
+                                Memory.operations[id].size=2+parseInt(Object.keys(Memory.operations[defendId].sources).length/2);
+                            }else if(Object.keys(Memory.operations[id].members).length >= 2+parseInt(Object.keys(Memory.operations[defendId].sources).length/2)){
+                                Memory.operations[id].size=1+parseInt(Object.keys(Memory.operations[defendId].sources).length/2);
                             }
 
 
