@@ -79,11 +79,7 @@ module.exports = class{
 					}
 				}
 			}else{ // Flag is not placed on exit zone
-				if(creep.pos.findInRange(FIND_HOSTILE_STRUCTURES,5,{filter: (s) => s.structureType == STRUCTURE_TOWER && s.energy > 9}).length){ // tower in max dmg distance?
-					creep.say("flee");
-					creep.moveTo(home);
-					creep.heal(creep);
-				}else if(creep.hits == creep.hitsMax){ // creep fully alive?
+				if(creep.hits == creep.hitsMax){ // creep fully alive?
 					let wounded = creep.pos.findInRange(FIND_MY_CREEPS,1,{filter: (c) => c.hits < c.hitsMax});
 					if (wounded.length){ // found a wounded neighbour to heal?
 						creep.say("aid");
@@ -94,8 +90,13 @@ module.exports = class{
 						creep.heal(creep);
 					}
 				}else{ // wounded itself -> heal
-					creep.say("heal");
-					creep.heal(creep);
+				    if(creep.pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
+                        creep.say("flee");
+                        creep.moveTo(home);
+                        creep.heal(creep);
+                    }else{
+                        creep.heal(creep);
+                    }
 				}
 			}
         }
@@ -146,7 +147,7 @@ module.exports = class{
                 Memory.operations[this.id].size=1;
                 Memory.operations[this.id].members= {};
                 Memory.operations[this.id].nearestSpawnId=Game.spawns['Spawn4'].id;
-                Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,23).fill(MOVE,23,40).fill(HEAL,40,50);
+                Memory.operations[this.id].default_body=Array(50).fill(ATTACK,0,1).fill(TOUGH,1,23).fill(MOVE,23,40).fill(HEAL,40,50);
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));

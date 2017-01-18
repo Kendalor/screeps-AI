@@ -10,8 +10,8 @@ module.exports = class{
             var creep_body = [MOVE];
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
-                    if(Game.spawns['Spawn3'].canCreateCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.spawns['Spawn3'].createCreep(creep_body,undefined,{role: 'scout', operation_id: id});
+                    if(Game.spawns['Spawn1'].canCreateCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'scout', operation_id: id});
                         var creep=Game.creeps[name];
                         Memory.operations[id].creep=name;
                     }
