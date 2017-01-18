@@ -11,9 +11,11 @@ var operationsHandler = require('operations.handler');
 
 module.exports.loop = function () {
 
-	autoMemory.clearDeadCreeps();
-	autoMemory.clearFlags();
-
+	if(Game.time % 10 == 0){
+		autoMemory.clearDeadCreeps();
+		autoMemory.clearFlags();
+	}
+	
 	if (Game.cpu.bucket < 10000){ // To check if accumulated bonus CPU is used sometimes
 		console.log("Used additional CPU.\nAccumulated bucket:  "+Game.cpu.bucket+"/10000");
 	}
@@ -38,18 +40,15 @@ module.exports.loop = function () {
 
 		var room = Game.rooms[name];
 		
-		//if(Game.time % 5 == 0){
-			room.findConstructionSites();
-			room.findResources();
-			room.findStructures();
-		//}
+		/*
+		room.findConstructionSites();
+		room.findResources();
+		room.findStructures();
 		room.findHostileCreeps();
 		room.findMyCreeps();
-		
+		*/
 		
 		//autoMemory.fixSourceSlots(room);
-        var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
-		autoSpawn.run(spawnList);
 		invasionCounter.run(room);
 
 		//if(Game.time % 10 == 0){
