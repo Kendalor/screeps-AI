@@ -29,8 +29,6 @@ module.exports = class{
                             var source=Game.getObjectById(i);
                             var storage=Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId);
                             var enemies=source.pos.findInRange(FIND_HOSTILE_CREEPS,5);
-                            console.log('BLUBB');
-                            console.log(enemies[0]);
                             switch (Memory.operations[id].sources[i].status) {
                                 case 'createConstructionSites':
                                     this.buildRoadAndContainer(id,source,storage);
@@ -296,7 +294,7 @@ module.exports = class{
                     }
 
 
-                Memory.operations[id].status='Mining';
+                Memory.operations[id].sources[source.id].status='Mining';
 
             }
 
@@ -309,8 +307,8 @@ module.exports = class{
             if(!Memory.operations[id].sources[source.id].miner){ //DOES THIS SOURCE HAVE A MINER
                 // 7x WORK ( to make up for the walking distance ) , 1 CARRY,and 7 MOVE to assure walk speed = 1/tick COST = 1150
                 var spawn = Game.getObjectById(Memory.operations[id].nearest_spawnId)
-                if(spawn.canCreateCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i}) == OK){// NO SPAWN IT IF POSSIBLE !
-                    var name=spawn.createCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: i});
+                if(spawn.canCreateCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: source.id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                    var name=spawn.createCreep([WORK,WORK,WORK,WORK,WORK,WORK,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE],undefined,{role: 'mining', operation_id: id, source_id: source.id});
                     Memory.operations[id].sources[source.id].miner=name;
                 }
             }else if(!Game.creeps[Memory.operations[id].sources[source.id].miner]){
@@ -386,18 +384,18 @@ module.exports = class{
             var done=true;
 
 
-            var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCos: 1, swampCost: 1,
+            var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCost: 10, swampCost: 10,
                   roomCallback: function(roomName) {
                   let room = Game.rooms[roomName];
                   if(!room) return;
                   let costs = new PathFinder.CostMatrix;
                   room.find(FIND_STRUCTURES).forEach(function(structure) {
                     if(structure.structureType == STRUCTURE_ROAD)  {
-                        costs.set(structure.pos.x, structure.pos.y, 0.2);
+                        costs.set(structure.pos.x, structure.pos.y, 2);
                     }else if(structure.structureType == STRUCTURE_CONTAINER) {
-                        costs.set(structure.pos.x, structure.pos.y,0.5);
+                        costs.set(structure.pos.x, structure.pos.y,2);
                     }else if(structure.structureType == STRUCTURE_RAMPART) {
-                        costs.set(structure.pos.x, structure.pos.y,0.5);
+                        costs.set(structure.pos.x, structure.pos.y,2);
                     }else{
                         costs.set(structure.pos.x, structure.pos.y,0xff);
                     }
@@ -405,11 +403,11 @@ module.exports = class{
 
                   room.find(FIND_CONSTRUCTION_SITES).forEach(function(constr) {
                     if(constr.structureType == STRUCTURE_ROAD)  {
-                        costs.set(constr.pos.x, constr.pos.y, 0.2);
+                        costs.set(constr.pos.x, constr.pos.y, 2);
                     }else if(constr.structureType == STRUCTURE_CONTAINER) {
-                        costs.set(constr.pos.x, constr.pos.y,0.5);
-                    }else if(structure.structureType == STRUCTURE_RAMPART) {
-                        costs.set(constr.pos.x, constr.pos.y,0.5);
+                        costs.set(constr.pos.x, constr.pos.y,2);
+                    }else if(constr.structureType == STRUCTURE_RAMPART) {
+                        costs.set(constr.pos.x, constr.pos.y,2);
                     }else{
                         costs.set(constr.pos.x, constr.pos.y,0xff);
                     }
@@ -418,8 +416,10 @@ module.exports = class{
                   return costs;
 
                   }}).path;
+                if(!Memory.operations[id].sources[source.id].path){
+                    Memory.operations[id].sources[source.id].path=path;
+                }
 
-                  Memory.operations[id].source[source.id].path=path;
 
                  for(var i in path){
                     //console.log(JSON.stringify(path));
@@ -715,13 +715,9 @@ module.exports = class{
                                     creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
                                 }
                             }else if (err == ERR_NOT_ENOUGH_ENERGY){
-                                if(creep.ticksToLive >= 2* Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource){
-                                    creep.memory.targetId = null;
-                                    return this.creepHaul(creep);
-                                }else{
-                                    console.log('suicide '+ creep.name)
-                                    creep.suicide();
-                                }
+                                creep.memory.targetId = null;
+                                return this.creepHaul(creep);
+
 
                             }
                         }
@@ -770,7 +766,6 @@ module.exports = class{
                     }else{
                         container = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
                         if (container.length > 0){
-                          console.log(container)
                           Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId = container[0].id;
                         }else{
                           creep.room.createConstructionSite(pos.x,pos.y,STRUCTURE_CONTAINER);

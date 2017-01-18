@@ -72,7 +72,7 @@ module.exports = {
                 }
             }
             catch(err) {
-                console.log(err);
+				console.log(err.stack);
                 console.log('In: '+Memory.operations[id].type+' ID: '+id);
             }
         }

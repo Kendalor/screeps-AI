@@ -14,61 +14,58 @@ module.exports = class{
                     }
                 }else{
                     let defendId=Memory.operations[id].toDefend;
-                    let keepers=[]
-                    let lairs=[]
+                    var invaders=[];
+                    if(Game.rooms[Memory.operations[defendId].roomName] && Game.ticks % 50 == 0){
+                        var invaders=Game.rooms[Memory.operations[defendId].roomName].find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner == 'Invader'});
+                        console.log('Searched Invaders');
+                        console.log(invaders);
+                    }
+
+                    var keepers=[];
+                    var lairs=[];
+                    var creeps=[]
                     //search Sources in Operation for Keepers
                     for(var i in Memory.operations[defendId].sources){
                         let lair= Game.getObjectById(Memory.operations[defendId].sources[i].keeperLair);
                         let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,5);
-                        if(enemy.length >0){
-                            keepers.put(enemy[0]);
+                        let wounded=lair.pos.findInRange(FIND_MY_CREEPS,9,{filter: (cr) => cr.hits < cr.hitsMax});
+                        if(invaders.length >0){
+                            creep.memory.target=invaders[0].id;
+                        }else if(enemy.length >0){
+                            keepers.push(enemy[0]);
+                        }else if(wounded.length>0){
+                            creeps.push(wounded[0]);
                         }else{
-                            lairs.put(lair);
+                            lairs.push(lair);
                         }
                     }
                     for(var j in Memory.operations[id].members){
                         var creep=Game.creeps[j];
-                        if(keepers.length >0){
-                            var target=creep.pos.findClosestByRange(keepers);
-                        }else if(lairs.length >0 || target == undefined){
-                            for(var i in lairs){
-                                if(target == undefined || target.ticksToSpawn > i.ticksToSpawn){
-                                    var targetLair=i;
+                            if(!creep.memory.target){
+                                if(keepers.length >0){
+                                    let target=keepers.pop();
+                                    creep.memory.target=target.id;
+                                }else if(creeps.length >0){
+                                    creep.memory.target=creeps[0].id;
+                                }else if(lairs.length >0){
+                                    var temp=300;
+                                    for(var t in lairs){
+                                        if(lairs[t].ticksToSpawn < temp){
+                                            temp=lairs[t].ticksToSpawn;
+                                            var target=lairs[t];
+                                        }
+                                    }
+                                    creep.memory.target=target.id;
                                 }
                             }
-                        }
-                        if(creep.hits == creep.hitsMax){
-                            if(target){
-                                let err=creep.attack(target);
-                                if(err == ERR_NOT_IN_RANGE){
-                                    creep.moveTo(target);
-                                    creep.heal(creep);
-                                }
-                            }else if(targetLair){
-                                creep.moveTo(targetLair);
-                                creep.heal(creep);
-                            }else{
-                                creep.heal(creep);
+                            if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == 1){
+                                Memory.operations[id].size=2;
+                            }else if(Object.keys(Memory.operations[id].members).length >= 2){
+                                Memory.operations[id].size=1;
                             }
-                        }else{
-                            if(target){
-                                let range=creep.pos.getRangeTo(target);
-                                creep.heal(creep);
-                                if(range > 4){
-                                    creep.moveTo(target);
-                                }
-                            }else if(targetLair){
-                                creep.moveTo(targetLair);
-                                creep.heal(creep);
-                            }else{
-                                creep.heal(creep);
-                            }
-                        }
-                        if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == 1){
-                            Memory.operations[id].size=2;
-                        }else if(Object.keys(Memory.operations[id].members).length >= 2){
-                            Memory.operations[id].size=1;
-                        }
+
+
+                        this.creepHandle(creep,id);
                     }
                 }
 
@@ -82,7 +79,50 @@ module.exports = class{
         TODO: REASSIGN HEALERS HEADLESS HEALERS TO FALL BACK AND ASSIGN THEM A NEW SQUAD
         */
         static creepHandle(creep,id){
-
+            var target=Game.getObjectById(creep.memory.target);
+            if(target){
+                if(creep.pos.roomName != target.pos.roomName){
+                    creep.moveTo(target);
+                    if(creep.hits < creep.hitsMax){
+                        creep.heal(creep);
+                    }
+                }else{
+                    if(target.structureType == STRUCTURE_KEEPER_LAIR){
+                        creep.moveTo(target);
+                        if(creep.hits < creep.hitsMax){
+                            creep.heal(creep);
+                        }
+                        creep.say('camp');
+                        if(target.ticksToSpawn  == 1){
+                            delete creep.memory.target;
+                        }
+                    }else{
+                        if(!target.my){
+                            creep.say('attack');
+                            let err=creep.attack(target);
+                            if(err == ERR_NOT_IN_RANGE){
+                                if(creep.hits < creep.hitsMax){
+                                    creep.heal(creep);
+                                }
+                                creep.moveTo(target);
+                            }
+                        }else if(target.my){
+                            if(target.hits < target.hitsMax){
+                                creep.say('aid');
+                                let err=creep.heal(target);
+                                if(err == ERR_NOT_IN_RANGE){
+                                    creep.heal(creep);
+                                    creep.moveTo(target);
+                                }
+                            }else{
+                                delete creep.memory.target;
+                            }
+                        }
+                    }
+                }
+            }else{
+                    delete creep.memory.target;
+                }
 
         }
         static checkForCreeps(id){
@@ -118,9 +158,9 @@ module.exports = class{
         static buildCreeps(id){
             if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size){
                 var creep_body=Memory.operations[id].default_Abody;
-                if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'MineDefender', operation: id, target: Memory.operations[id].flagName}) == OK){
-                    var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'MineDefender', operation_id: id, target: Memory.operations[id].flagName});
-                    Memory.operations[id].squads[name]= [];
+                if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'MineDefender', operation: id}) == OK){
+                    var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'MineDefender', operation_id: id});
+                    Memory.operations[id].members[name]= {};
                     console.log('Did spawn Op Defender'+name);
                 }
 
@@ -183,7 +223,7 @@ module.exports = class{
                 Memory.operations[this.id].size=1; // NUMBER OF SQUADS ATTACKER = SQUAD LEADER
                 //COST 12xMOVE = 600 + 12 ATTACK = 960 =1560
                 //Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,28).fill(MOVE,28,36).fill(ATTACK,36,50);// COST 2300
-                Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,3).fill(MOVE,3,20).fill(ATTACK,20,45).fill(HEAL,45,50);// COST 2300
+                Memory.operations[this.id].default_Abody=Array(50).fill(MOVE,0,17).fill(ATTACK,17,40).fill(HEAL,40,50);// COST 2300
                 Memory.operations[this.id].nearest_spawnId=this.findClosestSpawn(flag);
                 Memory.operations[this.id].members={};
 
