@@ -9,7 +9,6 @@ module.exports = class{
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 this.buildCreeps(id);
                 if(!Memory.operations[id].spawnList){
-                    console.log('Blubber');
                     Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
                 }
 
@@ -19,11 +18,6 @@ module.exports = class{
                     }
                 }else{
                     let defendId=Memory.operations[id].toDefend;
-                    var invaders=[];
-
-                    var invaders=Game.rooms[Memory.operations[defendId].roomName].find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner == 'Invader'});
-
-
                     var keepers=[];
                     var lairs=[];
                     var creeps=[]
@@ -32,8 +26,8 @@ module.exports = class{
 
                     for(var i in Memory.operations[defendId].sources){
                         let lair= Game.getObjectById(Memory.operations[defendId].sources[i].keeperLair);
-                        let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,5);
-                        let wounded=lair.pos.findInRange(FIND_MY_CREEPS,9,{filter: (cr) => cr.hits < cr.hitsMax});
+                        let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,6);
+                        let wounded=lair.pos.findInRange(FIND_MY_CREEPS,6,{filter: (cr) => cr.hits < cr.hitsMax});
                         if(enemy.length >0){
                             keepers.push(enemy[0]);
                         }else if(wounded.length>0){
@@ -49,8 +43,6 @@ module.exports = class{
                                 if(keepers.length >0){
                                     let target=keepers[0];
                                     creep.memory.target=target.id;
-                                }else if(invaders.length >0){
-                                    creep.memory.target=invaders.pop().id;
                                 }else if(creeps.length >0){
                                     creep.memory.target=creeps[0].id;
                                 }else if(lairs.length >0){
