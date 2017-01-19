@@ -331,7 +331,7 @@ module.exports = class{
 
             if(!Memory.operations[id].sources[source.id].hauler_body){
                 let length=Memory.operations[id].sources[source.id].path.length;
-                let carryParts=Math.floor(length*2*4000/300/50)+1;
+                let carryParts=Math.min(Math.floor(length*2*4000/300/50)+1,32);
                 let moveParts=Math.ceil(carryParts/2+1);
                 let workParts=1;
                 let body2=Array(carryParts+moveParts+workParts).fill(CARRY,0,carryParts).fill(MOVE,carryParts,carryParts+moveParts).fill(WORK,carryParts+moveParts,carryParts+moveParts+workParts);
