@@ -11,7 +11,7 @@ module.exports = class{
                 if(!Memory.operations[id].spawnList){
                     Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
                 }
-
+                this.invasionHandler(id);
                 if(!Memory.operations[id].toDefend){
                     if(Game.ticks % 50){
                         console.log('DEFEND OPERATION '+id+' HAS NOTHING TO DO');
@@ -22,11 +22,11 @@ module.exports = class{
                     var lairs=[];
                     var creeps=[]
                     //search Sources in Operation for Keepers
-                    1+parseInt(Object.keys(Memory.operations[defendId].sources).length/2);
+
 
                     for(var i in Memory.operations[defendId].sources){
                         let lair= Game.getObjectById(Memory.operations[defendId].sources[i].keeperLair);
-                        let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,6);
+                        let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,6,{filter: cr => cr.owner.username == 'Source Keeper'});
                         let wounded=lair.pos.findInRange(FIND_MY_CREEPS,6,{filter: (cr) => cr.hits < cr.hitsMax});
                         if(enemy.length >0){
                             keepers.push(enemy[0]);
@@ -54,7 +54,6 @@ module.exports = class{
                                         }
                                     }
                                     creep.memory.target=target.id;
-                                    //lairs.splice(lairs.indexOf(target),1);
                                 }
                             }
                             if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2)){
@@ -154,6 +153,34 @@ module.exports = class{
             }
         }
 
+        static invasionHandler(id){
+            let defendId=Memory.operations[id].toDefend;
+
+            if(Game.rooms[Memory.operations[defendId].roomName]){
+                var room=Game.rooms[Memory.operations[defendId].roomName];
+                var enemies=room.find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner.username == 'Invader'});
+                if(enemies.length >0){
+                    let spawnTime=Game.time-1500+enemies[0].ticksToLive;
+                    if(Memory.operations[id].invasionHandler.invasions.length ==0){
+                        Memory.operations[id].invasionHandler.invasions.push(spawnTime);
+                    }else{
+                        let length=Memory.operations[id].invasionHandler.invasions.length;
+                        if(Memory.operations[id].invasionHandler.invasions[length-1] != spawnTime){
+                            Memory.operations[id].invasionHandler.invasions.push(spawnTime);
+                        }
+                    }
+
+                    Memory.operations[id].invasionHandler.invasions.members=this.creepBuilder(
+                    Memory.operations[id].spawnList,
+                    Memory.operations[id].invasionHandler.invasions.members,
+                    Memory.operations[id].invasionHandler.invasions.size,
+                    Array(30).fill(RANGED_ATTACK,0,10).fill(MOVE,10,25).fill(HEAL,25,30),
+                    {role: 'Hunter', operation: id}
+                    );
+
+                }
+            }
+        }
 
         static buildCreeps(id){
             let spawnList=Memory.operations[id].spawnList;
@@ -200,6 +227,13 @@ module.exports = class{
                 Memory.operations[this.id].default_Abody=Array(50).fill(MOVE,0,17).fill(ATTACK,17,40).fill(HEAL,40,50);// COST 2300
                 Memory.operations[this.id].SpawnList=this.findClosestSpawn(roomName);
                 Memory.operations[this.id].members={};
+                Memory.operations[this.id].invasionHandler={};
+                Memory.operations[this.id].invasionHandler.invasions=[];
+                Memory.operations[this.id].invasionHandler.body=[];
+                Memory.operations[this.id].invasionHandler.size=1;
+                Memory.operations[this.id].invasionHandler.members={};
+
+
                 //console.log(JSON.stringify(Memory.operations[this.id]));
             }
         }

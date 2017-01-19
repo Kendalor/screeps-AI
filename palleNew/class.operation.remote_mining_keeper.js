@@ -10,7 +10,6 @@ module.exports = class{
                 }
                 if(Game.rooms[Memory.operations[id].roomName] == undefined){
                     this.scouting(id);
-                    console.log('Moving Scout');
                 }else if(Game.rooms[Memory.operations[id].roomName] != undefined){// IF AVAILABLE
                     this.scouting(id);
                     var room=Game.rooms[Memory.operations[id].roomName];
@@ -75,13 +74,11 @@ module.exports = class{
                     if(sources.length > 0){
                         var source=sources[0];
                         //console.log(source);
-
                         if(!Memory.operations[id].sources[source.id]){
                            //console.log(JSON.stringify(source));
                             source.memory = Memory.operations[id].sources[source.id] = {};
                             //TODO SEARCH FORE NEAREST SPAWN/STORAGE WITH PATHFINDER
-                            Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
-                            Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
+                            Memory.operations[id].sources[source.id].nearest_storageId=this.findClosestStorage(id,source);
                             Memory.operations[id].sources[source.id].status='createConstructionSites';
                             Memory.operations[id].sources[source.id].min_haulers=1;
                             Memory.operations[id].sources[source.id].min_builders=1;
@@ -139,10 +136,11 @@ module.exports = class{
                 Memory.operations[this.id].type='remote_mining_keeper';
                 console.log(!Game.rooms[roomName])
                 Memory.operations[this.id].spawnList=this.findClosestSpawn(roomName,1);
-                Memory.operations[this.id].nearest_storageId=Game.getObjectById(Memory.operations[this.id].nearest_spawnId).room.storage.id;
                 Memory.operations[this.id].status='createConstructionSites';
                 Memory.operations[this.id].constructionSites={};
                 Memory.operations[this.id].sources = {};
+                Memory.operations[this.id].scouts={};
+                Memory.operations[this.id].min_scouts=1;
 
 
 
@@ -239,8 +237,6 @@ module.exports = class{
                 let workParts=1;
                 let body2=Array(carryParts+moveParts+workParts).fill(CARRY,0,carryParts).fill(MOVE,carryParts,carryParts+moveParts).fill(WORK,carryParts+moveParts,carryParts+moveParts+workParts);
                 Memory.operations[id].sources[source.id].hauler_body=body2;
-                console.log('BODY');
-                console.log(body2);
             }
 
             body=Memory.operations[id].sources[source.id].hauler_body;
@@ -692,26 +688,28 @@ module.exports = class{
         }
 
         static scouting(id){
+            if(!Memory.operations[id].scouts){
+                Memory.operations[id].scouts={};
+            }
 
-            if(!Memory.operations[id].s_creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
-                if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep([MOVE],undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                    var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep([MOVE],undefined,{role: 'scout', operation_id: id});
-                    var creep=Game.creeps[name];
-                    Memory.operations[id].s_creep=name;
-                }
-                }else if(!Game.creeps[Memory.operations[id].s_creep]){
-                    delete Memory.operations[id].s_creep;
+            if(!Memory.operations[id].min_scouts){
+                Memory.operations[id].min_scouts=1;
+            }
 
+            Memory.operations[id].scouts=this.creepBuilder(Memory.operations[id].spawnList,Memory.operations[id].scouts,Memory.operations[id].min_scouts,[MOVE],{role: 'scout', operation_id: id});
+            Memory.operations[id].scouts=this.cleanUpCreeps(Memory.operations[id].scouts);
 
-                }else if(!Game.creeps[Memory.operations[id].s_creep].spawning){ //IF CREEP FINISHED SPAWNING
+            for(var j in Memory.operations[id].scouts){
+                var creep=Game.creeps[j];
+                if(!creep.spawning){
+                    if(creep.pos == Game.flags[Memory.operations[id].flagName].pos){
 
-
-                    var creep= Game.creeps[Memory.operations[id].s_creep];
-                    creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 10});
-                    if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
-                        //Game.flags[Memory.operations[id].flagName].remove();
+                    }else{
+                        creep.moveTo(Game.flags[Memory.operations[id].flagName].pos);
                     }
+
                 }
+            }
         }
 // DONT
 // MODIFY
@@ -776,6 +774,26 @@ module.exports = class{
             }else {
                 return false;
             }
+        }
+
+        static findClosestStorage(id,source){
+            var length=99999999;
+            var temp;
+            var storage;
+            for(var i in Memory.myRooms){
+                if(Game.rooms[i]){
+                    var room=Game.rooms[i];
+                    if(room.storage){
+                        temp=PathFinder.search(room.storage.pos,{pos: source.pos,range: 1},{plainCost: 1,swampCost: 1}).path.length;
+                        if(temp<length){
+                            length=temp;
+                            storage=room.storage;
+                        }
+                    }
+                }
+            }
+
+            return storage.id;
         }
 
         static isIdFree(id){
