@@ -5,10 +5,10 @@ module.exports = class{
             // DELETE NONEXISTING CREEPS FROM OPERATION
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 //IF NOT AVAILABLE
-                if(!Game.rooms[Memory.operations[id].roomName]){
+                if(Game.rooms[Memory.operations[id].roomName] == undefined){
                     this.scouting(id);
                     console.log('Moving Scout');
-                }else{// IF AVAILABLE
+                }else if(Game.rooms[Memory.operations[id].roomName] != undefined){// IF AVAILABLE
                     this.scouting(id);
                     var room=Game.rooms[Memory.operations[id].roomName];
                     if(Memory.operations[id].keeperRoom == undefined){ // CHECK IF KEEPER ROOM
@@ -81,6 +81,7 @@ module.exports = class{
                             Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
                             Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
                             Memory.operations[id].sources[source.id].status='createConstructionSites';
+                            Memory.operations[id].sources[source.id].min_haulers=1;
                             if(Memory.operations[id].keeperRoom){
                                 var lair=source.pos.findInRange(FIND_STRUCTURES,5,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR });
                                 if(lair.length>0){
@@ -644,7 +645,7 @@ module.exports = class{
                 var target = Game.getObjectById(creep.memory.targetId);
                 if (target != null){ // TARGET IS VALID
                     if (target.structureType == undefined){ // TARGET SOURCE -> HARVEST // TARGET FLAG -> WAIT
-                        if (creep.carry.energy == creep.ticksToLive-100){
+                        if (creep.carry.energy == creep.ticksToLive-100){ // HAE ????
                             delete Memory.creeps[creep.name].targetId;
                         }else if (creep.carry.energy < creep.carryCapacity){
                             //if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
@@ -677,15 +678,17 @@ module.exports = class{
                         return this.creepHaul(creep);
                     }else if (target.structureType == STRUCTURE_CONTAINER){ // TARGET CONTAINER
                         if (creep.room.name == Memory.operations[creep.memory.operation_id].roomName){
-                            var salvage = creep.room.lookForAt(RESOURCE_ENERGY,pos.x,pos.y); // SALVAGE AVAILABLE?
+                            var salvage = creep.pos.findInRange(FIND_DROPPED_ENERGY,1); // SALVAGE AVAILABLE?
                             if (salvage.length > 0){
-                                var err = creep.pickup(salvage[0],RESOURCE_ENERGY)
-                                if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
-                                }else if (err == ERR_FULL){
-                                    creep.memory.targetId = null;
-                                    return this.creepHaul(creep);
+                                creep.say('salvage');
+                                for(var t in salvage){
+                                    var err = creep.pickup(salvage[t]);
+                                    if (err == ERR_FULL){
+                                        creep.memory.targetId = null;
+                                        return this.creepHaul(creep);
+                                    }
                                 }
+                                creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
                             }else{
                                 var err = creep.withdraw(target,RESOURCE_ENERGY);
                                 if(err == ERR_NOT_IN_RANGE) {
@@ -703,12 +706,17 @@ module.exports = class{
                         }
                     }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
                         var roadConstructions = creep.pos.lookFor(LOOK_CONSTRUCTION_SITES).filter((struct) => struct.structureType == STRUCTURE_ROAD);
-                        var road = creep.pos.lookFor(LOOK_STRUCTURES).filter((struct) => struct.structureType == STRUCTURE_ROAD && struct.hits < struct.hitsMax-1000);
-                        if (roadConstructions.length){
-                            creep.memory.targetId = roadConstructions[0].id;
-                            return this.creepHaul(creep);
+                        var road = creep.pos.lookFor(LOOK_STRUCTURES).filter((struct) => struct.structureType == STRUCTURE_ROAD && struct.hits < struct.hitsMax);
+                        if (roadConstructions.length > 0){
+                                creep.memory.targetId = roadConstructions[0].id;
+                                return this.creepHaul(creep);
                         }else if(road.length){
                             creep.repair(road[0],RESOURCE_ENERGY)
+                            if (creep.room.name == target.room.name){
+                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                            }else{
+                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                            }
                         }else{
                             var err = creep.transfer(target, RESOURCE_ENERGY);
                             if (err == ERR_NOT_IN_RANGE){
@@ -809,14 +817,14 @@ module.exports = class{
                     Memory.operations[id].s_creep=name;
                 }
                 }else if(!Game.creeps[Memory.operations[id].s_creep]){
-                    delete Game.creeps[Memory.operations[id].s_creep];
+                    delete Memory.operations[id].s_creep;
 
 
                 }else if(!Game.creeps[Memory.operations[id].s_creep].spawning){ //IF CREEP FINISHED SPAWNING
 
 
                     var creep= Game.creeps[Memory.operations[id].s_creep];
-                    creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
+                    creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 10});
                     if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
                         //Game.flags[Memory.operations[id].flagName].remove();
                     }
