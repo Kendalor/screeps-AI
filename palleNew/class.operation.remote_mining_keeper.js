@@ -417,9 +417,8 @@ module.exports = class{
                   return costs;
 
                   }}).path;
-                if(!Memory.operations[id].sources[source.id].path){
-                    Memory.operations[id].sources[source.id].path=path;
-                }
+
+                Memory.operations[id].sources[source.id].path=path;
 
 
                  for(var i in path){
