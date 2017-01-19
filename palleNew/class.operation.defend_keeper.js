@@ -170,14 +170,14 @@ module.exports = class{
                         }
                     }
 
-                    Memory.operations[id].invasionHandler.invasions.members=this.creepBuilder(
+                    /*Memory.operations[id].invasionHandler.invasions.members=this.creepBuilder(
                     Memory.operations[id].spawnList,
                     Memory.operations[id].invasionHandler.invasions.members,
                     Memory.operations[id].invasionHandler.invasions.size,
                     Array(30).fill(RANGED_ATTACK,0,10).fill(MOVE,10,25).fill(HEAL,25,30),
                     {role: 'Hunter', operation: id}
                     );
-
+                    //Memory.operations[id].invasionHandler.invasions.members=this.cleanUpCreeps(Memory.operations[id].invasionHandler.invasions.members);*/
                 }
             }
         }
