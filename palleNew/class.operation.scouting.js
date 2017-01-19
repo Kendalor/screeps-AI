@@ -1,12 +1,12 @@
 /*
 TODO:
 1) implement "find Closest Spawn" form other operations  and use it in initialisation and Build creep phase
-2) Use members and size parameter to moldularize operations
+2) Use members and size parameter to mldularize operations
 3) Use PathFinder for long distance Travel !!!  ( Patfinder.search .. )
 4) Modify  "findClosestSpawn" to return an array of spawns, to handle multi spawn rooms, and spawns with same distance to Target
 5) modify creep building to handle a spawnlist
 6) implement "BuildCreeps" which handels building creeps on different operations ( for later prototype use).
-    IN: Spawnlist ( List of spawns to use)
+    IN: Spawnlist ( List (array) of spawns (names, or ids) to use)
         Members list ( a List to check its length and to save spawned creeps into)
         body ( a body type to spawn)
         mem ( variables to write to creep memory)

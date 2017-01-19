@@ -9,13 +9,16 @@ module.exports = class{
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 this.buildCreeps(id);
                 if(!Memory.operations[id].toDefend){
-                    if(Game.ticks % 50 == 0){
+                    if(Game.ticks % 50){
                         console.log('DEFEND OPERATION '+id+' HAS NOTHING TO DO');
                     }
                 }else{
                     let defendId=Memory.operations[id].toDefend;
                     var invaders=[];
-                    if(Game.rooms[Memory.operations[defendId].roomName] && Game.ticks % 50 == 0){
+                    console.log('Invader Bugtracking');
+                    console.log(String(Game.time % 10));
+                    console.log(Game.rooms[Memory.operations[defendId].roomName]);
+                    if(Game.time % 10 == 0){
                         var invaders=Game.rooms[Memory.operations[defendId].roomName].find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner == 'Invader'});
                         console.log('Searched Invaders');
                         console.log(invaders);
@@ -58,12 +61,15 @@ module.exports = class{
                                         }
                                     }
                                     creep.memory.target=target.id;
+                                    lairs.splice(lairs.indexOf(target),1);
                                 }
                             }
-                            if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == 1+parseInt(Object.keys(Memory.operations[defendId].sources).length/2)){
-                                Memory.operations[id].size=2+parseInt(Object.keys(Memory.operations[defendId].sources).length/2);
-                            }else if(Object.keys(Memory.operations[id].members).length >= 2+parseInt(Object.keys(Memory.operations[defendId].sources).length/2)){
-                                Memory.operations[id].size=1+parseInt(Object.keys(Memory.operations[defendId].sources).length/2);
+                            if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2)){
+                                Memory.operations[id].size=parseInt(2+Object.keys(Memory.operations[defendId].sources).length/2);
+                            }else if(Object.keys(Memory.operations[id].members).length >= parseInt(2+Object.keys(Memory.operations[defendId].sources).length/2)){
+                                Memory.operations[id].size=parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2);
+                            }else if(Object.keys(Memory.operations[id].members).length < parseInt(2+Object.keys(Memory.operations[defendId].sources).length/2)){
+                                Memory.operations[id].size=parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2);
                             }
 
 

@@ -73,18 +73,22 @@ module.exports = class{
                         var source=sources[0];
                         //console.log(source);
                     }
-                   //console.log(JSON.stringify(source));
-                    source.memory = Memory.operations[id].sources[source.id] = {};
-                    //TODO SEARCH FORE NEAREST SPAWN/STORAGE WITH PATHFINDER
-                    Memory.operations[id].sources[source.id].nearest_spawnId=this.findClosestSpawn(Memory.operations[id].flagName);
-                    Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
-                    Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
-                    Memory.operations[id].sources[source.id].status='createConstructionSites';
-                    if(Memory.operations[id].keeperRoom){
-                        var lair=source.pos.findInRange(FIND_STRUCTURES,5,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR });
-                        if(lair.length>0){
-                             Memory.operations[id].sources[source.id].keeperLair=lair[0].id;
+                    if(!Memory.operations[id].sources[source.id]){
+                       //console.log(JSON.stringify(source));
+                        source.memory = Memory.operations[id].sources[source.id] = {};
+                        //TODO SEARCH FORE NEAREST SPAWN/STORAGE WITH PATHFINDER
+                        Memory.operations[id].sources[source.id].nearest_spawnId=this.findClosestSpawn(Memory.operations[id].flagName);
+                        Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
+                        Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
+                        Memory.operations[id].sources[source.id].status='createConstructionSites';
+                        if(Memory.operations[id].keeperRoom){
+                            var lair=source.pos.findInRange(FIND_STRUCTURES,5,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR });
+                            if(lair.length>0){
+                                 Memory.operations[id].sources[source.id].keeperLair=lair[0].id;
+                            }
                         }
+                    }else{
+                        Memory.operations[id].sources[source.id].status='createConstructionSites';
                     }
                     flags[i].remove();
                 }
@@ -217,18 +221,14 @@ module.exports = class{
 
         static buildAndRunHauler(id,source){
                 // HAULER CODE
-                if(!Memory.operations[id].sources[source.id].ticksToSource){
-                    Memory.operations[id].sources[source.id].min_haulers=1;
-                }else{
-                    Memory.operations[id].sources[source.id].carry_parts=Math.ceil(Memory.operations[id].sources[source.id].ticksToSource*2*(4000/(300*50)));
-                    Memory.operations[id].sources[source.id].min_haulers=Math.ceil(Memory.operations[id].sources[source.id].ticksToSource*2(4000/(300*50)));
-                    var max_carry_moveSets=parseInt((Game.getObjectById(Memory.operations[id].nearest_spawnId).room.energyCapacityAvailable-150)/(150));
-                    Memory.operations[id].max_carry_moveSets=max_carry_moveSets;
-                    // CREATE BODY
-                    //TODO
-
-
-
+                if(Game.ticks %10 == 0){
+                    let length=Memory.operations[id].sources[source.id].path.length;
+                    let carryParts=Math.floor(length*2*4000/300/50)+1;
+                    let moveParts=Math.ceil(carryParty/2+1);
+                    let workParts=1;
+                    let body=Array(carryParts+moveParts+workParts).fill(CARRY,0,carryParts).fill(MOVE,carryParts,carryParts+moveParts).fill(WORK,carryParts+moveParts,carryParts+moveParts+workParts);
+                    console.log('BODY');
+                    console.log(body);
                 }
 
                 if(!Memory.operations[id].sources[source.id].haulers){
@@ -326,18 +326,15 @@ module.exports = class{
             }
             // HAULER CODE
 
-            if(!Memory.operations[id].sources[source.id].ticksToSource){
-                Memory.operations[id].sources[source.id].min_haulers=1;
-            }else{
-                Memory.operations[id].sources[source.id].carry_parts=Math.ceil(Memory.operations[id].sources[source.id].ticksToSource*2/5);
-                Memory.operations[id].sources[source.id].min_haulers=Math.ceil(Memory.operations[id].sources[source.id].ticksToSource*2/5/18);
-                var max_carry_moveSets=parseInt((Game.getObjectById(Memory.operations[id].nearest_spawnId).room.energyCapacityAvailable-150)/(150));
-                Memory.operations[id].max_carry_moveSets=max_carry_moveSets;
-                // CREATE BODY
-                //TODO
-
-
-
+            if(!Memory.operations[id].sources[source.id].hauler_body){
+                let length=Memory.operations[id].sources[source.id].path.length;
+                let carryParts=Math.floor(length*2*4000/300/50)+1;
+                let moveParts=Math.ceil(carryParts/2+1);
+                let workParts=1;
+                let body2=Array(carryParts+moveParts+workParts).fill(CARRY,0,carryParts).fill(MOVE,carryParts,carryParts+moveParts).fill(WORK,carryParts+moveParts,carryParts+moveParts+workParts);
+                Memory.operations[id].sources[source.id].hauler_body=body2;
+                console.log('BODY');
+                console.log(body2);
             }
 
             if(!Memory.operations[id].sources[source.id].haulers){
@@ -349,7 +346,11 @@ module.exports = class{
             //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK);
                 var spawn = Game.getObjectById(Memory.operations[id].nearest_spawnId)
                 // 1x WORK, 18 CARRY = 900 capacity, 10 MOVE = 1tile/tick on roads if full COST= 1500
-                var body = [WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+                if(!Memory.operations[id].sources[source.id].hauler_body){
+                    var body = [WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+                }else{
+                    var body=Memory.operations[id].sources[source.id].hauler_body;
+                }
                 // 1x WORK, 15 CARRY = 550 capacity, 8 MOVE = 1tile/tick on roads if full COST= 1250
                 if (spawn.room.energyCapacityAvailable < 2000) body = [CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,MOVE,WORK];
                 if(spawn.canCreateCreep(body,undefined,{role: 'hauling', operation_id: id, source_id: source.id}) == OK){// NO SPAWN IT IF POSSIBLE !
