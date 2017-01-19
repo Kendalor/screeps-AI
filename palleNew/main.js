@@ -1,5 +1,6 @@
 require('prototypes')();
 require('globals')();
+const profiler = require('screeps-profiler');
 
 var autoCreep         = require('auto.creep');
 var autoMemory        = require('auto.memory');
@@ -15,7 +16,7 @@ module.exports.loop = function () {
 		autoMemory.clearDeadCreeps();
 		autoMemory.clearFlags();
 	}
-	
+
 	if (Game.cpu.bucket < 10000){ // To check if accumulated bonus CPU is used sometimes
 		console.log("Used additional CPU.\nAccumulated bucket:  "+Game.cpu.bucket+"/10000");
 	}
@@ -39,7 +40,7 @@ module.exports.loop = function () {
 	for(var name in Memory.myRooms) {
 
 		var room = Game.rooms[name];
-		
+
 		/*
 		room.findConstructionSites();
 		room.findResources();
@@ -47,7 +48,7 @@ module.exports.loop = function () {
 		room.findHostileCreeps();
 		room.findMyCreeps();
 		*/
-		
+
 		//autoMemory.fixSourceSlots(room);
 		invasionCounter.run(room);
 
