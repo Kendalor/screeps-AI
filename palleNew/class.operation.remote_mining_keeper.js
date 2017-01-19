@@ -72,23 +72,26 @@ module.exports = class{
                     if(sources.length > 0){
                         var source=sources[0];
                         //console.log(source);
-                    }
-                    if(!Memory.operations[id].sources[source.id]){
-                       //console.log(JSON.stringify(source));
-                        source.memory = Memory.operations[id].sources[source.id] = {};
-                        //TODO SEARCH FORE NEAREST SPAWN/STORAGE WITH PATHFINDER
-                        Memory.operations[id].sources[source.id].nearest_spawnId=this.findClosestSpawn(Memory.operations[id].flagName);
-                        Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
-                        Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
-                        Memory.operations[id].sources[source.id].status='createConstructionSites';
-                        if(Memory.operations[id].keeperRoom){
-                            var lair=source.pos.findInRange(FIND_STRUCTURES,5,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR });
-                            if(lair.length>0){
-                                 Memory.operations[id].sources[source.id].keeperLair=lair[0].id;
+
+                        if(!Memory.operations[id].sources[source.id]){
+                           //console.log(JSON.stringify(source));
+                            source.memory = Memory.operations[id].sources[source.id] = {};
+                            //TODO SEARCH FORE NEAREST SPAWN/STORAGE WITH PATHFINDER
+                            Memory.operations[id].sources[source.id].nearest_spawnId=this.findClosestSpawn(Memory.operations[id].flagName);
+                            Memory.operations[id].sources[source.id].nearest_storageId=Game.getObjectById(Memory.operations[id].nearest_spawnId).room.storage.id;
+                            Memory.operations[id].sources[source.id].ticksToStorage=PathFinder.search(source.pos,{pos: Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId).pos, range:1},{swampCost: 1}).path.length;
+                            Memory.operations[id].sources[source.id].status='createConstructionSites';
+                            if(Memory.operations[id].keeperRoom){
+                                var lair=source.pos.findInRange(FIND_STRUCTURES,5,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR });
+                                if(lair.length>0){
+                                     Memory.operations[id].sources[source.id].keeperLair=lair[0].id;
+                                }
                             }
+                        }else{
+                            Memory.operations[id].sources[source.id].status='createConstructionSites';
                         }
                     }else{
-                        Memory.operations[id].sources[source.id].status='createConstructionSites';
+                        console.log('No Source at flag pos found');
                     }
                     flags[i].remove();
                 }
