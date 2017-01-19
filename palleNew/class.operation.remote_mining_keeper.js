@@ -385,7 +385,7 @@ module.exports = class{
             var done=true;
 
 
-            var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCost: 10, swampCost: 10,
+            var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCost: 4, swampCost: 4,
                   roomCallback: function(roomName) {
                   let room = Game.rooms[roomName];
                   if(!room) return;

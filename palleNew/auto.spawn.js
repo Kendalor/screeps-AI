@@ -23,7 +23,7 @@ module.exports = {
 			var supplierAmount = spawn.room.memory.activeCreepRoles.supplier = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[5].name).length;
 			var upgraderAmount = spawn.room.memory.activeCreepRoles.upgrader = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[3].name).length;
 			var defenderAmount = spawn.room.memory.activeCreepRoles.defender = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[4].name).length;
-			if(Game.time % 50 == 0){
+			if(Game.time % 100 == 0){
 				console.log("\nSpawn    :"+spawn.name+" energy cap: "+spawn.room.energyCapacityAvailable
 				+"\nMiner    :"+minerAmount+" "+this.minerPreset(spawn)
 				+"\nHauler   :"+haulerAmount+" "+"dynamic part calculation"//+this.haulerPreset(spawn,0)
@@ -110,7 +110,7 @@ module.exports = {
 						break;
 						
 					case 5: //supplier
-						if(supplierAmount < 1 && minerAmount && haulerAmount && spawn.room.storage && spawn.room.storage.store.energy > 1000){
+						if(supplierAmount < 1 && spawn.room.storage && spawn.room.storage.store.energy > 1000){
 							spawn.createCreep(this.supplierPreset(spawn), undefined, {role: creepRole[5].name});
 						}
 						break;
@@ -217,7 +217,7 @@ module.exports = {
 	},
 	
 	supplierPreset: function(spawn){
-		var energyCap = spawn.room.energyCapacityAvailable;
+		var energyCap = Math.max(900,spawn.room.energyAvailable);
 		var moveParts= Math.max(2,Math.floor(parseInt(((energyCap)/3)/50)));
 		var partArray = [];
 		for (let i = 0; i < moveParts; i++){

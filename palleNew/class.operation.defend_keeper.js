@@ -15,12 +15,8 @@ module.exports = class{
                 }else{
                     let defendId=Memory.operations[id].toDefend;
                     var invaders=[];
-                    console.log('Invader Bugtracking');
-                    console.log(String(Game.time % 10));
-                    console.log(Game.rooms[Memory.operations[defendId].roomName]);
-                    if(Game.time % 10 == 0){
+                    if(Game.time % 50 == 0){
                         var invaders=Game.rooms[Memory.operations[defendId].roomName].find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner == 'Invader'});
-                        console.log('Searched Invaders');
                         console.log(invaders);
                     }
 
@@ -61,7 +57,7 @@ module.exports = class{
                                         }
                                     }
                                     creep.memory.target=target.id;
-                                    lairs.splice(lairs.indexOf(target),1);
+                                    lairs.splice(lairs.indexOf(target),1)
                                 }
                             }
                             if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2)){
