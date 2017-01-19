@@ -486,20 +486,14 @@ module.exports = {
 			this.idle(creep);
 		}
 		if (!creep.memory.job && creep.carry.energy > 0){
-			var targets = [];
-			if (creep.memory.role != 'supplier' && creep.carry.energy > 0 && creep.room.memory.underAttack){//creep.carryCapacity/4){
-				targets = creep.room.towers.filter((structure) => structure.energy < structure.energyCapacity-500 && creep.room.name == structure.room.name);
-			}
-			if (!targets.length){
-				creep.room.extensions.filter((structure) => structure.energy < structure.energyCapacity && creep.room.name == structure.room.name);
-			}
+			var targets = creep.room.extensions.filter((structure) => structure.energy < structure.energyCapacity && creep.room.name == structure.room.name);
 			if (!targets.length){
 				targets = creep.room.spawns.filter((structure) => structure.energy < structure.energyCapacity && creep.room.name == structure.room.name);
 			}
-			if (!targets.length && creep.memory.role != 'supplier' && creep.carry.energy > 0 ){//creep.carryCapacity/4){
+			if (creep.memory.role != 'supplier' && !targets.length && creep.carry.energy > 0 ){//creep.carryCapacity/4){
 				targets = creep.room.towers.filter((structure) => structure.energy < structure.energyCapacity-100 && creep.room.name == structure.room.name);
 			}
-			if (!targets.length && creep.memory.role == 'hauler' && creep.carry.energy > 0 ){//creep.carryCapacity/4){
+			if (creep.memory.role == 'hauler' && !targets.length && creep.carry.energy > 0 ){//creep.carryCapacity/4){
 				targets = [creep.room.storage].filter( (structure) => structure && structure.store.energy < structure.storeCapacity && creep.room.name == structure.room.name);
 			}
 			if (targets.length){
