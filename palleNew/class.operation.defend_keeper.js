@@ -57,7 +57,7 @@ module.exports = class{
                                         }
                                     }
                                     creep.memory.target=target.id;
-                                    lairs.splice(lairs.indexOf(target),1);
+                                    //lairs.splice(lairs.indexOf(target),1);
                                 }
                             }
                             if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2)){
