@@ -56,12 +56,13 @@ module.exports = class{
                                     creep.memory.target=target.id;
                                 }
                             }
-                            if(creep.ticksToLive < 300 && Memory.operations[id].size== 1 && Object.keys(Memory.operations[id].members).length == parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2)){
-                                Memory.operations[id].size=parseInt(2+Object.keys(Memory.operations[defendId].sources).length/2);
-                            }else if(Object.keys(Memory.operations[id].members).length >= parseInt(2+Object.keys(Memory.operations[defendId].sources).length/2)){
-                                Memory.operations[id].size=parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2);
-                            }else if(Object.keys(Memory.operations[id].members).length < parseInt(2+Object.keys(Memory.operations[defendId].sources).length/2)){
-                                Memory.operations[id].size=parseInt(1+Object.keys(Memory.operations[defendId].sources).length/2);
+                            //Increase size if  one creep is about to die
+                            if(creep.ticksToLive < 300 && Memory.operations[id].size== Math.ceil(Object.keys(Memory.operations[defendId].sources).length/2) && Object.keys(Memory.operations[id].members).length == Math.ceil(Object.keys(Memory.operations[defendId].sources).length/2)){
+                                Memory.operations[id].size=Math.ceil(Object.keys(Memory.operations[defendId].sources).length/2)+1;
+                            }else if(Object.keys(Memory.operations[id].members).length >= Math.ceil(Object.keys(Memory.operations[defendId].sources).length/2)+1){ //Set size back if length is large or equal increased size
+                                Memory.operations[id].size=Math.ceil(Object.keys(Memory.operations[defendId].sources).length/2);
+                            }else if(Object.keys(Memory.operations[id].members).length < Math.ceil(Object.keys(Memory.operations[defendId].sources).length/2)){ //sset size back if length is smaller than normal size
+                                Memory.operations[id].size=Math.ceil(Object.keys(Memory.operations[defendId].sources).length/2);
                             }
                             this.creepHandle(creep,id);
                         }
