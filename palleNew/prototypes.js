@@ -1063,6 +1063,22 @@ module.exports = function(){
 				enumerable: true
 			},
 			
+			/**
+			* Creep leaves border iff its position is on exit zone
+			* @param {Number} gap
+			* @return {Number} return creep.move()
+			*/
+			"leaveBorder" : {
+				value: function(gap = 0){ // default gap is 0
+					if (this.pos.x <= 0 + gap) return this.move(RIGHT);
+					else if(this.pos.y <= 0 + gap) return this.move(BOTTOM);
+					else if(this.pos.x >= 49 - gap) return this.move(LEFT);
+					else if(this.pos.y >= 49 - gap) return this.move(TOP);
+				},
+				writable: true,
+				enumerable: true
+			},			
+			
 			/** NEEDS TESTING
 			* Reserves specific amount of specific resource for set amount of ticks on given container
 			* Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
