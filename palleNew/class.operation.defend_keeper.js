@@ -78,9 +78,7 @@ module.exports = class{
 
             }
         }
-        /*
-        TODO: REASSIGN HEALERS HEADLESS HEALERS TO FALL BACK AND ASSIGN THEM A NEW SQUAD
-        */
+
         static creepHandle(creep,id){
             var target=Game.getObjectById(creep.memory.target);
             if(target){
@@ -172,6 +170,7 @@ module.exports = class{
             Memory.operations[id].members=this.cleanUpCreeps(Memory.operations[id].members);
             // CHECK IF REACHED OR FLAG POSITION CHANGED
         }
+
         static init(roomName,flag){
             if(!Game.flags[flag].memory.operation_id){
                 if(!Memory.operations){
@@ -221,7 +220,6 @@ module.exports = class{
 // FUNCTIONS
 // BELOW HERE
 // THEY ARE FOR  FUTURE PROTOTYPES
-
 
         static findClosestSpawn(targetRoomName,addDistance=0){
             var min_dist=999;
@@ -292,9 +290,6 @@ module.exports = class{
                 return false;
             }
         }
-
-
-
 
 
 };

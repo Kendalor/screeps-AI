@@ -134,7 +134,6 @@ module.exports = class{
                 Memory.operations[this.id].flagName=flag;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='remote_mining_keeper';
-                console.log(!Game.rooms[roomName])
                 Memory.operations[this.id].spawnList=this.findClosestSpawn(roomName,1);
                 Memory.operations[this.id].status='createConstructionSites';
                 Memory.operations[this.id].constructionSites={};
@@ -395,6 +394,7 @@ module.exports = class{
         }
 
         static creepHaul(creep){
+
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
 
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
@@ -512,13 +512,11 @@ module.exports = class{
             }
         }
 
-
-
         /* CONSTANTS TO REPLACE
         SOURCE_ID
         CONTAINER_POS
-
         */
+
         static creepMine(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
