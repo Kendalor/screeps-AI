@@ -80,45 +80,47 @@ module.exports = {
         init: function() {
         //Travel to Location
         for(var flag in Game.flags){
-			if (this.colorMatch(flag,COLOR_RED,COLOR_RED)){ // RED/RED
-                attackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if (this.colorMatch(flag,COLOR_RED,COLOR_BLUE)){ //RED/BLUE
-                defendKeeperOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                if (this.colorMatch(flag,COLOR_RED,COLOR_RED)){ // RED/RED
+                    attackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_WHITE)){ //WHITE/WHITE
-                scoutingOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if (this.colorMatch(flag,COLOR_RED,COLOR_BLUE)){ //RED/BLUE
+                    defendKeeperOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_GREY)){ //WHITE/GREY
-                reserveOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_WHITE)){ //WHITE/WHITE
+                    scoutingOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if (this.colorMatch(flag,COLOR_GREEN,COLOR_GREEN)){ //GREEN/GREEN
-                tankOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_GREY)){ //WHITE/GREY
+                    reserveOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if(this.colorMatch(flag,COLOR_GREEN,COLOR_RED)){
-                rangedAttackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if (this.colorMatch(flag,COLOR_GREEN,COLOR_GREEN)){ //GREEN/GREEN
+                    tankOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_GREEN)){ // WHITE/GREEN
-                colonizeOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if(this.colorMatch(flag,COLOR_GREEN,COLOR_RED)){
+                    rangedAttackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-			}else if (this.colorMatch(flag,COLOR_WHITE,COLOR_YELLOW)){ //WHITE/YELLOW
-                remoteBuildOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_GREEN)){ // WHITE/GREEN
+                    colonizeOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_BLUE)){ //WHITE/BLUE
-                devAidOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_YELLOW)){ //WHITE/YELLOW
+                    remoteBuildOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if (this.colorMatch(flag,COLOR_BLUE,COLOR_BLUE)){ //BLUE/BLUE
-                remoteMiningOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_BLUE)){ //WHITE/BLUE
+                    devAidOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-            }else if(this.colorMatch(flag,COLOR_BLUE,COLOR_RED)){ //BLUE/RED
-                remoteMiningKeeperOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
-            }else if(this.colorMatch(flag,COLOR_BLUE,COLOR_WHITE)){ //BLUE/WHITE
-                focusEnergyOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
-            }
-			
-			else if(this.colorMatch(flag,COLOR_GREY,COLOR_GREY)){ //GREY/GREY
-                demolishOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
-            }
+                }else if (this.colorMatch(flag,COLOR_BLUE,COLOR_BLUE)){ //BLUE/BLUE
+                    remoteMiningOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+
+                }else if(this.colorMatch(flag,COLOR_BLUE,COLOR_RED)){ //BLUE/RED
+                    remoteMiningKeeperOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }else if(this.colorMatch(flag,COLOR_BLUE,COLOR_WHITE)){ //BLUE/WHITE
+                    focusEnergyOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }
+
+                else if(this.colorMatch(flag,COLOR_GREY,COLOR_GREY)){ //GREY/GREY
+                    demolishOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }
+
         }
     },
 

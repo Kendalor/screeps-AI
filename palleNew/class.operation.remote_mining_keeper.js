@@ -171,9 +171,8 @@ module.exports = class{
             for(var t in Memory.operations[id].sources[source.id].miners){
                 var creep=Game.creeps[t];
                 if(!creep.spawning){
-                    if(!Memory.operations[id].sources[source.id].keeper){
-                        this.creepMine(creep);
-                    }
+                    this.creepMine(creep);
+
                 }
             }
             if(!Memory.operations[id].sources[source.id].containerId){
@@ -196,7 +195,7 @@ module.exports = class{
                 Memory.operations[id].sources[source.id].builders=this.creepBuilder(spawnList,Memory.operations[id].sources[source.id].builders,Memory.operations[id].sources[source.id].min_builders,body,{role: 'building', operation_id: id, container_id: Memory.operations[id].sources[source.id].containerId});
                 Memory.operations[id].sources[source.id].builders=this.cleanUpCreeps(Memory.operations[id].sources[source.id].builders);
 
-                for(var t in Memory.operations[id].sources[source.id].miners){
+                for(var t in Memory.operations[id].sources[source.id].builders){
                     var creep=Game.creeps[t];
                     if(!creep.spawning){
                         this.creepBuild(creep);
@@ -352,6 +351,8 @@ module.exports = class{
             }
             if(creep.memory.targetId == null){
                 if(creep.carry.energy == 0){
+                    console.log('creep'+creep.name);
+                    console.log(creep.memory.container_id);
                     creep.memory.targetId=container.id;
                 }else{
                     var target=creep.pos.findClosestByRange(targets);
@@ -574,7 +575,7 @@ module.exports = class{
                                         return this.creepHaul(creep);
                                     }
                                 }
-                            }else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId).room.name){
+                            }else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].nearest_storageId).room.name){
                                 creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                             }
                             else{
