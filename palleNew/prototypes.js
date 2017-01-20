@@ -1045,6 +1045,24 @@ module.exports = function(){
 				enumerable: false
 			},
 			
+			/**
+			* Returns pos.inRangeTo(target,range) iff creep and target share a room, else returns false
+			* @param {Object} target
+			* @param {Number} range
+			* @return {Boolean} 
+			*/
+			"inRangeTo" : {
+				value: function(target,range = 1){// default range is 1
+					if(this.pos.roomName == target.pos.roomName){ // same room ?
+						return this.pos.inRangeTo(target,range);
+					}else{
+						return false;
+					}
+				},
+				writable: true,
+				enumerable: true
+			},
+			
 			/** NEEDS TESTING
 			* Reserves specific amount of specific resource for set amount of ticks on given container
 			* Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
