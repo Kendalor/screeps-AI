@@ -1,9 +1,9 @@
 /*
 TODO:
 1) implement "find Closest Spawn" form other operations  and use it in initialisation and Build creep phase
-2) Use members and size parameter to mldularize operations
-3) Use PathFinder for long distance Travel !!!  ( Patfinder.search .. )
-4) Modify  "findClosestSpawn" to return an array of spawns, to handle multi spawn rooms, and spawns with same distance to Target
+2) Use members and size parameter to modularize operations -> use function creepBuilder in operation.defend_keeper
+3) Use PathFinder for long distance Travel !!!  ( Patfinder.search .. ) Mix uses of Game.map.findRoute and Pathfinder.search
+4) Modify  "findClosestSpawn" to return an array of spawns, to handle multi spawn rooms, and spawns with same distance to Target -> DONE  look in operation.defend_keeper
 5) modify creep building to handle a spawnlist
 6) implement "BuildCreeps" which handels building creeps on different operations ( for later prototype use).
     IN: Spawnlist ( List (array) of spawns (names, or ids) to use)
