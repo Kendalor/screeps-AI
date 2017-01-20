@@ -516,6 +516,20 @@ module.exports = class{
         SOURCE_ID
         CONTAINER_POS
         */
+        static creepEvacuate(creep){
+            if(!creep.memory.safeSpot){
+                let opId=creep.memory.operation_id;
+                let sourceId=creep.memory.source_id;
+                let storage=Game.getObjectById(Memory.operations[opId].sources[sourceId].nearest_storageId);
+                let pos=new RoomPosition(25,25,storage.pos.roomName);
+                console.log(pos);
+                creep.memory.safeSpot=pos;
+            }else{
+                let pos=new RoomPosition(creep.memory.safeSpot.x,creep.memory.safeSpot.y,creep.memory.safeSpot.roomName);
+                creep.moveTo(pos);
+            }
+
+        }
 
         static creepMine(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
@@ -613,18 +627,7 @@ module.exports = class{
 // THEY ARE FOR  FUTURE PROTOTYPES
 
 
-        static creepEvacuate(creep){
-            if(!creep.memory.safeSpot){
-                let opId=creep.memory.operation_id;
-                let sourceId=creep.memory.source_id;
-                let storage=Game.getObjectById(Memory.operations[opId].sources[sourceId].nearest_storageId);
-                let pos=RoomPosition(25,25,storage.pos.roomName);
-                creep.memory.safeSpot=pos;
-            }else{
-                creep.moveTo(creep.memory.safeSpot);
-            }
 
-        }
 
         static findClosestSpawn(targetRoomName,addDistance=0){
             var min_dist=999;

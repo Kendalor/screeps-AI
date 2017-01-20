@@ -23,7 +23,7 @@ module.exports = class{
 
         static creepHandle(creep,id){
             var flag=Game.flags[Memory.operations[id].flagName];
-            var home=Game.getObjectById(Memory.operations[id].nearestSpawnId);
+            //Game.getObjectById(Memory.operations['6579942'].spawnList[0]);
 			if(flag.pos.x == 0 || flag.pos.y == 0 || flag.pos.x == 49 || flag.pos.y == 49){// Is Flag placed on exit zone?
 				if(creep.hits == creep.hitsMax){
 					if(creep.room.name != flag.pos.roomName || !creep.room.controller.owner){
@@ -39,7 +39,6 @@ module.exports = class{
 					}
 				}else{
 					if(creep.room.name == flag.pos.roomName){
-						//creep.move(home);
 						creep.heal(creep);
 						creep.drop(RESOURCE_ENERGY);
 					}else{
@@ -53,24 +52,36 @@ module.exports = class{
 				}
 			}else{ // Flag is not placed on exit zone
 				if(creep.hits == creep.hitsMax){ // creep fully alive?
-					let wounded = creep.pos.findInRange(FIND_MY_CREEPS,1,{filter: (c) => c.hits < c.hitsMax});
+					let wounded = creep.room.find(FIND_MY_CREEPS,{filter: (c) => c.hits < c.hitsMax});
 					if (wounded.length){ // found a wounded neighbour to heal?
 						creep.say("aid");
-						creep.heal(wounded[0]);
+						var range=creep.pos.getRangeTo(wounded[0]);
+						if(range <= 1){
+						    creep.heal(wounded[0]);
+						}else if(range >=2){
+                            creep.rangedHeal(wounded[0]);
+                            creep.moveTo(wounded[0]);
+						}
+
 					}else{ // try to engage the flag
 						creep.say("Charge!");
 						creep.moveTo(flag);
 						creep.heal(creep);
 					}
-				}else{ // wounded itself -> heal
+				}else if(creep.hits < creep.hitsMax-1000){ // wounded itself -> heal
 				    if(creep.pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
                         creep.say("flee");
+                        var home=creep.pos.findClosestByPath(FIND_EXIT);
                         creep.moveTo(home);
                         creep.heal(creep);
                     }else{
                         this.leaveBorder(creep);
                         creep.heal(creep);
                     }
+				}else{
+                    creep.say("Charge!");
+                    creep.moveTo(flag);
+                    creep.heal(creep);
 				}
 			}
         }
@@ -115,7 +126,9 @@ module.exports = class{
                 Memory.operations[this.id].size=1;
                 Memory.operations[this.id].members= {};
                 Memory.operations[this.id].spawnList=this.findClosestSpawn(roomName,1);
-                Memory.operations[this.id].default_body=Array(50).fill(ATTACK,0,1).fill(TOUGH,1,23).fill(MOVE,23,40).fill(HEAL,40,50);
+                //Memory.operations[this.id].default_body=Array(50).fill(ATTACK,0,1).fill(TOUGH,1,15).fill(MOVE,15,35).fill(HEAL,35,50);
+                //Memory.operations[this.id].default_body=Array(50).fill(ATTACK,0,1).fill(TOUGH,1,15).fill(MOVE,15,35).fill(HEAL,35,50);
+                Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,5).fill(ATTACK,5,10).fill(MOVE,10,35).fill(HEAL,35,50);
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
