@@ -10,122 +10,124 @@ module.exports = {
 	run: function(spawnList) {
 
 		//for every spawn in the list
-			for(var id in spawnList) {
-			var spawn = spawnList[id];
-			this.roomProfiler(spawn);
+        for(var id in spawnList) {
+            var spawn = spawnList[id];
+            if(spawn.spawning == null){
+                this.roomProfiler(spawn);
 
-			if (!spawn.room.memory.activeCreepRoles){
-				spawn.room.memory.activeCreepRoles = {};
-			}
-			var minerAmount = spawn.room.memory.activeCreepRoles.miner = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[0].name).length;
-			var haulerAmount = spawn.room.memory.activeCreepRoles.hauler = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[1].name).length;
-			var maintanceAmount = spawn.room.memory.activeCreepRoles.maintance = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[2].name).length;
-			var supplierAmount = spawn.room.memory.activeCreepRoles.supplier = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[5].name).length;
-			var upgraderAmount = spawn.room.memory.activeCreepRoles.upgrader = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[3].name).length;
-			var defenderAmount = spawn.room.memory.activeCreepRoles.defender = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[4].name).length;
-			if(Game.time % 100 == 0){
-				console.log("\nSpawn    :"+spawn.name+" energy cap: "+spawn.room.energyCapacityAvailable
-				+"\nMiner    :"+minerAmount+" "+this.minerPreset(spawn)
-				+"\nHauler   :"+haulerAmount+" "+"dynamic part calculation"//+this.haulerPreset(spawn,0)
-				+"\nMaintance:"+maintanceAmount+" "+this.maintancePreset(spawn)
-				+"\nSupplier :"+supplierAmount+" "+this.supplierPreset(spawn)
-				+"\nUpgrader :"+upgraderAmount+" "+this.upgraderPreset(spawn)
-				+"\nDefender :"+defenderAmount+" "+this.defenderPreset(spawn));
-			}
-			
-			if (spawn.room.storage == undefined) {
-				maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
-				upgradeUnits = 1;
-			}else{
-				upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
-				maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
-			}
+                if (!spawn.room.memory.activeCreepRoles){
+                    spawn.room.memory.activeCreepRoles = {};
+                }
+                var minerAmount = spawn.room.memory.activeCreepRoles.miner = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[0].name).length;
+                var haulerAmount = spawn.room.memory.activeCreepRoles.hauler = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[1].name).length;
+                var maintanceAmount = spawn.room.memory.activeCreepRoles.maintance = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[2].name).length;
+                var supplierAmount = spawn.room.memory.activeCreepRoles.supplier = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[5].name).length;
+                var upgraderAmount = spawn.room.memory.activeCreepRoles.upgrader = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[3].name).length;
+                var defenderAmount = spawn.room.memory.activeCreepRoles.defender = _.filter(Game.creeps, (creep) => creep.room.name == spawn.room.name && creep.memory.role==creepRole[4].name).length;
+                if(Game.time % 100 == 0){
+                    console.log("\nSpawn    :"+spawn.name+" energy cap: "+spawn.room.energyCapacityAvailable
+                    +"\nMiner    :"+minerAmount+" "+this.minerPreset(spawn)
+                    +"\nHauler   :"+haulerAmount+" "+"dynamic part calculation"//+this.haulerPreset(spawn,0)
+                    +"\nMaintance:"+maintanceAmount+" "+this.maintancePreset(spawn)
+                    +"\nSupplier :"+supplierAmount+" "+this.supplierPreset(spawn)
+                    +"\nUpgrader :"+upgraderAmount+" "+this.upgraderPreset(spawn)
+                    +"\nDefender :"+defenderAmount+" "+this.defenderPreset(spawn));
+                }
 
-			//for every type of creep
-			var canSpawnMaxModuleCreep = (0 == spawn.canCreateCreep(Array(Game.rooms[spawn.room.name].energyCapacityAvailable/50).fill(MOVE)));
-			if ((spawn.room.memory.activeCreepRoles.miner == 0 || spawn.room.memory.activeCreepRoles.hauler == 0) && spawn.room.energyAvailable == 200){
-				canSpawnMaxModuleCreep = true;
-			}
-			for(i=0;i<creepRole.length && Game.rooms[spawn.room.name].energyAvailable;i++){ //&& Game.rooms[spawn.room.name].energyAvailable
-				var sources = spawn.room.memory.sources;
+                if (spawn.room.storage == undefined) {
+                    maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
+                    upgradeUnits = 1;
+                }else{
+                    upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
+                    maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
+                }
 
-				
-				//check for amount of creep types in room
+                //for every type of creep
+                var canSpawnMaxModuleCreep = (0 == spawn.canCreateCreep(Array(Game.rooms[spawn.room.name].energyCapacityAvailable/50).fill(MOVE)));
+                if ((spawn.room.memory.activeCreepRoles.miner == 0 || spawn.room.memory.activeCreepRoles.hauler == 0) && spawn.room.energyAvailable == 200){
+                    canSpawnMaxModuleCreep = true;
+                }
+                for(i=0;i<creepRole.length && Game.rooms[spawn.room.name].energyAvailable;i++){ //&& Game.rooms[spawn.room.name].energyAvailable
+                    var sources = spawn.room.memory.sources;
 
 
-				switch(i) {
-
-					case 4: //defender
-						if (spawn.room.memory.underAttack && defenderAmount == 0){
-							spawn.createCreep(this.defenderPreset(spawn), undefined, {role: creepRole[4].name});
-						}
-						break;
-
-					case 0: //miner
-						if(minerAmount < Object.keys(sources).length){
-							for(id in sources){
-								if(!spawn.room.memory.sources[id].requiredCarryParts){
-									autoMemory.resetSourceMemory(spawn.room);
-								}
-								var found = true;
-								//console.log("miner: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
-								if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'miner' && creep.ticksToLive > 24+2*spawn.room.memory.sources[id].requiredCarryParts).length == 0 && found){
-									spawn.createCreep(this.minerPreset(spawn), undefined, {role: creepRole[0].name, source: id, spawn: true});
-									found = false;
-								}
-							}
-						}
-
-						break;
+                    //check for amount of creep types in room
 
 
-					case 1: //hauler
-					    //console.log('need to spawn?');
-					    //console.log(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length));
-						if(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
-							for(id in sources){
-								if(!spawn.room.memory.sources[id].requiredCarryParts){
-									autoMemory.resetSourceMemory(spawn.room);
-								}
-								var found = true;
-								//console.log("hauler: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}));
-								//console.log('container existis ? in room '+ spawn.room.name);
-								//console.log(spawn.room.memory.sources[id].container);
-								if (spawn.room.memory.sources[id].container){
-									if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive > (6+8*spawn.room.memory.sources[id].requiredCarryParts) ).length == 0 && found){
-										//console.log(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts))
-										//console.log(spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true}));
-										spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true});
-										found = false;
-									}
-								}
-							}
-						}
-						break;
+                    switch(i) {
 
-					case 2: //maintance
-						if(minerAmount == (Object.keys(sources).length) && maintanceAmount < maintanceUnits){
-							spawn.createCreep(this.maintancePreset(spawn), undefined, {role: creepRole[2].name});
-						}
-						break;
-						
-					case 5: //supplier
-						if(supplierAmount < 1 && spawn.room.storage && spawn.room.storage.store.energy > 1000){
-							spawn.createCreep(this.supplierPreset(spawn), undefined, {role: creepRole[5].name});
-						}
-						break;
+                        case 4: //defender
+                            if (spawn.room.memory.underAttack && defenderAmount == 0){
+                                spawn.createCreep(this.defenderPreset(spawn), undefined, {role: creepRole[4].name});
+                            }
+                            break;
 
-					case 3: //upgrader
-						if(upgraderAmount < upgradeUnits && spawn.room.storage != undefined && minerAmount == Object.keys(sources).length && haulerAmount == Object.keys(sources).length){
-							spawn.createCreep(this.upgraderPreset(spawn), undefined, {role: creepRole[3].name, workModules: 15});
-						}
-						break;
+                        case 0: //miner
+                            if(minerAmount < Object.keys(sources).length){
+                                for(id in sources){
+                                    if(!spawn.room.memory.sources[id].requiredCarryParts){
+                                        autoMemory.resetSourceMemory(spawn.room);
+                                    }
+                                    var found = true;
+                                    //console.log("miner: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
+                                    if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'miner' && creep.ticksToLive > 24+2*spawn.room.memory.sources[id].requiredCarryParts).length == 0 && found){
+                                        spawn.createCreep(this.minerPreset(spawn), undefined, {role: creepRole[0].name, source: id, spawn: true});
+                                        found = false;
+                                    }
+                                }
+                            }
+
+                            break;
 
 
-					default:
-						console.log("auto.spawn: Undefined creep's role: "+i)
-					}
-			}
+                        case 1: //hauler
+                            //console.log('need to spawn?');
+                            //console.log(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length));
+                            if(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
+                                for(id in sources){
+                                    if(!spawn.room.memory.sources[id].requiredCarryParts){
+                                        autoMemory.resetSourceMemory(spawn.room);
+                                    }
+                                    var found = true;
+                                    //console.log("hauler: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}));
+                                    //console.log('container existis ? in room '+ spawn.room.name);
+                                    //console.log(spawn.room.memory.sources[id].container);
+                                    if (spawn.room.memory.sources[id].container){
+                                        if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive > (6+8*spawn.room.memory.sources[id].requiredCarryParts) ).length == 0 && found){
+                                            //console.log(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts))
+                                            //console.log(spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true}));
+                                            spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true});
+                                            found = false;
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+
+                        case 2: //maintance
+                            if(minerAmount == (Object.keys(sources).length) && maintanceAmount < maintanceUnits){
+                                spawn.createCreep(this.maintancePreset(spawn), undefined, {role: creepRole[2].name});
+                            }
+                            break;
+
+                        case 5: //supplier
+                            if(supplierAmount < 1 && spawn.room.storage && spawn.room.storage.store.energy > 1000){
+                                spawn.createCreep(this.supplierPreset(spawn), undefined, {role: creepRole[5].name});
+                            }
+                            break;
+
+                        case 3: //upgrader
+                            if(upgraderAmount < upgradeUnits && spawn.room.storage != undefined && minerAmount == Object.keys(sources).length && haulerAmount == Object.keys(sources).length){
+                                spawn.createCreep(this.upgraderPreset(spawn), undefined, {role: creepRole[3].name, workModules: 15});
+                            }
+                            break;
+
+
+                        default:
+                            console.log("auto.spawn: Undefined creep's role: "+i)
+                        }
+                }
+            }
 
 		}
 	},
