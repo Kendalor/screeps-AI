@@ -96,7 +96,7 @@ module.exports = class{
                             creep.heal(creep);
                         }
                         creep.say('camp');
-                        if(target.ticksToSpawn  == 1){
+                        if(target.ticksToSpawn  == 1 || target.ticksToSpawn >= 290){
                             delete creep.memory.target;
                         }
                     }else{
