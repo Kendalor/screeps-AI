@@ -359,7 +359,7 @@ module.exports = class{
                     if(target !=null){
                         creep.memory.targetId=target.id;
                     }else{
-                        creep.moveTo(target);
+                        creep.moveTo(targets[0]);
                     }
 
                     //console.log(JSON.stringify(creep.pos.findClosestByRange(targets).id));
@@ -394,121 +394,16 @@ module.exports = class{
             }
         }
 
-        static creepHaul_simple(creep){
-            var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
-            if (!creep.memory.targetId){ // SELECT NEW TARGET
-                if (creep.carry.energy == 0){ // NO ENERGY
-                    if (!Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId){ // NO CONTAINER FOUND
-                        creep.memory.targetId = creep.id;
-                    }else{ // FOUND CONTAINER
-                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId;
-                    }
-                }else{ // ENOUGH ENERGY
-                    creep.memory.targetId = Memory.operations[creep.memory.operation_id].nearest_storageId;
-                }
-            }else{
-                var target = Game.getObjectById(creep.memory.targetId);
-                if (target != null){ // TARGET IS VALID
-                    if (target.structureType == undefined){ // TARGET SOURCE -> HARVEST // TARGET FLAG -> WAIT
-                        if (creep.carry.energy == creep.ticksToLive-100){
-                            delete Memory.creeps[creep.name].targetId;
-                        }else if (creep.carry.energy < creep.carryCapacity){
-                            //if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
-                            //    creep.moveTo(target,{reusePath: 30});
-                            var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName]
-                            if (creep.pos.x != flag.pos.x || creep.pos.y != flag.pos.y){
-                                creep.moveTo(flag);
-                            }else if(Game.time % 2 == 0){
-                                creep.memory.targetId = null;
-                            }
-                            creep.say("Waiting")
-                        }else{ //ENERGY FULL
-                            delete Memory.creeps[creep.name].targetId;
-                            return this.creepHaul(creep);
-                        }
-                    }else if(target.progress != undefined){ //TARGET CONSTRUCTION SITE -> BUILD
-                        var err = creep.build(target);
-                        if(err == ERR_NOT_IN_RANGE) {
-                            creep.moveTo(target);
-                        }else if (err == ERR_FULL){
-                            delete Memory.creeps[creep.name].targetId;
-                            return this.creepHaul(creep);
-                        }else if (err == ERR_NOT_ENOUGH_ENERGY){
-                            delete Memory.creeps[creep.name].targetId;
-                            return this.creepHaul(creep);
-                        }
-                    }else if (target.structureType == STRUCTURE_ROAD){ // TARGET ROAD -> REPAIR
-                        creep.repair(target,RESOURCE_ENERGY)
-                        creep.memory.targetId = null;
-                        return this.creepHaul(creep);
-                    }else if (target.structureType == STRUCTURE_CONTAINER){ // TARGET CONTAINER
-                        if (creep.room.name == Memory.operations[creep.memory.operation_id].roomName){
-                            var salvage = creep.room.lookForAt(RESOURCE_ENERGY,pos.x,pos.y); // SALVAGE AVAILABLE?
-                            if (salvage.length > 0){
-                                var err = creep.pickup(salvage[0],RESOURCE_ENERGY)
-                                if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
-                                    creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
-                                }else if (err == ERR_FULL){
-                                    creep.memory.targetId = null;
-                                    return this.creepHaul(creep);
-                                }
-                            }else{
-                                var err = creep.withdraw(target,RESOURCE_ENERGY);
-                                if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
-                                    creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
-                                }else if (err == ERR_FULL){
-                                    creep.memory.targetId = null;
-                                    return this.creepHaul(creep);
-                                }
-                            }
-                        } else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId).room.name){
-                            creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
-                            creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
-                        }
-                        else{
-                            creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
-                            creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
-                        }
-                    }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
-                        var roadConstructions = creep.pos.lookFor(LOOK_CONSTRUCTION_SITES).filter((struct) => struct.structureType == STRUCTURE_ROAD);
-                        var road = creep.pos.lookFor(LOOK_STRUCTURES).filter((struct) => struct.structureType == STRUCTURE_ROAD && struct.hits < struct.hitsMax-1000);
-                        if (roadConstructions.length){
-                            creep.memory.targetId = roadConstructions[0].id;
-                            return this.creepHaul(creep);
-                        }else if(road.length){
-                            creep.repair(road[0],RESOURCE_ENERGY)
-                        }else{
-                            var err = creep.transfer(target, RESOURCE_ENERGY);
-                            if (err == ERR_NOT_IN_RANGE){
-                                if (creep.room.name == target.room.name){
-                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
-                                    creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
-                                }else{
-                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
-                                    creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
-                                }
-                            }else if (err == ERR_NOT_ENOUGH_ENERGY){
-                                creep.memory.targetId = null;
-                                return this.creepHaul(creep);
-                            }
-                        }
-                    }
-                }else{ // TARGET IS INVALID
-                    creep.memory.targetId = null;
-                }
-            }
-        }
-
         static creepHaul(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
 
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
-            if(enemies.length >0){
+            if(enemies.length >0 || Memory.operations[creep.memory.operation_id].invasion){
+                creep.say('Afraid');
                 //TODO
             }else{
                 if (!creep.memory.targetId){ // SELECT NEW TARGET
+                    creep.say('No Target');
                     if (creep.carry.energy == 0){ // NO ENERGY
                         if (!Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId){ // NO CONTAINER FOUND
                             creep.memory.targetId = creep.id;
@@ -516,7 +411,7 @@ module.exports = class{
                             creep.memory.targetId = Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId;
                         }
                     }else{ // ENOUGH ENERGY
-                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].nearest_storageId;
+                        creep.memory.targetId = Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].nearest_storageId;
                     }
                 }else{
                     var target = Game.getObjectById(creep.memory.targetId);
@@ -627,7 +522,8 @@ module.exports = class{
         static creepMine(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
-            if(enemies.length >0){
+            if(enemies.length >0 || Memory.operations[creep.memory.operation_id].invasion){
+                creep.say('Afraid');
                 //TODO
             }else{
                 if(Game.time % 10 == 0){
@@ -718,6 +614,11 @@ module.exports = class{
 // BELOW HERE
 // THEY ARE FOR  FUTURE PROTOTYPES
 
+
+        static creepEvacuate(creep){
+
+
+        }
 
         static findClosestSpawn(targetRoomName,addDistance=0){
             var min_dist=999;
