@@ -400,7 +400,7 @@ module.exports = class{
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
             if(enemies.length >0 || Memory.operations[creep.memory.operation_id].invasion){
                 creep.say('Afraid');
-                //TODO
+                this.creepEvacuate(creep);
             }else{
                 if (!creep.memory.targetId){ // SELECT NEW TARGET
                     creep.say('No Target');
@@ -524,7 +524,7 @@ module.exports = class{
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
             if(enemies.length >0 || Memory.operations[creep.memory.operation_id].invasion){
                 creep.say('Afraid');
-                //TODO
+                this.creepEvacuate(creep);
             }else{
                 if(Game.time % 10 == 0){
                     creep.say('mining');
@@ -616,7 +616,15 @@ module.exports = class{
 
 
         static creepEvacuate(creep){
-
+            if(!creep.memory.safeSpot){
+                let opId=creep.memory.operation_id;
+                let sourceId=creep.memory.source_id;
+                let storage=Game.getObjectById(Memory.operations[opId].sources[sourceId].nearest_storageId);
+                let pos=RoomPosition(25,25,storage.pos.roomName);
+                creep.memory.safeSpot=pos;
+            }else{
+                creep.moveTo(creep.memory.safeSpot);
+            }
 
         }
 
