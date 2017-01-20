@@ -128,34 +128,6 @@ module.exports = class{
                 }
 
         }
-        static checkForCreeps(id){
-            var creepName;
-            for(var sLeader in Memory.operations[id].squads){
-                creepName=sLeader;
-                for(var cr in Memory.operations[id].squads[sLeader]){
-                    creepName=Memory.operations[id].squads[sLeader][cr]
-                    if(!Game.creeps[creepName]){
-                        console.log('Deleted Healer '+creepName +'from memory')
-                        delete Memory.creeps[creepName];
-                        Memory.operations[id].squads[sLeader].pop(creepName);
-                    }
-
-                }
-                if(!Game.creeps[sLeader]) {
-                        console.log('Deleted '+ sLeader +' from memory')
-                        delete Memory.creeps[sLeader];
-
-
-                        for(var cr in Memory.operations[id].squads[sLeader]){
-                                console.log('Deleted '+cr +'from memory')
-                                Memory.operations[id].squads[sLeader].pop(cr);
-                                Game.creeps[creepName].suicide();
-                                delete Memory.creeps[creepName];
-                        }
-                        delete Memory.operations[id].squads[sLeader];
-                }
-            }
-        }
 
         static invasionHandler(id){
             let defendId=Memory.operations[id].toDefend;
