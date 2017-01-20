@@ -25,16 +25,19 @@ module.exports = class{
 
 
                     for(var i in Memory.operations[defendId].sources){
-                        let lair= Game.getObjectById(Memory.operations[defendId].sources[i].keeperLair);
-                        let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,6,{filter: cr => cr.owner.username == 'Source Keeper'});
-                        let wounded=lair.pos.findInRange(FIND_MY_CREEPS,6,{filter: (cr) => cr.hits < cr.hitsMax});
-                        if(enemy.length >0){
-                            keepers.push(enemy[0]);
-                        }else if(wounded.length>0){
-                            creeps.push(wounded[0]);
-                        }else{
-                            lairs.push(lair);
+                        if(Game.rooms[Memory.operations[defendId].roomName]){
+                            let lair= Game.getObjectById(Memory.operations[defendId].sources[i].keeperLair);
+                            let enemy=lair.pos.findInRange(FIND_HOSTILE_CREEPS,6,{filter: cr => cr.owner.username == 'Source Keeper'});
+                            let wounded=lair.pos.findInRange(FIND_MY_CREEPS,6,{filter: (cr) => cr.hits < cr.hitsMax});
+                            if(enemy.length >0){
+                                keepers.push(enemy[0]);
+                            }else if(wounded.length>0){
+                                creeps.push(wounded[0]);
+                            }else{
+                                lairs.push(lair);
+                            }
                         }
+
                     }
                     for(var j in Memory.operations[id].members){
                         var creep=Game.creeps[j];
@@ -161,6 +164,7 @@ module.exports = class{
                 var room=Game.rooms[Memory.operations[defendId].roomName];
                 var enemies=room.find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner.username == 'Invader'});
                 if(enemies.length >0){
+                    Memory.operations[defendId].invasion=true;
                     let spawnTime=Game.time-1500+enemies[0].ticksToLive;
                     if(Memory.operations[id].invasionHandler.invasions.length ==0){
                         Memory.operations[id].invasionHandler.invasions.push(spawnTime);
@@ -179,6 +183,8 @@ module.exports = class{
                     {role: 'Hunter', operation: id}
                     );
                     //Memory.operations[id].invasionHandler.invasions.members=this.cleanUpCreeps(Memory.operations[id].invasionHandler.invasions.members);*/
+                }else{
+                    Memory.operations[defendId].invasion=false;
                 }
             }
         }
