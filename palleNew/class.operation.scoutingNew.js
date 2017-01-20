@@ -1,9 +1,9 @@
 /*
 TODO:
 1) implement "find Closest Spawn" form other operations  and use it in initialisation and Build creep phase
-2) Use members and size parameter to mldularize operations
-3) Use PathFinder for long distance Travel !!!  ( Patfinder.search .. )
-4) Modify  "findClosestSpawn" to return an array of spawns, to handle multi spawn rooms, and spawns with same distance to Target
+2) Use members and size parameter to modularize operations -> use function creepBuilder in operation.defend_keeper
+3) Use PathFinder for long distance Travel !!!  ( Patfinder.search .. ) Mix uses of Game.map.findRoute and Pathfinder.search
+4) Modify  "findClosestSpawn" to return an array of spawns, to handle multi spawn rooms, and spawns with same distance to Target -> DONE  look in operation.defend_keeper
 5) modify creep building to handle a spawnlist
 6) implement "BuildCreeps" which handels building creeps on different operations ( for later prototype use).
     IN: Spawnlist ( List (array) of spawns (names, or ids) to use)
@@ -22,15 +22,7 @@ module.exports = class{
 			
 		}
 		static buildCreeps(id){
-            let spawnList=Memory.operations[id].spawnList;
-            let memberList=Memory.operations[id].members;
-            let size=Memory.operations[id].size;
-            let body=Memory.operations[id].default_Abody;
-            let memory={role: 'MineDefender', operation: id};
-            var temp=this.creepBuilder(spawnList,memberList,size,body,memory);
-            Memory.operations[id].members=temp;
-            Memory.operations[id].members=this.cleanUpCreeps(Memory.operations[id].members);
-            // CHECK IF REACHED OR FLAG POSITION CHANGED
+            
         }
         static init(roomName,flag){
             if(!Game.flags[flag].memory.operation_id){
@@ -61,6 +53,7 @@ module.exports = class{
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='scouting';
                 Memory.operations[this.id].size=1;
+				Memory.operations[this.id].default_Abody=Array(1).fill(MOVE,0,1);// COST 50
                 Memory.operations[this.id].SpawnList=this.findClosestSpawn(roomName);
                 Memory.operations[this.id].members={};
 
