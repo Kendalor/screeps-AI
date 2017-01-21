@@ -46,43 +46,49 @@ module.exports = class{
 						if(sources.length >0){
 							creep.pickup(sources[0]);
 						}
-                        this.leaveBorder(creep);
+                        creep.leaveBorder();
                         creep.heal(creep);
 					}
 				}
 			}else{ // Flag is not placed on exit zone
-				if(creep.hits == creep.hitsMax){ // creep fully alive?
-					let wounded = creep.room.find(FIND_MY_CREEPS,{filter: (c) => c.hits < c.hitsMax});
-					if (wounded.length){ // found a wounded neighbour to heal?
-						creep.say("aid");
-						var range=creep.pos.getRangeTo(wounded[0]);
-						if(range <= 1){
-						    creep.heal(wounded[0]);
-						}else if(range >=2){
-                            creep.rangedHeal(wounded[0]);
-                            creep.moveTo(wounded[0]);
-						}
-
-					}else{ // try to engage the flag
-						creep.say("Charge!");
-						creep.moveTo(flag);
-						creep.heal(creep);
-					}
-				}else if(creep.hits < creep.hitsMax-1000){ // wounded itself -> heal
-				    if(creep.pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
-                        creep.say("flee");
-                        var home=creep.pos.findClosestByPath(FIND_EXIT);
-                        creep.moveTo(home);
-                        creep.heal(creep);
+			    if(creep.pos.roomName == flag.pos.roomname){
+                    if(creep.hits == creep.hitsMax){ // creep fully alive?
+                        let wounded = creep.room.find(FIND_MY_CREEPS,{filter: (c) => c.hits < c.hitsMax});
+                        if (wounded.length){ // found a wounded neighbour to heal?
+                            creep.say("aid");
+                            var range=creep.pos.getRangeTo(wounded[0]);
+                            if(range <= 1){
+                                creep.heal(wounded[0]);
+                            }else if(range >=2){
+                                creep.rangedHeal(wounded[0]);
+                                creep.moveTo(wounded[0]);
+                            }
+                        }else{ // try to engage the flag
+                            creep.say("Charge!");
+                            creep.moveTo(flag);
+                            creep.heal(creep);
+                        }
+                    }else if(creep.hits < creep.hitsMax-1000){ // wounded itself -> heal
+                        if(creep.pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
+                            creep.say("flee");
+                            var home=creep.pos.findClosestByPath(FIND_EXIT);
+                            creep.moveTo(home);
+                            creep.heal(creep);
+                        }else{
+                            this.leaveBorder(creep);
+                            creep.heal(creep);
+                        }
                     }else{
-                        this.leaveBorder(creep);
+                        creep.say("Charge!");
+                        creep.moveTo(flag);
                         creep.heal(creep);
                     }
-				}else{
+                }else{
                     creep.say("Charge!");
                     creep.moveTo(flag);
                     creep.heal(creep);
-				}
+
+                }
 			}
         }
 
