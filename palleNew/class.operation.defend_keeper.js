@@ -11,12 +11,13 @@ module.exports = class{
                 if(!Memory.operations[id].spawnList){
                     Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
                 }
-                this.invasionHandler(id);
+
                 if(!Memory.operations[id].toDefend){
                     if(Game.ticks % 50){
                         console.log('DEFEND OPERATION '+id+' HAS NOTHING TO DO');
                     }
                 }else{
+                    this.invasionHandler(id);
                     let defendId=Memory.operations[id].toDefend;
                     var keepers=[];
                     var lairs=[];
@@ -140,19 +141,28 @@ module.exports = class{
                         Memory.operations[id].invasionHandler.invasions.push(spawnTime);
                     }else{
                         let length=Memory.operations[id].invasionHandler.invasions.length;
-                        if(Memory.operations[id].invasionHandler.invasions[length-1] != spawnTime){
-                            Memory.operations[id].invasionHandler.invasions.push(spawnTime);
+                        if(Memory.operations[id].invasionHandler.invasions[length-1] != spawnTime && length < 10){
+                            var attackCreeps=[];
+                            var healCreeps=[];
+                            for(var i in enemies){
+                                if(enemies[i].getActiveBodyparts(RANGED_ATTACK)> 0){
+                                 let cr=enemies[i];
+
+
+
+                                 console.log(boosted);
+                                 let boosted=_.filter(cr.body, { function(b) {if(boosted != undefined){return b} }}).length > 0;
+                                 attackCreeps.push({id: cr.id, boost: boosted});
+
+                                }else if(enemies[i].getActiveBodyparts(HEAL)>0){
+                                     let cr=enemies[i];
+                                     let boosted=_.filter(cr.body, { function(b) {if(boosted != undefined){return b} }}).length > 0;
+                                     healCreeps.push({id: cr.id, boost: boosted});
+                                }
+                            }
+                            Memory.operations[id].invasionHandler.invasions.push({time: spawnTime,Acrps: attackCreeps, Hcrps: healCreeps });
                         }
                     }
-
-                    /*Memory.operations[id].invasionHandler.invasions.members=this.creepBuilder(
-                    Memory.operations[id].spawnList,
-                    Memory.operations[id].invasionHandler.invasions.members,
-                    Memory.operations[id].invasionHandler.invasions.size,
-                    Array(30).fill(RANGED_ATTACK,0,10).fill(MOVE,10,25).fill(HEAL,25,30),
-                    {role: 'Hunter', operation: id}
-                    );
-                    //Memory.operations[id].invasionHandler.invasions.members=this.cleanUpCreeps(Memory.operations[id].invasionHandler.invasions.members);*/
                 }else{
                     Memory.operations[defendId].invasion=false;
                 }
