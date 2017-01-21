@@ -51,7 +51,7 @@ module.exports = class{
 					}
 				}
 			}else{ // Flag is not placed on exit zone
-			    if(creep.pos.roomName == flag.pos.roomname){
+			    if(creep.pos.roomName == flag.pos.roomName){
                     if(creep.hits == creep.hitsMax){ // creep fully alive?
                         let wounded = creep.room.find(FIND_MY_CREEPS,{filter: (c) => c.hits < c.hitsMax});
                         if (wounded.length){ // found a wounded neighbour to heal?
@@ -87,7 +87,6 @@ module.exports = class{
                     creep.say("Charge!");
                     creep.moveTo(flag);
                     creep.heal(creep);
-
                 }
 			}
         }
