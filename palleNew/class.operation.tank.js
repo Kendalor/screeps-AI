@@ -64,9 +64,14 @@ module.exports = class{
                                 creep.moveTo(wounded[0]);
                             }
                         }else{ // try to engage the flag
-                            creep.say("Charge!");
                             creep.moveTo(flag);
-                            creep.heal(creep);
+                            // rage
+							let targets = creep.pos.findInRange(FIND_HOSTILE_CREEPS,1).filter((hostile) => hostile.getActiveBodyparts(ATTACK) == 0);
+							if (!targets.length){targets = creep.pos.findInRange(FIND_HOSTILE_STRUCTURES,1);}
+							if (targets.length){
+								creep.say("RAWR!");
+								creep.attack(targets[0]);
+							}
                         }
                     }else if(creep.hits < creep.hitsMax-1000){ // wounded itself -> heal
                         if(creep.pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
