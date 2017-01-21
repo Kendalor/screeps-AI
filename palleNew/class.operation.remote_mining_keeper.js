@@ -11,7 +11,7 @@ module.exports = class{
                 if(Game.rooms[Memory.operations[id].roomName] == undefined){
                     this.scouting(id);
                 }else if(Game.rooms[Memory.operations[id].roomName] != undefined){// IF AVAILABLE
-                    //this.scouting(id);
+                    this.scouting(id);
                     var room=Game.rooms[Memory.operations[id].roomName];
                     if(Memory.operations[id].keeperRoom == undefined){ // CHECK IF KEEPER ROOM
                         Memory.operations[id].keeperRoom=(room.find(FIND_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_KEEPER_LAIR}).length >0);
@@ -394,7 +394,7 @@ module.exports = class{
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
 
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
-            if(enemies.length >0 || Memory.operations[creep.memory.operation_id].invasion){
+            if(enemies.length >0 || creep.room.memory.invasion || Memory.operations[creep.memory.operation_id].invasion){
                 creep.say('Afraid');
                 this.creepEvacuate(creep);
             }else{
@@ -549,7 +549,7 @@ module.exports = class{
         static creepMine(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
-            if(enemies.length >0 || Memory.operations[creep.memory.operation_id].invasion){
+            if(enemies.length >0 || creep.room.memory.invasion || Memory.operations[creep.memory.operation_id].invasion){
                 creep.say('Afraid');
                 this.creepEvacuate(creep);
             }else{
