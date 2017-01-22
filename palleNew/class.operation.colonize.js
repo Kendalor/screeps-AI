@@ -17,7 +17,7 @@ module.exports = class{
 				}else if (Game.flags[Memory.operations[id].flagName].room.controller.energyCapacityAvailable >=1000){
 					spawns[0].room.minerals; // Initialize memory just in case
 					spawns[0].room.sources;
-					for(var cr in Memory.operations[id].members){ 
+					for(let cr in Memory.operations[id].members){ 
 						Game.creeps[cr].memory.role="maintance";
 					}
 					Memory.myRooms[spawns[0].room.name]={}; // Register room in myRooms
@@ -51,7 +51,7 @@ module.exports = class{
 					}
 				}
 				// RUN CREEP JOBS
-				for(var cr in Memory.operations[id].members){
+				for(let cr in Memory.operations[id].members){
 					if(!Game.creeps[cr].spawning && Game.creeps[cr]){
 						
 						if(Game.creeps[cr].pos.roomName != Game.flags[Memory.operations[id].flagName].pos.roomName){
