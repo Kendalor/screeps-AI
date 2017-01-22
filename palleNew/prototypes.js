@@ -1,3 +1,17 @@
+// CACHE REFRESH CONSTANTS
+
+const HOSTILE_CREEP_REFRESH_TIME = 0;
+
+const MY_CREEP_REFRESH_TIME = 5;
+const RESOURCES_REFRESH_TIME = 10;
+
+const CONTRUCTION_SITE_REFRESH_TIME = 10;
+const STRUCTURE_REFRESH_TIME = 50;
+
+const MINERALS_REFRESH_TIME = 10000;
+const SOURCES_REFRESH_TIME = MINERALS_REFRESH_TIME;
+
+
 module.exports = function(){
 
 	/*
@@ -89,7 +103,7 @@ module.exports = function(){
 			*/
 			'constructionSites' : {
 				get: function() {
-					if (this.lastSeen("constructionSites") == Game.time){
+					if (this.lastSeen("constructionSites") == Game.time-CONTRUCTION_SITE_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.constructionSites){
 							let keys = Object.keys(this.memory.constructionSites);
@@ -208,7 +222,7 @@ module.exports = function(){
 			*/
 			'hostileCreeps' : {
 				get: function() {
-					if (this.lastSeen("hostileCreeps") == Game.time){
+					if (this.lastSeen("hostileCreeps") == Game.time-HOSTILE_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.hostileCreeps){
 							for (let id in this.memory.hostileCreeps){
@@ -253,7 +267,7 @@ module.exports = function(){
 			*/
 			'alliedCreeps' : {
 				get: function() {
-					if (this.lastSeen("hostileCreeps") == Game.time){
+					if (this.lastSeen("hostileCreeps") == Game.time-HOSTILE_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.alliedCreeps){
 							for (let id in this.memory.alliedCreeps){
@@ -298,7 +312,7 @@ module.exports = function(){
 			*/
 			'myCreeps' : {
 				get: function() {
-					if (this.lastSeen("myCreeps") == Game.time){
+					if (this.lastSeen("myCreeps") == Game.time-MY_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.myCreeps){
 							for (let id in this.memory.myCreeps){
@@ -343,7 +357,7 @@ module.exports = function(){
 			*/
 			'minerals' : {
 				get: function() {
-					if (this.lastSeen("minerals") == Game.time){
+					if (this.lastSeen("minerals") == Game.time-MINERALS_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.minerals){
 							for (let id in this.memory.minerals){
@@ -388,7 +402,7 @@ module.exports = function(){
 			*/
 			'resources' : {
 				get: function() {
-					if (this.lastSeen("resources") == Game.time){
+					if (this.lastSeen("resources") == Game.time-RESOURCES_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.resources){
 							for (let id in this.memory.resources){
@@ -433,7 +447,7 @@ module.exports = function(){
 			*/
 			'sources' : {
 				get: function() {
-					if (this.lastSeen("sources") == Game.time){
+					if (this.lastSeen("sources") == Game.time-SOURCES_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.sources){
 							for (let id in this.memory.sources){
@@ -483,7 +497,7 @@ module.exports = function(){
 			*/
 			'structures' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
+					if (this.lastSeen("structures") <= Game.time-STRUCTURE_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.structures){
 							for (let key in this.memory.structures){
