@@ -37,13 +37,15 @@ module.exports = {
                     +"\nDefender :"+defenderAmount+" "+this.defenderPreset(spawn));
                 }
 
-                if (spawn.room.storage == undefined && spawn.room.memory.sources) {
-                    maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
-                    upgradeUnits = 1;
-                }else{
-                    upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
-                    maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
-                }
+				if (spawn.room.memory.sources){
+					if (spawn.room.storage == undefined) {
+						maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
+						upgradeUnits = 1;
+					}else{
+						upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
+						maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
+					}
+				}
 
                 //for every type of creep
                 var canSpawnMaxModuleCreep = (0 == spawn.canCreateCreep(Array(Game.rooms[spawn.room.name].energyCapacityAvailable/50).fill(MOVE)));
