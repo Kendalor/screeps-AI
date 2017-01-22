@@ -198,7 +198,6 @@ module.exports = class{
 					}
 				}
 			}
-			console.log(target)
 			if (target && creep.withdraw(target,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
 				creep.moveTo(target);
 				return true;
