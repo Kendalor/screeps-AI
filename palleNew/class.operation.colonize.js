@@ -49,11 +49,9 @@ module.exports = class{
 					if(!Game.creeps[cr].spawning && Game.creeps[cr]){
 						
 						if(Game.creeps[cr].pos.roomName != Game.flags[Memory.operations[id].flagName].pos.roomName){
-							if(Game.time % 25 == 0)
 							this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
 						}else {
-							if(Game.time % 25 == 0)
 							if (Game.creeps[cr].getActiveBodyparts(WORK)>0){
 								this.creepColonize(Game.creeps[cr]);
 							}else{
