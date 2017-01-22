@@ -133,7 +133,7 @@ module.exports = class{
 
             if(Game.rooms[Memory.operations[defendId].roomName]){
                 var room=Game.rooms[Memory.operations[defendId].roomName];
-                var enemies=room.find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner.username == 'Invader'});
+                var enemies=room.find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner.username != 'Source Keeper'});
                 if(!Memory.operations[id].invasionHandler.invasions){
                     Memory.operations[id].invasionHandler.invasions=[];
                 }
@@ -142,7 +142,29 @@ module.exports = class{
                     room.memory.invasion=true;
                     let spawnTime=Game.time-1500+enemies[0].ticksToLive;
                     if(Memory.operations[id].invasionHandler.invasions.length ==0){
-                        Memory.operations[id].invasionHandler.invasions.push(spawnTime);
+                        var attackCreeps=[];
+                        var healCreeps=[];
+                        for(var i in enemies){
+                            if(enemies[i].getActiveBodyparts(RANGED_ATTACK)> 0){
+                             let cr=enemies[i];
+                             var boosted=false;
+                            for(var t in cr.body){
+                                if(cr.body[t].boost != undefined){
+                                    boosted=true;
+                                }
+                            }
+
+                             console.log(JSON.stringify(cr.body));
+                             console.log(boosted);
+                             attackCreeps[10]={id: cr.id, boost: boosted};
+
+                            }else if(enemies[i].getActiveBodyparts(HEAL)>0){
+                                 let cr=enemies[i];
+                                 let boosted=_.filter(cr.body, { function(b) {if(boosted != undefined){return b} }}).length > 0;
+                                 healCreeps.push({id: cr.id, boost: boosted});
+                            }
+                        }
+                        Memory.operations[id].invasionHandler.invasions.push({time: spawnTime,Acrps: attackCreeps, Hcrps: healCreeps });
                     }else{
                         let length=Memory.operations[id].invasionHandler.invasions.length;
                         if(Memory.operations[id].invasionHandler.invasions[length-1] != spawnTime && length <=10){

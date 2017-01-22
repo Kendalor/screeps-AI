@@ -30,7 +30,6 @@ module.exports = class{
                         for(var i in Memory.operations[id].sources){
                             var source=Game.getObjectById(i);
                             var storage=Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId);
-                            var enemies=source.pos.findInRange(FIND_HOSTILE_CREEPS,5);
                             switch (Memory.operations[id].sources[i].status) {
                                 case 'createConstructionSites':
                                     this.buildRoadAndContainer(id,source,storage);
@@ -563,7 +562,7 @@ module.exports = class{
                         creep.moveTo(flag,{reusePath: 5,ignoreCreeps: false});
                     }else if(creep.room.name != pos.roomName){
                         creep.moveTo(flag,{reusePath: 5,ignoreCreeps: false});
-                    }else if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
+                    }else if(creep.harvest(source) == ERR_NOT_IN_RANGE){
                         creep.moveTo(source);
                     }
                 }
