@@ -25,45 +25,17 @@ module.exports = class{
 			}
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
-
-            if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size){
-                //console.log('Spawning');
-                //console.log(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'colonist', operation: id, target: Memory.operations[id].flagName}) == OK);
-                if(Game.spawns['Spawn1'].canCreateCreep(creep_body, undefined, {role: 'colonist', operation: id, target: Memory.operations[id].flagName, targetId: null}) == OK){
-                    var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'colonist', operation_id: id, target: Memory.operations[id].flagName, targetId: null});
-                    Memory.operations[id].members[name]= 'colonist';
-                    console.log('Did spawn creep '+name);
-                }
-
-            }else if(Object.keys(Memory.operations[id].members).length == Memory.operations[id].size && !Memory.operations[id].assembled){
-                Memory.operations[id].assembled = true;
-                console.log('Squad assembled');
+			if(!Memory.operations[id].spawnList){
+				Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
             }
+            Memory.operations[id].members = this.creepBuilder(Memory.operations[id].spawnList,Memory.operations[id].members,Memory.operations[id].size,creep_body,{role: 'colonist', operation_id: id});
             // CHECK IF REACHED OR FLAG POSITION CHANGED
-            var reached=0;
             for(var cr in Memory.operations[id].members){
                 // DELETE NONEXISTING CREEPS FROM OPERATION
                 if(!Game.creeps[cr]) {
                     console.log('Deleted '+cr +'from memory')
                     delete Memory.creeps[cr];
                     delete Memory.operations[id].members[cr];
-                }
-
-
-                if(Memory.operations[id].reached==false && Memory.operations[id].assembled==true){
-                    if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],2)){
-                        reached = reached+1;
-                    }
-                    if(reached == Memory.operations[id].size){
-                        Memory.operations[id].reached=true;
-                    }
-                }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
-                    if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
-                        reached = reached+1;
-                    }
-                    if(reached != Memory.operations[id].size){
-                        Memory.operations[id].reached=false;
-                    }
                 }
             }
             // RUN CREEP JOBS
@@ -117,8 +89,6 @@ module.exports = class{
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='colonize';
                 Memory.operations[this.id].size=1;
-                Memory.operations[this.id].assembled=false;
-                Memory.operations[this.id].reached=false;
                 Memory.operations[this.id].refreshed=false;
                 Memory.operations[this.id].members= {};
                 Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
@@ -314,7 +284,41 @@ module.exports = class{
             }
         }
 
-
+		static findClosestSpawn(targetRoomName,addDistance=0){
+            var min_dist=999;
+            var spawnList=[];
+            for(var i in Memory.myRooms){
+                if(min_dist > Object.keys(Game.map.findRoute(targetRoomName,i)).length){
+                    min_dist=Object.keys(Game.map.findRoute(targetRoomName,i)).length;
+                }
+            }
+            min_dist +=addDistance;
+            for(var j in Game.spawns){
+                let dist=Object.keys(Game.map.findRoute(targetRoomName,Game.spawns[j].pos.roomName)).length;;
+                if(min_dist >= Object.keys(Game.map.findRoute(Game.spawns[j].pos.roomName,targetRoomName)).length){
+                    spawnList.push(j);
+                }
+            }
+            return spawnList;
+        }
+		
+		static creepBuilder(spawnList,memberList,size,body,memory){
+            var out=memberList;
+            if(Object.keys(out).length < size){
+                for(var i in spawnList){
+                    var spawn=Game.spawns[spawnList[i]];
+                    if(spawn.spawning == null){
+                        if(Object.keys(out).length < size){
+                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
+                                var name=spawn.createCreep(body,undefined,memory);
+                                out[name]= {};
+                            }
+                        }
+                    }
+                }
+            }
+            return out;
+        }
 
 
 
