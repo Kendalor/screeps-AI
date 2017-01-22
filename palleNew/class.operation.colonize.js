@@ -6,7 +6,7 @@ module.exports = class{
             //this.checkForInvaders(Game.flags[Memory.operations[id].flagName].room);
 			//Memory.operations[id].size = 3
             if (!Memory.operations[id].spawnBuilt && Game.flags[Memory.operations[id].flagName].room != undefined){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
-				if(Game.flags[Memory.operations[id].flagName].room.controller.my){
+				if(Game.flags[Memory.operations[id].flagName].room.controller.my && !Memory.operations[id].spawn){
 					Memory.operations[id].spawn = true; 
 					Game.flags[Memory.operations[id].flagName].room.createConstructionSite(Game.flags[Memory.operations[id].flagName].pos.x,Game.flags[Memory.operations[id].flagName].pos.y,STRUCTURE_SPAWN); 
 				}
@@ -14,17 +14,19 @@ module.exports = class{
 					let spawns = Game.flags[Memory.operations[id].flagName].room.spawns;
 					if (spawns.length){
 						Memory.operations[id].spawnBuilt = true;
+						spawns[0].room.minerals;
+						spawns[0].room.sources;
 						Memory.myRooms[spawns[0].room.name]={};
 					}
 				}
             }
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt){
-				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
 				Memory.operations[id].size = 3
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
 				Memory.operations[id].size = 6
-				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
+				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
             }else{
 				Memory.operations[id].size = 1
 				creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
