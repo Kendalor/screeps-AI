@@ -152,8 +152,13 @@ module.exports = class{
 				if(constructions.length > 0){
 					creep.memory.targetId = creep.pos.findClosestByRange(constructions).id;
 				}else{
-					Game.flags[Memory.operations[creep.memory.operation_id].flagName].remove();
-					creep.suicide();
+					if (Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.roomName != Memory.operations[creep.memory.operation_id].roomName){
+						let pos = new RoomPosition(1, 1, Memory.operations[creep.memory.operation_id].roomName);
+						Game.flags[Memory.operations[creep.memory.operation_id].flagName].setPosition(pos);
+					}else{
+						creep.memory.role="maintance";
+						Game.flags[Memory.operations[creep.memory.operation_id].flagName].remove();
+					}
 				}
 			}else{
 				var target = Game.getObjectById(creep.memory.targetId);
