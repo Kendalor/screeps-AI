@@ -182,7 +182,7 @@ module.exports = class{
 			let target;
 			if (creep.memory.targetId){
 				target = Game.getObjectById(creep.memory.targetId);
-				if (target.progress || target.store[RESOURCE_ENERGY] < creep.carryCapacity){
+				if (!target || target.progress || target.store[RESOURCE_ENERGY] < creep.carryCapacity){
 					target = null;
 					delete creep.memory.targetId;
 				}
