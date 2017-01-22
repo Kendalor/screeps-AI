@@ -30,7 +30,6 @@ module.exports = class{
                         for(var i in Memory.operations[id].sources){
                             var source=Game.getObjectById(i);
                             var storage=Game.getObjectById(Memory.operations[id].sources[source.id].nearest_storageId);
-                            var enemies=source.pos.findInRange(FIND_HOSTILE_CREEPS,5);
                             switch (Memory.operations[id].sources[i].status) {
                                 case 'createConstructionSites':
                                     this.buildRoadAndContainer(id,source,storage);
@@ -266,8 +265,6 @@ module.exports = class{
                   room.find(FIND_STRUCTURES).forEach(function(structure) {
                     if(structure.structureType == STRUCTURE_ROAD)  {
                         costs.set(structure.pos.x, structure.pos.y, 2);
-                    }else if(structure.structureType == STRUCTURE_CONTAINER) {
-                        costs.set(structure.pos.x, structure.pos.y,2);
                     }else if(structure.structureType == STRUCTURE_RAMPART) {
                         costs.set(structure.pos.x, structure.pos.y,2);
                     }else{
@@ -278,8 +275,6 @@ module.exports = class{
                   room.find(FIND_CONSTRUCTION_SITES).forEach(function(constr) {
                     if(constr.structureType == STRUCTURE_ROAD)  {
                         costs.set(constr.pos.x, constr.pos.y, 2);
-                    }else if(constr.structureType == STRUCTURE_CONTAINER) {
-                        costs.set(constr.pos.x, constr.pos.y,2);
                     }else if(constr.structureType == STRUCTURE_RAMPART) {
                         costs.set(constr.pos.x, constr.pos.y,2);
                     }else{
@@ -398,7 +393,7 @@ module.exports = class{
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
 
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
-            if(enemies.length >0 || Memory.operations[creep.memory.operation_id].invasion){
+            if(enemies.length >0 || creep.room.memory.invasion || Memory.operations[creep.memory.operation_id].invasion){
                 creep.say('Afraid');
                 this.creepEvacuate(creep);
             }else{
@@ -460,11 +455,11 @@ module.exports = class{
                                             return this.creepHaul(creep);
                                         }
                                     }
-                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: false});
                                 }else{
                                     var err = creep.withdraw(target,RESOURCE_ENERGY);
                                     if(err == ERR_NOT_IN_RANGE) {
-                                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: false});
                                     }else if (err == ERR_FULL){
                                         creep.memory.targetId = null;
                                         return this.creepHaul(creep);
@@ -474,7 +469,26 @@ module.exports = class{
                                 creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                             }
                             else{
-                                creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                var salvage = creep.pos.findInRange(FIND_DROPPED_ENERGY,1); // SALVAGE AVAILABLE?
+                                if (salvage.length > 0){
+                                    creep.say('salvage');
+                                    for(var t in salvage){
+                                        var err = creep.pickup(salvage[t]);
+                                        if (err == ERR_FULL){
+                                            creep.memory.targetId = null;
+                                            return this.creepHaul(creep);
+                                        }
+                                    }
+                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: false});
+                                }else{
+                                    var err = creep.withdraw(target,RESOURCE_ENERGY);
+                                    if(err == ERR_NOT_IN_RANGE) {
+                                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: false});
+                                    }else if (err == ERR_FULL){
+                                        creep.memory.targetId = null;
+                                        return this.creepHaul(creep);
+                                    }
+                                }
                             }
                         }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
                             var roadConstructions = creep.pos.lookFor(LOOK_CONSTRUCTION_SITES).filter((struct) => struct.structureType == STRUCTURE_ROAD);
@@ -487,7 +501,7 @@ module.exports = class{
                                 if (creep.room.name == target.room.name){
                                         creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                                 }else{
-                                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: false});
                                 }
                             }else{
                                 var err = creep.transfer(target, RESOURCE_ENERGY);
@@ -495,7 +509,7 @@ module.exports = class{
                                     if (creep.room.name == target.room.name){
                                         creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
                                     }else{
-                                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                        creep.moveTo(target,{reusePath: 30,ignoreCreeps: false});
                                     }
                                 }else if (err == ERR_NOT_ENOUGH_ENERGY){
                                     creep.memory.targetId = null;
@@ -534,7 +548,7 @@ module.exports = class{
         static creepMine(creep){
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
             var enemies=pos.findInRange(FIND_HOSTILE_CREEPS,5);
-            if(enemies.length >0 || Memory.operations[creep.memory.operation_id].invasion){
+            if(enemies.length >0 || creep.room.memory.invasion || Memory.operations[creep.memory.operation_id].invasion){
                 creep.say('Afraid');
                 this.creepEvacuate(creep);
             }else{
@@ -547,8 +561,8 @@ module.exports = class{
                     if (creep.room.storage != undefined){
                         creep.moveTo(flag,{reusePath: 5,ignoreCreeps: false});
                     }else if(creep.room.name != pos.roomName){
-                        creep.moveTo(flag,{reusePath: 30,ignoreCreeps: true});
-                    }else if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
+                        creep.moveTo(flag,{reusePath: 5,ignoreCreeps: false});
+                    }else if(creep.harvest(source) == ERR_NOT_IN_RANGE){
                         creep.moveTo(source);
                     }
                 }
