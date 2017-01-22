@@ -153,10 +153,9 @@ module.exports = class{
                                     boosted=true;
                                 }
                             }
-
                              console.log(JSON.stringify(cr.body));
                              console.log(boosted);
-                             attackCreeps[10]={id: cr.id, boost: boosted};
+                             attackCreeps.push({id: cr.id, boost: boosted});
 
                             }else if(enemies[i].getActiveBodyparts(HEAL)>0){
                                  let cr=enemies[i];
@@ -164,10 +163,11 @@ module.exports = class{
                                  healCreeps.push({id: cr.id, boost: boosted});
                             }
                         }
+                        Memory.operations[id].invasionHandler.size=attackCreeps.length;
                         Memory.operations[id].invasionHandler.invasions.push({time: spawnTime,Acrps: attackCreeps, Hcrps: healCreeps });
                     }else{
                         let length=Memory.operations[id].invasionHandler.invasions.length;
-                        if(Memory.operations[id].invasionHandler.invasions[length-1] != spawnTime && length <=10){
+                        if(Memory.operations[id].invasionHandler.invasions[length-1].time != spawnTime && length < 10){
                             var attackCreeps=[];
                             var healCreeps=[];
                             for(var i in enemies){
@@ -182,7 +182,7 @@ module.exports = class{
 
                                  console.log(JSON.stringify(cr.body));
                                  console.log(boosted);
-                                 attackCreeps[10]={id: cr.id, boost: boosted};
+                                 attackCreeps.push({id: cr.id, boost: boosted});
 
                                 }else if(enemies[i].getActiveBodyparts(HEAL)>0){
                                      let cr=enemies[i];
@@ -190,12 +190,83 @@ module.exports = class{
                                      healCreeps.push({id: cr.id, boost: boosted});
                                 }
                             }
+                            Memory.operations[id].invasionHandler.size=attackCreeps.length;
                             Memory.operations[id].invasionHandler.invasions.push({time: spawnTime,Acrps: attackCreeps, Hcrps: healCreeps });
+                        }else if(length == 10){
+                            delete Memory.operations[id].invasionHandler.invasions;
+                            Memory.operations[id].invasionHandler.invasions=[];
                         }
                     }
+                    let body=Array(50).fill(TOUGH,0,4).fill(ATTACK,4,5).fill(RANGED_ATTACK,5,10).fill(MOVE,10,30).fill(HEAL,30,40);
+                    Memory.operations[id].invasionHandler.members=this.creepBuilder(
+                        Memory.operations[id].spawnList,
+                        Memory.operations[id].invasionHandler.members,
+                        Memory.operations[id].invasionHandler.size,
+                        body,
+                        {role: 'Hunter',operationId: id});
+                    Memory.operations[id].invasionHandler.members=this.cleanUpCreeps(Memory.operations[id].invasionHandler.members);
+                    for(var i in Memory.operations[id].invasionHandler.members){
+                        var creep=Game.creeps[i];
+                        if(!creep.spawning){
+                            this.invasionBehaviour(creep,id);
+                        }
+                    }
+
+
+
                 }else{
                     Memory.operations[defendId].invasion=false;
                     room.memory.invasion=false;
+                    Memory.operations[id].invasionHandler.invasions.size=0;
+                }
+            }
+        }
+
+        static invasionBehaviour(creep,id,defendId){
+            if(creep.room != Memory.operations[defendId].roomName){
+                let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
+                creep.moveTo(pos);
+            }else{
+                if(creep.memory.targetId){
+                    var target=Game.getObjectById(creep.memory.targetId);
+                    if(target){
+                        var range=creep.pos.getRangeTo(target);
+                        if(creep.hits <= creep.hitsMax-300){
+                            creep.heal(creep);
+                            creep.moveTo(target);
+                        }else{
+                            if(range <= 1){
+                                if(creep.pos.findInRange(FIND_HOSTILE_CREEPS,3).length >=1){
+                                    creep.rangedMassAttack(target);
+                                    creep.moveTo(target);
+                                }else{
+                                    creep.rangedAttack(target);
+                                    creep.moveTo(target);
+                                }
+                            }else if(range <= 2){
+                                if(creep.pos.findInRange(FIND_HOSTILE_CREEPS,3).length >=3){
+                                    creep.rangedMassAttack(target);
+                                    creep.moveTo(target);
+                                }else{
+                                    creep.rangedAttack(target);
+                                    creep.moveTo(target);
+                                }
+                            }else if(range <= 3){
+                                creep.rangedAttack(target);
+                                creep.moveTo(target);
+                            }else{
+                                creep.moveTo(target);
+                                creep.heal(creep);
+                            }
+                        }
+                    }else{
+                        delete creep.memory.targetId;
+                        this.invasionBehaviour(creep,id,defendId);
+                    }
+                }else{
+                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS,{filter: creep.owner != 'Source_Keeper'});
+                    creep.memory.targetId=creep.pos.findClosestByRange(enemies).id;
+                    this.invasionBehaviour(creep,id,defendId);
                 }
             }
         }
