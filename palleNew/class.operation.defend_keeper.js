@@ -200,7 +200,6 @@ module.exports = class{
                     }
 
                     let body=Array(40).fill(TOUGH,0,4).fill(ATTACK,4,5).fill(RANGED_ATTACK,5,10).fill(MOVE,10,30).fill(HEAL,30,40);
-                    console.log('BUilding creeps ?')
                     Memory.operations[id].invasionHandler.members=this.creepBuilder(
                         Memory.operations[id].spawnList,
                         Memory.operations[id].invasionHandler.members,
@@ -211,7 +210,7 @@ module.exports = class{
                     for(var i in Memory.operations[id].invasionHandler.members){
                         var creep=Game.creeps[i];
                         if(!creep.spawning){
-                            this.invasionBehaviour(creep,id);
+                            this.invasionBehaviour(creep,id,defendId);
                         }
                     }
 
