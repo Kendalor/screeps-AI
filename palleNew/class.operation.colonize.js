@@ -20,11 +20,11 @@ module.exports = class{
             }
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt){
-				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				Memory.operations[id].size = 3
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
+				Memory.operations[id].size = 6
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
 				Memory.operations[id].size = 6
-				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
             }else{
 				Memory.operations[id].size = 1
 				creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
@@ -50,12 +50,10 @@ module.exports = class{
 						
 						if(Game.creeps[cr].pos.roomName != Game.flags[Memory.operations[id].flagName].pos.roomName){
 							if(Game.time % 25 == 0)
-							  console.log('Running Travel for '+cr);
 							this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
 						}else {
 							if(Game.time % 25 == 0)
-							  console.log('Running Colonization for '+cr);
 							if (Game.creeps[cr].getActiveBodyparts(WORK)>0){
 								this.creepColonize(Game.creeps[cr]);
 							}else{
