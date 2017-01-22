@@ -7,6 +7,10 @@ module.exports = function(){
 	if (!Memory.globals){
 		Memory.globals = {};
 	}
+	
+	/*
+	* Add friends to memory
+	*/
 	if (!Memory.globals.friend){
 		Memory.globals.friend = {};
 	}
