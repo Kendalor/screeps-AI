@@ -56,20 +56,20 @@ module.exports = class{
 						
 						if(Game.creeps[cr].pos.roomName != Game.flags[Memory.operations[id].flagName].pos.roomName && Game.creeps[cr].carry.energy == Game.creeps[cr].carryCapacity){
 							if(Game.time % 5 == 0)
-							  console.log('Running Travel for '+cr);
+							  Game.creeps[cr].say("travel");
 							this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 						}else if (Game.creeps[cr].pos.roomName != Memory.operations[id].storageRoomName && Game.creeps[cr].carry.energy == 0){
 							if(Game.time % 5 == 0)
-							  console.log('Running Travel for '+cr);
+							  Game.creeps[cr].say("travel");
 							this.creepTravel(Game.creeps[cr],Game.rooms[Memory.operations[id].storageRoomName].storage);
 						}else if (Game.creeps[cr].pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName && Game.creeps[cr].carry.energy > 0){
 							if(Game.time % 5 == 0)
-							  console.log('Running Build for '+cr);
+							  Game.creeps[cr].say("build");
 							this.leaveBorder(Game.creeps[cr]);
 							this.creepBuild(Game.creeps[cr]);
 						}else{
 							if(Game.time % 5 == 0)
-							  console.log('Running Gather for '+cr);
+							  Game.creeps[cr].say("gather");
 							this.creepGather(Game.creeps[cr]);
 						}
 					}
@@ -173,10 +173,10 @@ module.exports = class{
 		static creepBuild(creep) {
 			if (!creep.memory.targetId){
 				var constructions = [];
-				if(constructions.length == 0 && creep.room.controller.level >= 2) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION });}
+				if(constructions.length == 0 && creep.room.controller && creep.room.controller.level >= 2) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION });}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_STORAGE});}
-				if(constructions.length == 0 & creep.room.controller.level >= 3) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_TOWER});}
+				if(constructions.length == 0 && creep.room.controller && creep.room.controller.level >= 3) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_TOWER});}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_WALL});}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES);}
