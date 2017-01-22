@@ -9,21 +9,25 @@ module.exports = class{
 				if(Game.flags[Memory.operations[id].flagName].room.controller.my && !Memory.operations[id].spawn){
 					Memory.operations[id].spawn = true; 
 					Game.flags[Memory.operations[id].flagName].room.createConstructionSite(Game.flags[Memory.operations[id].flagName].pos.x,Game.flags[Memory.operations[id].flagName].pos.y,STRUCTURE_SPAWN); 
-				}
-				if(!Memory.operations[id].spawnBuilt) {
+				}else if(!Memory.operations[id].spawnBuilt) {
 					let spawns = Game.flags[Memory.operations[id].flagName].room.spawns;
 					if (spawns.length){
 						Memory.operations[id].spawnBuilt = true;
-						spawns[0].room.minerals; // Initialize memory just in case
-						spawns[0].room.sources;
-						Memory.myRooms[spawns[0].room.name]={};
 					}
+				}else if (Game.flags[Memory.operations[id].flagName].room.controller.energyCapacityAvailable >=1000){
+					spawns[0].room.minerals; // Initialize memory just in case
+					spawns[0].room.sources;
+					for(var cr in Memory.operations[id].members){ 
+						Game.creeps[cr].memory.role="maintance";
+					}
+					Memory.myRooms[spawns[0].room.name]={}; // Register room in myRooms
+					Game.flags[Memory.operations[id].flagName].remove(); // quit the job
 				}
             }
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt){
 				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				Memory.operations[id].size = 3
+				Memory.operations[id].size = 4
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
 				Memory.operations[id].size = 6
 				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
