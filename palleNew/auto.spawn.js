@@ -37,7 +37,7 @@ module.exports = {
                     +"\nDefender :"+defenderAmount+" "+this.defenderPreset(spawn));
                 }
 
-                if (spawn.room.storage == undefined) {
+                if (spawn.room.storage == undefined && spawn.room.memory.sources) {
                     maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
                     upgradeUnits = 1;
                 }else{
