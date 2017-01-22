@@ -14,7 +14,7 @@ module.exports = class{
 					let spawns = Game.flags[Memory.operations[id].flagName].room.spawns;
 					if (spawns.length){
 						Memory.operations[id].spawnBuilt = true;
-						spawns[0].room.minerals;
+						spawns[0].room.minerals; // Initialize memory just in case
 						spawns[0].room.sources;
 						Memory.myRooms[spawns[0].room.name]={};
 					}
