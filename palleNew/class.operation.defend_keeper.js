@@ -166,8 +166,9 @@ module.exports = class{
                         Memory.operations[id].invasionHandler.size=attackCreeps.length;
                         Memory.operations[id].invasionHandler.invasions.push({time: spawnTime,Acrps: attackCreeps, Hcrps: healCreeps });
                     }else{
+
                         let length=Memory.operations[id].invasionHandler.invasions.length;
-                        if(Memory.operations[id].invasionHandler.invasions[length-1].time != spawnTime && length < 10){
+                        if(Memory.operations[id].invasionHandler.invasions[length-1].time != spawnTime && length <= 10){
                             var attackCreeps=[];
                             var healCreeps=[];
                             for(var i in enemies){
@@ -192,11 +193,12 @@ module.exports = class{
                             }
                             Memory.operations[id].invasionHandler.size=attackCreeps.length;
                             Memory.operations[id].invasionHandler.invasions.push({time: spawnTime,Acrps: attackCreeps, Hcrps: healCreeps });
-                        }else if(length == 10){
+                        }else if(length >= 10){
                             delete Memory.operations[id].invasionHandler.invasions;
                             Memory.operations[id].invasionHandler.invasions=[];
                         }
                     }
+
                     let body=Array(50).fill(TOUGH,0,4).fill(ATTACK,4,5).fill(RANGED_ATTACK,5,10).fill(MOVE,10,30).fill(HEAL,30,40);
                     Memory.operations[id].invasionHandler.members=this.creepBuilder(
                         Memory.operations[id].spawnList,
@@ -217,7 +219,7 @@ module.exports = class{
                 }else{
                     Memory.operations[defendId].invasion=false;
                     room.memory.invasion=false;
-                    Memory.operations[id].invasionHandler.invasions.size=0;
+                    Memory.operations[id].invasionHandler.size=0;
                 }
             }
         }
