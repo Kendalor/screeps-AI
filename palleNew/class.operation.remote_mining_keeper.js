@@ -256,37 +256,40 @@ module.exports = class{
         static buildRoadAndContainer(id,source,storage){
             var done=true;
 
+            if(!Memory.operations[id].sources[source.id].path){
+                var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCost: 4, swampCost: 4,
+                      roomCallback: function(roomName) {
+                      let room = Game.rooms[roomName];
+                      if(!room) return;
+                      let costs = new PathFinder.CostMatrix;
+                      room.find(FIND_STRUCTURES).forEach(function(structure) {
+                        if(structure.structureType == STRUCTURE_ROAD)  {
+                            costs.set(structure.pos.x, structure.pos.y, 2);
+                        }else if(structure.structureType == STRUCTURE_RAMPART) {
+                            costs.set(structure.pos.x, structure.pos.y,2);
+                        }else{
+                            costs.set(structure.pos.x, structure.pos.y,0xff);
+                        }
+                      });
 
-            var path=PathFinder.search(source.pos,{pos: storage.pos, range: 1},{plainCost: 4, swampCost: 4,
-                  roomCallback: function(roomName) {
-                  let room = Game.rooms[roomName];
-                  if(!room) return;
-                  let costs = new PathFinder.CostMatrix;
-                  room.find(FIND_STRUCTURES).forEach(function(structure) {
-                    if(structure.structureType == STRUCTURE_ROAD)  {
-                        costs.set(structure.pos.x, structure.pos.y, 2);
-                    }else if(structure.structureType == STRUCTURE_RAMPART) {
-                        costs.set(structure.pos.x, structure.pos.y,2);
-                    }else{
-                        costs.set(structure.pos.x, structure.pos.y,0xff);
-                    }
-                  });
+                      room.find(FIND_CONSTRUCTION_SITES).forEach(function(constr) {
+                        if(constr.structureType == STRUCTURE_ROAD)  {
+                            costs.set(constr.pos.x, constr.pos.y, 2);
+                        }else if(constr.structureType == STRUCTURE_RAMPART) {
+                            costs.set(constr.pos.x, constr.pos.y,2);
+                        }else{
+                            costs.set(constr.pos.x, constr.pos.y,0xff);
+                        }
+                      });
 
-                  room.find(FIND_CONSTRUCTION_SITES).forEach(function(constr) {
-                    if(constr.structureType == STRUCTURE_ROAD)  {
-                        costs.set(constr.pos.x, constr.pos.y, 2);
-                    }else if(constr.structureType == STRUCTURE_RAMPART) {
-                        costs.set(constr.pos.x, constr.pos.y,2);
-                    }else{
-                        costs.set(constr.pos.x, constr.pos.y,0xff);
-                    }
-                  });
+                      return costs;
 
-                  return costs;
+                      }}).path;
 
-                  }}).path;
-
-                Memory.operations[id].sources[source.id].path=path;
+                    Memory.operations[id].sources[source.id].path=path;
+            }else{
+                var path=Memory.operations[id].sources[source.id].path;
+            }
 
 
                  for(var i in path){

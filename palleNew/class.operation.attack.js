@@ -1,4 +1,4 @@
-var WHITELIST = {'Cade' : false,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
+var WHITELIST = {'Cade' : undefined,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
 module.exports = class{
         
