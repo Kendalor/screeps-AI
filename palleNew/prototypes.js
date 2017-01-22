@@ -303,7 +303,7 @@ module.exports = function(){
 						if (this.memory && this.memory.myCreeps){
 							for (let id in this.memory.myCreeps){
 								let obj = Game.getObjectById(id);
-								if (obj && Creep.prototype.isPrototypeOf(obj)){
+								if (obj && obj.room.name == this.name && Creep.prototype.isPrototypeOf(obj) ){
 									objectArray.push(obj);
 								}else{
 									delete this.memory.myCreeps[id];
