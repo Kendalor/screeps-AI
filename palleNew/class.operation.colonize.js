@@ -10,54 +10,60 @@ module.exports = class{
 					Memory.operations[id].spawn = true; 
 					Game.flags[Memory.operations[id].flagName].room.createConstructionSite(Game.flags[Memory.operations[id].flagName].pos.x,Game.flags[Memory.operations[id].flagName].pos.y,STRUCTURE_SPAWN); 
 				}
-				if(!Memory.operations[id].spawnBuilt) Memory.operations[id].spawnBuilt = Game.flags[Memory.operations[id].flagName].room.find(FIND_MY_SPAWNS).length > 0;
+				if(!Memory.operations[id].spawnBuilt) {
+					let spawns = Game.flags[Memory.operations[id].flagName].room.spawns;
+					if (spawns.length){
+						Memory.operations[id].spawnBuilt = true;
+						Memory.myRooms[spawns[0].room.name]={};
+					}
+				}
             }
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt){
 				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				Memory.operations[id].size = 2
+				Memory.operations[id].size = 3
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
-				Memory.operations[id].size = 4
+				Memory.operations[id].size = 6
 				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
             }else{
 				Memory.operations[id].size = 1
 				creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
 			}
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-            // BUILD CREEPS UNTIL SQUAD SIZE REACHED
-			if(!Memory.operations[id].spawnList){
-				Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
-            }
-            Memory.operations[id].members = this.creepBuilder(Memory.operations[id].spawnList,Memory.operations[id].members,Memory.operations[id].size,creep_body,{role: 'colonist', operation_id: id});
-            // CHECK IF REACHED OR FLAG POSITION CHANGED
-            for(var cr in Memory.operations[id].members){
-                // DELETE NONEXISTING CREEPS FROM OPERATION
-                if(!Game.creeps[cr]) {
-                    console.log('Deleted '+cr +'from memory')
-                    delete Memory.creeps[cr];
-                    delete Memory.operations[id].members[cr];
-                }
-            }
-            // RUN CREEP JOBS
-            for(var cr in Memory.operations[id].members){
-                if(!Game.creeps[cr].spawning && Game.creeps[cr]){
-                    
-                    if(Game.creeps[cr].pos.roomName != Game.flags[Memory.operations[id].flagName].pos.roomName){
-                        if(Game.time % 25 == 0)
-                          console.log('Running Travel for '+cr);
-                        this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
+				// BUILD CREEPS UNTIL SQUAD SIZE REACHED
+				if(!Memory.operations[id].spawnList){
+					Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
+				}
+				Memory.operations[id].members = this.creepBuilder(Memory.operations[id].spawnList,Memory.operations[id].members,Memory.operations[id].size,creep_body,{role: 'colonist', operation_id: id});
+				// CHECK IF REACHED OR FLAG POSITION CHANGED
+				for(var cr in Memory.operations[id].members){
+					// DELETE NONEXISTING CREEPS FROM OPERATION
+					if(!Game.creeps[cr]) {
+						console.log('Deleted '+cr +'from memory')
+						delete Memory.creeps[cr];
+						delete Memory.operations[id].members[cr];
+					}
+				}
+				// RUN CREEP JOBS
+				for(var cr in Memory.operations[id].members){
+					if(!Game.creeps[cr].spawning && Game.creeps[cr]){
+						
+						if(Game.creeps[cr].pos.roomName != Game.flags[Memory.operations[id].flagName].pos.roomName){
+							if(Game.time % 25 == 0)
+							  console.log('Running Travel for '+cr);
+							this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
-                    }else {
-                        if(Game.time % 25 == 0)
-                          console.log('Running Colonization for '+cr);
-                        this.creepColonize(Game.creeps[cr]);
-                    }
-                }
-            }
-
-
-
-
+						}else {
+							if(Game.time % 25 == 0)
+							  console.log('Running Colonization for '+cr);
+							if (Game.creeps[cr].getActiveBodyparts(WORK)>0){
+								this.creepColonize(Game.creeps[cr]);
+							}else{
+								
+							}
+						}
+					}
+				}
             }
         }
 
@@ -140,7 +146,6 @@ module.exports = class{
         static creepColonize(creep){
           // CLAIM IF NOT MY CONTROLLER
           creep.say('colonize');
-          console.log(!creep.room.controller.my);
           if (!creep.room.controller.my){
             console.log(creep.claimController(creep.room.controller));
             if(creep.claimController(creep.room.controller) == ERR_NOT_IN_RANGE){
