@@ -3,7 +3,7 @@ var constants = require('var.const');
 var creepRole = constants.creepRole();
 var maintanceUnits = 1;
 var upgradeUnits = 1;
-
+var nonMinerRoles=['maintance','upgrader','defender','supplier'];
 
 module.exports = {
 	/** @param {StructureSpawn} Spawn **/
@@ -16,7 +16,7 @@ module.exports = {
                 if(!room.memory.roomManagement){
                     room.memory.roomManagement={};
                     room.memory.roomManagement.roles={};
-                    for(var i in creepRole){
+                    for(var i in nonMinerRoles){
                         room.memory.roomManagement.roles[creepRole[i].name]={};
                         room.memory.roomManagement.roles[creepRole[i].name].members={};
                         room.memory.roomManagement.roles[creepRole[i].name].size=0;
@@ -24,22 +24,12 @@ module.exports = {
                 }
 
 
-                // SET MAX COUNTER LOGIC HERE
-				if (room.memory.sources){
-					if (room.storage == undefined) {
-						room.memory.roomManagement.roles['maintance'] = 3*Object.keys(spawn.room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
-						room.memory.roomManagement.roles['upgrader'] = 1;
-					}else{
-						room.memory.roomManagement.roles['upgrader'] = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
-						room.memory.roomManagement.roles['maintance'] = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
-					}
-				}
 				// DEFENDER
 				if(spawn.room.memory.underAttack){
 				    room.memory.roomManagement.roles['defender']=1;
 				}
-				//MINER
-				room.memory.roomManagement.roles['miner']=Object.keys(room.sources).length;
+
+
 				//MAINTANCE
 				if(Object.keys(room.memory.roomManagement.roles['miner'].members).length == 2){
 				    if (room.storage == undefined) {
@@ -56,10 +46,15 @@ module.exports = {
 				    room.memory.roomManagement.roles['upgrader'] = Math.min(Math.max(parseInt(room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
 				}
 
-				//HAULER
-				if(Object.keys(room.memory.roomManagement.roles['miner'].members).length >= Object.keys(room.memory.roomManagement.roles['hauler'].members).length && Object.keys(room.memory.roomManagement.roles['miner'].members).length <= Object.keys(room.memory.sources)){
-
+				//Supplier
+				if(spawn.room.storage.store.energy > 1000){
+                    room.memory.roomManagement.roles['supplier'].size=1;
 				}
+
+
+				//HAULER UND MINER  -> WILL LATER BE SEPARATED MORE
+
+
 
 
                 for(var t in room.memory.roomManagement.roles){ //&& Game.rooms[spawn.room.name].energyAvailable
