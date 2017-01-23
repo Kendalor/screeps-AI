@@ -135,6 +135,46 @@ module.exports = function(){
 			},
 			
 			/** 
+			* Clears room constructionSites
+			*/
+			'clearConstructionSites' : {
+				get: function() {
+					let constructionSites;
+					if (!this.lastSeen("constructionSites") == Game.time-CONTRUCTION_SITE_REFRESH_TIME){
+						constructionSites = this.findConstructionSites();
+					}else{
+						constructionSites = this.memory.constructionSites;
+					}
+					let objectArray = [];
+					if (this.memory && constructionSites){
+						let keys = Object.keys(this.memory.constructionSites);
+						for (let i in keys){
+							if (Object.keys(this.memory.constructionSites[keys[i]]).length > 0){
+								for (let id in this.memory.constructionSites[keys[i]]){
+									let obj = Game.getObjectById(id);
+									if (obj && ConstructionSite.prototype.isPrototypeOf(obj)){
+										objectArray.push(obj);
+										obj.remove();
+										delete this.memory.constructionSites[keys[i]][id];
+									}else{
+										delete this.memory.constructionSites[keys[i]][id];
+									}
+								}
+							}else{
+								delete this.memory.constructionSites[keys[i]];
+							}
+						}
+						if (keys.length == 0){
+							delete this.memory.constructionSites;
+						}
+					}
+					return objectArray.length;
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** 
 			* Returns array of the constructionSites of given structureType whose ids are saved in room memory
 			* @param {String} structureType
 			* @return {[constructionSite]} objectArray
