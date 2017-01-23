@@ -59,7 +59,8 @@ module.exports = class{
                 Memory.operations[this.id].hauler_body=[CARRY,CARRY,MOVE,CARRY,CARRY,MOVE,CARRY,CARRY,MOVE];
 
                 for(var i in Game.rooms){
-                    if(Game.rooms[i].terminal != undefined && Game.rooms[i].terminal != undefined && i != Memory.operations[this.id].targetRoom){
+                    if(Game.rooms[i].terminal != undefined && Game.rooms[i].terminal != undefined && i != Memory.operations[this.id].targetRoom 
+					&& Game.map.getRoomLinearDistance(Memory.operations[id].targetRoom,i, true)<=4){
                         if(i == Memory.operations[this.id].targetRoom){
                             Memory.operations[this.id].rooms[i]={};
                             Memory.operations[this.id].rooms[i].type='focus'
