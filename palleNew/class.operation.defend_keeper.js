@@ -231,33 +231,24 @@ module.exports = class{
                     var target=Game.getObjectById(creep.memory.targetId);
                     if(target){
                         var range=creep.pos.getRangeTo(target);
-                        if(creep.hits <= creep.hitsMax-300){
-                            creep.heal(creep);
-                            creep.moveTo(target);
-                            creep.rangedMassAttack(target);
-                        }else{
-                            if(range <= 1){
-                                if(creep.pos.findInRange(FIND_HOSTILE_CREEPS,3).length >=1){
-                                    creep.rangedMassAttack(target);
-                                    creep.moveTo(target);
-                                }else{
-                                    creep.rangedAttack(target);
-                                    creep.moveTo(target);
-                                }
-                            }else if(range <= 2){
-                                if(creep.pos.findInRange(FIND_HOSTILE_CREEPS,3).length >=3){
-                                    creep.rangedMassAttack(target);
-                                    creep.moveTo(target);
-                                }else{
-                                    creep.rangedAttack(target);
-                                    creep.moveTo(target);
-                                }
-                            }else if(range <= 3){
-                                creep.rangedAttack(target);
+                        if(range <= 3){
+                            if(creep.pos.findInRange(FIND_HOSTILE_CREEPS,3).length >1){
+                                creep.rangedMassAttack(target);
+                                creep.heal(creep);
                                 creep.moveTo(target);
                             }else{
+                                creep.rangedAttack(target);
                                 creep.moveTo(target);
+                            }
+                        }else{
+                            if(creep.pos.findInRange(FIND_HOSTILE_CREEPS,3).length >1){
+                                creep.rangedMassAttack(target);
                                 creep.heal(creep);
+                                creep.moveTo(target);
+                            }else{
+                                creep.rangedAttack(target);
+                                creep.heal(creep);
+                                creep.moveTo(target);
                             }
                         }
                     }else{
