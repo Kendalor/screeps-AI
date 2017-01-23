@@ -27,14 +27,14 @@ module.exports = class{
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt){
 				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				Memory.operations[id].size = 6
+				Memory.operations[id].size = 8
 				if (Game.rooms[Memory.operations[id].roomName].hostileCreeps.filter((hostile) =>
 						hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
 					).length){
 					Game.rooms[Memory.operations[id].roomName].controller.activateSafeMode();
 				}
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
-				Memory.operations[id].size = 6
+				Memory.operations[id].size = 8
 				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
             }else{
 				Memory.operations[id].size = 1
@@ -50,9 +50,17 @@ module.exports = class{
 				for(var cr in Memory.operations[id].members){
 					// DELETE NONEXISTING CREEPS FROM OPERATION
 					if(!Game.creeps[cr]) {
-						console.log('Deleted '+cr +'from memory')
-						delete Memory.creeps[cr];
+						if (Memory.creeps[cr]){
+							if (Memory.creeps[cr].targetId){
+								let target = Game.getObjectById(Memory.creeps[cr].targetId);
+								if (target && target.memory && target.memory.harvesters){
+									delete target.memory.harvesters[cr];
+								}
+							}
+							delete Memory.creeps[cr];
+						}
 						delete Memory.operations[id].members[cr];
+						console.log('Deleted '+cr +' from memory');
 					}
 				}
 				// RUN CREEP JOBS
@@ -189,11 +197,19 @@ module.exports = class{
                     }
 
                 }else {
-                    var source = creep.pos.findClosestByPath(FIND_SOURCES,{filter: (s) => s.energy > 0});// HARVEST SOURCE
-                    if (source != undefined)
+                    var source = creep.pos.findClosestByPath(creep.room.sources,{filter : (s) => s.energy > 0 
+						&& ( !s.memory.harvesters
+						|| Object.keys(s.memory.harvesters).length < s.memory.slots )
+					});// HARVEST SOURCE
+                    if (source != undefined){
                       creep.memory.targetId = source.id;
+					  if (!source.memory.harvesters){ 
+						source.memory.harvesters = {};
+					  }
+					  source.memory.harvesters[creep.name]=true;
                       creep.say('Harvesting');
-                    }
+					}
+				}
               }
               if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // BUILD SPAWN
                 var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_SPAWN});
@@ -238,8 +254,11 @@ module.exports = class{
             var target = Game.getObjectById(creep.memory.targetId);
             if (target != undefined){
               if (target.structureType == undefined){// if source
-                if (creep.carry.energy == creep.carryCapacity) { 
-                  creep.memory.targetId = null;
+                if (creep.carry.energy == creep.carryCapacity) {
+				  if (target.memory.harvesters){
+					delete target.memory.harvesters[creep.name];
+				  }
+                  delete creep.memory.targetId;
                   return this.creepColonize(creep);
                 } 
                 else if (creep.carry.energy < creep.carryCapacity) {
