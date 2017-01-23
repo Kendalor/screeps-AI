@@ -7,7 +7,8 @@ module.exports = class{
 			//Memory.operations[id].size = 3
             if (!Memory.operations[id].spawnBuilt && Game.flags[Memory.operations[id].flagName].room != undefined){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
 				if(Game.flags[Memory.operations[id].flagName].room.controller.my && !Memory.operations[id].spawn){
-					Memory.operations[id].spawn = true; 
+					Memory.operations[id].spawn = true;
+					this.initSourceMemory(Game.flags[Memory.operations[id].flagName].room); // Initialize source memory
 					Game.flags[Memory.operations[id].flagName].room.createConstructionSite(Game.flags[Memory.operations[id].flagName].pos.x,Game.flags[Memory.operations[id].flagName].pos.y,STRUCTURE_SPAWN); 
 				}else if(!Memory.operations[id].spawnBuilt) {
 					let spawns = Game.flags[Memory.operations[id].flagName].room.spawns;
@@ -27,18 +28,18 @@ module.exports = class{
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt){
 				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				Memory.operations[id].size = 8
+				Memory.operations[id].size = 10;
 				if (Game.rooms[Memory.operations[id].roomName].hostileCreeps.filter((hostile) =>
 						hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
 					).length){
 					Game.rooms[Memory.operations[id].roomName].controller.activateSafeMode();
 				}
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
-				Memory.operations[id].size = 8
+				Memory.operations[id].size = 10;
 				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
             }else{
 				Memory.operations[id].size = 1
-				creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+				creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
 			}
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
 				// BUILD CREEPS UNTIL SQUAD SIZE REACHED
@@ -341,6 +342,34 @@ module.exports = class{
             return out;
         }
 
+		static initSourceMemory(room){
+			for (source in room.sources){
+				// Calc slots
+				var count = 0;
+				for (var x=-1;x<2;x++){
+					for (var y=-1;y<2;y++){
+						if ((room.lookForAt('terrain',sourcesSorted[i].pos.x+x,sourcesSorted[i].pos.y+y) == 'wall') && !(x==0 && y==0)){ //Check for walls around source
+							count = count+1;
+						}
+					}
+				}
+				source.memory.slots = 8-count;
+				source.memory.slotsUsed = 0;
 
+				// Calc ContainerPos
+				var path = room.findPath(source.pos,source.room.controller.pos,{ignoreCreeps: true});
+				var pathArray = Room.deserializePath(Room.serializePath(path));
+				source.memory.containerPos = {}
+				source.memory.containerPos.x = pathArray[0].x;
+				source.memory.containerPos.y = pathArray[0].y;
+				source.memory.containerPos.roomName = source.room.name;
+				source.memory.requiredCarryParts = Math.ceil((pathArray.length) * 2/5)+1;
+				for (var j=1;j<pathArray.length;j++){
+					if (room.lookForAt(LOOK_TERRAIN,pathArray[j].x,pathArray[j].y) == "swamp"){
+						source.room.createConstructionSite(pathArray[j].x,pathArray[j].y,STRUCTURE_ROAD);
+					}
+				}
+			}
+		}
 
 };
