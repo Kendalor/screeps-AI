@@ -234,6 +234,7 @@ module.exports = class{
                         if(creep.hits <= creep.hitsMax-300){
                             creep.heal(creep);
                             creep.moveTo(target);
+                            creep.rangedMassAttack(target);
                         }else{
                             if(range <= 1){
                                 if(creep.pos.findInRange(FIND_HOSTILE_CREEPS,3).length >=1){
@@ -264,7 +265,9 @@ module.exports = class{
                         this.invasionBehaviour(creep,id,defendId);
                     }
                 }else{
-                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS,{filter: creep.owner != 'Source_Keeper'});
+                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS,{filter: creep.owner == 'Invader'});
+                    console.log('Enemies');
+                    console.log(enemies);
                     if(enemies.length >0){
                         creep.memory.targetId=creep.pos.findClosestByRange(enemies).id;
                         this.invasionBehaviour(creep,id,defendId);
