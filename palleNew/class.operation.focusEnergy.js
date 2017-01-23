@@ -60,7 +60,7 @@ module.exports = class{
 
                 for(var i in Game.rooms){
                     if(Game.rooms[i].terminal != undefined && Game.rooms[i].terminal != undefined && i != Memory.operations[this.id].targetRoom 
-					&& Game.map.getRoomLinearDistance(Memory.operations[id].targetRoom,i, true)<=4){
+					&& Game.map.getRoomLinearDistance(Memory.operations[this.id].targetRoom,i, true)<=4){
                         if(i == Memory.operations[this.id].targetRoom){
                             Memory.operations[this.id].rooms[i]={};
                             Memory.operations[this.id].rooms[i].type='focus'
