@@ -214,8 +214,6 @@ module.exports = class{
                         }
                     }
 
-
-
                 }else{
                     Memory.operations[defendId].invasion=false;
                     room.memory.invasion=false;
@@ -225,7 +223,7 @@ module.exports = class{
         }
 
         static invasionBehaviour(creep,id,defendId){
-            if(creep.room != Memory.operations[defendId].roomName){
+            if(creep.room.name != Memory.operations[defendId].roomName){
                 let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
                 creep.moveTo(pos);
             }else{
