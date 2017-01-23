@@ -11,6 +11,7 @@ module.exports = {
 
             var room = spawnList[0].room;
 
+
                 //INIT MEMORY STRUCTURE
                 if(!room.memory.roomManagement){
                     room.memory.roomManagement={};
@@ -22,6 +23,8 @@ module.exports = {
                     }
                 }
 
+
+                // SET MAX COUNTER LOGIC HERE
 				if (room.memory.sources){
 					if (room.storage == undefined) {
 						room.memory.roomManagement.roles['maintance'] = 3*Object.keys(spawn.room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
@@ -31,9 +34,36 @@ module.exports = {
 						room.memory.roomManagement.roles['maintance'] = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
 					}
 				}
+				// DEFENDER
+				if(spawn.room.memory.underAttack){
+				    room.memory.roomManagement.roles['defender']=1;
+				}
+				//MINER
+				room.memory.roomManagement.roles['miner']=Object.keys(room.sources).length;
+				//MAINTANCE
+				if(Object.keys(room.memory.roomManagement.roles['miner'].members).length == 2){
+				    if (room.storage == undefined) {
+						room.memory.roomManagement.roles['maintance'] = 3*Object.keys(room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(room.constructionSites).length)/10));;
+                    }else{
+				        room.memory.roomManagement.roles['maintance'] = Math.ceil(1+parseInt(Object.keys(room.constructionSites).length)/10); // 1 +Constructionsites/10
+                    }
+				}
+
+				//UPGRADER
+				if (room.storage == undefined) {
+				    room.memory.roomManagement.roles['upgrader'] = 1;
+				}else{
+				    room.memory.roomManagement.roles['upgrader'] = Math.min(Math.max(parseInt(room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
+				}
+
+				//HAULER
+				if(Object.keys(room.memory.roomManagement.roles['miner'].members).length >= Object.keys(room.memory.roomManagement.roles['hauler'].members).length && Object.keys(room.memory.roomManagement.roles['miner'].members).length <= Object.keys(room.memory.sources)){
+
+				}
+
 
                 for(var t in room.memory.roomManagement.roles){ //&& Game.rooms[spawn.room.name].energyAvailable
-                    var sources = spawn.room.memory.sources;
+
 
 
                     //check for amount of creep types in room
@@ -61,26 +91,16 @@ module.exports = {
                                     }
                                 }
                             }
-
                             break;
-
-
                         case 1: //hauler
-                            //console.log('need to spawn?');
-                            //console.log(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length));
                             if(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
                                 for(id in sources){
                                     if(!spawn.room.memory.sources[id].requiredCarryParts){
                                         autoMemory.resetSourceMemory(spawn.room);
                                     }
                                     var found = true;
-                                    //console.log("hauler: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'hauler'}));
-                                    //console.log('container existis ? in room '+ spawn.room.name);
-                                    //console.log(spawn.room.memory.sources[id].container);
                                     if (spawn.room.memory.sources[id].container){
                                         if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive > (6+8*spawn.room.memory.sources[id].requiredCarryParts) ).length == 0 && found){
-                                            //console.log(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts))
-                                            //console.log(spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true}));
                                             spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true});
                                             found = false;
                                         }

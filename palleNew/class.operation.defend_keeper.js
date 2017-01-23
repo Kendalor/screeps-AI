@@ -248,6 +248,7 @@ module.exports = class{
                             }else{
                                 creep.rangedAttack(target);
                                 creep.moveTo(target);
+                                creep.heal(creep);
                             }
                         }else{
                             if(creep.pos.findInRange(FIND_HOSTILE_CREEPS,3).length >1){
