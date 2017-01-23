@@ -265,8 +265,13 @@ module.exports = class{
                     }
                 }else{
                     var enemies=creep.room.find(FIND_HOSTILE_CREEPS,{filter: creep.owner != 'Source_Keeper'});
-                    creep.memory.targetId=creep.pos.findClosestByRange(enemies).id;
-                    this.invasionBehaviour(creep,id,defendId);
+                    if(enemies.length >0){
+                        creep.memory.targetId=creep.pos.findClosestByRange(enemies).id;
+                        this.invasionBehaviour(creep,id,defendId);
+                    }else{
+                        let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
+                        creep.moveTo(pos);
+                    }
                 }
             }
         }
