@@ -140,7 +140,7 @@ module.exports = function(){
 			'clearConstructionSites' : {
 				get: function() {
 					let constructionSites;
-					if (!this.lastSeen("constructionSites") == Game.time-CONTRUCTION_SITE_REFRESH_TIME){
+					if (!this.lastSeen("constructionSites") == Game.time){
 						constructionSites = this.findConstructionSites();
 					}else{
 						constructionSites = this.memory.constructionSites;
