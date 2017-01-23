@@ -48,12 +48,12 @@ module.exports.loop = function () {
 		invasionCounter.run(room);
 
 		//if(Game.time % 10 == 0){
-		var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
-		autoSpawn.run(spawnList);
+		//var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
+		autoSpawn.run(room.spawns);
 		//}
 
-		var creepList = (room.find(FIND_MY_CREEPS,{filter: (creep) => creep.room.name == name}));
-		autoCreep.run(creepList);
+		//var creepList = (room.find(FIND_MY_CREEPS,{filter: (creep) => creep.room.name == name}));
+		autoCreep.run(room.myCreeps);
 
 	}
 
