@@ -68,13 +68,9 @@ module.exports = class{
 					if(!Game.creeps[cr].spawning && Game.creeps[cr]){
 						
 						if(Game.creeps[cr].pos.roomName != Game.flags[Memory.operations[id].flagName].pos.roomName){
-							if(Game.time % 25 == 0)
-							  console.log('Running Travel for '+cr);
 							this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
 						}else {
-							if(Game.time % 25 == 0)
-							  console.log('Running Colonization for '+cr);
 							if (Game.creeps[cr].getActiveBodyparts(WORK)>0){
 								this.creepColonize(Game.creeps[cr]);
 							}else{
@@ -114,9 +110,7 @@ module.exports = class{
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='colonize';
                 Memory.operations[this.id].size=1;
-                Memory.operations[this.id].refreshed=false;
                 Memory.operations[this.id].members= {};
-                Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
                 Memory.operations[this.id].spawn=false;
 
 
@@ -149,12 +143,7 @@ module.exports = class{
             }
 
         }
-        // IDLE MOVESET
-        static creepIdle(creep){
-            var target = Game.getObjectById(Memory.operations[creep.memory.operation_id].rallyPoint);
-            creep.moveTo(target);
 
-        }
         // TRAVEL TO FLAG
         static creepTravel(creep,flag){
             creep.moveTo(flag);
@@ -164,7 +153,6 @@ module.exports = class{
         // COLONIZE CODE
         static creepColonize(creep){
           // CLAIM IF NOT MY CONTROLLER
-          creep.say('colonize');
           if (!creep.room.controller.my){
             console.log(creep.claimController(creep.room.controller));
             if(creep.claimController(creep.room.controller) == ERR_NOT_IN_RANGE){
@@ -185,7 +173,7 @@ module.exports = class{
 				);
                 if(dropped_ressource != undefined){
                     creep.memory.targetId = dropped_ressource.id;
-                    creep.say('Harvesting');
+                    creep.say('Picking');
                 }else if(containersWithEnergy.length >0){
                     if(containersWithEnergy.length == 1){
                         var target = containersWithEnergy[0];
@@ -199,7 +187,7 @@ module.exports = class{
                 }else {
                     var source = creep.pos.findClosestByPath(creep.room.sources,{filter : (s) => s.energy > 0 
 						&& ( !s.memory.harvesters
-						|| Object.keys(s.memory.harvesters).length < s.memory.slots )
+						|| Object.keys(s.memory.harvesters).length <= s.memory.slots ) // SLOTS+1 HARVESTERS -> 1 HARVESTER ON WAITLIST
 					});// HARVEST SOURCE
                     if (source != undefined){
                       creep.memory.targetId = source.id;
