@@ -39,7 +39,7 @@ module.exports = {
 
 				if (spawn.room.memory.sources){
 					if (spawn.room.storage == undefined) {
-						maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
+						maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
 						upgradeUnits = 1;
 					}else{
 						upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
@@ -75,7 +75,7 @@ module.exports = {
                                     }
                                     var found = true;
                                     //console.log("miner: "+spawn.room.find(FIND_MY_CREEPS,{filter: (creep) => creep.memory.source == id && creep.memory.role == 'miner'}));
-                                    if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'miner' && creep.ticksToLive > 24+2*spawn.room.memory.sources[id].requiredCarryParts).length == 0 && found){
+                                    if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'miner' && creep.ticksToLive < 24+2*spawn.room.memory.sources[id].requiredCarryParts).length == 0 && found){
                                         spawn.createCreep(this.minerPreset(spawn), undefined, {role: creepRole[0].name, source: id, spawn: true});
                                         found = false;
                                     }
@@ -98,7 +98,7 @@ module.exports = {
                                     //console.log('container existis ? in room '+ spawn.room.name);
                                     //console.log(spawn.room.memory.sources[id].container);
                                     if (spawn.room.memory.sources[id].container){
-                                        if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive > (6+8*spawn.room.memory.sources[id].requiredCarryParts) ).length == 0 && found){
+                                        if(spawn.room.myCreeps.filter((creep) => creep.memory.source == id && creep.memory.role == 'hauler' && creep.ticksToLive < (6+8*spawn.room.memory.sources[id].requiredCarryParts) ).length == 0 && found){
                                             //console.log(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts))
                                             //console.log(spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true}));
                                             spawn.createCreep(this.haulerPreset(spawn,spawn.room.memory.sources[id].requiredCarryParts), undefined, {role: creepRole[1].name, source: id, spawn:true});
@@ -110,7 +110,7 @@ module.exports = {
                             break;
 
                         case 2: //maintance
-                            if(minerAmount == (Object.keys(sources).length) && maintanceAmount < maintanceUnits){
+                            if(minerAmount >= (Object.keys(sources).length) && maintanceAmount < maintanceUnits){
                                 spawn.createCreep(this.maintancePreset(spawn), undefined, {role: creepRole[2].name});
                             }
                             break;
