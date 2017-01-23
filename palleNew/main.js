@@ -12,11 +12,6 @@ var operationsHandler = require('operations.handler');
 
 module.exports.loop = function () {
 
-	if(Game.time % 10 == 0){
-		autoMemory.clearDeadCreeps();
-		autoMemory.clearFlags();
-	}
-
 	if (Game.cpu.bucket < 10000){ // To check if accumulated bonus CPU is used sometimes
 		console.log("Used additional CPU.\nAccumulated bucket:  "+Game.cpu.bucket+"/10000");
 	}
@@ -62,4 +57,8 @@ module.exports.loop = function () {
 
 	}
 
+	if(Game.time % 10 == 0){
+		autoMemory.clearDeadCreeps();
+		autoMemory.clearFlags();
+	}
 }
