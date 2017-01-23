@@ -167,9 +167,9 @@ module.exports = class{
               }
               else if (creep.carry.energy < creep.carryCapacity/2){ // SALVAGE
                 var dropped_ressource = creep.pos.findClosestByRange(FIND_DROPPED_ENERGY);
-                var containersWithEnergy = creep.room.find(FIND_STRUCTURES, {
-					filter: (i) => i.structureType == STRUCTURE_CONTAINER && i.store[RESOURCE_ENERGY] > 0
-				});
+                var containersWithEnergy = creep.room.containers.filter(
+					(c) => c.store[RESOURCE_ENERGY] > 0
+				);
                 if(dropped_ressource != undefined){
                     creep.memory.targetId = dropped_ressource.id;
                     creep.say('Harvesting');
@@ -221,6 +221,14 @@ module.exports = class{
                 creep.say('Upgrading');
               }
             }
+			//REPAIR ROAD IF NECESSARY
+			let road = creep.pos.lookFor(LOOK_STRUCTURES).filter((obj) => obj.structureType 
+				&& !obj.progress 
+				&& obj.structureType == STRUCTURE_ROAD 
+				&& obj.hits < obj.hitsMax-10);
+			if (road.length && creep.carry.energy > 0){
+				creep.repair(road[0]);
+			}
             // DO JOB
             var target = Game.getObjectById(creep.memory.targetId);
             if (target != undefined){
@@ -235,7 +243,6 @@ module.exports = class{
                         creep.moveTo(target);
                     }
                  }else{
-                    //console.log('Pickup');
                     if(creep.harvest(target) == ERR_NOT_IN_RANGE){
                         creep.moveTo(target);
                     }
@@ -284,15 +291,6 @@ module.exports = class{
               creep.say('Idle');
             }
           }
-        }
-
-        static refreshTimer(creep){
-            var target = Game.spawns['Spawn1'];
-            if(target.renewCreep(creep) == ERR_NOT_IN_RANGE){
-                creep.moveTo(target)
-            }else if(target.renewCreep(creep) == ERR_FULL){
-                this.creep.Idle(creep);
-            }
         }
 
 		static findClosestSpawn(targetRoomName,addDistance=0){
