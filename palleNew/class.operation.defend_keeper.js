@@ -95,7 +95,7 @@ module.exports = class{
                             creep.heal(creep);
                         }
                         creep.say('camp');
-                        if(target.ticksToSpawn  == 1 || target.ticksToSpawn >= 290){
+                        if(target.ticksToSpawn  == 1 || target.ticksToSpawn >= 290 || target.ticksToSpawn == undefined){
                             delete creep.memory.target;
                         }
                     }else{
@@ -213,8 +213,17 @@ module.exports = class{
                             this.invasionBehaviour(creep,id,defendId);
                         }
                     }
-
                 }else{
+                    if(Object.keys(Memory.operations[id].invasionHandler.members).length > 0){
+                        Memory.operations[id].invasionHandler.members=this.cleanUpCreeps(Memory.operations[id].invasionHandler.members);
+                        for(var i in Memory.operations[id].invasionHandler.members){
+                            var creep=Game.creeps[i];
+                            if(!creep.spawning){
+                                this.recycleCreep(creep,id,defendId);
+                            }
+                        }
+
+                    }
                     Memory.operations[defendId].invasion=false;
                     room.memory.invasion=false;
                     Memory.operations[id].invasionHandler.size=0;
@@ -268,6 +277,37 @@ module.exports = class{
                     }
                 }
             }
+        }
+
+        static recycleCreep(creep,id,defendId){
+            if(creep.memory.nearestSpawn == undefined || creep.memory.nearestSpawn == null){
+                var spawns=this.findClosestSpawn(creep.room.name,0);
+                var id=Game.spawns[spawns[0]].id;
+                console.log(id);
+                creep.memory.nearestSpawn=id;
+            }else{
+                var spawn=Game.getObjectById(creep.memory.nearestSpawn);
+                if(spawn){
+                    if(creep.room.name != spawn.room.name){
+                        creep.moveTo(spawn);
+                    }else{
+                        var range=creep.pos.getRangeTo(spawn);
+                        console.log(spawn.spawning == null);
+                        if(range > 2){
+                            creep.moveTo(spawn);
+                        }else if(spawn.spawning == null){
+                            creep.moveTo(spawn);
+                            if(range == 1){
+                                spawn.recycleCreep(creep);
+                            }
+                        }
+                    }
+                }else{
+                    delete creep.memory.nearestSpawn;
+                }
+            }
+
+
         }
 
         static buildCreeps(id){
