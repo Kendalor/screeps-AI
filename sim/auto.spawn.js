@@ -72,8 +72,9 @@ module.exports = {
                     }else{
                         room.memory.sources[i].min_haulers=0;
                     }
-
                 }
+
+
 
 
 
@@ -299,5 +300,33 @@ module.exports = {
 			}
 		}
 	}
+
+	creepBuilder: function(spawnList,memberList,size,body,memory){
+            var out=memberList;
+            if(Object.keys(out).length < size){
+                for(var i in spawnList){
+                    var spawn=Game.spawns[spawnList[i]];
+                    if(spawn.spawning == null){
+                        if(Object.keys(out).length < size){
+                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
+                                var name=spawn.createCreep(body,undefined,memory);
+                                out[name]= {};
+                            }
+                        }
+                    }
+                }
+            }
+            return out;
+        }
+
+    cleanUpCreeps function(members){
+            var temp=members;
+            for(var i in temp){
+                if(!Game.creeps[i]){
+                    delete temp[i];
+                }
+            }
+            return temp;
+        }
 
 };
