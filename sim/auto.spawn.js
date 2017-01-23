@@ -53,7 +53,27 @@ module.exports = {
 
 
 				//HAULER UND MINER  -> WILL LATER BE SEPARATED MORE
+                for(var i in room.memory.sources){
+                    if(!room.memory.sources[i].haulers){
+                        room.memory.sources[i].haulers={};
+                    }
+                    if(!room.memory.sources[i].min_haulers){
+                        room.memory.sources[i].min_haulers=0;
+                    }
+                    if(!room.memory.sources[i].miners){
+                        room.memory.sources[i].miners={};
+                    }
+                    if(!room.memory.sources[i].min_miners){
+                        room.memory.sources[i].min_miners=1;
+                    }
 
+                    if(room.memory.sources[i].container){
+                        room.memory.sources[i].min_haulers=1;
+                    }else{
+                        room.memory.sources[i].min_haulers=0;
+                    }
+
+                }
 
 
 
