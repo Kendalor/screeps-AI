@@ -28,6 +28,11 @@ module.exports = class{
             if (Memory.operations[id].spawnBuilt){
 				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
 				Memory.operations[id].size = 6
+				if (Game.rooms[Memory.operations[id].roomName].hostileCreeps.filter((hostile) =>
+						hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
+					).length){
+					Game.rooms[Memory.operations[id].roomName].controller.activateSafeMode();
+				}
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
 				Memory.operations[id].size = 6
 				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
