@@ -103,7 +103,7 @@ module.exports = function(){
 			*/
 			'constructionSites' : {
 				get: function() {
-					if (this.lastSeen("constructionSites") == Game.time-CONTRUCTION_SITE_REFRESH_TIME){
+					if (this.lastSeen("constructionSites") >= Game.time-CONTRUCTION_SITE_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.constructionSites){
 							let keys = Object.keys(this.memory.constructionSites);
@@ -147,10 +147,10 @@ module.exports = function(){
 					}
 					let objectArray = [];
 					if (this.memory && constructionSites){
-						let keys = Object.keys(this.memory.constructionSites);
+						let keys = Object.keys(constructionSites);
 						for (let i in keys){
-							if (Object.keys(this.memory.constructionSites[keys[i]]).length > 0){
-								for (let id in this.memory.constructionSites[keys[i]]){
+							if (Object.keys(constructionSites[keys[i]]).length > 0){
+								for (let id in constructionSites[keys[i]]){
 									let obj = Game.getObjectById(id);
 									if (obj && ConstructionSite.prototype.isPrototypeOf(obj)){
 										objectArray.push(obj);
@@ -262,7 +262,7 @@ module.exports = function(){
 			*/
 			'hostileCreeps' : {
 				get: function() {
-					if (this.lastSeen("hostileCreeps") == Game.time-HOSTILE_CREEP_REFRESH_TIME){
+					if (this.lastSeen("hostileCreeps") >= Game.time-HOSTILE_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.hostileCreeps){
 							for (let id in this.memory.hostileCreeps){
@@ -307,7 +307,7 @@ module.exports = function(){
 			*/
 			'alliedCreeps' : {
 				get: function() {
-					if (this.lastSeen("hostileCreeps") == Game.time-HOSTILE_CREEP_REFRESH_TIME){
+					if (this.lastSeen("hostileCreeps") >= Game.time-HOSTILE_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.alliedCreeps){
 							for (let id in this.memory.alliedCreeps){
@@ -352,12 +352,12 @@ module.exports = function(){
 			*/
 			'myCreeps' : {
 				get: function() {
-					if (this.lastSeen("myCreeps") == Game.time-MY_CREEP_REFRESH_TIME){
+					if (this.lastSeen("myCreeps") >= Game.time-MY_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.myCreeps){
 							for (let id in this.memory.myCreeps){
 								let obj = Game.getObjectById(id);
-								if (obj && obj.room.name == this.name && Creep.prototype.isPrototypeOf(obj) ){
+								if (obj && obj.pos.roomName == this.name && Creep.prototype.isPrototypeOf(obj) ){
 									objectArray.push(obj);
 								}else{
 									delete this.memory.myCreeps[id];
@@ -397,7 +397,7 @@ module.exports = function(){
 			*/
 			'minerals' : {
 				get: function() {
-					if (this.lastSeen("minerals") == Game.time-MINERALS_REFRESH_TIME){
+					if (this.lastSeen("minerals") >= Game.time-MINERALS_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.minerals){
 							for (let id in this.memory.minerals){
@@ -442,7 +442,7 @@ module.exports = function(){
 			*/
 			'resources' : {
 				get: function() {
-					if (this.lastSeen("resources") == Game.time-RESOURCES_REFRESH_TIME){
+					if (this.lastSeen("resources") >= Game.time-RESOURCES_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.resources){
 							for (let id in this.memory.resources){
@@ -487,7 +487,7 @@ module.exports = function(){
 			*/
 			'sources' : {
 				get: function() {
-					if (this.lastSeen("sources") == Game.time-SOURCES_REFRESH_TIME){
+					if (this.lastSeen("sources") >= Game.time-SOURCES_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.sources){
 							for (let id in this.memory.sources){
@@ -537,7 +537,7 @@ module.exports = function(){
 			*/
 			'structures' : {
 				get: function() {
-					if (this.lastSeen("structures") <= Game.time-STRUCTURE_REFRESH_TIME){
+					if (this.lastSeen("structures") >= Game.time-STRUCTURE_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.structures){
 							for (let key in this.memory.structures){
@@ -691,6 +691,22 @@ module.exports = function(){
 					}else{
 						return this.findStructures().filter((s) => s.structureType == STRUCTURE_LINK);
 					}
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** TODO
+			* Returns the link positioned near room storage
+			* @return {StructureLink} obj
+			*/
+			'storageLink' : {
+				get: function() {
+					let link;
+					if (this.memory && this.memory.structures && this.memory.structures.link && this.memory.structures.link.storage){
+						//link = 
+					}
+					
 				},
 				configurable: true,
 				enumerable: false
@@ -1259,6 +1275,11 @@ module.exports = function(){
 	*/
 		Object.defineProperties(Source.prototype,{
 			
+			/**
+			* Initializes, sets and gets source memory
+			* @param {obj} v
+			* @return {obj} Memory.rooms[this.room.name].sources[this.id]
+			*/
 			'memory' : {
 				get: function() {
 					if (this.room.memory.sources === undefined) {
@@ -1271,6 +1292,35 @@ module.exports = function(){
 				},
 				set: function(v) {
 					return _.set(Memory.rooms[this.room.name], 'sources.' + this.id, v);
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/**
+			* Initializes and gets source slots
+			* @return {Number} Memory.rooms[this.room.name].sources[this.id].slots
+			*/
+			'slots' : {
+				get: function() {
+					if (this.room.memory.sources === undefined) {
+						this.room.memory.sources = {};
+					}
+					if (this.room.memory.sources[this.id] === undefined) {
+						this.room.memory.sources[this.id] = {};
+					}
+					if (this.room.memory.sources[this.id].slots === undefined) {
+						let count = 0;
+						for (let x=-1;x<2;x++){
+							for (let y=-1;y<2;y++){
+								if ((room.lookForAt('terrain',sourcesSorted[i].pos.x+x,sourcesSorted[i].pos.y+y) == 'wall') && !(x==0 && y==0)){ //Check for walls around source
+									count = count+1;
+								}
+							}
+						}
+						this.room.memory.sources[this.id].slots = 8-count;
+					}
+					return this.room.memory.sources[this.id].slots;
 				},
 				configurable: true,
 				enumerable: false
