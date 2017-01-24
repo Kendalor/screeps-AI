@@ -25,7 +25,7 @@ const PUNY_PUN_ARRAY = ["Be PINK or be purged!",
                         "PINK will befall you!",
                         "There is no hope, only PINK",
                         "Devote every tick to PINK",
-                        "#ff00b4 is the answer",
+                        "#ff00b4 is the answer"
                         ];
 
 
