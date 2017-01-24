@@ -327,8 +327,6 @@ module.exports = class{
                             costs.set(constr.pos.x, constr.pos.y, 2);
                         }else if(constr.structureType == STRUCTURE_RAMPART) {
                             costs.set(constr.pos.x, constr.pos.y,2);
-                        }else if(constr.structureType == STRUCTURE_CONTAINER) {
-                            costs.set(constr.pos.x, constr.pos.y,2);
                         }else{
                             costs.set(constr.pos.x, constr.pos.y,0xff);
                         }
@@ -347,8 +345,6 @@ module.exports = class{
                             if(constr.structureType == STRUCTURE_ROAD)  {
                                 costs.set(constr.pos.x, constr.pos.y, 2);
                             }else if(constr.structureType == STRUCTURE_RAMPART) {
-                                costs.set(constr.pos.x, constr.pos.y,2);
-                            }else if(constr.structureType == STRUCTURE_CONTAINER) {
                                 costs.set(constr.pos.x, constr.pos.y,2);
                             }else{
                                 costs.set(constr.pos.x, constr.pos.y,0xff);
