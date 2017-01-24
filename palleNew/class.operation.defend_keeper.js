@@ -279,7 +279,7 @@ module.exports = class{
                         this.invasionBehaviour(creep,id,defendId);
                     }
                 }else{
-                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS, { filter: (it) => it.owner.username!='Source Keeper' });
+                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS, { filter: (it) => it.owner.username!='Source Keeper'});
                     console.log('Enemies');
                     console.log(enemies);
                     if(enemies.length >0){

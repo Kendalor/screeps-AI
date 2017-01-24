@@ -147,15 +147,39 @@ module.exports = {
 	},
 
 	maintance: function(creep){
-		this.harvestCancel(creep);
-		if(creep.room.controller.ticksToDowngrade < 1000)
+		if (!creep.memory.job) {
+			if(creep.room.controller.ticksToDowngrade < 1000)
+				this.upgrade(creep);
+			this.haul(creep);
+			this.repair(creep);
+			this.build(creep);
 			this.upgrade(creep);
-		this.haul(creep);
-		this.repair(creep);
-		this.build(creep);
-		this.upgrade(creep);
-		this.salvage(creep);
-		this.gather(creep);
+			this.salvage(creep);
+			this.gather(creep);
+		}else{
+			switch(creep.memory.job) {
+				case 'build':
+					this.build(creep);
+					break;
+				case 'gather':
+					this.gather(creep);
+					break;
+				case 'haul':
+					this.haul(creep);
+					break;
+				case 'repair':
+					this.repair(creep);
+					break;
+				case 'salvage':
+					this.salvage(creep);
+					break;
+				case 'upgrade':
+					this.upgrade(creep);
+					break;
+				default:
+					this.harvestCancel(creep);
+			}
+		}
 	},
 
 	upgrader: function(creep){
