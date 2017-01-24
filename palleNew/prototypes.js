@@ -1381,7 +1381,7 @@ module.exports = function(){
 					if (this.room.memory.sources[this.id] === undefined) {
 						this.room.memory.sources[this.id] = {};
 					}
-					if (this.room.memory.sources[this.id].slots === undefined) {
+					if (this.room.memory.sources[this.id].slots === undefined || this.room.memory.sources[this.id].slotsUsed === undefined) {
 						let count = 0;
 						for (let x=-1;x<2;x++){
 							for (let y=-1;y<2;y++){
@@ -1391,13 +1391,14 @@ module.exports = function(){
 							}
 						}
 						this.room.memory.sources[this.id].slots = 8-count;
+						this.room.memory.sources[this.id].slotsUsed = 0;
 					}
 					return this.room.memory.sources[this.id].slots;
 				},
 				configurable: true,
 				enumerable: false
 			},
-			
+						
 			/**
 			* Checks if source has free slots for creeps to harvest
 			* @return {Boolean} or undefined
@@ -1410,9 +1411,16 @@ module.exports = function(){
 						&& this.room.memory.sources[this.id].slots
 						&& this.room.memory.sources[this.id].harvesters)
 					{
-						return this.room.memory.sources[this.id].slots > this.room.memory.sources[this.id].harvesters.length
+						return this.room.memory.sources[this.id].slots > Object.keys(this.room.memory.sources[this.id].harvesters).length
 					}else {
-						return undefined;
+						if (this.room.memory.sources === undefined) {
+							this.room.memory.sources = {};
+						}
+						if (this.room.memory.sources[this.id] === undefined) {
+							this.room.memory.sources[this.id] = {};
+						}
+						this.room.memory.sources[this.id].harvesters = {}
+						return true;
 					}
 				},
 				writable: true,

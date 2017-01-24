@@ -2,7 +2,7 @@
 
 const HOSTILE_CREEP_REFRESH_TIME = 0;
 
-const MY_CREEP_REFRESH_TIME = 5;
+const MY_CREEP_REFRESH_TIME = 0;
 const RESOURCES_REFRESH_TIME = 10;
 
 const CONTRUCTION_SITE_REFRESH_TIME = 10;
@@ -10,6 +10,23 @@ const STRUCTURE_REFRESH_TIME = 50;
 
 const MINERALS_REFRESH_TIME = 10000;
 const SOURCES_REFRESH_TIME = MINERALS_REFRESH_TIME;
+
+const PUNY_PUN_ARRAY = ["Be PINK or be purged!",
+                        "There is only one color,and it is PINK!",
+                        "How can a creep be happy if it cannot serve PINK with all his ticks?",
+                        "PINK! PINK! PINK! A color as pure as it is deep! PINK! PINK! PINK! Let it flow, let it run free!",
+                        "PINK will be done",
+                        "To the Red\n-That is the mark of the Mutant. \nTo be PINK\n-For that is the fate of all Mutants",
+                        "To the Blue\n-That is the mark of the Mutant. \nTo be PINK\n-For that is the fate of all Mutants",
+                        "To the Green\n-That is the mark of the Mutant. \nTo be PINK\n-For that is the fate of all Mutants",
+                        "To the Black\n-That is the mark of the Mutant. \nTo be PINK\n-For that is the fate of all Mutants",
+                        "To the White\n-That is the mark of the Mutant. \nTo be PINK\n-For that is the fate of all Mutants",
+                        "To the Yellow\n-That is the mark of the Mutant. \nTo be PINK\n-For that is the fate of all Mutants",
+                        "PINK will befall you!",
+                        "There is no hope, only PINK",
+                        "Devote every tick to PINK",
+                        "#ff00b4 is the answer"
+                        ];
 
 
 module.exports = function(){
@@ -103,7 +120,7 @@ module.exports = function(){
 			*/
 			'constructionSites' : {
 				get: function() {
-					if (this.lastSeen("constructionSites") == Game.time-CONTRUCTION_SITE_REFRESH_TIME){
+					if (this.lastSeen("constructionSites") >= Game.time-CONTRUCTION_SITE_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.constructionSites){
 							let keys = Object.keys(this.memory.constructionSites);
@@ -139,14 +156,11 @@ module.exports = function(){
 			*/
 			'clearConstructionSites' : {
 				get: function() {
-					let constructionSites;
-					if (!this.lastSeen("constructionSites") == Game.time){
-						constructionSites = this.findConstructionSites();
-					}else{
-						constructionSites = this.memory.constructionSites;
+					if (!this.lastSeen("constructionSites") || this.lastSeen("constructionSites") <= Game.time){
+						this.findConstructionSites();
 					}
 					let objectArray = [];
-					if (this.memory && constructionSites){
+					if (this.memory && this.memory.constructionSites){
 						let keys = Object.keys(this.memory.constructionSites);
 						for (let i in keys){
 							if (Object.keys(this.memory.constructionSites[keys[i]]).length > 0){
@@ -262,7 +276,7 @@ module.exports = function(){
 			*/
 			'hostileCreeps' : {
 				get: function() {
-					if (this.lastSeen("hostileCreeps") == Game.time-HOSTILE_CREEP_REFRESH_TIME){
+					if (this.lastSeen("hostileCreeps") >= Game.time-HOSTILE_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.hostileCreeps){
 							for (let id in this.memory.hostileCreeps){
@@ -307,7 +321,7 @@ module.exports = function(){
 			*/
 			'alliedCreeps' : {
 				get: function() {
-					if (this.lastSeen("hostileCreeps") == Game.time-HOSTILE_CREEP_REFRESH_TIME){
+					if (this.lastSeen("hostileCreeps") >= Game.time-HOSTILE_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.alliedCreeps){
 							for (let id in this.memory.alliedCreeps){
@@ -352,12 +366,12 @@ module.exports = function(){
 			*/
 			'myCreeps' : {
 				get: function() {
-					if (this.lastSeen("myCreeps") == Game.time-MY_CREEP_REFRESH_TIME){
+					if (this.lastSeen("myCreeps") >= Game.time-MY_CREEP_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.myCreeps){
 							for (let id in this.memory.myCreeps){
 								let obj = Game.getObjectById(id);
-								if (obj && obj.room.name == this.name && Creep.prototype.isPrototypeOf(obj) ){
+								if (obj && obj.pos.roomName == this.name && Creep.prototype.isPrototypeOf(obj) ){
 									objectArray.push(obj);
 								}else{
 									delete this.memory.myCreeps[id];
@@ -397,7 +411,7 @@ module.exports = function(){
 			*/
 			'minerals' : {
 				get: function() {
-					if (this.lastSeen("minerals") == Game.time-MINERALS_REFRESH_TIME){
+					if (this.lastSeen("minerals") >= Game.time-MINERALS_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.minerals){
 							for (let id in this.memory.minerals){
@@ -442,7 +456,7 @@ module.exports = function(){
 			*/
 			'resources' : {
 				get: function() {
-					if (this.lastSeen("resources") == Game.time-RESOURCES_REFRESH_TIME){
+					if (this.lastSeen("resources") >= Game.time-RESOURCES_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.resources){
 							for (let id in this.memory.resources){
@@ -487,7 +501,7 @@ module.exports = function(){
 			*/
 			'sources' : {
 				get: function() {
-					if (this.lastSeen("sources") == Game.time-SOURCES_REFRESH_TIME){
+					if (this.lastSeen("sources") >= Game.time-SOURCES_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.sources){
 							for (let id in this.memory.sources){
@@ -537,7 +551,7 @@ module.exports = function(){
 			*/
 			'structures' : {
 				get: function() {
-					if (this.lastSeen("structures") <= Game.time-STRUCTURE_REFRESH_TIME){
+					if (this.lastSeen("structures") >= Game.time-STRUCTURE_REFRESH_TIME){
 						let objectArray = [];
 						if (this.memory && this.memory.structures){
 							for (let key in this.memory.structures){
@@ -691,6 +705,22 @@ module.exports = function(){
 					}else{
 						return this.findStructures().filter((s) => s.structureType == STRUCTURE_LINK);
 					}
+				},
+				configurable: true,
+				enumerable: false
+			},
+			
+			/** TODO
+			* Returns the link positioned near room storage
+			* @return {StructureLink} obj
+			*/
+			'storageLink' : {
+				get: function() {
+					let link;
+					if (this.memory && this.memory.structures && this.memory.structures.link && this.memory.structures.link.storage){
+						//link = 
+					}
+					
 				},
 				configurable: true,
 				enumerable: false
@@ -1131,9 +1161,67 @@ module.exports = function(){
 				},
 				writable: true,
 				enumerable: true
-			},			
+			},	
+
+			/**
+			* MAKES SCREEPS PINK AGAIN - signs controllers with punny messages, if not yet signed by our pink alliance
+			* @return {Boolean} returns signing is necessary?
+			*/
+			"makeScreepsPinkAgain" : {
+				value: function(){// default range is 1
+					let bool = false;
+					if (this.room.controller){
+						if (!this.room.controller.sign || (Memory.globals && Memory.globals.friend && Memory.globals.friend[this.room.controller.sign.username] === undefined)){
+							switch(Game.time%3) {
+							case 0:
+								this.say("one",true);
+								break;
+							case 1:
+								this.say("of",true);
+								break;
+							case 2:
+								this.say("us",true);
+								break;
+							}
+							bool = true;
+							if (!this.inRangeTo(this.room.controller)){
+								this.moveTo(this.room.controller);
+							}else{
+								let i = parseInt(Math.random()*PUNY_PUN_ARRAY.length);
+								this.signController(this.room.controller,PUNY_PUN_ARRAY[i]);
+							}
+						}
+					}
+					return bool;
+				},
+				writable: true,
+				enumerable: true
+			},
 			
-			/** NEEDS TESTING
+			/**
+			* Clears controller.sign
+			* @return {Boolean} returns clearing is necessary?
+			*/
+			"clearSign" : {
+				value: function(){// default range is 1
+					let bool = false;
+					if (this.room.controller){
+						if (this.room.controller.sign){
+							bool = true;
+							if (!this.inRangeTo(this.room.controller)){
+								this.moveTo(this.room.controller);
+							}else{
+								this.signController(this.room.controller,"");
+							}
+						}
+					}
+					return bool;
+				},
+				writable: true,
+				enumerable: true
+			},
+	
+			/** NEEDS TESTING // TODO
 			* Reserves specific amount of specific resource for set amount of ticks on given container
 			* Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
 			*  or StructureContainer.prototype.reserveResource = function(objectId,resource,amount,ticks)
@@ -1155,7 +1243,7 @@ module.exports = function(){
 				enumerable: true
 			},
 			
-			/** NEEDS TESTING
+			/** NEEDS TESTING // TODO
 			* Creep moves to target container and reserves an amount of resource
 			* Uppon reaching target the creep withdraws the reserved resource amount and cancels the reservation
 			* Used by screep.reserveResource(container,[resource],[amount],[ticks])
@@ -1259,6 +1347,11 @@ module.exports = function(){
 	*/
 		Object.defineProperties(Source.prototype,{
 			
+			/**
+			* Initializes, sets and gets source memory
+			* @param {obj} v
+			* @return {obj} Memory.rooms[this.room.name].sources[this.id]
+			*/
 			'memory' : {
 				get: function() {
 					if (this.room.memory.sources === undefined) {
@@ -1277,6 +1370,36 @@ module.exports = function(){
 			},
 			
 			/**
+			* Initializes and gets source slots
+			* @return {Number} Memory.rooms[this.room.name].sources[this.id].slots
+			*/
+			'slots' : {
+				get: function() {
+					if (this.room.memory.sources === undefined) {
+						this.room.memory.sources = {};
+					}
+					if (this.room.memory.sources[this.id] === undefined) {
+						this.room.memory.sources[this.id] = {};
+					}
+					if (this.room.memory.sources[this.id].slots === undefined || this.room.memory.sources[this.id].slotsUsed === undefined) {
+						let count = 0;
+						for (let x=-1;x<2;x++){
+							for (let y=-1;y<2;y++){
+								if ((this.room.lookForAt('terrain',this.pos.x+x,this.pos.y+y) == 'wall') && !(x==0 && y==0)){ //Check for walls around source
+									count = count+1;
+								}
+							}
+						}
+						this.room.memory.sources[this.id].slots = 8-count;
+						this.room.memory.sources[this.id].slotsUsed = 0;
+					}
+					return this.room.memory.sources[this.id].slots;
+				},
+				configurable: true,
+				enumerable: false
+			},
+						
+			/**
 			* Checks if source has free slots for creeps to harvest
 			* @return {Boolean} or undefined
 			*/
@@ -1288,9 +1411,16 @@ module.exports = function(){
 						&& this.room.memory.sources[this.id].slots
 						&& this.room.memory.sources[this.id].harvesters)
 					{
-						return this.room.memory.sources[this.id].slots > this.room.memory.sources[this.id].harvesters.length
+						return this.room.memory.sources[this.id].slots > Object.keys(this.room.memory.sources[this.id].harvesters).length
 					}else {
-						return undefined;
+						if (this.room.memory.sources === undefined) {
+							this.room.memory.sources = {};
+						}
+						if (this.room.memory.sources[this.id] === undefined) {
+							this.room.memory.sources[this.id] = {};
+						}
+						this.room.memory.sources[this.id].harvesters = {}
+						return true;
 					}
 				},
 				writable: true,
