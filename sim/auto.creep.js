@@ -1,5 +1,3 @@
-var constants  = require('var.const');
-var creepRole = constants.creepRole();
 
 var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
@@ -10,18 +8,9 @@ module.exports = {
 			var creep = creepList[id];
 			var job = creep.memory.job;
 			
-			/*
-			 * Remove
-			 */
-			if (job == 'idle')				// <-- this
-				delete creep.memory.job;	// <-- and this
-			/*
-			 * if no creep is left with 'idle' status
-			 */
-			
 			switch(creep.memory.role) {
 				
-				case creepRole[0].name:
+				case 'miner':
 
 					if (creep.memory.spawn){
 						creep.room.memory.sources[creep.memory.source].minerId = creep.id;
@@ -36,7 +25,7 @@ module.exports = {
 
 					break;
 					
-				case creepRole[1].name:
+				case 'hauler':
 					if (creep.memory.spawn){
 						creep.room.memory.sources[creep.memory.source].haulerId = creep.id;
 						delete creep.memory.spawn;
@@ -57,7 +46,7 @@ module.exports = {
 					}
 					break;
 					
-				case creepRole[2].name:
+				case 'maintance':
 					//var container = creep.room.find(FIND_STRUCTURES, {filter: (s) => (s.structureType == STRUCTURE_CONTAINER || s.structureType == STRUCTURE_STORAGE) && s.store[RESOURCE_ENERGY] > creep.carryCapacity});
 					var container = [];
 					if (creep.room.storage){ 
@@ -74,15 +63,15 @@ module.exports = {
 					}
 					break;
 
-				case creepRole[3].name:
+				case 'upgrade':
 					this.upgrader(creep);
 					break;
 
-				case creepRole[4].name:
+				case 'defender':
 					this.defender(creep);
 					break;
 					
-				case creepRole[5].name:
+				case 'supplier':
 					this.supplier(creep);
 					break;
 			
@@ -618,7 +607,31 @@ module.exports = {
 			this.idle(creep);
 		}
 	},
-
+/*
+	defend: function(creep){
+		var enemies = creep.room.hostileCreeps;
+		var firstPriority = enemies.filter((hostile) =>
+			hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack' || body.type == 'claim').length > 0
+			&& hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
+        );
+		var secondPriority = enemies.filter((hostile) =>
+			hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack' || body.type == 'claim').length > 0
+			&& hostile.pos.x > 1 && hostile.pos.y > 1 && hostile.pos.x < 48 && hostile.pos.y < 48 
+        );
+		var closestHostile;
+		if firstPriority{
+			closestHostile = creep.pos.findClosestByPath(firstPriority);
+		}else if secondPriority{
+			closestHostile = creep.pos.findClosestByPath(secondPriority);
+		}
+		if(closestHostile){
+			if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
+				creep.moveTo(closestHostile);
+				creep.say('DEFENSE !!!');
+			}
+		}
+	},
+	*/
 	defend: function(creep){
 		var closestHostile = creep.pos.findClosestByRange(creep.room.hostileCreeps,{filter: (hostile) =>
 			WHITELIST[hostile.owner.username] == undefined 

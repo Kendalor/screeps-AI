@@ -22,6 +22,8 @@ module.exports = {
                 room.memory.roomManagement.roles[nonMinerRoles[i]].members={};
                 room.memory.roomManagement.roles[nonMinerRoles[i]].size=0;
             }
+			room.findAll();
+			autoMemory.initContainerPos(room);
         }
         // DEFENDER
         if(room.memory.underAttack){
@@ -79,25 +81,25 @@ module.exports = {
             switch(t) {
                 case 'defender': //defender
                     var body=this.defenderPreset(room);
-                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'defender', spawn: true});
+                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'defender'});
                     room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
                     break;
 
                 case 'maintance': //maintance
                     var body=this.maintancePreset(room);
-                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'maintance', spawn: true});
+                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'maintance'});
                     room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
                     break;
 
                 case 'supplier': //supplier
                     var body=this.supplierPreset(room);
-                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'supplier', spawn: true});
+                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'supplier'});
                     room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
                     break;
 
                 case 'upgrader': //upgrader
                     var body=this.upgraderPreset(room);
-                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'upgrader', spawn: true});
+                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'upgrader'});
                     room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
                     break;
                 default:
