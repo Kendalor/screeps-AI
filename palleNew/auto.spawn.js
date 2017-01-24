@@ -21,12 +21,12 @@ module.exports = {
 
 
 
-                var minerAmount = spawn.room.memory.activeCreepRoles.miner = _.filter(spawn.room.myCreeps, (creep) => creep.memory.role==creepRole[0].name).length;
-                var haulerAmount = spawn.room.memory.activeCreepRoles.hauler = _.filter(spawn.room.myCreeps, (creep) => creep.memory.role==creepRole[1].name).length;
-                var maintanceAmount = spawn.room.memory.activeCreepRoles.maintance = _.filter(spawn.room.myCreeps, (creep) => creep.memory.role==creepRole[2].name).length;
-                var supplierAmount = spawn.room.memory.activeCreepRoles.supplier = _.filter(spawn.room.myCreeps, (creep) => creep.memory.role==creepRole[5].name).length;
-                var upgraderAmount = spawn.room.memory.activeCreepRoles.upgrader = _.filter(spawn.room.myCreeps, (creep) => creep.memory.role==creepRole[3].name).length;
-                var defenderAmount = spawn.room.memory.activeCreepRoles.defender = _.filter(spawn.room.myCreeps, (creep) => creep.memory.role==creepRole[4].name).length;
+                var minerAmount = spawn.room.memory.activeCreepRoles.miner = _.filter(spawn.room.find(FIND_MY_CREEPS), (creep) => creep.memory.role==creepRole[0].name).length;
+                var haulerAmount = spawn.room.memory.activeCreepRoles.hauler = _.filter(spawn.room.find(FIND_MY_CREEPS), (creep) => creep.memory.role==creepRole[1].name).length;
+                var maintanceAmount = spawn.room.memory.activeCreepRoles.maintance = _.filter(spawn.room.find(FIND_MY_CREEPS), (creep) => creep.memory.role==creepRole[2].name).length;
+                var supplierAmount = spawn.room.memory.activeCreepRoles.supplier = _.filter(spawn.room.find(FIND_MY_CREEPS), (creep) => creep.memory.role==creepRole[5].name).length;
+                var upgraderAmount = spawn.room.memory.activeCreepRoles.upgrader = _.filter(spawn.room.find(FIND_MY_CREEPS), (creep) => creep.memory.role==creepRole[3].name).length;
+                var defenderAmount = spawn.room.memory.activeCreepRoles.defender = _.filter(spawn.room.find(FIND_MY_CREEPS), (creep) => creep.memory.role==creepRole[4].name).length;
                 if(Game.time % 100 == 0){
                     console.log("\nSpawn    :"+spawn.name+" energy cap: "+spawn.room.energyCapacityAvailable
                     +"\nMiner    :"+minerAmount+" "+this.minerPreset(spawn)
@@ -42,7 +42,7 @@ module.exports = {
 						maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
 						upgradeUnits = 1;
 					}else{
-						upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
+						upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-2,0),6);
 						maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
 					}
 				}

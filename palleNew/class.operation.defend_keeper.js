@@ -235,8 +235,10 @@ module.exports = class{
             if(creep.room.name != Memory.operations[defendId].roomName){
                 let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
                 creep.moveTo(pos);
+                creep.say('travel');
             }else{
                 if(creep.memory.targetId){
+                    creep.say('hunting');
                     var target=Game.getObjectById(creep.memory.targetId);
                     if(target){
                         var range=creep.pos.getRangeTo(target);
@@ -266,7 +268,7 @@ module.exports = class{
                         this.invasionBehaviour(creep,id,defendId);
                     }
                 }else{
-                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS,{filter: creep.owner.username == 'Invader'});
+                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS, { filter: (it) => it.owner.username!='Source Keeper' });
                     console.log('Enemies');
                     console.log(enemies);
                     if(enemies.length >0){
