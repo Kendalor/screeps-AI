@@ -228,10 +228,21 @@ module.exports = class{
                     room.memory.invasion=false;
                     Memory.operations[id].invasionHandler.size=0;
                 }
+            }else{
+                if(Object.keys(Memory.operations[id].invasionHandler.members).length > 0){
+                        Memory.operations[id].invasionHandler.members=this.cleanUpCreeps(Memory.operations[id].invasionHandler.members);
+                        for(var i in Memory.operations[id].invasionHandler.members){
+                            var creep=Game.creeps[i];
+                            if(!creep.spawning){
+                                this.invasionBehaviour(creep,id,defendId);
+                            }
+                        }
+                    }
             }
         }
 
         static invasionBehaviour(creep,id,defendId){
+            creep.say('FUCK');
             if(creep.room.name != Memory.operations[defendId].roomName){
                 let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
                 creep.moveTo(pos);
