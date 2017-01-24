@@ -350,7 +350,7 @@ module.exports = class{
 				var count = 0;
 				for (var x=-1;x<2;x++){
 					for (var y=-1;y<2;y++){
-						if ((room.lookForAt('terrain',sourcesSorted[i].pos.x+x,sourcesSorted[i].pos.y+y) == 'wall') && !(x==0 && y==0)){ //Check for walls around source
+						if ((room.lookForAt('terrain',source.pos.x+x,source.pos.y+y) == 'wall') && !(x==0 && y==0)){ //Check for walls around source
 							count = count+1;
 						}
 					}
