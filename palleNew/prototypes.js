@@ -156,18 +156,15 @@ module.exports = function(){
 			*/
 			'clearConstructionSites' : {
 				get: function() {
-					let constructionSites;
-					if (!this.lastSeen("constructionSites") == Game.time){
-						constructionSites = this.findConstructionSites();
-					}else{
-						constructionSites = this.memory.constructionSites;
+					if (!this.lastSeen("constructionSites") || this.lastSeen("constructionSites") <= Game.time){
+						this.findConstructionSites();
 					}
 					let objectArray = [];
-					if (this.memory && constructionSites){
-						let keys = Object.keys(constructionSites);
+					if (this.memory && this.memory.constructionSites){
+						let keys = Object.keys(this.memory.constructionSites);
 						for (let i in keys){
-							if (Object.keys(constructionSites[keys[i]]).length > 0){
-								for (let id in constructionSites[keys[i]]){
+							if (Object.keys(this.memory.constructionSites[keys[i]]).length > 0){
+								for (let id in this.memory.constructionSites[keys[i]]){
 									let obj = Game.getObjectById(id);
 									if (obj && ConstructionSite.prototype.isPrototypeOf(obj)){
 										objectArray.push(obj);
