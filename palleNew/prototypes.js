@@ -23,9 +23,9 @@ const PUNY_PUN_ARRAY = ["Be PINK or be purged!",
                         "To the White\n-That is the mark of the Mutant\nTo be PINK\nFor that is the fate of all Mutants",
                         "To the Yellow\n-That is the mark of the Mutant\nTo be PINK\nFor that is the fate of all Mutants",
                         "PINK will befall you!",
-                        "There is no Hope, only PINK",
+                        "There is no hope, only PINK",
                         "Devote every tick to PINK",
-
+                        "#ff00b4 is the answer",
                         ];
 
 
