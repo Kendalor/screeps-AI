@@ -11,7 +11,22 @@ const STRUCTURE_REFRESH_TIME = 50;
 const MINERALS_REFRESH_TIME = 10000;
 const SOURCES_REFRESH_TIME = MINERALS_REFRESH_TIME;
 
-const PUNY_PUN_ARRAY = ["Be PINK or be purged!","There is only one color,and it is PINK!","How can a creep be happy if it cannot serve PINK with all his ticks?"]
+const PUNY_PUN_ARRAY = ["Be PINK or be purged!",
+                        "There is only one color,and it is PINK!",
+                        "How can a creep be happy if it cannot serve PINK with all his ticks?",
+                        "PINK! PINK! PINK! A color as pure as it is deep! PINK! PINK! PINK! Let it flow, let it run free!",
+                        "PINK will be done",
+                        "To the Red\n-That is the mark of the Mutant\nTo be PINK\nFor that is the fate of all Mutants",
+                        "To the Blue\n-That is the mark of the Mutant\nTo be PINK\nFor that is the fate of all Mutants",
+                        "To the Green\n-That is the mark of the Mutant\nTo be PINK\nFor that is the fate of all Mutants",
+                        "To the Black\n-That is the mark of the Mutant\nTo be PINK\nFor that is the fate of all Mutants",
+                        "To the White\n-That is the mark of the Mutant\nTo be PINK\nFor that is the fate of all Mutants",
+                        "To the Yellow\n-That is the mark of the Mutant\nTo be PINK\nFor that is the fate of all Mutants",
+                        "PINK will befall you!",
+                        "There is no Hope, only PINK",
+                        "Devote every tick to PINK",
+
+                        ];
 
 
 module.exports = function(){

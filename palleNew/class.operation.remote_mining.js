@@ -327,6 +327,8 @@ module.exports = class{
                             costs.set(constr.pos.x, constr.pos.y, 2);
                         }else if(constr.structureType == STRUCTURE_RAMPART) {
                             costs.set(constr.pos.x, constr.pos.y,2);
+                        }else if(constr.structureType == STRUCTURE_CONTAINER) {
+                            costs.set(constr.pos.x, constr.pos.y,2);
                         }else{
                             costs.set(constr.pos.x, constr.pos.y,0xff);
                         }
@@ -345,6 +347,8 @@ module.exports = class{
                             if(constr.structureType == STRUCTURE_ROAD)  {
                                 costs.set(constr.pos.x, constr.pos.y, 2);
                             }else if(constr.structureType == STRUCTURE_RAMPART) {
+                                costs.set(constr.pos.x, constr.pos.y,2);
+                            }else if(constr.structureType == STRUCTURE_CONTAINER) {
                                 costs.set(constr.pos.x, constr.pos.y,2);
                             }else{
                                 costs.set(constr.pos.x, constr.pos.y,0xff);
@@ -365,9 +369,9 @@ module.exports = class{
                         if(i==0){
                         //console.log('create Container');
                         //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER));
-                        Memory.operations[id].sources[s_id].containerPos = {};
-                        Memory.operations[id].sources[s_id].containerPos.x = path[0].x;
-                        Memory.operations[id].sources[s_id].containerPos.y = path[0].y;
+                        Memory.operations[id].sources[source.id].containerPos = {};
+                        Memory.operations[id].sources[source.id].containerPos.x = path[0].x;
+                        Memory.operations[id].sources[source.id].containerPos.y = path[0].y;
                             if(Game.rooms[path[i].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_CONTAINER) != OK){
                                 var temp_id=Game.rooms[path[i].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
                                 if(temp_id.length >0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
