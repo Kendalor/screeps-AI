@@ -11,6 +11,8 @@ const STRUCTURE_REFRESH_TIME = 50;
 const MINERALS_REFRESH_TIME = 10000;
 const SOURCES_REFRESH_TIME = MINERALS_REFRESH_TIME;
 
+const PUNY_PUN_ARRAY = ["Be PINK or be purged!","There is only one color,and it is PINK!","How can a creep be happy if it cannot serve PINK with all his ticks?"]
+
 
 module.exports = function(){
 
@@ -1147,9 +1149,67 @@ module.exports = function(){
 				},
 				writable: true,
 				enumerable: true
-			},			
+			},	
+
+			/**
+			* MAKES SCREEPS PINK AGAIN - signs controllers with punny messages, if not yet signed by our pink alliance
+			* @return {Boolean} returns signing is necessary?
+			*/
+			"makeScreepsPinkAgain" : {
+				value: function(){// default range is 1
+					let bool = false;
+					if (this.room.controller){
+						if (!this.room.controller.sign || (Memory.globals && Memory.globals.friend && !Memory.globals.friend[this.room.controller.sign.username])){
+							switch(Game.time%3) {
+							case 0:
+								this.say("one",true);
+								break;
+							case 1:
+								this.say("of",true);
+								break;
+							case 2:
+								this.say("us",true);
+								break;
+							}
+							bool = true;
+							if (!this.inRangeTo(this.room.controller)){
+								this.moveTo(this.room.controller);
+							}else{
+								let i = parseInt(Math.random()*PUNY_PUN_ARRAY.length);
+								this.signController(this.room.controller,PUNY_PUN_ARRAY[i]);
+							}
+						}
+					}
+					return bool;
+				},
+				writable: true,
+				enumerable: true
+			},
 			
-			/** NEEDS TESTING
+			/**
+			* Clears controller.sign
+			* @return {Boolean} returns clearing is necessary?
+			*/
+			"clearSign" : {
+				value: function(){// default range is 1
+					let bool = false;
+					if (this.room.controller){
+						if (this.room.controller.sign){
+							bool = true;
+							if (!this.inRangeTo(this.room.controller)){
+								this.moveTo(this.room.controller);
+							}else{
+								this.signController(this.room.controller,"");
+							}
+						}
+					}
+					return bool;
+				},
+				writable: true,
+				enumerable: true
+			},
+	
+			/** NEEDS TESTING // TODO
 			* Reserves specific amount of specific resource for set amount of ticks on given container
 			* Uses StructureStorage.prototype.reserveResource = function(objectId,resource,amount,ticks)
 			*  or StructureContainer.prototype.reserveResource = function(objectId,resource,amount,ticks)
@@ -1171,7 +1231,7 @@ module.exports = function(){
 				enumerable: true
 			},
 			
-			/** NEEDS TESTING
+			/** NEEDS TESTING // TODO
 			* Creep moves to target container and reserves an amount of resource
 			* Uppon reaching target the creep withdraws the reserved resource amount and cancels the reservation
 			* Used by screep.reserveResource(container,[resource],[amount],[ticks])
