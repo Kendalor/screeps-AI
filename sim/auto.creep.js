@@ -211,14 +211,17 @@ module.exports = {
 		if(!creep.memory.job && creep.carry.energy < creep.carryCapacity){
 			var sources = creep.room.sources;
 			//sources = creep.room.find(FIND_SOURCES); 
-			sources = sources.filter((source) => (creep.room.memory.sources[source.id].slots > creep.room.memory.sources[source.id].slotsUsed && source.energy > 0));
-			
+			sources = sources.filter((source) => (source.slots > source.memory.slotsUsed && source.energy > 0));
 			if (sources.length > 0){
 				var source = creep.pos.findClosestByPath(sources);
 				if (source != null){
 					this.anounceJob(creep,'harvest');
 					creep.memory.tmpSource = source.id;
-					creep.room.memory.sources[source.id].slotsUsed++;
+					if (creep.room.memory.sources[source.id].slotsUsed++){
+						creep.room.memory.sources[source.id].slotsUsed++;
+					}else{
+						creep.room.memory.sources[source.id].slotsUsed=1;
+					}
 				}else{
 					creep.say("No path!")
 					this.relax(creep);
