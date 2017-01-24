@@ -1171,7 +1171,7 @@ module.exports = function(){
 				value: function(){// default range is 1
 					let bool = false;
 					if (this.room.controller){
-						if (!this.room.controller.sign || (Memory.globals && Memory.globals.friend && !Memory.globals.friend[this.room.controller.sign.username])){
+						if (!this.room.controller.sign || (Memory.globals && Memory.globals.friend && Memory.globals.friend[this.room.controller.sign.username] === undefined)){
 							switch(Game.time%3) {
 							case 0:
 								this.say("one",true);
