@@ -21,7 +21,7 @@ module.exports = {
             }
         }
         // DEFENDER
-        if(spawn.room.memory.underAttack){
+        if(room.memory.underAttack){
             room.memory.roomManagement.roles['defender']=1;
         }
         //MAINTANCE
@@ -39,8 +39,10 @@ module.exports = {
             room.memory.roomManagement.roles['upgrader'] = Math.min(Math.max(parseInt(room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
         }
         //Supplier
-        if(spawn.room.storage.store.energy > 1000){
-            room.memory.roomManagement.roles['supplier'].size=1;
+        if(room.storage){
+            if(room.storage.store.energy > 1000){
+                room.memory.roomManagement.roles['supplier'].size=1;
+            }
         }
         //HAULER UND MINER  -> WILL LATER BE SEPARATED MORE
         for(var i in room.memory.sources){
@@ -70,7 +72,7 @@ module.exports = {
             room.memory.sources[i].haulers=this.cleanUpCreeps(room.memory.sources[i].haulers);
             room.memory.sources[i].haulers=this.creepBuilder(spawnList,room.memory.sources[i].haulers,room.memory.sources[i].min_haulers,body,{role: 'hauler', source_id: i});
         }
-        for(var t in room.memory.roomManagement.roles){ //&& Game.rooms[spawn.room.name].energyAvailable
+        for(var t in room.memory.roomManagement.roles){
             switch(t) {
                 case 'defender': //defender
                     var body=this.defenderPreset(room);
@@ -96,7 +98,7 @@ module.exports = {
                     room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
                     break;
                 default:
-                    console.log("auto.spawn: Undefined creep's role: "+i)
+                    console.log("auto.spawn: Undefined creep's role: "+i);
             }
         }
 	},
@@ -195,58 +197,6 @@ module.exports = {
 			partArray = partArray.concat([CARRY,CARRY,MOVE]);
 		}
 		return partArray;
-	},
-
-	buildSourceRoads: function(room){
-		var pathArrayArray = {};
-		for (var i in room.memory.sources){
-			var source = Game.getObjectById(i); 
-			var path = room.findPath(source.pos,source.room.controller.pos);
-			var pathArray = Room.deserializePath(Room.serializePath(path));
-			for (var j=0;j<pathArray.length;j++){
-				pathArrayArray[i] = source.room.createConstructionSite(pathArray[j].x,pathArray[j].y,STRUCTURE_ROAD);
-			}
-		}
-	},
-
-	buildSwampRoads: function(room){
-		var pathArrayArray = {};
-		for (var i in room.memory.sources){
-		var source = Game.getObjectById(i); 
-		var path = room.findPath(source.pos,source.room.controller.pos);
-		var pathArray = Room.deserializePath(Room.serializePath(path));
-		for (var j=0;j<pathArray.length;j++){
-			if (room.lookForAt(LOOK_TERRAIN,pathArray[j].x,pathArray[j].y) == "swamp")
-			pathArrayArray[i] = source.room.createConstructionSite(pathArray[j].x,pathArray[j].y,STRUCTURE_ROAD);
-		}
-		}
-	},
-
-	roomProfiler: function(room){
-		if(!room.memory.stats){
-			room.memory.stats={};
-		}else{
-			if(!room.memory.spawns){
-				room.memory.spawns ={};
-			}else{
-				if(!room.memory.stats.spawns[spawn.name]){
-					room.memory.stats.spawns[spawn.name] = {};
-				}
-			}
-		}
-
-		if(Game.ticks % 1000 == 0){
-			room.memory.stats.spawns[spawn.name].utilization=Memory.rooms[room].stats.spawns[spawn.name].ticks_s/1000;
-			room.memory.stats.spawns[spawn.name].ticks_s=0;
-			room.memory.stats.spawns[spawn.name].waitingForEnergy=Memory.rooms[room].stats.spawns[spawn.name].ticks_e/1000;
-			room.memory.stats.spawns[spawn.name].ticks_e=0;
-		}else{
-		if(spawn.spawning != null){
-			room.memory..stats.spawns[spawn.name].ticks_s=Memory.rooms[room].stats.spawns[spawn.name].ticks_s+1;
-			}else if(room.energyAvailable < spawn.room.energyCapacityAvailable){
-				room.memory..stats.spawns[spawn.name].ticks_e=Memory.rooms[room].stats.spawns[spawn.name].ticks_e+1;
-			}
-		}
 	},
 
 	creepBuilder: function(spawnList,memberList,size,body,memory){
