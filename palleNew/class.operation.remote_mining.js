@@ -175,7 +175,7 @@ module.exports = class{
                         delete Memory.creeps[Memory.operations[id].sources[i].builder];
                         delete Memory.operations[id].sources[i].builder;
                     }else if(!Game.creeps[Memory.operations[id].sources[i].builder].spawning){
-                        console.log('Run Build for '+Memory.operations[id].sources[i].builder);
+                        //console.log('Run Build for '+Memory.operations[id].sources[i].builder);
                         this.creepBuild(Game.creeps[Memory.operations[id].sources[i].builder]);
 
                     }
@@ -414,7 +414,7 @@ module.exports = class{
                     creep.memory.targetId=container.id;
                 }else{
                     var target=creep.pos.findClosestByPath(targets);
-                    console.log(JSON.stringify(targets));
+                    //console.log(JSON.stringify(targets));
                     if(target !=null){
                         creep.memory.targetId=target.id;
                     }else if(targets.length >0 && target == null){
