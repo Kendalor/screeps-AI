@@ -1385,7 +1385,7 @@ module.exports = function(){
 						let count = 0;
 						for (let x=-1;x<2;x++){
 							for (let y=-1;y<2;y++){
-								if ((room.lookForAt('terrain',sourcesSorted[i].pos.x+x,sourcesSorted[i].pos.y+y) == 'wall') && !(x==0 && y==0)){ //Check for walls around source
+								if ((this.room.lookForAt('terrain',this.pos.x+x,this.pos.y+y) == 'wall') && !(x==0 && y==0)){ //Check for walls around source
 									count = count+1;
 								}
 							}
