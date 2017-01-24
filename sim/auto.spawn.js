@@ -39,7 +39,7 @@ module.exports = {
 
         //UPGRADER
         if (room.storage == undefined) {
-            room.memory.roomManagement.roles['upgrader'].size = 1;
+            room.memory.roomManagement.roles['upgrader'].size = 0;
         }else{
             room.memory.roomManagement.roles['upgrader'].size = Math.min(Math.max(parseInt(room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
         }
