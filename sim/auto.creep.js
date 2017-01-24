@@ -206,11 +206,7 @@ module.exports = {
 				if (source != null){
 					this.anounceJob(creep,'harvest');
 					creep.memory.tmpSource = source.id;
-					if (creep.room.memory.sources[source.id].slotsUsed++){
-						creep.room.memory.sources[source.id].slotsUsed++;
-					}else{
-						creep.room.memory.sources[source.id].slotsUsed=1;
-					}
+					creep.room.memory.sources[source.id].slotsUsed++;
 				}else{
 					creep.say("No path!")
 					this.relax(creep);
