@@ -71,11 +71,11 @@ module.exports = {
             }
             let body=this.minerPreset(room);
             room.memory.sources[i].miners=this.cleanUpCreeps(room.memory.sources[i].miners);
-            room.memory.sources[i].miners=this.creepBuilder(spawnList,room.memory.sources[i].miners,room.memory.sources[i].min_miners,body,{role: 'miner', source_id: i, spawn: true});
+            room.memory.sources[i].miners=this.creepBuilder(spawnList,room.memory.sources[i].miners,room.memory.sources[i].min_miners,body,{role: 'miner', sourceId: i, spawn: true});
 
             body=this.haulerPreset(room);
             room.memory.sources[i].haulers=this.cleanUpCreeps(room.memory.sources[i].haulers);
-            room.memory.sources[i].haulers=this.creepBuilder(spawnList,room.memory.sources[i].haulers,room.memory.sources[i].min_haulers,body,{role: 'hauler', source_id: i, spawn: true});
+            room.memory.sources[i].haulers=this.creepBuilder(spawnList,room.memory.sources[i].haulers,room.memory.sources[i].min_haulers,body,{role: 'hauler', sourceId: i, spawn: true});
         }
         for(var t in room.memory.roomManagement.roles){
             switch(t) {

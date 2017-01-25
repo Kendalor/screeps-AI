@@ -12,10 +12,6 @@ module.exports = {
 				
 				case 'miner':
 
-					if (creep.memory.spawn){
-						creep.room.memory.sources[creep.memory.source].minerId = creep.id;
-						delete creep.memory.spawn;
-					}
 
 					if (creep.room.energyCapacityAvailable < 500)
 						this.allrounder(creep);
@@ -26,10 +22,7 @@ module.exports = {
 					break;
 					
 				case 'hauler':
-					if (creep.memory.spawn){
-						creep.room.memory.sources[creep.memory.source].haulerId = creep.id;
-						delete creep.memory.spawn;
-					}
+
 					if(!creep.memory.containerId){
 						let containerPos = creep.room.memory.sources[creep.memory.source].containerPos;
 						//let container = creep.room.find(FIND_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER && struct.pos.x == containerPos.x && struct.pos.y == containerPos.y});
@@ -49,13 +42,19 @@ module.exports = {
 				case 'maintance':
 					//var container = creep.room.find(FIND_STRUCTURES, {filter: (s) => (s.structureType == STRUCTURE_CONTAINER || s.structureType == STRUCTURE_STORAGE) && s.store[RESOURCE_ENERGY] > creep.carryCapacity});
 					var container = [];
+					var miners=0;
+					var haulers=0;
+					for(var i in creep.room.memory.sources){
+					    miners=miners+Object.keys(creep.room.memory.sources[i].miners).length;
+					    haulers=haulers+Object.keys(creep.room.memory.sources[i].haulers).length;
+					}
 					if (creep.room.storage){ 
 						container = [creep.room.storage].filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
 					}
 					if (container.length == 0 && creep.room.memory.structures.container){
 						container = creep.room.containers.filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
 					}
-					if (container.length == 0 || (creep.room.memory.activeCreepRoles.miner == 0 && creep.room.memory.activeCreepRoles.hauler == 0)){
+					if (container.length == 0 || (miners == 0 && haulers == 0)){
 						this.allrounder(creep);
 					}
 					else {
@@ -243,13 +242,15 @@ module.exports = {
 
 	mine: function(creep) {
 		//var tmpContainer = creep.pos.lookFor('structure').filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
-		var pos = creep.room.memory.sources[creep.memory.source].containerPos;
+
+
+		var pos = creep.room.memory.sources[creep.memory.sourceId].containerPos;
 		if (!creep.memory.job){
 			this.anounceJob(creep,'mine');
-			creep.room.memory.sources[creep.memory.source].slotsUsed++;
+			creep.room.memory.sources[creep.memory.sourceId].slotsUsed++;
 		}
 		if(creep.memory.job == 'mine' && creep.carry.energy < creep.carryCapacity){
-			var source = Game.getObjectById(creep.memory.source);
+			var source = Game.getObjectById(creep.memory.sourceId);
 			if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
 				creep.moveTo(pos.x,pos.y);
 			}
@@ -260,8 +261,8 @@ module.exports = {
 				var containers = creep.room.lookForAt('structure',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
 
 				if (!containers[0]){
-					if (creep.room.memory.sources[creep.memory.source].container){
-						delete creep.room.memory.sources[creep.memory.source].container;
+					if (creep.room.memory.sources[creep.memory.sourceId].container){
+						delete creep.room.memory.sources[creep.memory.sourceId].container;
 					}
 					var constructions = creep.room.lookForAt('constructionSite',pos.x,pos.y).filter((struct) => struct.structureType == STRUCTURE_CONTAINER);
 					if (constructions[0] != null){
@@ -273,14 +274,14 @@ module.exports = {
 					}
 				}
 				else{
-					if (!creep.room.memory.sources[creep.memory.source].container){
-						creep.room.memory.sources[creep.memory.source].container = true;
+					if (!creep.room.memory.sources[creep.memory.sourceId].container){
+						creep.room.memory.sources[creep.memory.sourceId].container = true;
 					}
 					creep.memory.containerId = containers[0].id;
-					creep.room.memory.sources[creep.memory.source].containerId = containers[0].id;
+					creep.room.memory.sources[creep.memory.sourceId].containerId = containers[0].id;
 				}
 			} else if (creep.memory.containerId != null){
-				var pos = creep.room.memory.sources[creep.memory.source].containerPos;
+				var pos = creep.room.memory.sources[creep.memory.sourceId].containerPos;
 				if(creep.pos.x != pos.x || creep.pos.y != pos.y){
 					creep.moveTo(pos.x,pos.y);
 				}
@@ -294,47 +295,7 @@ module.exports = {
 	mineCancel: function(creep){
 		if (creep.memory.job == 'mine'){
 			this.idle(creep);
-			creep.room.memory.sources[creep.memory.source].slotsUsed--;
-		}
-	},
-
-	containerize: function(creep){
-		if(!creep.memory.containerId && creep.carry.energy>0){
-			var pos = creep.room.memory.sources[creep.memory.source].containerPos;
-			var containers = creep.room.containers.filter((struct) => struct.pos.x == pos.x && struct.pos.y == pos.y);
-			if (containers[0] == null){
-				var constructions = creep.room.constructionSitesByType(STRUCTURE_CONTAINER).filter((struct) => struct.pos.x == pos.x && struct.pos.y == pos.y);
-				if (constructions[0] != null){
-					if (creep.build(constructions[0]) == ERR_NOT_IN_RANGE){
-						creep.build(constructions[0]);
-					}
-				}
-			}
-			else{
-				creep.memory.containerId = containers[0].id;
-				creep.room.memory.sources[creep.memory.source].containerId = containers[0].id;
-			}
-		}
-		if(!creep.memory.job){
-			this.anounceJob(creep,'containerize');
-		}
-		if(creep.carry.energy > 0 && creep.memory.job == 'containerize'){
-			var pos = creep.room.memory.sources[creep.memory.source].containerPos;
-			if(creep.pos.x != pos.x || creep.pos.y != pos.y){
-				creep.moveTo(pos.x,pos.y);
-			}
-			else{
-				creep.drop(RESOURCE_ENERGY);
-			}
-		}
-		if(creep.carry.energy == 0 && creep.memory.job == 'containerize'){
-			this.idle(creep);
-		}
-	},
-
-	containerizeCancel: function(creep){
-		if (creep.memory.job == 'containerize'){
-			this.idle(creep);
+			creep.room.memory.sources[creep.memory.sourceId].slotsUsed--;
 		}
 	},
 
