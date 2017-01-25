@@ -279,9 +279,9 @@ module.exports = class{
                         this.invasionBehaviour(creep,id,defendId);
                     }
                 }else{
-                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS, { filter: (it) => it.owner.username!='Source Keeper'});
-                    console.log('Enemies');
-                    console.log(enemies);
+                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS, { filter: (it) => it.owner.username!='Source Keeper'})
+					enemies = enemies.filter((cr) => cr.body.filter( (body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0 );
+                    console.log('Harmful Enemies: '+enemies);
                     if(enemies.length >0){
                         creep.memory.targetId=creep.pos.findClosestByRange(enemies).id;
                         this.invasionBehaviour(creep,id,defendId);
