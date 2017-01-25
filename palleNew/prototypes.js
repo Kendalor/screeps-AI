@@ -1,8 +1,6 @@
 // CACHE REFRESH CONSTANTS
 
-const HOSTILE_CREEP_REFRESH_TIME = 0;
 
-const MY_CREEP_REFRESH_TIME = 5;
 const RESOURCES_REFRESH_TIME = 10;
 
 const CONTRUCTION_SITE_REFRESH_TIME = 10;
@@ -239,7 +237,7 @@ module.exports = function(){
 						let alliedCreeps = [];
 						if (Memory.globals && Memory.globals.ally){
 							for(let i = hostileCreeps.length-1; i >= 0; i--) {
-								if(Memory.globals.ally[hostileCreeps[i].owner.username]) alliedCreeps.push(myArray.splice(i,1));
+								if(Memory.globals.ally[hostileCreeps[i].owner.username]) alliedCreeps.push(hostileCreeps.splice(i,1));
 							}
 						}
 						this._hostileCreeps = hostileCreeps;
@@ -262,7 +260,7 @@ module.exports = function(){
 						let alliedCreeps = [];
 						if (Memory.globals && Memory.globals.ally){
 							for(let i = hostileCreeps.length-1; i >= 0; i--) {
-								if(Memory.globals.ally[hostileCreeps[i].owner.username]) alliedCreeps.push(myArray.splice(i,1));
+								if(Memory.globals.ally[hostileCreeps[i].owner.username]) alliedCreeps.push(hostileCreeps.splice(i,1));
 							}
 						}
 						this._hostileCreeps = hostileCreeps;
