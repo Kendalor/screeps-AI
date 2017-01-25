@@ -22,91 +22,97 @@ module.exports = {
 		var spawnList = [];
 		let spawns = room.spawns;
 		for (let i in spawns){
-			if (!spawns[i].spawning){
+			if (spawns[i].spawning == null){
 				spawnList.push(spawns[i].name);
 			}
 		}
-        // DEFENDER
-        if(room.memory.underAttack){
-            room.memory.roomManagement.roles['defender'].size=1;
-        }
-        //MAINTANCE
+		if(spawnList.length){
+            // DEFENDER
+            if(room.memory.underAttack){
+                room.memory.roomManagement.roles['defender'].size=1;
+            }
+            //MAINTANCE
 
-        if (room.storage == undefined) {
-            room.memory.roomManagement.roles['maintance'].size = 3*Object.keys(room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(room.constructionSites).length)/10));;
-        }else{
-            room.memory.roomManagement.roles['maintance'].size = Math.ceil(1+parseInt(Object.keys(room.constructionSites).length)/10); // 1 +Constructionsites/10
-        }
-
-        //UPGRADER
-        if (room.storage == undefined) {
-            room.memory.roomManagement.roles['upgrader'].size = 0;
-        }else{
-            room.memory.roomManagement.roles['upgrader'].size = Math.min(Math.max(parseInt(room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
-        }
-        //Supplier
-        if(room.storage){
-            if(room.storage.store.energy > 1000){
-                room.memory.roomManagement.roles['supplier'].size=1;
-            }
-        }
-        //HAULER UND MINER  -> WILL LATER BE SEPARATED MORE
-        for(var i in room.memory.sources){
-            if(!room.memory.sources[i].haulers){
-                room.memory.sources[i].haulers={};
-            }
-            if(!room.memory.sources[i].min_haulers){
-                room.memory.sources[i].min_haulers=0;
-            }
-            if(!room.memory.sources[i].miners){
-                room.memory.sources[i].miners={};
-            }
-            if(!room.memory.sources[i].min_miners){
-                room.memory.sources[i].min_miners=1;
-            }
-
-            if(room.memory.sources[i].container){
-                room.memory.sources[i].min_haulers=1;
+            if (room.storage == undefined) {
+                room.memory.roomManagement.roles['maintance'].size = 3*Object.keys(room.memory.sources).length+Math.ceil(Math.ceil(1+parseInt(Object.keys(room.constructionSites).length)/10));;
             }else{
-                room.memory.sources[i].min_haulers=0;
+                room.memory.roomManagement.roles['maintance'].size = Math.ceil(1+parseInt(Object.keys(room.constructionSites).length)/10); // 1 +Constructionsites/10
             }
-            let body=this.minerPreset(room);
-            room.memory.sources[i].miners=this.cleanUpCreeps(room.memory.sources[i].miners);
-            room.memory.sources[i].miners=this.creepBuilder(spawnList,room.memory.sources[i].miners,room.memory.sources[i].min_miners,body,{role: 'miner', sourceId: i});
 
-            body=this.haulerPreset(room);
-            room.memory.sources[i].haulers=this.cleanUpCreeps(room.memory.sources[i].haulers);
-            room.memory.sources[i].haulers=this.creepBuilder(spawnList,room.memory.sources[i].haulers,room.memory.sources[i].min_haulers,body,{role: 'hauler', sourceId: i});
-        }
-        for(var t in room.memory.roomManagement.roles){
-            switch(t) {
-                case 'defender': //defender
-                    var body=this.defenderPreset(room);
-                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'defender'});
-                    room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
-                    break;
-
-                case 'maintance': //maintance
-                    var body=this.maintancePreset(room);
-                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'maintance'});
-                    room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
-                    break;
-
-                case 'supplier': //supplier
-                    var body=this.supplierPreset(room);
-                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'supplier'});
-                    room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
-                    break;
-
-                case 'upgrader': //upgrader
-                    var body=this.upgraderPreset(room);
-                    room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'upgrader'});
-                    room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
-                    break;
-                default:
-                    console.log("auto.spawn: Undefined creep's role: "+t);
+            //UPGRADER
+            if (room.storage == undefined) {
+                room.memory.roomManagement.roles['upgrader'].size = 0;
+            }else{
+                room.memory.roomManagement.roles['upgrader'].size = Math.min(Math.max(parseInt(room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
             }
-        }
+            //Supplier
+            if(room.storage){
+                if(room.storage.store.energy > 1000){
+                    room.memory.roomManagement.roles['supplier'].size=1;
+                }
+            }
+            //HAULER UND MINER  -> WILL LATER BE SEPARATED MORE
+            for(var i in room.memory.sources){
+                if(!room.memory.sources[i].haulers){
+                    room.memory.sources[i].haulers={};
+                }
+                if(!room.memory.sources[i].min_haulers){
+                    room.memory.sources[i].min_haulers=0;
+                }
+                if(!room.memory.sources[i].miners){
+                    room.memory.sources[i].miners={};
+                }
+                if(!room.memory.sources[i].min_miners){
+                    room.memory.sources[i].min_miners=1;
+                }
+
+                if(room.memory.sources[i].container){
+                    room.memory.sources[i].min_haulers=1;
+                }else{
+                    room.memory.sources[i].min_haulers=0;
+                }
+                let body=this.minerPreset(room);
+
+                room.memory.sources[i].miners=this.creepBuilder(spawnList,room.memory.sources[i].miners,room.memory.sources[i].min_miners,body,{role: 'miner', sourceId: i});
+                room.memory.sources[i].miners=this.cleanUpCreeps(room.memory.sources[i].miners);
+
+                body=this.haulerPreset(room);
+                room.memory.sources[i].haulers=this.cleanUpCreeps(room.memory.sources[i].haulers);
+                room.memory.sources[i].haulers=this.creepBuilder(spawnList,room.memory.sources[i].haulers,room.memory.sources[i].min_haulers,body,{role: 'hauler', sourceId: i});
+                room.memory.sources[i].haulers=this.cleanUpCreeps(room.memory.sources[i].haulers);
+            }
+            for(var t in room.memory.roomManagement.roles){
+                switch(t) {
+                    case 'defender': //defender
+                        var body=this.defenderPreset(room);
+                        room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'defender'});
+                        room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
+                        break;
+
+                    case 'maintance': //maintance
+                        var body=this.maintancePreset(room);
+                        room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'maintance'});
+                        room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
+                        break;
+
+                    case 'supplier': //supplier
+                        var body=this.supplierPreset(room);
+                        room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'supplier'});
+                        room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
+                        break;
+
+                    case 'upgrader': //upgrader
+                        var body=this.upgraderPreset(room);
+                        room.memory.roomManagement.roles[t].members=this.creepBuilder(spawnList,room.memory.roomManagement.roles[t].members,room.memory.roomManagement.roles[t].size,body,{role: 'upgrader'});
+                        room.memory.roomManagement.roles[t].members=this.cleanUpCreeps(room.memory.roomManagement.roles[t].members);
+                        break;
+                    default:
+                        console.log("auto.spawn: Undefined creep's role: "+t);
+                }
+            }
+
+		}
+
 	},
 
 	minerPreset: function(room){

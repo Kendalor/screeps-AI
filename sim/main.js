@@ -10,14 +10,19 @@ var invasionCounter   = require('invasion.counter');
 //Kendalor Code
 var operationsHandler = require('operations.handler');
 
+Game.blubb={ bla1: function() {console.log('FUCK');}};
+Game.blubb.bla2= function() {console.log('THIS');};
+
 module.exports.loop = function () {
 
 	if (Game.cpu.bucket < 10000){ // To check if accumulated bonus CPU is used sometimes
 		console.log("Used additional CPU.\nAccumulated bucket:  "+Game.cpu.bucket+"/10000");
 	}
-
+	var operations={};
+    operations={tellMe: function() { console.log('No One can Help you')}};
 	//Kendalor Code
-
+    Game.blubb={ bla1: function() {console.log('FUCK');}};
+    Game.blubb.bla2= function() {console.log('THIS');};
 	operationsHandler.init();
 	operationsHandler.run();
 
@@ -44,7 +49,7 @@ module.exports.loop = function () {
 
 	}
 
-	if(Game.time % 10 == 0){
+	if(Game.time % 100 == 0){
 		autoMemory.clearDeadCreeps();
 		autoMemory.clearFlags();
 	}
