@@ -83,12 +83,11 @@ module.exports = function(){
 			'findAll' : {
 				value: function() {
 					let cS = this.findConstructionSites();
-					let c = this.findCreeps();
 					let m = this.findMinerals();
 					let r = this.findResources();
 					let s = this.findSources();
 					let str = this.findStructures();
-					return [cS.length,c.length,m.length,r.length,s.length,str.length];
+					return [cS.length,m.length,r.length,s.length,str.length];
 				},
 				writable: true,
 				enumerable: false
