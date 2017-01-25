@@ -2,7 +2,7 @@
 
 const HOSTILE_CREEP_REFRESH_TIME = 0;
 
-const MY_CREEP_REFRESH_TIME = 0;
+const MY_CREEP_REFRESH_TIME = 5;
 const RESOURCES_REFRESH_TIME = 10;
 
 const CONTRUCTION_SITE_REFRESH_TIME = 10;
@@ -217,56 +217,14 @@ module.exports = function(){
 			},
 			
 			/** 
-			* Returns array of the creeps found in room and saves their id in room memory
-			* @param {filter} filter
-			* @return {[Creep]} objectArray
-			*/
-			'findCreeps' : {
-				value: function(filter) {
-					let objectArray = this.find(FIND_CREEPS,filter);
-					for (let i in objectArray){
-						objectArray[i].roomMemory;
-					}
-					this.setLastSeen("myCreeps");
-					this.setLastSeen("hostileCreeps");
-					return objectArray;
-				},
-				writable: true,
-				enumerable: false
-			},
-			
-			/** 
 			* Returns array of the creeps whose ids are saved in room memory
 			* @return {[Creep]} objectArray
 			*/
 			'creeps' : {
 				get: function() {
-					if (this.lastSeen("myCreeps") == Game.time && this.lastSeen("hostileCreeps") == Game.time){
-						let objectArray = this.hostileCreeps.concat(this.alliedCreeps).concat(this.myCreeps);
-						return objectArray;
-					}else{
-						return this.findCreeps();
-					}
+					return this.myCreeps.concat(this.hostileCreeps).concat(this.alliedCreeps);
 				},
 				configurable: true,
-				enumerable: false
-			},
-			
-			/** 
-			* Returns array of the hostile creeps found in room and saves their id in room memory
-			* @param {filter} filter
-			* @return {[Creep]} objectArray
-			*/
-			'findHostileCreeps' : {
-				value: function(filter) {
-					let objectArray = this.find(FIND_HOSTILE_CREEPS,filter);
-					for (let i in objectArray){
-						objectArray[i].roomMemory;
-					}
-					this.setLastSeen("hostileCreeps");
-					return objectArray.filter((c) => Memory.globals.friend[c.owner.username] == undefined);
-				},
-				writable: true,
 				enumerable: false
 			},
 			
@@ -276,87 +234,43 @@ module.exports = function(){
 			*/
 			'hostileCreeps' : {
 				get: function() {
-					if (this.lastSeen("hostileCreeps") >= Game.time-HOSTILE_CREEP_REFRESH_TIME){
-						let objectArray = [];
-						if (this.memory && this.memory.hostileCreeps){
-							for (let id in this.memory.hostileCreeps){
-								let obj = Game.getObjectById(id);
-								if (obj && Creep.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.hostileCreeps[id];
-								}
+					if (!this._hostileCreeps) {
+						let hostileCreeps = this.find(FIND_HOSTILE_CREEPS);
+						let alliedCreeps = [];
+						if (Memory.globals && Memory.globals.ally){
+							for(let i = hostileCreeps.length-1; i >= 0; i--) {
+								if(Memory.globals.ally[hostileCreeps[i].owner.username]) alliedCreeps.push(myArray.splice(i,1));
 							}
 						}
-						return objectArray;
-					}else{
-						return this.findHostileCreeps();
+						this._hostileCreeps = hostileCreeps;
+						this._alliedCreeps = alliedCreeps;
 					}
+					return this._hostileCreeps;
 				},
 				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			* Returns array of the allied creeps found in room and saves their id in room memory
-			* @param {filter} filter
-			* @return {[Creep]} objectArray
-			*/
-			'findAlliedCreeps' : {
-				value: function(filter) {
-					let objectArray = this.find(FIND_HOSTILE_CREEPS,filter);
-					for (let i in objectArray){
-						objectArray[i].roomMemory;
-					}
-					this.setLastSeen("hostileCreeps");
-					return objectArray.filter((c) => Memory.globals.friend[c.owner.username]);
-				},
-				writable: true,
-				enumerable: false
-			},
-			
-			/** 
-			* Returns array of the hostile creeps of allied players whose ids are saved in room memory
+			* Returns array of the hostile creeps whose ids are saved in room memory
 			* @return {[Creep]} objectArray
 			*/
 			'alliedCreeps' : {
 				get: function() {
-					if (this.lastSeen("hostileCreeps") >= Game.time-HOSTILE_CREEP_REFRESH_TIME){
-						let objectArray = [];
-						if (this.memory && this.memory.alliedCreeps){
-							for (let id in this.memory.alliedCreeps){
-								let obj = Game.getObjectById(id);
-								if (obj && Creep.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.alliedCreeps[id];
-								}
+					if (!this._alliedCreeps) {
+						let hostileCreeps = this.find(FIND_HOSTILE_CREEPS);
+						let alliedCreeps = [];
+						if (Memory.globals && Memory.globals.ally){
+							for(let i = hostileCreeps.length-1; i >= 0; i--) {
+								if(Memory.globals.ally[hostileCreeps[i].owner.username]) alliedCreeps.push(myArray.splice(i,1));
 							}
 						}
-						return objectArray;
-					}else{
-						return this.findAlliedCreeps();
+						this._hostileCreeps = hostileCreeps;
+						this._alliedCreeps = alliedCreeps;
 					}
+					return this._alliedCreeps;
 				},
 				configurable: true,
-				enumerable: false
-			},
-			
-			/** 
-			* Returns array of the your creeps found in room and saves their id in room memory
-			* @param {filter} filter
-			* @return {[Creep]} objectArray
-			*/
-			'findMyCreeps' : {
-				value: function(filter) {
-					let objectArray = this.find(FIND_MY_CREEPS,filter);
-					for (let i in objectArray){
-						objectArray[i].roomMemory;
-					}
-					this.setLastSeen("myCreeps");
-					return objectArray;
-				},
-				writable: true,
 				enumerable: false
 			},
 			
@@ -366,22 +280,10 @@ module.exports = function(){
 			*/
 			'myCreeps' : {
 				get: function() {
-					if (this.lastSeen("myCreeps") >= Game.time-MY_CREEP_REFRESH_TIME){
-						let objectArray = [];
-						if (this.memory && this.memory.myCreeps){
-							for (let id in this.memory.myCreeps){
-								let obj = Game.getObjectById(id);
-								if (obj && obj.pos.roomName == this.name && Creep.prototype.isPrototypeOf(obj) ){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.myCreeps[id];
-								}
-							}
-						}
-						return objectArray;
-					}else{
-						return this.findMyCreeps();
+					if (!this._myCreeps) {
+						this._myCreeps = this.find(FIND_MY_CREEPS);
 					}
+					return this._myCreeps;
 				},
 				configurable: true,
 				enumerable: false
@@ -1080,7 +982,7 @@ module.exports = function(){
 							this.room.memory.myCreeps[this.id] = {};
 						}
 						return this.room.memory.myCreeps[this.id];
-					}else if(Memory.globals && Memory.globals.friend && Memory.globals.friend[this.owner.username]){
+					}else if(Memory.globals && Memory.globals.ally && Memory.globals.ally[this.owner.username]){
 						if (this.room.memory.alliedCreeps === undefined) {
 							this.room.memory.alliedCreeps = {};
 						}
@@ -1107,7 +1009,7 @@ module.exports = function(){
 							this.room.memory.myCreeps[this.id] = {};
 						}
 						return _.set(Memory, this.room.memory.myCreeps[this.id], v);
-					}else if(Memory.globals && Memory.globals.friend && Memory.globals.friend[this.owner.username]){
+					}else if(Memory.globals && Memory.globals.ally && Memory.globals.ally[this.owner.username]){
 						if (this.room.memory.alliedCreeps === undefined) {
 							this.room.memory.alliedCreeps = {};
 						}
@@ -1171,7 +1073,7 @@ module.exports = function(){
 				value: function(){// default range is 1
 					let bool = false;
 					if (this.room.controller){
-						if (!this.room.controller.sign || (Memory.globals && Memory.globals.friend && Memory.globals.friend[this.room.controller.sign.username] === undefined)){
+						if (!this.room.controller.sign || (Memory.globals && Memory.globals.ally && Memory.globals.ally[this.room.controller.sign.username] === undefined)){
 							switch(Game.time%3) {
 							case 0:
 								this.say("one",true);
