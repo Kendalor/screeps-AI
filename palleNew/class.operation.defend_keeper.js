@@ -133,7 +133,8 @@ module.exports = class{
 
             if(Game.rooms[Memory.operations[defendId].roomName]){
                 var room=Game.rooms[Memory.operations[defendId].roomName];
-                var enemies=room.find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner.username != 'Source Keeper'});
+                var enemies=room.hostileCreeps;
+                enemies=enemies.filter(cr => cr.owner.username != 'Source Keeper');
                 enemies = enemies.filter((cr) => cr.body.filter( (body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0 );
                 if(!Memory.operations[id].invasionHandler.invasions){
                     Memory.operations[id].invasionHandler.invasions=[];
@@ -280,8 +281,9 @@ module.exports = class{
                         this.invasionBehaviour(creep,id,defendId);
                     }
                 }else{
-                    var enemies=creep.room.find(FIND_HOSTILE_CREEPS, { filter: (it) => it.owner.username!='Source Keeper'})
-					enemies = enemies.filter((cr) => cr.body.filter( (body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0 );
+                    var enemies=room.hostileCreeps;
+                    enemies=enemies.filter(cr => cr.owner.username != 'Source Keeper');
+                    enemies = enemies.filter((cr) => cr.body.filter( (body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0 );
                     console.log('Harmful Enemies: '+enemies);
                     if(enemies.length >0){
                         creep.memory.targetId=creep.pos.findClosestByRange(enemies).id;
