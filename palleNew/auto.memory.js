@@ -105,6 +105,23 @@ module.exports = {
     }
   },
   
+	initContainerPos: function(room) {
+		let sources = room.sources;
+		for (i in sources){
+			let source = sources[i];
+			var path = room.findPath(source.pos,source.room.controller.pos,{ignoreCreeps: true});
+			var pathArray = Room.deserializePath(Room.serializePath(path));
+			source.memory.containerPos = {}
+			source.memory.containerPos.x = pathArray[0].x;
+			source.memory.containerPos.y = pathArray[0].y;
+			source.memory.requiredCarryParts = Math.ceil((pathArray.length) * 2/5)+1;
+			for (let j=1;j<pathArray.length;j++){
+				if (room.lookForAt(LOOK_TERRAIN,pathArray[j].x,pathArray[j].y) == "swamp")
+					source.room.createConstructionSite(pathArray[j].x,pathArray[j].y,STRUCTURE_ROAD);
+			}
+		}
+	},
+  
   resetSourceMemory: function(room){
 	delete Memory.rooms[room.name].sources;
     this.initSourceMemory(room);
