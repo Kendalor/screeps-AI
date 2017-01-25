@@ -10,8 +10,9 @@ module.exports = {
 	run: function(spawnList) {
 
 		//for every spawn in the list
-        for(var id in spawnList) {
-            var spawn = spawnList[id];
+        //for(var id in spawnList) {
+		if (spawnList.length){
+            var spawn = spawnList[spawnList.length-1];
             if(spawn.spawning == null){
                 this.roomProfiler(spawn);
 
