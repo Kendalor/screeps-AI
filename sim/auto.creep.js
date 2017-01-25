@@ -62,7 +62,7 @@ module.exports = {
 					}
 					break;
 
-				case 'upgrade':
+				case 'upgrader':
 					this.upgrader(creep);
 					break;
 
@@ -86,7 +86,6 @@ module.exports = {
 		}
 		this.mineCancel(creep);
 		this.gatherCancel(creep);
-		this.containerizeCancel(creep);
 
 		if(creep.room.controller.level <= 2 && creep.room.controller.ticksToDowngrade < 1000)
 			this.upgrade(creep);
@@ -337,7 +336,7 @@ module.exports = {
 				creep.suicide();
 			}
 		}
-
+		
 		if (!creep.memory.containerId){
 			if (creep.role == 'hauler') {
 				var pos = creep.room.memory.sources[creep.memory.source].containerPos;
