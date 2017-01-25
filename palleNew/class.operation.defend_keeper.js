@@ -134,6 +134,7 @@ module.exports = class{
             if(Game.rooms[Memory.operations[defendId].roomName]){
                 var room=Game.rooms[Memory.operations[defendId].roomName];
                 var enemies=room.find(FIND_HOSTILE_CREEPS,{filter: cr => cr.owner.username != 'Source Keeper'});
+                enemies = enemies.filter((cr) => cr.body.filter( (body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0 );
                 if(!Memory.operations[id].invasionHandler.invasions){
                     Memory.operations[id].invasionHandler.invasions=[];
                 }
@@ -243,7 +244,7 @@ module.exports = class{
 
         static invasionBehaviour(creep,id,defendId){
             creep.say('FUCK');
-            if(creep.room.name != Memory.operations[defendId].roomName){
+            if(creep.room.name != Memory.operations[defendId].roomName && !creep.memory.targetId){
                 let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
                 creep.moveTo(pos);
                 creep.say('travel');

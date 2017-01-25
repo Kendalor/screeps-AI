@@ -223,7 +223,7 @@ module.exports = class{
         }
 
         static invasionBehaviour(creep,id,defendId){
-            if(creep.room.name != Memory.operations[defendId].roomName){
+            if(creep.room.name != Memory.operations[defendId].roomName && !creep.memory.targetId){
                 let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
                 creep.moveTo(pos);
             }else{
