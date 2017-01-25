@@ -226,7 +226,11 @@ module.exports = class{
                 }else{
                     if(Memory.operations[id].sources[i].path){
                         Memory.operations[id].sources[i].carry_parts=Math.round(Memory.operations[id].sources[i].path.length*2/5);
-                        Memory.operations[id].sources[i].min_haulers=Math.round(Memory.operations[id].sources[i].path.length*2/5/18);
+                        if(Game.time % 3000 <= 1400){
+                            Memory.operations[id].sources[i].min_haulers=Math.round(Memory.operations[id].sources[i].path.length*2/5/18);
+                        }else{
+                            Memory.operations[id].sources[i].min_haulers=Math.ceil(Memory.operations[id].sources[i].path.length*2/5/18);
+                        }
                         var max_carry_moveSets=parseInt((Game.getObjectById(Memory.operations[id].nearest_spawnId).room.energyCapacityAvailable-150)/(150));
                         Memory.operations[id].max_carry_moveSets=max_carry_moveSets;
                         // CREATE BODY
