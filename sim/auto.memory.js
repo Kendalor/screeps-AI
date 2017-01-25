@@ -36,18 +36,6 @@ module.exports = {
 		*/
 	},
   
-  clearFlags: function() {
-    for(var name in Memory.flags) {
-      if(!Game.flags[name]) {
-        if (Memory.flags[name].operation_id){
-          delete Memory.operations[Memory.flags[name].operation_id];
-        }
-        delete Memory.flags[name];
-        console.log('Clearing non-existing flag memory:', name);
-      }
-    }
-  },
-  
   checkRoomMemoryBackup: function(room){
     var sources = Game.rooms[room.name].memory.sources;
     for (i in sources) {

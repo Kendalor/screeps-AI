@@ -51,6 +51,5 @@ module.exports.loop = function () {
 
 	if(Game.time % 100 == 0){
 		autoMemory.clearDeadCreeps();
-		autoMemory.clearFlags();
 	}
 }
