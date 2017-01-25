@@ -36,24 +36,11 @@ module.exports.loop = function () {
 
 		var room = Game.rooms[name];
 
-		/*
-		room.findConstructionSites();
-		room.findResources();
-		room.findStructures();
-		room.findHostileCreeps();
-		room.findMyCreeps();
-		*/
-
-		//autoMemory.fixSourceSlots(room);
 		invasionCounter.run(room);
 
-		//if(Game.time % 10 == 0){
-		var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
-		autoSpawn.run(spawnList);
-		//}
+		autoSpawn.run(room);
 
-		var creepList = (room.find(FIND_MY_CREEPS,{filter: (creep) => creep.room.name == name}));
-		autoCreep.run(creepList);
+		autoCreep.run(room);
 
 	}
 

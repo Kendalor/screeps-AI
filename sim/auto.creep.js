@@ -1,82 +1,121 @@
-
 var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
 module.exports = {
-	/** @param {creepList} creepList **/
-		run: function(creepList) {
-		for (var id in creepList){
-			var creep = creepList[id];
-			var job = creep.memory.job;
-			
-			switch(creep.memory.role) {
-				
-				case 'miner':
-
-
-					if (creep.room.energyCapacityAvailable < 500)
-						this.allrounder(creep);
-					else
-						this.miner(creep);
-
-
-					break;
-					
-				case 'hauler':
-
-					if(!creep.memory.containerId){
-						let containerPos = creep.room.memory.sources[creep.memory.source].containerPos;
-						//let container = creep.room.find(FIND_STRUCTURES,{filter: (struct) => struct.structureType == STRUCTURE_CONTAINER && struct.pos.x == containerPos.x && struct.pos.y == containerPos.y});
-						let container = creep.room.containers.filter((struct) => struct.pos.x == containerPos.x && struct.pos.y == containerPos.y);
-						if (container.length){
-							creep.memory.containerId = container[0].id;
-							this.hauler(creep);
-						}
-						else{
-							creep.say("No Container");
-						}
-					}else{
-						this.hauler(creep);
-					}
-					break;
-					
-				case 'maintance':
-					//var container = creep.room.find(FIND_STRUCTURES, {filter: (s) => (s.structureType == STRUCTURE_CONTAINER || s.structureType == STRUCTURE_STORAGE) && s.store[RESOURCE_ENERGY] > creep.carryCapacity});
-					var container = [];
-					var miners=0;
-					var haulers=0;
-					for(var i in creep.room.memory.sources){
-					    miners=miners+Object.keys(creep.room.memory.sources[i].miners).length;
-					    haulers=haulers+Object.keys(creep.room.memory.sources[i].haulers).length;
-					}
-					if (creep.room.storage){ 
-						container = [creep.room.storage].filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
-					}
-					if (container.length == 0 && creep.room.memory.structures.container){
-						container = creep.room.containers.filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
-					}
-					if (container.length == 0 || (miners == 0 && haulers == 0)){
-						this.allrounder(creep);
-					}
-					else {
-						this.maintance(creep);
-					}
-					break;
-
-				case 'upgrader':
-					this.upgrader(creep);
-					break;
-
-				case 'defender':
-					this.defender(creep);
-					break;
-					
-				case 'supplier':
-					this.supplier(creep);
-					break;
-			
-			}			
+	/** @param {Object} room **/
+	run: function(room) {
+		for (let key in room.memory.roomManagement.roles){
+			for (let name in room.memory.roomManagement.roles[key].members){ // EVERY CREEP BUT MINERS & HAULERS
+				if (Game.creeps[name]){
+					let creep = Game.creeps[name];
+					this.distributeJobs(creep)
+				}else if (Memory.creeps[name]){ // DELETE CREEP MEMORY
+					this.clearCreepMemory(name);
+					delete room.memory.roomManagement.roles[key].members[name];
+				}
+			}				
+		}
+		for (let sourceId in room.memory.sources){ // CHECK SOURCES
+			for (let name in room.memory.sources[sourceId].miners){ // MINERS
+				if (Game.creeps[name]){
+					let creep = Game.creeps[name];
+					this.distributeJobs(creep)
+				}else if (Memory.creeps[name]){ // DELETE CREEP MEMORY
+					this.clearCreepMemory(name);
+					delete room.memory.sources[sourceId].miners[name];
+				}
+			}
+			for (let name in room.memory.sources[sourceId].haulers){ // HAULERS
+				if (Game.creeps[name]){
+					let creep = Game.creeps[name];
+					this.distributeJobs(creep)
+				}else if (Memory.creeps[name]){ // DELETE CREEP MEMORY
+					this.clearCreepMemory(name);
+					delete room.memory.sources[sourceId].miners[name];
+				}
+			}
 		}
 	},
+	
+	distributeJobs: function(creep){
+		let job = creep.memory.job;
+		switch(creep.memory.role) {
+
+			case 'miner':
+				if (creep.room.energyCapacityAvailable < 500){
+					this.allrounder(creep);
+				}
+				else{
+					this.miner(creep);
+				}
+				break;
+
+			case 'hauler':
+				if(!creep.memory.containerId){
+					let containerPos = creep.room.memory.sources[creep.memory.sourceId].containerPos;
+					let container = creep.room.containers.filter((struct) => struct.pos.x == containerPos.x && struct.pos.y == containerPos.y);
+					if (container.length){
+						creep.memory.containerId = container[0].id;
+						this.hauler(creep);
+					}
+					else{
+						creep.say("No Container");
+					}
+				}else{
+					this.hauler(creep);
+				}
+				break;
+
+			case 'maintance':
+				//var container = creep.room.find(FIND_STRUCTURES, {filter: (s) => (s.structureType == STRUCTURE_CONTAINER || s.structureType == STRUCTURE_STORAGE) && s.store[RESOURCE_ENERGY] > creep.carryCapacity});
+				var container = [];
+				var miners=0;
+				var haulers=0;
+				for(var i in creep.room.memory.sources){
+					miners = miners+Object.keys(creep.room.memory.sources[i].miners).length;
+					haulers = haulers+Object.keys(creep.room.memory.sources[i].haulers).length;
+				}
+				if (creep.room.storage){
+					container = [creep.room.storage].filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
+				}
+				if (container.length == 0 && creep.room.memory.structures.container){
+					container = creep.room.containers.filter((s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity);
+				}
+				if (container.length == 0 || (miners == 0 && haulers == 0)){
+					this.allrounder(creep);
+				}
+				else {
+					this.maintance(creep);
+				}
+				break;
+
+			case 'upgrader':
+				this.upgrader(creep);
+				break;
+
+			case 'defender':
+				this.defender(creep);
+				break;
+
+			case 'supplier':
+				this.supplier(creep);
+				break;
+
+		}
+	},
+	
+	clearCreepMemory: function(name) {
+		if (Memory.creeps[name].tmpSourceId){
+			let tmpSource = Game.getObjectById([Memory.creeps[name].tmpSourceId])
+			if (tmpSource && tmpSource.room && tmpSource.room.memory && tmpSource.room.memory.sources){
+				tmpSource.room.memory.sources[Memory.creeps[name].tmpSourceId].slotsUsed--;
+			}
+		}else if(Memory.creeps[name].role == 'miner' && Memory.creeps[name].job == 'mine' && Memory.creeps[name].source){
+			let source = Game.getObjectById([Memory.creeps[name].source])
+			source.room.memory.sources[Memory.creeps[name].sourceId].slotsUsed--;
+		}
+		delete Memory.creeps[name];
+		console.log('Clearing non-existing creep memory:', name);
+    },
 
 	allrounder: function(creep) {
 		if (creep.room.controller.level > 2){
@@ -203,7 +242,7 @@ module.exports = {
 				var source = creep.pos.findClosestByPath(sources);
 				if (source != null){
 					this.anounceJob(creep,'harvest');
-					creep.memory.tmpSource = source.id;
+					creep.memory.tmpSourceId = source.id;
 					creep.room.memory.sources[source.id].slotsUsed++;
 				}else{
 					creep.say("No path!")
@@ -215,15 +254,15 @@ module.exports = {
 			}
 		}
 		if(creep.memory.job == 'harvest' && creep.carry.energy < creep.carryCapacity){
-			var source = Game.getObjectById(creep.memory.tmpSource);
+			var source = Game.getObjectById(creep.memory.tmpSourceId);
 			if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
 				creep.moveTo(source);
 			}
 		}
 		if(creep.memory.job == 'harvest' && creep.carry.energy == creep.carryCapacity){
-			if (!(!creep.memory.tmpSource)){
-				creep.room.memory.sources[creep.memory.tmpSource].slotsUsed--;
-				delete creep.memory.tmpSource;
+			if (!(!creep.memory.tmpSourceId)){
+				creep.room.memory.sources[creep.memory.tmpSourceId].slotsUsed--;
+				delete creep.memory.tmpSourceId;
 			}
 			this.idle(creep);
 		}
@@ -231,9 +270,9 @@ module.exports = {
 
 	harvestCancel: function(creep) {
 		if (creep.memory.job == 'harvest'){
-			if(creep.memory.tmpSource != undefined){
-				creep.room.memory.sources[creep.memory.tmpSource].slotsUsed--;
-				delete creep.memory.tmpSource;
+			if(creep.memory.tmpSourceId != undefined){
+				creep.room.memory.sources[creep.memory.tmpSourceId].slotsUsed--;
+				delete creep.memory.tmpSourceId;
 			}
 			this.idle(creep);
 		}
@@ -339,7 +378,7 @@ module.exports = {
 		
 		if (!creep.memory.containerId){
 			if (creep.role == 'hauler') {
-				var pos = creep.room.memory.sources[creep.memory.source].containerPos;
+				var pos = creep.room.memory.sources[creep.memory.sourceId].containerPos;
 				creep.memory.containerId = containers.filter((struct) => struct.pos.x == pos.x && struct.pos.y == pos.y)[0];
 			}else{
 				var noHaulContainer;
@@ -528,41 +567,6 @@ module.exports = {
 		}
 	},
 
-	recharge: function(creep) {
-		if (creep.carry.energy > 0){
-			if (!creep.memory.job){
-				this.anounceJob(creep,'recharge');
-				creep.memory.targetId=creep.room.controller.id;
-				var controllerFlag = _.filter(Game.flags, (flag) => flag.name == 'Controller' && flag.room.name==creep.room.name);
-				if (controllerFlag[0] != null){
-					creep.memory.cFlagId = controllerFlag[0].id;
-				}
-			}
-			if (creep.memory.job == 'recharge'){
-				var target=Game.getObjectById(creep.memory.targetId);
-				if(creep.generateSafeMode(target) == ERR_NOT_IN_RANGE) {
-					if(creep.memory.cFlag){
-						creep.moveTo(Game.flags.Controller);
-					}
-					else{
-						creep.moveTo(target);
-					}
-				}
-			}
-		} 
-		if(creep.carry.energy == 0 && creep.memory.job == 'upgrade'){
-		if (!(!creep.memory.cFlagId)){
-		delete creep.memory.cFlagId;
-		}
-		this.idle(creep);
-		}
-	},
-
-	rechargeCancel: function(creep){
-		if(creep.memory.job == 'recharge'){
-			this.idle(creep);
-		}
-	},
 /*
 	defend: function(creep){
 		var enemies = creep.room.hostileCreeps;

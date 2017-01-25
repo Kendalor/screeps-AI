@@ -3,10 +3,10 @@ module.exports = {
   clearDeadCreeps: function() {
     for(var name in Memory.creeps) {
       if(!Game.creeps[name]) {
-        if (Memory.creeps[name].tmpSource){
-			let tmpSource = Game.getObjectById([Memory.creeps[name].tmpSource])
-			if (tmpSource && tmpSource.room && tmpSource.room.memory && tmpSource.room.memory.sources)
-				tmpSource.room.memory.sources[Memory.creeps[name].tmpSource].slotsUsed--;
+        if (Memory.creeps[name].tmpSourceId){
+			let tmpSourceId = Game.getObjectById([Memory.creeps[name].tmpSourceId])
+			if (tmpSourceId && tmpSourceId.room && tmpSourceId.room.memory && tmpSourceId.room.memory.sources)
+				tmpSourceId.room.memory.sources[Memory.creeps[name].tmpSourceId].slotsUsed--;
         }else if(Memory.creeps[name].role == 'miner' && Memory.creeps[name].job == 'mine' && Memory.creeps[name].source){
 			let source = Game.getObjectById([Memory.creeps[name].source])
 			source.room.memory.sources[Memory.creeps[name].source].slotsUsed--;
@@ -25,14 +25,15 @@ module.exports = {
 	},
 	
 	fixSource: function(room,sourceId){
-		var slotsUsed = room.myCreeps.filter((creep) => (creep.memory.tmpSource == sourceId) || (creep.memory.job == 'mine' && creep.memory.source == sourceId)).length;
+		var slotsUsed = room.myCreeps.filter((creep) => (creep.memory.tmpSourceId == sourceId) || (creep.memory.job == 'mine' && creep.memory.source == sourceId)).length;
 		room.memory.sources[sourceId].slotsUsed = slotsUsed;
-		
+		/*
 		var miner = room.myCreeps.filter((creep) => creep.memory.source == sourceId && creep.role == 'miner');
 		if (miner.length > 0) room.memory.sources[sourceId].minerId = miner[0].id;
 		
 		var hauler = room.myCreeps.filter((creep) => creep.memory.source == sourceId && creep.role == 'hauler');
 		if (hauler.length > 0) room.memory.sources[sourceId].minerId = hauler[0].id;
+		*/
 	},
   
   clearFlags: function() {

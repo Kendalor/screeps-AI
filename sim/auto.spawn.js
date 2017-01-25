@@ -1,18 +1,11 @@
 var autoMemory = require('auto.memory');
-var constants = require('var.const');
-var creepRole = constants.creepRole();
 var maintanceUnits = 1;
 var upgradeUnits = 1;
 var nonMinerRoles=['maintance','upgrader','defender','supplier'];
 
 module.exports = {
-	/** @param {StructureSpawn} Spawn **/
-	run: function(spawnListObject){
-        var spawnList=[];
-        for(var i in spawnListObject){
-            spawnList.push(spawnListObject[i].name);
-        }
-        var room = spawnListObject[0].room;
+	/** @param {Room} room **/
+	run: function(room){
         //INIT MEMORY STRUCTURE
         if(!room.memory.roomManagement){
             room.memory.roomManagement={};
@@ -25,6 +18,14 @@ module.exports = {
 			room.findAll();
 			autoMemory.initContainerPos(room);
         }
+		// GET SPAWN NAMES
+		var spawnList = [];
+		let spawns = room.spawns;
+		for (let i in spawns){
+			if (!spawns[i].spawning){
+				spawnList.push(spawns[i].name);
+			}
+		}
         // DEFENDER
         if(room.memory.underAttack){
             room.memory.roomManagement.roles['defender'].size=1;
@@ -71,11 +72,11 @@ module.exports = {
             }
             let body=this.minerPreset(room);
             room.memory.sources[i].miners=this.cleanUpCreeps(room.memory.sources[i].miners);
-            room.memory.sources[i].miners=this.creepBuilder(spawnList,room.memory.sources[i].miners,room.memory.sources[i].min_miners,body,{role: 'miner', sourceId: i, spawn: true});
+            room.memory.sources[i].miners=this.creepBuilder(spawnList,room.memory.sources[i].miners,room.memory.sources[i].min_miners,body,{role: 'miner', sourceId: i});
 
             body=this.haulerPreset(room);
             room.memory.sources[i].haulers=this.cleanUpCreeps(room.memory.sources[i].haulers);
-            room.memory.sources[i].haulers=this.creepBuilder(spawnList,room.memory.sources[i].haulers,room.memory.sources[i].min_haulers,body,{role: 'hauler', sourceId: i, spawn: true});
+            room.memory.sources[i].haulers=this.creepBuilder(spawnList,room.memory.sources[i].haulers,room.memory.sources[i].min_haulers,body,{role: 'hauler', sourceId: i});
         }
         for(var t in room.memory.roomManagement.roles){
             switch(t) {
@@ -121,7 +122,11 @@ module.exports = {
 		if (energyCap < 700) {moveParts=1;carryParts=1;workParts=4;}
 		if (energyCap < 500) {moveParts=2;carryParts=1;workParts=1;}
 
-		if (  room.find(FIND_MY_CREEPS,{filter: cr => cr.memory.role == 'miner'}).length == 0 &&  Object.keys(room.memory.roomManagement.roles['maintance'].members).length == 0 && room.energyAvailable < energyCap) {moveParts=1;carryParts=1;workParts=2;}
+		if (room.find(FIND_MY_CREEPS,{filter: (cr) => cr.memory.role == 'miner'}).length == 0 
+		 &&  Object.keys(room.memory.roomManagement.roles['maintance'].members).length == 0 
+		 && room.energyAvailable < energyCap){
+			moveParts=1;carryParts=1;workParts=2;
+		}
 
 		return Array(workParts).fill(WORK).concat(Array(carryParts).fill(CARRY)).concat(Array(moveParts).fill(MOVE));
 	},
