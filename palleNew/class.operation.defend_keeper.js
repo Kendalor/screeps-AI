@@ -202,7 +202,7 @@ module.exports = class{
                     }
 
                     //let body=Array(40).fill(TOUGH,0,4).fill(ATTACK,4,5).fill(RANGED_ATTACK,5,10).fill(MOVE,10,30).fill(HEAL,30,40);
-					let body=Array(40).fill(TOUGH,0,4).fill(ATTACK,4,5).fill(MOVE,5,25).fill(RANGED_ATTACK,25,30).fill(HEAL,30,40);
+					let body=Array(50).fill(ATTACK,0,5).fill(MOVE,5,30).fill(RANGED_ATTACK,30,40).fill(HEAL,40,50);
                     Memory.operations[id].invasionHandler.members=this.creepBuilder(
                         Memory.operations[id].spawnList,
                         Memory.operations[id].invasionHandler.members,
