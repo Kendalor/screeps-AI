@@ -214,7 +214,7 @@ module.exports = class{
                     delete Memory.creeps[Memory.operations[id].sources[i].miner];
                     delete Memory.operations[id].sources[i].miner;
                 }else if(hostiles > 0){
-                        Game.creeps[Memory.operations[id].sources[i].miner].moveTo(Game.getObjectById(Memory.operations[id].nearest_storageId));
+                        Game.creeps[Memory.operations[id].sources[i].miner].travelTo(Game.getObjectById(Memory.operations[id].nearest_storageId));
                 }else if(!Game.creeps[Memory.operations[id].sources[i].miner].spawning){
                     this.creepMine(Game.creeps[Memory.operations[id].sources[i].miner]);
 
@@ -268,7 +268,7 @@ module.exports = class{
                         delete Memory.creeps[cr];
                         delete Memory.operations[id].sources[i].haulers[cr];
                     }else if(hostiles > 0){
-                        Game.creeps[cr].moveTo(Game.getObjectById(Memory.operations[id].nearest_storageId));
+                        Game.creeps[cr].travelTo(Game.getObjectById(Memory.operations[id].nearest_storageId));
                     }else if(!Game.creeps[cr].spawning){
                         this.creepHaul(Game.creeps[cr]);
 
@@ -427,9 +427,9 @@ module.exports = class{
                     if(target !=null){
                         creep.memory.targetId=target.id;
                     }else if(targets.length >0 && target == null){
-                        creep.moveTo(targets[0]);
+                        creep.travelTo(targets[0]);
                     }else{
-                        creep.moveTo(target);
+                        creep.travelTo(target);
                     }
 
                     //console.log(JSON.stringify(creep.pos.findClosestByRange(targets).id));
@@ -445,7 +445,7 @@ module.exports = class{
 
                     var err = creep.withdraw(target,RESOURCE_ENERGY);
                     if(err == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                        creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                     }else if (err == ERR_FULL){
                         creep.memory.targetId = null;
                         return this.creepBuild(creep);
@@ -454,7 +454,7 @@ module.exports = class{
 
                     var err = creep.build(target);
                     if(err == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                        creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                     }else if (err == ERR_INVALID_TARGET || err == ERR_NOT_ENOUGH_RESOURCES){
                         creep.memory.targetId = null;
                         return this.creepBuild(creep);
@@ -484,10 +484,10 @@ module.exports = class{
                             delete Memory.creeps[creep.name].targetId;
                         }else if (creep.carry.energy < creep.carryCapacity){
                             //if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
-                            //    creep.moveTo(target,{reusePath: 30});
+                            //    creep.travelTo(target,{reusePath: 30});
                             var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName]
                             if (creep.pos.x != flag.pos.x || creep.pos.y != flag.pos.y){
-                                creep.moveTo(flag);
+                                creep.travelTo(flag);
                             }else if(Game.time % 2 == 0){
                                 creep.memory.targetId = null;
                             }
@@ -499,7 +499,7 @@ module.exports = class{
                     }else if(target.progress != undefined){ //TARGET CONSTRUCTION SITE -> BUILD
                         var err = creep.build(target);
                         if(err == ERR_NOT_IN_RANGE) {
-                            creep.moveTo(target);
+                            creep.travelTo(target);
                         }else if (err == ERR_FULL){
                             delete Memory.creeps[creep.name].targetId;
                             return this.creepHaul(creep);
@@ -517,7 +517,7 @@ module.exports = class{
                             if (salvage.length > 0){
                                 var err = creep.pickup(salvage[0],RESOURCE_ENERGY)
                                 if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                                    creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                                     creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
@@ -526,7 +526,7 @@ module.exports = class{
                             }else{
                                 var err = creep.withdraw(target,RESOURCE_ENERGY);
                                 if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                    creep.travelTo(target,{reusePath: 30,ignoreCreeps: true});
                                     creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
@@ -534,11 +534,11 @@ module.exports = class{
                                 }
                             }
                         } else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId).room.name){
-                            creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                            creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                             creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
                         }
                         else{
-                            creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                            creep.travelTo(target,{reusePath: 30,ignoreCreeps: true});
                             creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
                         }
                     }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
@@ -553,10 +553,10 @@ module.exports = class{
                             var err = creep.transfer(target, RESOURCE_ENERGY);
                             if (err == ERR_NOT_IN_RANGE){
                                 if (creep.room.name == target.room.name){
-                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                                    creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                                     creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
                                 }else{
-                                    creep.moveTo(target,{reusePath: 30,ignoreCreeps: true});
+                                    creep.travelTo(target,{reusePath: 30,ignoreCreeps: true});
                                     creep.pickup(creep.pos.lookForAt(LOOK_RESOURCES));
                                 }
                             }else if (err == ERR_NOT_ENOUGH_ENERGY){
@@ -591,10 +591,10 @@ module.exports = class{
                             delete Memory.creeps[creep.name].targetId;
                         }else if (creep.carry.energy < creep.carryCapacity){
                             //if(creep.harvest(target) == ERR_NOT_IN_RANGE) {
-                            //    creep.moveTo(target,{reusePath: 30});
+                            //    creep.travelTo(target,{reusePath: 30});
                             var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName]
                             if (creep.pos.x != flag.pos.x || creep.pos.y != flag.pos.y){
-                                creep.moveTo(flag);
+                                creep.travelTo(flag);
                             }else if(Game.time % 2 == 0){
                                 creep.memory.targetId = null;
                             }
@@ -606,7 +606,7 @@ module.exports = class{
                     }else if(target.progress != undefined){ //TARGET CONSTRUCTION SITE -> BUILD
                         var err = creep.build(target);
                         if(err == ERR_NOT_IN_RANGE) {
-                            creep.moveTo(target);
+                            creep.travelTo(target);
                         }else if (err == ERR_FULL){
                             delete Memory.creeps[creep.name].targetId;
                             return this.creepHaul(creep);
@@ -624,7 +624,7 @@ module.exports = class{
                             if (salvage.length > 0){
                                 var err = creep.pickup(salvage[0],RESOURCE_ENERGY)
                                 if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 1,ignoreCreeps: false});
+                                    creep.travelTo(target,{reusePath: 1,ignoreCreeps: false});
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
@@ -632,17 +632,17 @@ module.exports = class{
                             }else{
                                 var err = creep.withdraw(target,RESOURCE_ENERGY);
                                 if(err == ERR_NOT_IN_RANGE) {
-                                    creep.moveTo(target,{reusePath: 1,ignoreCreeps: false});
+                                    creep.travelTo(target,{reusePath: 1,ignoreCreeps: false});
                                 }else if (err == ERR_FULL){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
                                 }
                             }
                         }else if(creep.room.name == Game.getObjectById(Memory.operations[creep.memory.operation_id].nearest_storageId).room.name){
-                            creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                            creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                         }
                         else{
-                            creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                            creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                         }
                     }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
                         var roadConstructions = creep.pos.lookFor(LOOK_CONSTRUCTION_SITES).filter((struct) => struct.structureType == STRUCTURE_ROAD);
@@ -656,9 +656,9 @@ module.exports = class{
                             var err = creep.transfer(target, RESOURCE_ENERGY);
                             if (err == ERR_NOT_IN_RANGE){
                                 if (creep.room.name == target.room.name){
-                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                                    creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                                 }else{
-                                    creep.moveTo(target,{reusePath: 5,ignoreCreeps: false});
+                                    creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
                                 }
                             }else if (err == ERR_NOT_ENOUGH_ENERGY){
                                 if(creep.ticksToLive >= 2* Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].ticksToSource){
@@ -694,11 +694,11 @@ module.exports = class{
                 var source = Game.getObjectById(creep.memory.source_id);
                 var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName];
 				if (creep.room.storage != undefined){
-					creep.moveTo(flag,{reusePath: 5,ignoreCreeps: false});
+					creep.travelTo(flag,{reusePath: 5,ignoreCreeps: false});
                 }else if(creep.room.name != pos.roomName){
-                    creep.moveTo(pos,{reusePath: 30,ignoreCreeps: false});
+                    creep.travelTo(pos,{reusePath: 30,ignoreCreeps: false});
                 }else if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(source);
+                    creep.travelTo(source);
                 }
             }
             if(creep.carry.energy > 0 && creep.room.name == pos.roomName){
@@ -730,7 +730,7 @@ module.exports = class{
                       Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId = container[0].id;
                     }
                     if(creep.pos.x != pos.x || creep.pos.y != pos.y){
-                        creep.moveTo(pos.x,pos.y);
+                        creep.travelTo(pos);
                     }else{
                         if(container[0].hits < container[0].hitsMax-700){
                             creep.repair(container[0]);
@@ -762,7 +762,7 @@ module.exports = class{
                 }else if(!Game.creeps[Memory.operations[id].s_creep].spawning){ //IF CREEP FINISHED SPAWNING
 
                     var creep= Game.creeps[Memory.operations[id].s_creep];
-                    creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
+                    creep.travelTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
                     creep.say('scouting');
                     if(creep.room.name == Memory.operations[id].roomName){
                         Memory.operations[id].scouting=false;

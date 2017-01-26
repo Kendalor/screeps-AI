@@ -35,7 +35,7 @@ module.exports = class{
                     var creep= Game.creeps[Memory.operations[id].creep];
 					//if (!creep.clearSign()){
 					if (!creep.makeScreepsPinkAgain()){
-						creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
+						creep.travelTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
 					}
                     if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
                         //Game.flags[Memory.operations[id].flagName].remove();

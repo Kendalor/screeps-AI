@@ -1036,12 +1036,76 @@ module.exports = function(){
 			*/
 			"inRangeTo" : {
 				value: function(target,range = 1){// default range is 1
-					if(this.pos.roomName == target.pos.roomName){ // same room ?
-						//return this.pos.inRangeTo(target,range);
-						return Math.max(Math.abs(this.pos.x-target.pos.x),Math.abs(this.pos.y-target.pos.y)) <= range;
+					let roomName = target.roomName || target.pos.roomName;
+					if(this.pos.roomName == roomName){ // same room ?
+						return this.pos.inRangeTo(target,range);
 					}else{
 						return false;
 					}
+				},
+				writable: true,
+				enumerable: true
+			},
+			
+			/**
+			* Returns creep.moveTo() but cannot move to x,y coordinates - use {x,y,roomName} instead
+			* @return {Boolean} 
+			*/
+			"travelTo" : {
+				//value: function(x,y,_filter){
+				value: function(x,_filter){
+					let filter;
+					/*if(Number.isInteger(y)){
+						if (!this.inRangeTo({'x': x,'y':y,'roomName':this.pos.roomName})){
+							filter = _filter || {ignoreCreeps: false,reusePath: 5};
+							if (this.isBlocked()){
+								return this.moveTo(x,y,filter);
+							}else{
+								return this.moveTo(x,y,{ignoreCreeps: true,reusePath: 100});
+							}
+						}else{
+							return OK;
+						}
+					}else{*/
+						if (!this.inRangeTo(x)){
+							//filter = y || {ignoreCreeps: false,reusePath: 5};
+							filter = _filter || {ignoreCreeps: false,reusePath: 5};
+							if (this.isBlocked()){
+								return this.moveTo(x,filter);
+							}else{
+								return this.moveTo(x,{ignoreCreeps: true,reusePath: 100});
+							}
+						}else{
+							return OK;
+						}
+					//}
+				},
+				writable: true,
+				enumerable: true
+			},
+			
+			/**
+			* Returns if creep path is blocked - based on creep is standing still
+			* The idea is: if a creep stands still, its .memory._move.path variable stays the same length. 
+			* If the creep is moving, the length of .memory._move.path decreases.
+			* So if you add the last two path.length and their sum is equal to the actuall path.length two times
+			* the creep must be standing still the last 2 ticks.
+			* @return {Boolean} 
+			*/
+			"isBlocked" : {
+				value: function(){
+					let bool = false;
+					if (this.memory._move){
+						let pathLength = this.memory._move.path.length + this.memory._move.path.length;
+						if (pathLength == this.memory._move.pathLength){
+							bool = true;
+						}else if (pathLength < this.memory._move.pathLength){
+							this.memory._move.pathLength = this.memory._move.path.length;
+						}else{
+							this.memory._move.pathLength += this.memory._move.path.length;
+						}
+					}
+					return bool;
 				},
 				writable: true,
 				enumerable: true
