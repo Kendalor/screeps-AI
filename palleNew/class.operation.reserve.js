@@ -33,14 +33,14 @@ module.exports = class{
                     var creep= Game.creeps[Memory.operations[id].creep];
 
                     if(creep.room.name != Memory.operations[id].roomName){
-                        creep.travelTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
+                        creep.moveTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
                         creep.say('Traveling to Room');
                     }else if(creep.room.name == Memory.operations[id].roomName){
                         if(!Memory.operations[id].controller_id){
                             Memory.operations[id].controller_id=Game.rooms[Memory.operations[id].roomName].controller.id;
                         }else{
                             if(creep.reserveController(Game.getObjectById(Memory.operations[id].controller_id)) == ERR_NOT_IN_RANGE){
-                            creep.travelTo(Game.getObjectById(Memory.operations[id].controller_id));
+                            creep.moveTo(Game.getObjectById(Memory.operations[id].controller_id));
                             creep.say('Reserve');
 
                             }else if(!Memory.operations[id].ticksToController || Memory.operations[id].ticksToController > 500-creep.ticksToLive){
