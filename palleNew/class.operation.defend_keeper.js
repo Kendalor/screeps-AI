@@ -292,6 +292,7 @@ module.exports = class{
                         let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
                         creep.moveTo(pos);
                         creep.heal(creep);
+                        creep.say('NOFUCKINGTARGET');
                     }
                 }
             }
