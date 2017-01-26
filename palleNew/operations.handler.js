@@ -1,8 +1,8 @@
 var attackOperation = require('class.operation.attack');
 var colonizeOperation = require('class.operation.colonize');
 var defendKeeperOperation = require('class.operation.defend_keeper');
-var demolishOperation = require('class.operation.demolish');
-var devAidOperation = require('class.operation.developmentAid');
+//var demolishOperation = require('class.operation.demolish');
+//var devAidOperation = require('class.operation.developmentAid');
 var focusEnergyOperation = require('class.operation.focusEnergy');
 var rangedAttackOperation = require('class.operation.ranged_attack');
 var remoteBuildOperation = require('class.operation.remote_build');
@@ -10,7 +10,7 @@ var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
 var reserveOperation = require('class.operation.reserve');
 var scoutingOperation = require('class.operation.scouting');
-var thiefOperation = require('class.operation.steal');
+//var thiefOperation = require('class.operation.steal');
 var tankOperation = require('class.operation.tank');
 
 
@@ -36,7 +36,7 @@ module.exports = {
                         break;
                     case 'steal':
                         //console.log('Case: Steal');
-                        thiefOperation.run(id);
+                        //thiefOperation.run(id);
                         break;
                     case 'reserve':
                         reserveOperation.run(id);
@@ -45,7 +45,7 @@ module.exports = {
                         colonizeOperation.run(id);
                         break;
                     case 'devAid':
-                        devAidOperation.run(id);
+                        //devAidOperation.run(id);
                         break;
                     case 'remote_mining':
                         remoteMiningOperation.run(id);
@@ -67,7 +67,7 @@ module.exports = {
                         break;
 
 					case 'demolish':
-						demolishOperation.run(id);
+						//demolishOperation.run(id);
                         break;
                 }
             }
@@ -106,7 +106,7 @@ module.exports = {
                     remoteBuildOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
                 }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_BLUE)){ //WHITE/BLUE
-                    devAidOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                    //devAidOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
                 }else if (this.colorMatch(flag,COLOR_BLUE,COLOR_BLUE)){ //BLUE/BLUE
                     remoteMiningOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
@@ -118,7 +118,7 @@ module.exports = {
                 }
 
                 else if(this.colorMatch(flag,COLOR_GREY,COLOR_GREY)){ //GREY/GREY
-                    demolishOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                    //demolishOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
                 }
 
         }
