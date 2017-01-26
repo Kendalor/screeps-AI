@@ -201,7 +201,8 @@ module.exports = class{
                         }
                     }
 
-                    let body=Array(40).fill(TOUGH,0,4).fill(ATTACK,4,5).fill(RANGED_ATTACK,5,10).fill(MOVE,10,30).fill(HEAL,30,40);
+                    //let body=Array(40).fill(TOUGH,0,4).fill(ATTACK,4,5).fill(RANGED_ATTACK,5,10).fill(MOVE,10,30).fill(HEAL,30,40);
+					let body=Array(40).fill(TOUGH,0,4).fill(ATTACK,4,5).fill(MOVE,5,25).fill(RANGED_ATTACK,25,30).fill(HEAL,30,40);
                     Memory.operations[id].invasionHandler.members=this.creepBuilder(
                         Memory.operations[id].spawnList,
                         Memory.operations[id].invasionHandler.members,
@@ -281,9 +282,10 @@ module.exports = class{
                         this.invasionBehaviour(creep,id,defendId);
                     }
                 }else{
-                    var enemies=room.hostileCreeps;
+                    var enemies=creep.room.hostileCreeps;
                     enemies=enemies.filter(cr => cr.owner.username != 'Source Keeper');
                     enemies = enemies.filter((cr) => cr.body.filter( (body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0 );
+					
                     console.log('Harmful Enemies: '+enemies);
                     if(enemies.length >0){
                         creep.memory.targetId=creep.pos.findClosestByRange(enemies).id;
