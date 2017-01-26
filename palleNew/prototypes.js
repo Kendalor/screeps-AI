@@ -1037,7 +1037,8 @@ module.exports = function(){
 			"inRangeTo" : {
 				value: function(target,range = 1){// default range is 1
 					if(this.pos.roomName == target.pos.roomName){ // same room ?
-						return this.pos.inRangeTo(target,range);
+						//return this.pos.inRangeTo(target,range);
+						return Math.max(Math.abs(this.pos.x-target.pos.x),Math.abs(this.pos.y-target.pos.y)) <= range;
 					}else{
 						return false;
 					}
