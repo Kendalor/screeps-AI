@@ -56,12 +56,21 @@ module.exports = class{
                         let wounded = creep.room.find(FIND_MY_CREEPS,{filter: (c) => c.hits < c.hitsMax});
                         if (wounded.length){ // found a wounded neighbour to heal?
                             creep.say("aid");
-                            var range=creep.pos.getRangeTo(wounded[0]);
+                            var mostWounded;
+                            var leastHits;
+                            for(var j in wounded){
+                                if(wounded[j].hits < leastHits || leastHits == undefined || mostWounded == undefined){
+                                    mostWounded=wounded[j];
+                                    leastHits=wounded[j].hits;
+                                }
+                            }
+                            //Get most Wounded
+                            var range=creep.pos.getRangeTo(mostWounded);
                             if(range <= 1){
-                                creep.heal(wounded[0]);
+                                creep.heal(mostWounded);
                             }else if(range >=2){
-                                creep.rangedHeal(wounded[0]);
-                                creep.moveTo(wounded[0]);
+                                creep.rangedHeal(mostWounded);
+                                creep.moveTo(mostWounded);
                             }
                         }else{ // try to engage the flag
                             creep.moveTo(flag);
