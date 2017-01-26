@@ -149,7 +149,7 @@ module.exports = class{
 
         // TRAVEL TO FLAG
         static creepTravel(creep,flag){
-            creep.moveTo(flag);
+            creep.travelTo(flag);
             creep.say('travel');
 
         }
@@ -159,7 +159,7 @@ module.exports = class{
           if (!creep.room.controller.my){
             console.log(creep.claimController(creep.room.controller));
             if(creep.claimController(creep.room.controller) == ERR_NOT_IN_RANGE){
-              creep.moveTo(creep.room.controller);
+              creep.travelTo(creep.room.controller);
               creep.say('Claiming');
             }
           }
@@ -184,7 +184,7 @@ module.exports = class{
                         var target = creep.pos.findClosestByPath(containersWithEnergy);
                     }
                     if(creep.withdraw(target,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE){
-                        creep.moveTo(target);
+                        creep.travelTo(target);
                     }
 
                 }else {
@@ -255,15 +255,15 @@ module.exports = class{
                 else if (creep.carry.energy < creep.carryCapacity) {
                  if(target.resourceType == RESOURCE_ENERGY){
                     if(creep.pickup(target) == ERR_NOT_IN_RANGE){
-                        creep.moveTo(target);
+                        creep.travelTo(target);
                     }
                  }else{
                     if(creep.harvest(target) == ERR_NOT_IN_RANGE){
-                        creep.moveTo(target);
+                        creep.travelTo(target);
                     }
                  }
                   if(creep.harvest(target) == ERR_NOT_IN_RANGE || creep.pickup(RESOURCE_ENERGY)){
-                    creep.moveTo(target);
+                    creep.travelTo(target);
                   }
                 }
               }
@@ -274,8 +274,8 @@ module.exports = class{
               else if(target.progress != undefined && target.structureType != STRUCTURE_CONTROLLER){
                 var err = creep.build(target);
                 if(err == ERR_NOT_IN_RANGE) {
-                  creep.moveTo(target);
-                } 
+                  creep.travelTo(target);
+                }
                 else if (err == ERR_FULL){
                   creep.memory.targetId = null;
                 }
@@ -283,7 +283,7 @@ module.exports = class{
               else if(target.progress != undefined && target.structureType == STRUCTURE_CONTROLLER){
                 var err = creep.upgradeController(target);
                 if (err == ERR_NOT_IN_RANGE){
-                  creep.moveTo(target);
+                  creep.travelTo(target);
                 }
                 else if (err == ERR_FULL){
                   creep.memory.targetId = null;
@@ -292,7 +292,7 @@ module.exports = class{
               else if(target.structureType != undefined){
                 var err = creep.transfer(target, RESOURCE_ENERGY);
                 if (err == ERR_NOT_IN_RANGE){
-                  creep.moveTo(target);
+                  creep.travelTo(target);
                 }
                 else if (err == ERR_FULL){
                   creep.memory.targetId = null;
