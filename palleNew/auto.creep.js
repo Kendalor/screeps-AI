@@ -265,9 +265,9 @@ module.exports = {
 		if(creep.memory.job == 'mine' && creep.carry.energy < creep.carryCapacity){
 			var source = Game.getObjectById(creep.memory.source);
 			if(creep.inRangeTo(source)) {
-				creep.harvest(pos.x,pos.y);
+				creep.harvest(source);
 			}else{
-				creep.moveTo(source);
+				creep.moveTo(pos.x,pos.y);
 			}
 		}
 
