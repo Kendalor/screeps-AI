@@ -230,9 +230,7 @@ module.exports = {
 		}
 		if(creep.memory.job == 'harvest' && creep.carry.energy < creep.carryCapacity){
 			var source = Game.getObjectById(creep.memory.tmpSource);
-			if(creep.inRangeTo(source)) {
-				creep.harvest(source);
-			}else{
+			if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
 				creep.moveTo(source);
 			}
 		}
@@ -264,10 +262,8 @@ module.exports = {
 		}
 		if(creep.memory.job == 'mine' && creep.carry.energy < creep.carryCapacity){
 			var source = Game.getObjectById(creep.memory.source);
-			if(creep.inRangeTo(source)) {
-				creep.harvest(pos.x,pos.y);
-			}else{
-				creep.moveTo(source);
+			if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
+				creep.moveTo(pos.x,pos.y);
 			}
 		}
 
@@ -563,12 +559,9 @@ module.exports = {
 			}
 			if (creep.memory.job == 'upgrade'){
 				var target=Game.getObjectById(creep.memory.targetId);
-				if(creep.inRangeTo(target,3)) {
-					creep.upgradeController(target);
-					if (creep.memory.role == 'maintance'){
-						creep.moveTo(target);
-					}
-				}else {
+				if(creep.upgradeController(target) == ERR_NOT_IN_RANGE) {
+					creep.moveTo(target);
+				}else if (creep.memory.role == 'maintance'){
 					creep.moveTo(target);
 				}
 			}
