@@ -391,6 +391,20 @@ module.exports = class{
             }
         }
 
+        static creepHaul_simple(creep){
+            switch(creep.memory.status){
+                case 'undefined':
+                    break;
+                case 'fetch':
+                    break;
+                case 'return':
+                    break;
+                default:
+                    break;
+            }
+
+        }
+
         static creepHaul(creep){
 
             var pos = new RoomPosition(Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.x,Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerPos.y,Memory.operations[creep.memory.operation_id].roomName);
@@ -493,13 +507,14 @@ module.exports = class{
                                     }
                                 }
                             }
-                        }else if (target.structureType == STRUCTURE_STORAGE){ // TARGET STORAGE
+                        }else if (target.structureType == STRUCTURE_STORAGE){
+                            // TARGET STORAGE
                             var roadConstructions = creep.pos.lookFor(LOOK_CONSTRUCTION_SITES).filter((struct) => struct.structureType == STRUCTURE_ROAD);
                             var road = creep.pos.lookFor(LOOK_STRUCTURES).filter((struct) => struct.structureType == STRUCTURE_ROAD && struct.hits < struct.hitsMax);
-                            if (roadConstructions.length > 0){
+                            if (roadConstructions.length > 0 && creep.carry.energy > 0){
                                     creep.memory.targetId = roadConstructions[0].id;
                                     return this.creepHaul(creep);
-                            }else if(road.length){
+                            }else if(road.length && creep.carry.energy > 0){
                                 creep.repair(road[0],RESOURCE_ENERGY)
                                 if (creep.room.name == target.room.name){
                                         creep.travelTo(target,{reusePath: 5,ignoreCreeps: false});
@@ -514,7 +529,7 @@ module.exports = class{
                                     }else{
                                         creep.travelTo(target,{reusePath: 30,ignoreCreeps: false});
                                     }
-                                }else if (err == ERR_NOT_ENOUGH_ENERGY){
+                                }else if (err == ERR_NOT_ENOUGH_RESOURCES){
                                     creep.memory.targetId = null;
                                     return this.creepHaul(creep);
 
