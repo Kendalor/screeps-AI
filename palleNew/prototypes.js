@@ -1036,55 +1036,12 @@ module.exports = function(){
 			*/
 			"inRangeTo" : {
 				value: function(target,range = 1){// default range is 1
-					let roomName = target.roomName || target.pos.roomName;
-					if(this.pos.roomName == roomName){ // same room ?
-						return this.pos.inRangeTo(target,range);
+					if(this.pos.roomName == target.pos.roomName){ // same room ?
+						//return this.pos.inRangeTo(target,range);
+						return Math.max(Math.abs(this.pos.x-target.pos.x),Math.abs(this.pos.y-target.pos.y)) <= range;
 					}else{
 						return false;
 					}
-				},
-				writable: true,
-				enumerable: true
-			},
-			
-			/**
-			* Returns creep.moveTo() but cannot move to x,y coordinates - use roomPos instead
-			* @return {Boolean} 
-			*/
-			"travelTo" : {
-				value: function(destination, filter = {ignoreCreeps: false,reusePath: 5}){
-					if (this.isBlocked()){
-						return this.moveTo(destination,filter);
-					}else{
-						return this.moveTo(destination,{ignoreCreeps: true,reusePath: 100});
-					}
-				},
-				writable: true,
-				enumerable: true
-			},
-			
-			/**
-			* Returns if creep path is blocked - based on creep is standing still
-			* The idea is: if a creep stands still, its .memory._move.path variable stays the same length. 
-			* If the creep is moving, the length of .memory._move.path decreases.
-			* So if you add the last two path.length and their sum is equal to the actuall path.length two times
-			* the creep must be standing still the last 2 ticks.
-			* @return {Boolean} 
-			*/
-			"isBlocked" : {
-				value: function(){
-					let bool = false;
-					if (this.memory._move){
-						let pathLength = (this.memory._move.path.length + this.memory._move.path.length) || 0;
-						if (pathLength == this.memory._move.pathLength){
-							bool = true;
-						}else if (pathLength < this.memory._move.pathLength){
-							this.memory._move.pathLength = this.memory._move.path.length;
-						}else{
-							this.memory._move.pathLength += this.memory._move.path.length;
-						}
-					}
-					return bool;
 				},
 				writable: true,
 				enumerable: true
