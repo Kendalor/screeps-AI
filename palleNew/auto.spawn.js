@@ -117,7 +117,7 @@ module.exports = {
                             break;
 
                         case 5: //supplier
-                            if(supplierAmount < 1 && spawn.room.storage && spawn.room.storage.store.energy > 1000){
+                            if(supplierAmount < 2 && spawn.room.storage && spawn.room.storage.store.energy > 1000){
                                 spawn.createCreep(this.supplierPreset(spawn), undefined, {role: creepRole[5].name});
                             }
                             break;
