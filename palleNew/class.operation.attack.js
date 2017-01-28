@@ -10,7 +10,6 @@ module.exports = class{
             //Memory.operations[id].size=4;
 			var creep_body = Array(2).fill(MOVE,0,1).fill(RANGED_ATTACK,1,1);
             //var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
-            var creep_body=[ATTACK,MOVE];
             //var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
 			//var creep_body = Array(50).fill(MOVE,0,25).fill(ATTACK,25,50);
             //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
@@ -225,7 +224,7 @@ module.exports = class{
                     creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
                     creep.say('1attacking 1');
-                }else 
+                }else{
 					if(!creep.inRangeTo(closestHostile,2)){
 						creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
 					}
@@ -240,7 +239,7 @@ module.exports = class{
                     creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
                     creep.say('2attacking 2');
-                }else 
+                }else{
 					if(!creep.inRangeTo(closestHostile_all,2)){
 						creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
 					}
