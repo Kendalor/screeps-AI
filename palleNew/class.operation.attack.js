@@ -11,6 +11,7 @@ module.exports = class{
             //var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
             var creep_body=[ATTACK,MOVE];
             //var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
+			var creep_body = Array(50).fill(MOVE,0,25).fill(ATTACK,25,50);
             //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
             //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
             //var creep_body = Array(15).fill(MOVE).concat(Array(13).fill(ATTACK)).concat(Array(2).fill(HEAL)); // Needs 2290 Energy
@@ -180,13 +181,15 @@ module.exports = class{
             var priorityTarget=Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.lookFor(LOOK_STRUCTURES);
             var closestHostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
               WHITELIST[hostile.owner.username] == undefined 
+			  
               && hostile.pos.x > 0 && hostile.pos.y > 0 && hostile.pos.x < 49 && hostile.pos.y < 49 
               && hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack' || body.type == 'claim').length > 0
             });
             var closestHostile_all = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
               WHITELIST[hostile.owner.username] == undefined
+			  && hostile.carry.energy > 0 // for killing creeps which haul energy
               && hostile.pos.x > 0 && hostile.pos.y > 0 && hostile.pos.x < 49 && hostile.pos.y < 49 });
-            var closestStr =creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => (str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN || str.structureType == STRUCTURE_EXTENSION) && WHITELIST[str.owner.username] == undefined, ignoreDestructibleStructures: true});
+            var closestStr = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => (str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN || str.structureType == STRUCTURE_EXTENSION) && WHITELIST[str.owner.username] == undefined, ignoreDestructibleStructures: true});
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER && WHITELIST[str.owner.username] == undefined,ignoreDestructibleStructures: true});
             var hostileConstruction=creep.pos.findClosestByRange(FIND_HOSTILE_CONSTRUCTION_SITES,{filter: (str) => WHITELIST[str.owner.username] == undefined,ignoreDestructibleStructures: true});
             //console.log(hostileConstruction);
