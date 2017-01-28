@@ -70,7 +70,7 @@ module.exports = {
 
                         case 0: //miner
                             if(minerAmount < Object.keys(sources).length){
-                                for(id in sources){
+                                for(let id in sources){
                                     if(!spawn.room.memory.sources[id].requiredCarryParts){
                                         autoMemory.resetSourceMemory(spawn.room);
                                     }
@@ -90,7 +90,7 @@ module.exports = {
                             //console.log('need to spawn?');
                             //console.log(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length));
                             if(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
-                                for(id in sources){
+                                for(let id in sources){
                                     if(!spawn.room.memory.sources[id].requiredCarryParts){
                                         autoMemory.resetSourceMemory(spawn.room);
                                     }
