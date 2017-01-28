@@ -422,7 +422,8 @@ module.exports = function(){
 			},
 			
 			/** 
-			* Returns array of the structures found in room and saves their id in room memory
+			* Returns array of the structures found in room and saves (some of) their ids in room memory
+			* (roads, walls, ramparts and extensions excluded) 
 			* @param {filter} filter
 			* @return {[structure]} objectArray
 			*/
@@ -430,11 +431,11 @@ module.exports = function(){
 				value: function(filter) {
 					let objectArray = this.find(FIND_STRUCTURES,filter);
 					for (let i in objectArray){
-						if (objectArray[i].structureType == STRUCTURE_SPAWN){
-							objectArray[i].roomMemory;
-						}
-						else{
+						if (objectArray[i].structureType != STRUCTURE_ROAD && objectArray[i].structureType != STRUCTURE_WALL && objectArray[i].structureType != STRUCTURE_RAMPART && objectArray[i].structureType != STRUCTURE_EXTENSION && objectArray[i].structureType != STRUCTURE_SPAWN){
 							objectArray[i].memory;
+						}
+						else if (objectArray[i].structureType == STRUCTURE_SPAWN){
+							objectArray[i].roomMemory;
 						}
 					}
 					this.setLastSeen("structures");
@@ -445,7 +446,7 @@ module.exports = function(){
 			},
 			
 			/** 
-			* Returns array of the sources whose ids are saved in room memory
+			* Returns array of the structures whose ids are saved in room memory
 			* @return {[Source]} objectArray
 			*/
 			'structures' : {
@@ -474,11 +475,12 @@ module.exports = function(){
 			},
 			
 			/** 
-			* Returns array of the extensions whose ids are saved in room memory
+			* Returns array of the extensions whose ids are NOT saved in room memory
 			* @return {[StructureExtensions]} objectArray
 			*/
 			'extensions' : {
 				get: function() {
+					/*
 					if (this.lastSeen("structures") == Game.time){
 						let objectArray = [];
 						if (this.memory && this.memory.structures && this.memory.structures.extension){
@@ -492,9 +494,11 @@ module.exports = function(){
 							}
 						}
 						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_EXTENSION);
+					}else{}*/
+					if(!this._extensions){
+						this._extensions = this.findStructures().filter((s) => s.structureType == STRUCTURE_EXTENSION);
 					}
+					return this._extensions;
 				},
 				configurable: true,
 				enumerable: false
@@ -506,23 +510,26 @@ module.exports = function(){
 			*/
 			'extractor' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let obj;
-						if (this.memory && this.memory.structures && this.memory.structures.extractor){
-							for (let id in this.memory.structures.extractor){
-								let tmpObj = Game.getObjectById(id);
-								if (tmpObj && StructureExtractor.prototype.isPrototypeOf(tmpObj)){
-									obj = tmpObj;
-								}else{
-									delete this.memory.structures.extractor[id];
+					if(!this._keeperLairs){
+						if (this.lastSeen("structures") == Game.time){
+							let obj;
+							if (this.memory && this.memory.structures && this.memory.structures.extractor){
+								for (let id in this.memory.structures.extractor){
+									let tmpObj = Game.getObjectById(id);
+									if (tmpObj && StructureExtractor.prototype.isPrototypeOf(tmpObj)){
+										obj = tmpObj;
+									}else{
+										delete this.memory.structures.extractor[id];
+									}
 								}
 							}
+							this._keeperLairs = obj;
+						}else{
+							this.findStructures();
+							this._extractor = this.extractor;
 						}
-						return obj;
-					}else{
-						this.findStructures();
-						return this.extractor;
 					}
+					return this._extractor;
 				},
 				configurable: true,
 				enumerable: false
@@ -534,22 +541,26 @@ module.exports = function(){
 			*/
 			'keeperLairs' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let objectArray = [];
-						if (this.memory && this.memory.structures && this.memory.structures.keeperLair){
-							for (let id in this.memory.structures.keeperLair){
-								let obj = Game.getObjectById(id);
-								if (obj && StructureKeeperLair.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.structures.keeperLair[id];
+					if(!this._keeperLairs){
+						if (this.lastSeen("structures") == Game.time){
+							let objectArray = [];
+							if (this.memory && this.memory.structures && this.memory.structures.keeperLair){
+								for (let id in this.memory.structures.keeperLair){
+									let obj = Game.getObjectById(id);
+									if (obj && StructureKeeperLair.prototype.isPrototypeOf(obj)){
+										objectArray.push(obj);
+									}else{
+										delete this.memory.structures.keeperLair[id];
+									}
 								}
 							}
+							this._keeperLairs = objectArray;
+						}else{
+							this.findStructures();
+							this._keeperLairs = this.keeperLairs;
 						}
-						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_KEEPER_LAIR);
 					}
+					return this._keeperLairs;
 				},
 				configurable: true,
 				enumerable: false
@@ -561,22 +572,26 @@ module.exports = function(){
 			*/
 			'labs' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let objectArray = [];
-						if (this.memory && this.memory.structures && this.memory.structures.lab){
-							for (let id in this.memory.structures.lab){
-								let obj = Game.getObjectById(id);
-								if (obj && StructureLab.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.structures.lab[id];
+					if(!this._labs){
+						if (this.lastSeen("structures") == Game.time){
+							let objectArray = [];
+							if (this.memory && this.memory.structures && this.memory.structures.lab){
+								for (let id in this.memory.structures.lab){
+									let obj = Game.getObjectById(id);
+									if (obj && StructureLab.prototype.isPrototypeOf(obj)){
+										objectArray.push(obj);
+									}else{
+										delete this.memory.structures.lab[id];
+									}
 								}
 							}
+							this._labs = objectArray;
+						}else{
+							this.findStructures();
+							this._labs = this.labs;
 						}
-						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_LAB);
 					}
+					return this._labs;
 				},
 				configurable: true,
 				enumerable: false
@@ -588,38 +603,26 @@ module.exports = function(){
 			*/
 			'links' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let objectArray = [];
-						if (this.memory && this.memory.structures && this.memory.structures.link){
-							for (let id in this.memory.structures.link){
-								let obj = Game.getObjectById(id);
-								if (obj && StructureLink.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.structures.link[id];
+					if(!this._links){
+						if (this.lastSeen("structures") == Game.time){
+							let objectArray = [];
+							if (this.memory && this.memory.structures && this.memory.structures.link){
+								for (let id in this.memory.structures.link){
+									let obj = Game.getObjectById(id);
+									if (obj && StructureLink.prototype.isPrototypeOf(obj)){
+										objectArray.push(obj);
+									}else{
+										delete this.memory.structures.link[id];
+									}
 								}
 							}
+							this._links = objectArray;
+						}else{
+							this.findStructures();
+							this._links = this.links;
 						}
-						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_LINK);
 					}
-				},
-				configurable: true,
-				enumerable: false
-			},
-			
-			/** TODO
-			* Returns the link positioned near room storage
-			* @return {StructureLink} obj
-			*/
-			'storageLink' : {
-				get: function() {
-					let link;
-					if (this.memory && this.memory.structures && this.memory.structures.link && this.memory.structures.link.storage){
-						//link = 
-					}
-					
+					return this._links;
 				},
 				configurable: true,
 				enumerable: false
@@ -631,23 +634,26 @@ module.exports = function(){
 			*/
 			'nuker' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let obj;
-						if (this.memory && this.memory.structures && this.memory.structures.nuker){
-							for (let id in this.memory.structures.nuker){
-								let tmpObj = Game.getObjectById(id);
-								if (tmpObj && StructureNuker.prototype.isPrototypeOf(tmpObj)){
-									obj = tmpObj;
-								}else{
-									delete this.memory.structures.nuker[id];
+					if(!this._nuker){
+						if (this.lastSeen("structures") == Game.time){
+							let obj;
+							if (this.memory && this.memory.structures && this.memory.structures.nuker){
+								for (let id in this.memory.structures.nuker){
+									let tmpObj = Game.getObjectById(id);
+									if (tmpObj && StructureNuker.prototype.isPrototypeOf(tmpObj)){
+										obj = tmpObj;
+									}else{
+										delete this.memory.structures.nuker[id];
+									}
 								}
 							}
+							this._nuker = obj;
+						}else{
+							this.findStructures();
+							this._nuker = this.nuker;
 						}
-						return obj;
-					}else{
-						this.findStructures();
-						return this.nuker;
 					}
+					return this._nuker;
 				},
 				configurable: true,
 				enumerable: false
@@ -659,23 +665,26 @@ module.exports = function(){
 			*/
 			'observer' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let obj;
-						if (this.memory && this.memory.structures && this.memory.structures.observer){
-							for (let id in this.memory.structures.observer){
-								let tmpObj = Game.getObjectById(id);
-								if (tmpObj && StructureObserver.prototype.isPrototypeOf(tmpObj)){
-									obj = tmpObj;
-								}else{
-									delete this.memory.structures.observer[id];
+					if(!this._observer){
+						if (this.lastSeen("structures") == Game.time){
+							let obj;
+							if (this.memory && this.memory.structures && this.memory.structures.observer){
+								for (let id in this.memory.structures.observer){
+									let tmpObj = Game.getObjectById(id);
+									if (tmpObj && StructureObserver.prototype.isPrototypeOf(tmpObj)){
+										obj = tmpObj;
+									}else{
+										delete this.memory.structures.observer[id];
+									}
 								}
 							}
+							this._observer = obj;
+						}else{
+							this.findStructures();
+							this._observer = this.observer;
 						}
-						return obj;
-					}else{
-						this.findStructures();
-						return this.observer;
 					}
+					return this._observer;
 				},
 				configurable: true,
 				enumerable: false
@@ -687,23 +696,26 @@ module.exports = function(){
 			*/
 			'powerBank' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let obj;
-						if (this.memory && this.memory.structures && this.memory.structures.powerBank){
-							for (let id in this.memory.structures.powerBank){
-								let tmpObj = Game.getObjectById(id);
-								if (tmpObj && StructurePowerBank.prototype.isPrototypeOf(tmpObj)){
-									obj = tmpObj;
-								}else{
-									delete this.memory.structures.powerBank[id];
+					if(!this._powerBank){
+						if (this.lastSeen("structures") == Game.time){
+							let obj;
+							if (this.memory && this.memory.structures && this.memory.structures.powerBank){
+								for (let id in this.memory.structures.powerBank){
+									let tmpObj = Game.getObjectById(id);
+									if (tmpObj && StructurePowerBank.prototype.isPrototypeOf(tmpObj)){
+										obj = tmpObj;
+									}else{
+										delete this.memory.structures.powerBank[id];
+									}
 								}
 							}
+							this._powerBank = obj;
+						}else{
+							this.findStructures();
+							this._powerBank = this.powerBank;
 						}
-						return obj;
-					}else{
-						this.findStructures();
-						return this.powerBank;
 					}
+					return this._powerBank;
 				},
 				configurable: true,
 				enumerable: false
@@ -715,34 +727,38 @@ module.exports = function(){
 			*/
 			'powerSpawn' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let obj;
-						if (this.memory && this.memory.structures && this.memory.structures.powerSpawn){
-							for (let id in this.memory.structures.powerSpawn){
-								let tmpObj = Game.getObjectById(id);
-								if (tmpObj && StructurePowerSpawn.prototype.isPrototypeOf(tmpObj)){
-									obj = tmpObj;
-								}else{
-									delete this.memory.structures.powerSpawn[id];
+					if(!this._powerSpawn){
+						if (this.lastSeen("structures") == Game.time){
+							let obj;
+							if (this.memory && this.memory.structures && this.memory.structures.powerSpawn){
+								for (let id in this.memory.structures.powerSpawn){
+									let tmpObj = Game.getObjectById(id);
+									if (tmpObj && StructurePowerSpawn.prototype.isPrototypeOf(tmpObj)){
+										obj = tmpObj;
+									}else{
+										delete this.memory.structures.powerSpawn[id];
+									}
 								}
 							}
+							this._powerSpawn = obj;
+						}else{
+							this.findStructures();
+							this._powerSpawn = this.powerSpawn;
 						}
-						return obj;
-					}else{
-						this.findStructures();
-						return this.powerSpawn;
 					}
+					return this._powerSpawn;
 				},
 				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			* Returns the ramparts whose ids are saved in room memory
+			* Returns the ramparts whose ids are NOT saved in room memory
 			* @return {[StructureRampart]} objectArray
 			*/
 			'ramparts' : {
 				get: function() {
+					/* code to save them in room memory
 					if (this.lastSeen("structures") == Game.time){
 						let objectArray = [];
 						if (this.memory && this.memory.structures && this.memory.structures.rampart){
@@ -756,9 +772,11 @@ module.exports = function(){
 							}
 						}
 						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_RAMPART);
+					}else{}*/
+					if(!this._ramparts){
+						this._ramparts = this.findStructures().filter((s) => s.structureType == STRUCTURE_RAMPART);
 					}
+					return this._ramparts;
 				},
 				configurable: true,
 				enumerable: false
@@ -770,22 +788,25 @@ module.exports = function(){
 			*/
 			'spawns' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let objectArray = [];
-						if (this.memory && this.memory.structures && this.memory.structures.spawn){
-							for (let id in this.memory.structures.spawn){
-								let obj = Game.getObjectById(id);
-								if (obj && StructureSpawn.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.structures.spawn[id];
+					if (!this._spawns) {
+						if (this.lastSeen("structures") == Game.time){
+							let objectArray = [];
+							if (this.memory && this.memory.structures && this.memory.structures.spawn){
+								for (let id in this.memory.structures.spawn){
+									let obj = Game.getObjectById(id);
+									if (obj && StructureSpawn.prototype.isPrototypeOf(obj)){
+										objectArray.push(obj);
+									}else{
+										delete this.memory.structures.spawn[id];
+									}
 								}
 							}
+							this._spawns = objectArray;
+						}else{
+							this._spawns = this.findStructures().filter((s) => s.structureType == STRUCTURE_SPAWN);
 						}
-						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_SPAWN);
 					}
+					return this._spawns;
 				},
 				configurable: true,
 				enumerable: false
@@ -797,22 +818,25 @@ module.exports = function(){
 			*/
 			'towers' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let objectArray = [];
-						if (this.memory && this.memory.structures && this.memory.structures.tower){
-							for (let id in this.memory.structures.tower){
-								let obj = Game.getObjectById(id);
-								if (obj && StructureTower.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.structures.tower[id];
+					if (!this._towers) {
+						if (this.lastSeen("structures") == Game.time){
+							let objectArray = [];
+							if (this.memory && this.memory.structures && this.memory.structures.tower){
+								for (let id in this.memory.structures.tower){
+									let obj = Game.getObjectById(id);
+									if (obj && StructureTower.prototype.isPrototypeOf(obj)){
+										objectArray.push(obj);
+									}else{
+										delete this.memory.structures.tower[id];
+									}
 								}
 							}
+							this._towers = objectArray;
+						}else{
+							this._towers = this.findStructures().filter((s) => s.structureType == STRUCTURE_TOWER);
 						}
-						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_TOWER);
 					}
+					return this._towers;
 				},
 				configurable: true,
 				enumerable: false
@@ -824,22 +848,25 @@ module.exports = function(){
 			*/
 			'containers' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let objectArray = [];
-						if (this.memory && this.memory.structures && this.memory.structures.container){
-							for (let id in this.memory.structures.container){
-								let obj = Game.getObjectById(id);
-								if (obj && StructureContainer.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.structures.container[id];
+					if (!this._containers) {
+						if (this.lastSeen("structures") == Game.time){
+							let objectArray = [];
+							if (this.memory && this.memory.structures && this.memory.structures.container){
+								for (let id in this.memory.structures.container){
+									let obj = Game.getObjectById(id);
+									if (obj && StructureContainer.prototype.isPrototypeOf(obj)){
+										objectArray.push(obj);
+									}else{
+										delete this.memory.structures.container[id];
+									}
 								}
 							}
+							this._containers = objectArray;
+						}else{
+							this._containers = this.findStructures().filter((s) => s.structureType == STRUCTURE_CONTAINER);
 						}
-						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_CONTAINER);
 					}
+					return this._containers;
 				},
 				configurable: true,
 				enumerable: false
@@ -851,33 +878,37 @@ module.exports = function(){
 			*/
 			'portals' : {
 				get: function() {
-					if (this.lastSeen("structures") == Game.time){
-						let objectArray = [];
-						if (this.memory && this.memory.structures && this.memory.structures.portal){
-							for (let id in this.memory.structures.portal){
-								let obj = Game.getObjectById(id);
-								if (obj && StructurePortal.prototype.isPrototypeOf(obj)){
-									objectArray.push(obj);
-								}else{
-									delete this.memory.structures.portal[id];
+					if (!this._portals) {
+						if (this.lastSeen("structures") == Game.time){
+							let objectArray = [];
+							if (this.memory && this.memory.structures && this.memory.structures.portal){
+								for (let id in this.memory.structures.portal){
+									let obj = Game.getObjectById(id);
+									if (obj && StructurePortal.prototype.isPrototypeOf(obj)){
+										objectArray.push(obj);
+									}else{
+										delete this.memory.structures.portal[id];
+									}
 								}
 							}
+							this._portals = objectArray;
+						}else{
+							this._portals = this.findStructures().filter((s) => s.structureType == STRUCTURE_PORTAL);
 						}
-						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_PORTAL);
 					}
+					return this._portals;
 				},
 				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			* Returns the roads whose ids are saved in room memory
+			* Returns the roads whose ids are NOT saved in room memory
 			* @return {[StructureRoad]} objectArray
 			*/
 			'roads' : {
 				get: function() {
+					/* code to save them in room memory
 					if (this.lastSeen("structures") == Game.time){
 						let objectArray = [];
 						if (this.memory && this.memory.structures && this.memory.structures.road){
@@ -891,20 +922,25 @@ module.exports = function(){
 							}
 						}
 						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_ROAD);
+					}else{}
+					*/
+					
+					if(!this._roads){
+						this._roads = this.findStructures().filter((s) => s.structureType == STRUCTURE_ROAD);
 					}
+					return this._roads;
 				},
 				configurable: true,
 				enumerable: false
 			},
 			
 			/** 
-			* Returns the constructed walls whose ids are saved in room memory
+			* Returns the constructed walls whose ids are NOT saved in room memory
 			* @return {[StructureWall]} objectArray
 			*/
 			'constructedWalls' : {
 				get: function() {
+					/* code to save them in room memory
 					if (this.lastSeen("structures") == Game.time){
 						let objectArray = [];
 						if (this.memory && this.memory.structures && this.memory.structures.constructedWall){
@@ -918,9 +954,11 @@ module.exports = function(){
 							}
 						}
 						return objectArray;
-					}else{
-						return this.findStructures().filter((s) => s.structureType == STRUCTURE_WALL);
+					}else{}*/
+					if(!this._constructedWalls){
+						this._constructedWalls = this.findStructures().filter((s) => s.structureType == STRUCTURE_WALL);
 					}
+					return this._constructedWalls;
 				},
 				configurable: true,
 				enumerable: false
