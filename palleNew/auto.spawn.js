@@ -46,6 +46,8 @@ module.exports = {
 						upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-2,0),6);
 						maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
 					}
+				}else{
+					spawn.room.sources;
 				}
 
                 //for every type of creep
@@ -69,7 +71,7 @@ module.exports = {
                             break;
 
                         case 0: //miner
-                            if(minerAmount < Object.keys(sources).length){
+                            if(sources && minerAmount < Object.keys(sources).length){
                                 for(let id in sources){
                                     if(!spawn.room.memory.sources[id].requiredCarryParts){
                                         autoMemory.resetSourceMemory(spawn.room);
@@ -89,7 +91,7 @@ module.exports = {
                         case 1: //hauler
                             //console.log('need to spawn?');
                             //console.log(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length));
-                            if(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
+                            if(sources && minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
                                 for(let id in sources){
                                     if(!spawn.room.memory.sources[id].requiredCarryParts){
                                         autoMemory.resetSourceMemory(spawn.room);
@@ -111,7 +113,7 @@ module.exports = {
                             break;
 
                         case 2: //maintance
-                            if(minerAmount >= (Object.keys(sources).length) && maintanceAmount < maintanceUnits){
+                            if(sources && minerAmount >= (Object.keys(sources).length) && maintanceAmount < maintanceUnits){
                                 spawn.createCreep(this.maintancePreset(spawn), undefined, {role: creepRole[2].name});
                             }
                             break;
