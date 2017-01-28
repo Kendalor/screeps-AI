@@ -424,22 +424,31 @@ module.exports = function(){
 			/** 
 			* Returns array of the structures found in room and saves (some of) their ids in room memory
 			* (roads, walls, ramparts and extensions excluded) 
-			* @param {filter} filter
 			* @return {[structure]} objectArray
 			*/
 			'findStructures' : {
-				value: function(filter) {
-					let objectArray = this.find(FIND_STRUCTURES,filter);
-					for (let i in objectArray){
-						if (objectArray[i].structureType != STRUCTURE_ROAD && objectArray[i].structureType != STRUCTURE_WALL && objectArray[i].structureType != STRUCTURE_RAMPART && objectArray[i].structureType != STRUCTURE_EXTENSION && objectArray[i].structureType != STRUCTURE_SPAWN){
-							objectArray[i].memory;
+				value: function() {
+					if(!this._structures){
+						this._structures = this.find(FIND_STRUCTURES);
+						for (let i in this._structures){
+							let sType = this._structures[i].structureType;
+							if (sType != STRUCTURE_ROAD && sType != STRUCTURE_WALL && sType != STRUCTURE_RAMPART && sType != STRUCTURE_EXTENSION && sType != STRUCTURE_SPAWN){
+								this._structures[i].memory;
+							}
+							else if (sType == STRUCTURE_SPAWN){
+								this._structures[i].roomMemory;
+							}
+							if (sType == "observer" || sType == "powerSpawn" || sType == "powerBank" || sType == "extractor" || sType == "nuker" || sType == "terminal" || sType == "storage" || sType == "controller"){ // singular structure ?
+								if (sType != "terminal" && sType != "storage" && sType != "controller"){ // already have these
+									_.set(this, '_' + sType, this._structures[i]);
+								}
+							}else{
+								_.set(this, '_' + sType + 's', _.get(this,"_"+sType+"s") === undefined? [this._structures[i]] : _.get(this,"_"+sType+"s").concat([this._structures[i]]));
+							}
 						}
-						else if (objectArray[i].structureType == STRUCTURE_SPAWN){
-							objectArray[i].roomMemory;
-						}
+						this.setLastSeen("structures");
 					}
-					this.setLastSeen("structures");
-					return objectArray;
+					return this._structures;
 				},
 				writable: true,
 				enumerable: false
@@ -465,7 +474,7 @@ module.exports = function(){
 								}
 							}
 						}
-						return objectArray;
+						return objectArray.concat(this.roads).concat(this.constructedWalls).concat(this.extensions).concat(this.ramparts); // concat to add those structures which ids are not longer saved in room.memory
 					}else{
 						return this.findStructures();
 					}
