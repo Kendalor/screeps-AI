@@ -33,9 +33,12 @@ module.exports = class{
                 }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
                 
                     var creep= Game.creeps[Memory.operations[id].creep];
+					var flag = Game.flags[Memory.operations[id].flagName];
 					//if (!creep.clearSign()){
 					if (!creep.makeScreepsPinkAgain()){
-						creep.travelTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
+						if(!creep.inRangeTo(flag,0)){
+							creep.travelTo(flag);
+						}
 					}
                     if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
                         //Game.flags[Memory.operations[id].flagName].remove();
