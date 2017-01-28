@@ -1128,7 +1128,7 @@ module.exports = function(){
 							}
 							bool = true;
 							if (!this.inRangeTo(this.room.controller)){
-								this.moveTo(this.room.controller);
+								this.travelTo(this.room.controller);
 							}else{
 								let i = parseInt(Math.random()*PUNY_PUN_ARRAY.length);
 								this.signController(this.room.controller,PUNY_PUN_ARRAY[i]);
