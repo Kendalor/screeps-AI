@@ -605,7 +605,7 @@ module.exports = class{
                 }else if(creep.room.name != pos.roomName){
                     creep.travelTo(pos,{reusePath: 30,ignoreCreeps: false});
                 }else if(creep.harvest(source) == ERR_NOT_IN_RANGE) {
-                    creep.travelTo(source);
+                    creep.moveTo(source);
                 }
             }
             if(creep.carry.energy > 0 && creep.room.name == pos.roomName){
