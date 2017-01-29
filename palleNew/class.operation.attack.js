@@ -9,7 +9,7 @@ module.exports = class{
             //Memory.operations[id].members['David']= 'attacker';
             //Memory.operations[id].size=4;
 			//var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
-			var creep_body = [TOUGH,MOVE,MOVE,ATTACK,ATTACK,HEAL];
+			var creep_body = [MOVE,MOVE,MOVE,ATTACK,RANGED_ATTACK,HEAL];
             //var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
             //var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
 			//var creep_body = Array(50).fill(MOVE,0,25).fill(ATTACK,25,50);
@@ -169,7 +169,7 @@ module.exports = class{
         }
         // TRAVEL TO FLAG
         static creepTravel(creep,flag){
-            creep.moveTo(flag);
+            creep.journeyTo(flag);
             creep.heal(creep);
             //this.creepAttack(creep);
 
@@ -274,7 +274,10 @@ module.exports = class{
                 //console.log('TEST3');
                 creep.memory.reached=false;
                 delete creep.memory.target;
-
+				let flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName];
+				if(!creep.inRangeTo(flag,3)){
+					creep.moveTo(flag);
+				}
             }
 
         }
