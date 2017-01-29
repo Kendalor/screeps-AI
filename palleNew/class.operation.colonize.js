@@ -30,7 +30,7 @@ module.exports = class{
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt){
 				//creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				creep_body = [MOVE,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
 				Memory.operations[id].size = 4;
 				if (Game.rooms[Memory.operations[id].roomName].hostileCreeps.filter((hostile) =>
 						hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
@@ -40,7 +40,7 @@ module.exports = class{
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
 				Memory.operations[id].size = 4;
 				//creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
-				creep_body = [MOVE,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
             }else{
 				Memory.operations[id].size = 1
 				//creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
