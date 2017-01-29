@@ -37,7 +37,7 @@ module.exports = class{
 					//if (!creep.clearSign()){
 					if (!creep.makeScreepsPinkAgain()){
 						if(!creep.inRangeTo(flag,0)){
-							creep.travelTo(flag);
+							creep.journeyTo(flag);
 						}
 					}
                     if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
