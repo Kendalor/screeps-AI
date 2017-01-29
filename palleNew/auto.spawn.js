@@ -44,7 +44,7 @@ module.exports = {
 							maintanceUnits = 5*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
 						}else{
 							let slots = 0;
-							for (id in spawn.room.memory.sources){
+							for (let id in spawn.room.memory.sources){
 								slots += spawn.room.memory.sources[id].slots;
 							}
 							maintanceUnits = Math.max(slots,4*Object.keys(spawn.room.memory.sources).length);
