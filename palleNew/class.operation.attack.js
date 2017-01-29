@@ -9,7 +9,8 @@ module.exports = class{
             //Memory.operations[id].members['David']= 'attacker';
             //Memory.operations[id].size=4;
 			//var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
-			var creep_body = [MOVE,MOVE,MOVE,ATTACK,RANGED_ATTACK,HEAL];
+			//var creep_body = [MOVE,MOVE,MOVE,ATTACK,RANGED_ATTACK,HEAL];
+			var creep_body = [TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,RANGED_ATTACK,MOVE];
             //var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
             //var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
 			//var creep_body = Array(50).fill(MOVE,0,25).fill(ATTACK,25,50);
@@ -129,7 +130,7 @@ module.exports = class{
                 Memory.operations[this.id].reached=false;
                 Memory.operations[this.id].refreshed=false;
                 Memory.operations[this.id].members= {};
-                Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
+                //Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
@@ -229,7 +230,8 @@ module.exports = class{
 					//if(!creep.inRangeTo(closestHostile,2)){
 					creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
 					//}
-					creep.rangedAttack(closestHostile);
+					//creep.rangedAttack(closestHostile);
+					creep.rangedMassAttack();
                     creep.heal(creep);
                     creep.say('1attacking 1');
 				}
@@ -244,7 +246,8 @@ module.exports = class{
 					//if(!creep.inRangeTo(closestHostile_all,2)){
 					creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
 					//}
-					creep.rangedAttack(closestHostile_all);
+					//creep.rangedAttack(closestHostile_all);
+					creep.rangedMassAttack();
                     creep.heal(creep);
                     creep.say('1attacking 2');
 				}
