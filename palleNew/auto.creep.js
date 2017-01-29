@@ -267,7 +267,7 @@ module.exports = {
 			if(creep.inRangeTo(source)) {
 				creep.harvest(source);
 			}else{
-				creep.say(creep.travelTo(pos));
+				creep.travelTo(pos);
 			}
 		}
 
@@ -527,7 +527,9 @@ module.exports = {
 				if(creep.inRangeTo(target,3)) {
 					creep.upgradeController(target);
 					if (creep.memory.role == 'maintance'){
-						creep.travelTo(target);
+						if(!creep.isBlocked()){
+							creep.travelTo(target);
+						}
 					}
 				}else {
 					creep.travelTo(target);

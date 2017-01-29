@@ -40,12 +40,22 @@ module.exports = {
 
 				if (spawn.room.memory.sources){
 					if (spawn.room.storage == undefined) {
-						maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
+						if(spawn.room.energyCapacityAvailable>=500){
+							maintanceUnits = 5*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
+						}else{
+							let slots = 0;
+							for (id in spawn.room.memory.sources){
+								slots += spawn.room.memory.sources[id].slots;
+							}
+							maintanceUnits = Math.max(slots,4*Object.keys(spawn.room.memory.sources).length);
+						}
 						upgradeUnits = 1;
 					}else{
 						upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-2,0),6);
 						maintanceUnits = Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10); // 1 +Constructionsites/10
 					}
+				}else{
+					spawn.room.sources;
 				}
 
                 //for every type of creep
@@ -69,8 +79,8 @@ module.exports = {
                             break;
 
                         case 0: //miner
-                            if(minerAmount < Object.keys(sources).length){
-                                for(id in sources){
+                            if(sources && minerAmount < Object.keys(sources).length){
+                                for(let id in sources){
                                     if(!spawn.room.memory.sources[id].requiredCarryParts){
                                         autoMemory.resetSourceMemory(spawn.room);
                                     }
@@ -89,8 +99,8 @@ module.exports = {
                         case 1: //hauler
                             //console.log('need to spawn?');
                             //console.log(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length));
-                            if(minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
-                                for(id in sources){
+                            if(sources && minerAmount >= haulerAmount && haulerAmount < (Object.keys(sources).length)){ // spawned when storage is available
+                                for(let id in sources){
                                     if(!spawn.room.memory.sources[id].requiredCarryParts){
                                         autoMemory.resetSourceMemory(spawn.room);
                                     }
@@ -111,7 +121,7 @@ module.exports = {
                             break;
 
                         case 2: //maintance
-                            if(minerAmount >= (Object.keys(sources).length) && maintanceAmount < maintanceUnits){
+                            if(sources && minerAmount >= (Object.keys(sources).length) && maintanceAmount < maintanceUnits){
                                 spawn.createCreep(this.maintancePreset(spawn), undefined, {role: creepRole[2].name});
                             }
                             break;
