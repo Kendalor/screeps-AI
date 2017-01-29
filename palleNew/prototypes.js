@@ -1134,7 +1134,7 @@ module.exports = function(){
 				value: function(){
 					let bool = false;
 					if (this.memory._move){
-						let pathLength = (this.memory._move.path.length + this.memory._move.path.length) || 0;
+						let pathLength = (this.memory._move.path.length + this.memory._move.path.length)+this.fatigue || 0;
 						if (pathLength == this.memory._move.pathLength){
 							bool = true;
 						}else if (pathLength < this.memory._move.pathLength){
