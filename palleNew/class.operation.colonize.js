@@ -161,7 +161,7 @@ module.exports = class{
               creep.travelTo(creep.room.controller);
               creep.say('Claiming');
             }
-			if (!creep.room.controller.my){
+			if (creep.room.controller.my){
 				creep.suicide();
 			}
           }
