@@ -156,12 +156,10 @@ module.exports = class{
         static creepColonize(creep){
           // CLAIM IF NOT MY CONTROLLER
           if (!creep.room.controller.my){
-            console.log(creep.claimController(creep.room.controller));
             if(creep.claimController(creep.room.controller) == ERR_NOT_IN_RANGE){
               creep.travelTo(creep.room.controller);
               creep.say('Claiming');
-            }
-			if (creep.room.controller.my){
+            }else{
 				creep.suicide();
 			}
           }
