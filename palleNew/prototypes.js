@@ -457,10 +457,10 @@ module.exports = function(){
 								_.set(this, '_' + sType + 's', _.get(this,'_'+sType+'s') === undefined? [this._structures[i]] : _.get(this,'_'+sType+'s').concat([this._structures[i]]));
 							}
 						}
-						let notMemorized = ["spawns","extensions","roads","constructedWalls","ramparts","keeperLairs","portals","links","towers","labs","containers"];
-						for(let key in notMemorized){ // Initialize array if not yet initialized 
-							if (_.get(this,'_' + notMemorized[key]) === undefined){
-								_.set(this,'_' + notMemorized[key], []);
+						let initArray = ["spawns","extensions","roads","constructedWalls","ramparts","keeperLairs","portals","links","towers","labs","containers"];
+						for(let key in initArray){ // Initialize array if not yet initialized 
+							if (_.get(this,'_' + initArray[key]) === undefined){
+								_.set(this,'_' + initArray[key], []);
 							}
 						}
 						this.setLastSeen("structures");
