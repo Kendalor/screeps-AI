@@ -1107,6 +1107,7 @@ module.exports = function(){
 			},
 			
 			/**
+			* Alternative to native creep.moveTo() which uses the same path as long as possible
 			* Returns creep.moveTo() but cannot move to x,y coordinates - use roomPos instead
 			* @return {Boolean} 
 			*/
@@ -1116,6 +1117,52 @@ module.exports = function(){
 						return this.moveTo(destination,filter);
 					}else{
 						return this.moveTo(destination,{ignoreCreeps: true,reusePath: 100});
+					}
+				},
+				writable: true,
+				enumerable: true
+			},
+			
+			/**
+			* Creep moves to a distant room target, using map.findRoute as simple pathfinder
+			* Returns creep.moveTo() but cannot move to x,y coordinates - use roomPos instead
+			* @return {Boolean} 
+			*/
+			"journeyTo": {
+				value: function(destination, filter = {ignoreCreeps: false,reusePath: 5}){
+					let targetRoomName = destination.roomName || destination.pos.roomName;
+					if (!this.memory._move){
+						this.memory._move = {};
+					}
+					if (this.room.name != targetRoomName && (!this.memory._move.rooms || this.memory._move.rooms[0].room != targetRoomName)){
+						//this.memory._move.rooms = [{'exit': 0, 'room': targetRoomName}];
+						this.memory._move.rooms = (Game.map.findRoute(this.pos.roomName,targetRoomName)).reverse();
+						if (!this.memory._move.rooms){
+							delete this.memory._move.rooms;
+						}
+					}
+					if (this.memory._move.rooms){
+						if (this.room.name == this.memory._move.rooms[this.memory._move.rooms.length-1].room){
+							this.memory._move.rooms.pop();
+						}
+						if (this.memory._move.rooms.length > 1){
+							let nextHop;
+							switch(this.memory._move.rooms[this.memory._move.rooms.length-2].exit){ // aim for room after next room
+								case FIND_EXIT_TOP   : nextHop = new RoomPosition(25, 1,this.memory._move.rooms[this.memory._move.rooms.length-2].room); break;
+								case FIND_EXIT_RIGHT : nextHop = new RoomPosition(48,25,this.memory._move.rooms[this.memory._move.rooms.length-2].room); break;
+								case FIND_EXIT_BOTTOM: nextHop = new RoomPosition(25,48,this.memory._move.rooms[this.memory._move.rooms.length-2].room); break;
+								case FIND_EXIT_LEFT  : nextHop = new RoomPosition( 1,25,this.memory._move.rooms[this.memory._move.rooms.length-2].room); break;
+								default: nextHop = destination;
+							}
+							this.travelTo(nextHop,filter);
+						}else{
+							this.travelTo(destination,filter);
+						}
+					}else{
+						if(this.memory._move.rooms){
+							delete this.memory._move.rooms;
+						}
+						this.travelTo(destination,filter);
 					}
 				},
 				writable: true,
@@ -1133,7 +1180,7 @@ module.exports = function(){
 			"isBlocked" : {
 				value: function(){
 					let bool = false;
-					if (this.memory._move){
+					if (this.memory._move && this.memory._move.path){
 						let pathLength = (this.memory._move.path.length + this.memory._move.path.length)+this.fatigue || 0;
 						if (pathLength == this.memory._move.pathLength){
 							bool = true;
