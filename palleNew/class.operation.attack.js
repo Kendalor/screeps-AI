@@ -5,84 +5,83 @@ module.exports = class{
         constructor(){
 
         }
-        static run(id){
-            //Memory.operations[id].members['David']= 'attacker';
-            //Memory.operations[id].size=4;
-<<<<<<< HEAD
-=======
-			//var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
-			//var creep_body = [MOVE,MOVE,MOVE,ATTACK,RANGED_ATTACK,HEAL];
-			var creep_body = [TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,RANGED_ATTACK,MOVE];
->>>>>>> origin/master
-            //var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
-            var creep_body=[ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
-            //var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
-			//var creep_body = Array(50).fill(MOVE,0,25).fill(ATTACK,25,50);
-            //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
-            //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
-            //var creep_body = Array(15).fill(MOVE).concat(Array(13).fill(ATTACK)).concat(Array(2).fill(HEAL)); // Needs 2290 Energy
-            if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-                // BUILD CREEPS UNTIL SQUAD SIZE REACHED
+		static run(id){
+			//if(Game.time >= 17078852){
+				//Memory.operations[id].members['David']= 'attacker';
+				//Memory.operations[id].size=4;
+				//var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
+				//var creep_body = [MOVE,MOVE,MOVE,ATTACK,RANGED_ATTACK,HEAL];
+				//var creep_body = [TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,RANGED_ATTACK,MOVE];
+				var creep_body = [TOUGH,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,MOVE,HEAL];
+				//var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
+				//var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
+				//var creep_body = Array(50).fill(MOVE,0,25).fill(ATTACK,25,50);
+				//var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
+				//var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL];
+				//var creep_body = Array(15).fill(MOVE).concat(Array(13).fill(ATTACK)).concat(Array(2).fill(HEAL)); // Needs 2290 Energy
+				if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
+					// BUILD CREEPS UNTIL SQUAD SIZE REACHED
 
-                if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
-                    //console.log('Spawning');
-                    //console.log(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}));
-                    if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
-                        var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
-                        Memory.operations[id].members[name]= 'attacker';
-                        console.log('Did spawn creep '+name);
-                    }
+					if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
+						//console.log('Spawning');
+						//console.log(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}));
+						if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
+							var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
+							Memory.operations[id].members[name]= 'attacker';
+							console.log('Did spawn creep '+name);
+						}
 
-                }else if(Object.keys(Memory.operations[id].members).length == Memory.operations[id].size && !Memory.operations[id].assembled){
-                    Memory.operations[id].assembled = true;
-                    console.log('Squad assembled');
-                }
-                // CHECK IF REACHED OR FLAG POSITION CHANGED
-                var reached=0;
-                for(var cr in Memory.operations[id].members){
-                    // DELETE NONEXISTING CREEPS FROM OPERATION
-                    if(!Game.creeps[cr]) {
-                        console.log('Deleted '+cr +'from memory')
-                        delete Memory.creeps[cr];
-                        delete Memory.operations[id].members[cr];
-                    }
+					}else if(Object.keys(Memory.operations[id].members).length == Memory.operations[id].size && !Memory.operations[id].assembled){
+						Memory.operations[id].assembled = true;
+						console.log('Squad assembled');
+					}
+					// CHECK IF REACHED OR FLAG POSITION CHANGED
+					var reached=0;
+					for(var cr in Memory.operations[id].members){
+						// DELETE NONEXISTING CREEPS FROM OPERATION
+						if(!Game.creeps[cr]) {
+							console.log('Deleted '+cr +'from memory')
+							delete Memory.creeps[cr];
+							delete Memory.operations[id].members[cr];
+						}
 
 
-                    if(Memory.operations[id].reached==false && Memory.operations[id].assembled==true){
-                        if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],2)){
-                            reached = reached+1;
-                        }
-                        if(reached == Memory.operations[id].size){
-                            Memory.operations[id].reached=true;
-                        }
-                    }else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
-                        if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
-                            reached = reached+1;
-                        }
-                        if(reached != Memory.operations[id].size){
-                            Memory.operations[id].reached=false;
-                        }
-                    }
-                }
-                // RUN CREEP JOBS
-                var flag=Game.flags[Memory.operations[id].flagName];
-                for(var cr in Memory.operations[id].members){
-                    if(!Game.creeps[cr].spawning && Game.creeps[cr]){
+						if(Memory.operations[id].reached==false && Memory.operations[id].assembled==true){
+							if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],2)){
+								reached = reached+1;
+							}
+							if(reached == Memory.operations[id].size){
+								Memory.operations[id].reached=true;
+							}
+						}else if(Memory.operations[id].assembled==true && Memory.operations[id].reached==true){
+							if(Game.flags[Memory.operations[id].flagName].pos.roomName == Game.creeps[cr].pos.roomName){
+								reached = reached+1;
+							}
+							if(reached != Memory.operations[id].size){
+								Memory.operations[id].reached=false;
+							}
+						}
+					}
+					// RUN CREEP JOBS
+					var flag=Game.flags[Memory.operations[id].flagName];
+					for(var cr in Memory.operations[id].members){
+						if(!Game.creeps[cr].spawning && Game.creeps[cr]){
 
-                        var creep=Game.creeps[cr];
+							var creep=Game.creeps[cr];
 
-                        if(flag.pos.roomName != creep.pos.roomName){
-                            //console.log('Running Travel for '+cr);
-                            this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
+							if(flag.pos.roomName != creep.pos.roomName){
+								//console.log('Running Travel for '+cr);
+								this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
-                        }else{
-                            //console.log('Running Attack for '+cr);
-                            this.creepAttack(Game.creeps[cr]);
+							}else{
+								//console.log('Running Attack for '+cr);
+								this.creepAttack(Game.creeps[cr]);
 
-                        }
-                    }
-                }
-            }
+							}
+						}
+					}
+				}
+			//}
         }
 
         static findClosestSpawn(flagName){
@@ -193,6 +192,7 @@ module.exports = class{
             });
             var closestHostile_all = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS,{filter: (hostile) =>
               WHITELIST[hostile.owner.username] == undefined
+			  //&& hostile.carry.energy > 0 // for killing creeps which haul energy
               && hostile.pos.x > 0 && hostile.pos.y > 0 && hostile.pos.x < 49 && hostile.pos.y < 49 });
             var closestStr = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => (str.structureType == STRUCTURE_TOWER || str.structureType == STRUCTURE_SPAWN || str.structureType == STRUCTURE_EXTENSION) && WHITELIST[str.owner.username] == undefined, ignoreDestructibleStructures: true});
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER && WHITELIST[str.owner.username] == undefined,ignoreDestructibleStructures: true});
@@ -225,19 +225,6 @@ module.exports = class{
                 //console.log(creep.name);
                 //console.log('TEST2');
                 if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
-<<<<<<< HEAD
-                    creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
-                    creep.heal(creep);
-                    creep.say('1attacking 1');
-                }
-            }else if(closestHostile_all){
-                //console.log('TEST3');
-                if(creep.attack(closestHostile_all) == ERR_NOT_IN_RANGE){
-                    creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
-                    creep.heal(creep);
-                    creep.say('2attacking 2');
-                }
-=======
 					creep.rangedAttack(closestHostile);
                     creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
@@ -267,7 +254,6 @@ module.exports = class{
                     creep.heal(creep);
                     creep.say('1attacking 2');
 				}
->>>>>>> origin/master
 
             }else if (creep.hits < creep.hitsMax){
                 //console.log('TEST4');
@@ -276,16 +262,15 @@ module.exports = class{
             }else if(closestStr){
                 //console.log('TEST5');
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
-<<<<<<< HEAD
-=======
 					creep.rangedAttack(closestStr);
->>>>>>> origin/master
                     creep.moveTo(closestStr,{ignoreDestructibleStructures: true});
                     creep.heal(creep);
                     creep.say('3attacking 3');
                 }
+				creep.rangedMassAttack();
             }else if(hostileConstruction != null){
                 creep.moveTo(hostileConstruction);
+				creep.rangedMassAttack();
 
             }else if(healables != null){
 

@@ -40,15 +40,10 @@ module.exports = {
 
 				if (spawn.room.memory.sources){
 					if (spawn.room.storage == undefined) {
-<<<<<<< HEAD
-						if(spawn.room.energyCapacityAvailable>=500){
-							maintanceUnits = 2*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
-=======
 						if(spawn.room.energyCapacityAvailable>=700){
 							maintanceUnits = 3*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
 						}else if(spawn.room.energyCapacityAvailable>=500){
 							maintanceUnits = 5*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
->>>>>>> origin/master
 						}else{
 							let slots = 0;
 							for (let id in spawn.room.memory.sources){
