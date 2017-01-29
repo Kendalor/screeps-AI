@@ -47,7 +47,6 @@ module.exports = {
 							for (id in spawn.room.memory.sources){
 								slots += spawn.room.memory.sources[id].slots;
 							}
-							console.log(slots);
 							maintanceUnits = Math.max(slots,4*Object.keys(spawn.room.memory.sources).length);
 						}
 						upgradeUnits = 1;
