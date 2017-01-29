@@ -8,7 +8,8 @@ module.exports = class{
         static run(id){
             //Memory.operations[id].members['David']= 'attacker';
             //Memory.operations[id].size=4;
-			var creep_body = Array(2).fill(MOVE,0,1).fill(RANGED_ATTACK,1,1);
+			//var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
+			var creep_body = [TOUGH,MOVE,MOVE,ATTACK,ATTACK,HEAL];
             //var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
             //var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
 			//var creep_body = Array(50).fill(MOVE,0,25).fill(ATTACK,25,50);
@@ -220,30 +221,30 @@ module.exports = class{
                 //console.log(creep.name);
                 //console.log('TEST2');
                 if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
-					creep.ranged_attack(closestHostile);
+					creep.rangedAttack(closestHostile);
                     creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
                     creep.say('1attacking 1');
                 }else{
-					if(!creep.inRangeTo(closestHostile,2)){
-						creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
-					}
-					creep.ranged_attack(closestHostile);
+					//if(!creep.inRangeTo(closestHostile,2)){
+					creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
+					//}
+					creep.rangedAttack(closestHostile);
                     creep.heal(creep);
                     creep.say('1attacking 1');
 				}
             }else if(closestHostile_all){
                 //console.log('TEST3');
                 if(creep.attack(closestHostile_all) == ERR_NOT_IN_RANGE){
-					creep.ranged_attack(closestHostile_all);
+					creep.rangedAttack(closestHostile_all);
                     creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
                     creep.say('2attacking 2');
                 }else{
-					if(!creep.inRangeTo(closestHostile_all,2)){
-						creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
-					}
-					creep.ranged_attack(closestHostile_all);
+					//if(!creep.inRangeTo(closestHostile_all,2)){
+					creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
+					//}
+					creep.rangedAttack(closestHostile_all);
                     creep.heal(creep);
                     creep.say('1attacking 2');
 				}
@@ -255,7 +256,7 @@ module.exports = class{
             }else if(closestStr){
                 //console.log('TEST5');
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
-					creep.ranged_attack(closestStr);
+					creep.rangedAttack(closestStr);
                     creep.moveTo(closestStr,{ignoreDestructibleStructures: true});
                     creep.heal(creep);
                     creep.say('3attacking 3');
