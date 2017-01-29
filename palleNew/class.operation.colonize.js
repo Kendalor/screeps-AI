@@ -12,7 +12,7 @@ module.exports = class{
 					Game.flags[Memory.operations[id].flagName].room.createConstructionSite(Game.flags[Memory.operations[id].flagName].pos.x,Game.flags[Memory.operations[id].flagName].pos.y,STRUCTURE_SPAWN); 
 				}else if(!Memory.operations[id].spawnBuilt) {
 					let spawns = Game.flags[Memory.operations[id].flagName].room.spawns;
-					if (spawns.length){
+					if (spawns && spawns.length){
 						Memory.operations[id].spawnBuilt = true;
 					}
 				}else if (Game.flags[Memory.operations[id].flagName].room.energyCapacityAvailable >=1000){
@@ -29,19 +29,21 @@ module.exports = class{
             }
             var creep_body = undefined;
             if (Memory.operations[id].spawnBuilt){
-				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				Memory.operations[id].size = 8;
+				//creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
+				Memory.operations[id].size = 4;
 				if (Game.rooms[Memory.operations[id].roomName].hostileCreeps.filter((hostile) =>
 						hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
 					).length){
 					Game.rooms[Memory.operations[id].roomName].controller.activateSafeMode();
 				}
             }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
-				Memory.operations[id].size = 8;
-				creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
+				Memory.operations[id].size = 4;
+				//creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
             }else{
 				Memory.operations[id].size = 1
-				creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
+				creep_body = [CLAIM,MOVE]; // Claimer suicides after claiming - no need for much more
 			}
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
 				// BUILD CREEPS UNTIL SQUAD SIZE REACHED
@@ -74,11 +76,7 @@ module.exports = class{
 							this.creepTravel(Game.creeps[cr],Game.flags[Memory.operations[id].flagName]);
 
 						}else {
-							if (Game.creeps[cr].getActiveBodyparts(WORK)>0){
-								this.creepColonize(Game.creeps[cr]);
-							}else{
-								
-							}
+							this.creepColonize(Game.creeps[cr]);
 						}
 					}
 				}
@@ -149,7 +147,8 @@ module.exports = class{
 
         // TRAVEL TO FLAG
         static creepTravel(creep,flag){
-            creep.travelTo(flag);
+            //creep.travelTo(flag);
+			creep.journeyTo(flag);
             creep.say('travel');
 
         }
@@ -157,14 +156,24 @@ module.exports = class{
         static creepColonize(creep){
           // CLAIM IF NOT MY CONTROLLER
           if (!creep.room.controller.my){
-            console.log(creep.claimController(creep.room.controller));
             if(creep.claimController(creep.room.controller) == ERR_NOT_IN_RANGE){
               creep.travelTo(creep.room.controller);
               creep.say('Claiming');
-            }
+            }else{/*
+				if(creep.room.controller.owner.username != 'undefined' && !creep.room.controller.my){
+					console.log("Cannot claim "+creep.room.name);
+					/* optional cancel
+					delete Memory.flags[Memory.operations[id].flagName];
+					Game.flags[Memory.operations[id].flagName].remove(); // quit the job
+					delete Memory.operations[id];
+					
+				}else{*/
+					creep.suicide();
+				//}
+			}
           }
           // SET JOB
-          else {
+          else{
             if (creep.memory.targetId == null){
               if (creep.carry.energy == creep.carryCapacity && creep.room.controller.ticksToDowngrade < 500){ // CHARGE CONTROLLER
                 creep.memory.targetId = creep.room.controller.id;

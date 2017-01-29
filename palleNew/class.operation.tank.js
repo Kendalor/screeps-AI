@@ -82,7 +82,7 @@ module.exports = class{
 								creep.attack(targets[0]);
 							}
                         }
-                    }else if(creep.hits < creep.hitsMax-1000){ // wounded itself -> heal
+                    }else if(creep.hits < creep.hitsMax-100){ // wounded itself -> heal
                         if(creep.pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
                             creep.say("flee");
                             var home=creep.pos.findClosestByPath(FIND_EXIT);
@@ -99,7 +99,8 @@ module.exports = class{
                     }
                 }else{
                     creep.say("Charge!");
-                    creep.moveTo(flag);
+                    //creep.moveTo(flag);
+					creep.journeyTo(flag);
                     creep.heal(creep);
                 }
 			}
@@ -147,8 +148,8 @@ module.exports = class{
                 Memory.operations[this.id].spawnList=this.findClosestSpawn(roomName,1);
                 //Memory.operations[this.id].default_body=Array(50).fill(ATTACK,0,1).fill(TOUGH,1,15).fill(MOVE,15,35).fill(HEAL,35,50);
                 //Memory.operations[this.id].default_body=Array(50).fill(ATTACK,0,1).fill(TOUGH,1,15).fill(MOVE,15,35).fill(HEAL,35,50);
-                Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,5).fill(ATTACK,5,10).fill(MOVE,10,35).fill(HEAL,35,50);
-
+                //Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,5).fill(ATTACK,5,10).fill(MOVE,10,35).fill(HEAL,35,50);
+				Memory.operations[this.id].default_body=[TOUGH,MOVE,MOVE,MOVE,HEAL,HEAL];
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
             }

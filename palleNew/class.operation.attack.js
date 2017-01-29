@@ -8,6 +8,12 @@ module.exports = class{
         static run(id){
             //Memory.operations[id].members['David']= 'attacker';
             //Memory.operations[id].size=4;
+<<<<<<< HEAD
+=======
+			//var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
+			//var creep_body = [MOVE,MOVE,MOVE,ATTACK,RANGED_ATTACK,HEAL];
+			var creep_body = [TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,RANGED_ATTACK,MOVE];
+>>>>>>> origin/master
             //var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
             var creep_body=[ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
             //var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
@@ -128,7 +134,7 @@ module.exports = class{
                 Memory.operations[this.id].reached=false;
                 Memory.operations[this.id].refreshed=false;
                 Memory.operations[this.id].members= {};
-                Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
+                //Memory.operations[this.id].rallyPoint=Game.spawns['Spawn1'].pos.findClosestByPath(FIND_MY_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER}).id;
 
 
                 //console.log(JSON.stringify(Memory.operations[this.id]));
@@ -168,7 +174,7 @@ module.exports = class{
         }
         // TRAVEL TO FLAG
         static creepTravel(creep,flag){
-            creep.moveTo(flag);
+            creep.journeyTo(flag);
             creep.heal(creep);
             //this.creepAttack(creep);
 
@@ -219,6 +225,7 @@ module.exports = class{
                 //console.log(creep.name);
                 //console.log('TEST2');
                 if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
+<<<<<<< HEAD
                     creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
                     creep.heal(creep);
                     creep.say('1attacking 1');
@@ -230,6 +237,37 @@ module.exports = class{
                     creep.heal(creep);
                     creep.say('2attacking 2');
                 }
+=======
+					creep.rangedAttack(closestHostile);
+                    creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
+                    creep.heal(creep);
+                    creep.say('1attacking 1');
+                }else{
+					//if(!creep.inRangeTo(closestHostile,2)){
+					creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
+					//}
+					//creep.rangedAttack(closestHostile);
+					creep.rangedMassAttack();
+                    creep.heal(creep);
+                    creep.say('1attacking 1');
+				}
+            }else if(closestHostile_all){
+                //console.log('TEST3');
+                if(creep.attack(closestHostile_all) == ERR_NOT_IN_RANGE){
+					creep.rangedAttack(closestHostile_all);
+                    creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
+                    creep.heal(creep);
+                    creep.say('2attacking 2');
+                }else{
+					//if(!creep.inRangeTo(closestHostile_all,2)){
+					creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
+					//}
+					//creep.rangedAttack(closestHostile_all);
+					creep.rangedMassAttack();
+                    creep.heal(creep);
+                    creep.say('1attacking 2');
+				}
+>>>>>>> origin/master
 
             }else if (creep.hits < creep.hitsMax){
                 //console.log('TEST4');
@@ -238,6 +276,10 @@ module.exports = class{
             }else if(closestStr){
                 //console.log('TEST5');
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
+<<<<<<< HEAD
+=======
+					creep.rangedAttack(closestStr);
+>>>>>>> origin/master
                     creep.moveTo(closestStr,{ignoreDestructibleStructures: true});
                     creep.heal(creep);
                     creep.say('3attacking 3');
@@ -255,7 +297,10 @@ module.exports = class{
                 //console.log('TEST3');
                 creep.memory.reached=false;
                 delete creep.memory.target;
-
+				let flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName];
+				if(!creep.inRangeTo(flag,3)){
+					creep.moveTo(flag);
+				}
             }
 
         }
