@@ -267,7 +267,7 @@ module.exports = {
 			if(creep.inRangeTo(source)) {
 				creep.harvest(source);
 			}else{
-				creep.say(creep.travelTo(pos));
+				creep.travelTo(pos);
 			}
 		}
 
