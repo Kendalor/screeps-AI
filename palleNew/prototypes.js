@@ -457,8 +457,8 @@ module.exports = function(){
 								_.set(this, '_' + sType + 's', _.get(this,'_'+sType+'s') === undefined? [this._structures[i]] : _.get(this,'_'+sType+'s').concat([this._structures[i]]));
 							}
 						}
-						let notMemorized = ["extensions","roads","constructedWalls","ramparts"];
-						for(let key in notMemorized){ // Initialize array if not yet initialized (other structures are read from memory)
+						let notMemorized = ["spawns","extensions","roads","constructedWalls","ramparts","keeperLairs","portals","links","towers","labs","containers"];
+						for(let key in notMemorized){ // Initialize array if not yet initialized 
 							if (_.get(this,'_' + notMemorized[key]) === undefined){
 								_.set(this,'_' + notMemorized[key], []);
 							}
@@ -884,7 +884,7 @@ module.exports = function(){
 							}
 							this._containers = objectArray;
 						}else{
-							this.findStructures()
+							this.findStructures();
 						}
 					}
 					return this._containers;
