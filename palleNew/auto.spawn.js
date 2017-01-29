@@ -41,7 +41,7 @@ module.exports = {
 				if (spawn.room.memory.sources){
 					if (spawn.room.storage == undefined) {
 						if(spawn.room.energyCapacityAvailable>=500){
-							maintanceUnits = 5*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
+							maintanceUnits = 2*Object.keys(spawn.room.memory.sources).length//+Math.ceil(Math.ceil(1+parseInt(Object.keys(spawn.room.constructionSites).length)/10));;
 						}else{
 							let slots = 0;
 							for (id in spawn.room.memory.sources){
