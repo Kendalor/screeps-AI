@@ -160,7 +160,16 @@ module.exports = class{
               creep.travelTo(creep.room.controller);
               creep.say('Claiming');
             }else{
-				creep.suicide();
+				if(creep.room.controller.owner.username != 'undefined' && !creep.room.controller.my){
+					console.log("Cannot claim "+creep.room.name);
+					/* optional cancel
+					delete Memory.flags[Memory.operations[id].flagName];
+					Game.flags[Memory.operations[id].flagName].remove(); // quit the job
+					delete Memory.operations[id];
+					*/
+				}else{
+					creep.suicide();
+				}
 			}
           }
           // SET JOB
