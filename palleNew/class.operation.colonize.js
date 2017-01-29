@@ -43,8 +43,7 @@ module.exports = class{
 				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
             }else{
 				Memory.operations[id].size = 1
-				//creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,CLAIM,WORK,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
-				creep_body = [CLAIM,MOVE];
+				creep_body = [CLAIM,MOVE]; // Claimer suicides after claiming - no need for much more
 			}
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
 				// BUILD CREEPS UNTIL SQUAD SIZE REACHED
@@ -162,9 +161,12 @@ module.exports = class{
               creep.travelTo(creep.room.controller);
               creep.say('Claiming');
             }
+			if (!creep.room.controller.my){
+				creep.suicide();
+			}
           }
           // SET JOB
-          else if(creep.carryCapacity>0 || creep.body.filter((body) => body.type == WORK).length == 0){
+          else{
             if (creep.memory.targetId == null){
               if (creep.carry.energy == creep.carryCapacity && creep.room.controller.ticksToDowngrade < 500){ // CHARGE CONTROLLER
                 creep.memory.targetId = creep.room.controller.id;
@@ -305,9 +307,7 @@ module.exports = class{
               creep.memory.targetId = null;
               creep.say('Idle');
             }
-          }else{
-			  creep.suicide();
-		  }
+          }
         }
 
 		static findClosestSpawn(targetRoomName,addDistance=0){
