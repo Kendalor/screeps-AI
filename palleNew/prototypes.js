@@ -1182,7 +1182,7 @@ module.exports = function(){
 					let bool = false;
 					if (this.memory._move && this.memory._move.path){
 						let pathLength = (this.memory._move.path.length + this.memory._move.path.length)+this.fatigue || 0;
-						if (pathLength == this.memory._move.pathLength || this.memory._move.path=""){
+						if (pathLength == this.memory._move.pathLength || this.memory._move.path == ""){
 							bool = true;
 						}else if (pathLength < this.memory._move.pathLength){
 							this.memory._move.pathLength = this.memory._move.path.length;
