@@ -372,12 +372,19 @@ module.exports = {
 		if(creep.memory.job == 'gather' && container != null && creep.carry.energy < creep.carryCapacity){
 			var salvage = container.room.resources.filter( (s) => container.pos.x ==s.pos.x && container.pos.y == s.pos.y && creep.room.name == s.room.name)[0];
 			if (salvage != undefined){
-				if(creep.pickup(salvage,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+				if (creep.inRangeTo(salvage,1)){
+					creep.pickup(salvage,RESOURCE_ENERGY);
+				}else{
 					creep.travelTo(salvage);
 				} 
-			}
-			if(creep.withdraw(container,RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
-				creep.travelTo(container);
+			}else if (creep.inRangeTo(container,1)){
+				creep.withdraw(container,RESOURCE_ENERGY);
+			}else{
+				if(creep.role != 'upgrader'){
+					creep.travelTo(container);
+				}else{
+					creep.moveTo(container);
+				}
 			}
 		}
 		if(creep.memory.job == 'gather' && (creep.carry.energy == creep.carryCapacity || creep.memory.containerId == null || container == null || container.store[RESOURCE_ENERGY] < creep.carryCapacity/4)){
@@ -532,7 +539,7 @@ module.exports = {
 						}
 					}
 				}else {
-					creep.travelTo(target);
+					creep.moveTo(target);
 				}
 			}
 		} 
