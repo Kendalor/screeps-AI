@@ -3,9 +3,9 @@ module.exports = class{
 
         }
         static run(id){
-            //this.checkForInvaders(Game.flags[Memory.operations[id].flagName].room);
+			//this.checkForInvaders(Game.flags[Memory.operations[id].flagName].room);
 			//Memory.operations[id].size = 3
-            if (Game.flags[Memory.operations[id].flagName].room != undefined){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
+			if (Game.flags[Memory.operations[id].flagName].room != undefined){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
 				if(Game.flags[Memory.operations[id].flagName].room.controller.my && !Memory.operations[id].spawn){
 					Memory.operations[id].spawn = true;
 					this.initSourceMemory(Game.flags[Memory.operations[id].flagName].room); // Initialize source memory
@@ -26,26 +26,26 @@ module.exports = class{
 					Game.flags[Memory.operations[id].flagName].remove(); // quit the job
 					delete Memory.operations[id];
 				}
-            }
-            var creep_body = undefined;
-            if (Memory.operations[id].spawnBuilt){
+			}
+			var creep_body = undefined;
+			if (Memory.operations[id].spawnBuilt){
 				//creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				Memory.operations[id].size = 4;
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE]; // 1000
+				Memory.operations[id].size = 6;
 				if (Game.rooms[Memory.operations[id].roomName].hostileCreeps.filter((hostile) =>
 						hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
 					).length){
 					Game.rooms[Memory.operations[id].roomName].controller.activateSafeMode();
 				}
-            }else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
-				Memory.operations[id].size = 4;
+			}else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
+				Memory.operations[id].size = 6;
 				//creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
-				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-            }else{
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE]; // 1000
+			}else{
 				Memory.operations[id].size = 1
 				creep_body = [CLAIM,MOVE]; // Claimer suicides after claiming - no need for much more
 			}
-            if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
+			if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
 				// BUILD CREEPS UNTIL SQUAD SIZE REACHED
 				if(!Memory.operations[id].spawnList){
 					Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
@@ -80,7 +80,7 @@ module.exports = class{
 						}
 					}
 				}
-            }
+			}
         }
 
         static init(roomName,flag){
@@ -174,6 +174,7 @@ module.exports = class{
           }
           // SET JOB
           else{
+			if(!this.renewCreep(creep)){
             if (creep.memory.targetId == null){
               if (creep.carry.energy == creep.carryCapacity && creep.room.controller.ticksToDowngrade < 500){ // CHARGE CONTROLLER
                 creep.memory.targetId = creep.room.controller.id;
@@ -227,11 +228,13 @@ module.exports = class{
                 }
               }
               if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // BUILD INFRASTRUCTURE
-                var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});
-                if (structure.length == 0)
-                  structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION});
+                var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION});
 				if (structure.length == 0)
+                  structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});
+                if (structure.length == 0)
                   structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});
+				if (structure.length == 0)
+                  structure = creep.room.find(FIND_CONSTRUCTION_SITES);
                 if (structure.length){
                   creep.memory.targetId = creep.pos.findClosestByRange(structure).id;
                   creep.say('Building');
@@ -315,7 +318,36 @@ module.exports = class{
               creep.say('Idle');
             }
           }
+		  }
         }
+		
+		static renewCreep(creep){
+			let spawns = creep.room.spawns;
+			if (spawns.length && creep.room.energyAvailable >= 100 && (creep.ticksToLive < 100 || creep.memory.renewing) && creep.ticksToLive < 1450){
+				if (!creep.memory.renewing){
+					creep.memory.renewing = true;
+					if(creep.memory.targetId){
+						let target = Game.getObjectById(creep.memory.targetId);
+							if (target && target.memory && target.memory.harvesters){
+								delete target.memory.harvesters[creep.name];
+							}
+						delete creep.memory.targetId;
+					}
+				}
+				let nearSpawn = creep.pos.findClosestByPath(spawns);
+				if (creep.inRangeTo(nearSpawn,1)){
+					nearSpawn.renewCreep(creep);
+					creep.say('zzz');
+				}else{
+					creep.travelTo(nearSpawn);
+				}
+			}else{
+				if (creep.memory.renewing){
+					delete creep.memory.renewing;
+				}
+			}
+			return creep.memory.renewing;
+		}
 
 		static findClosestSpawn(targetRoomName,addDistance=0){
             var min_dist=999;
