@@ -369,7 +369,7 @@ module.exports = class{
                     spawnList.push(j);
                 }
             }
-            return ["Spawn1"];//spawnList;
+            return spawnList;
         }
 		
 		static creepBuilder(spawnList,memberList,size,body,memory){
