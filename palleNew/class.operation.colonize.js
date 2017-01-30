@@ -31,14 +31,14 @@ module.exports = class{
 			if (Memory.operations[id].spawnBuilt){
 				//creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
 				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE]; // 1000
-				Memory.operations[id].size = 6;
+				Memory.operations[id].size = 7;
 				if (Game.rooms[Memory.operations[id].roomName].hostileCreeps.filter((hostile) =>
 						hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
 					).length){
 					Game.rooms[Memory.operations[id].roomName].controller.activateSafeMode();
 				}
 			}else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
-				Memory.operations[id].size = 6;
+				Memory.operations[id].size = 7;
 				//creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
 				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE]; // 1000
 			}else{
@@ -228,11 +228,11 @@ module.exports = class{
                 }
               }
               if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // BUILD INFRASTRUCTURE
-                var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION});
+                var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});
 				if (structure.length == 0)
                   structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});
                 if (structure.length == 0)
-                  structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});
+                  structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION});
 				if (structure.length == 0)
                   structure = creep.room.find(FIND_CONSTRUCTION_SITES);
                 if (structure.length){
@@ -323,9 +323,9 @@ module.exports = class{
 		
 		static renewCreep(creep){
 			let spawns = creep.room.spawns;
-			if (spawns.length && creep.room.energyAvailable >= 100 && (creep.ticksToLive < 100 || creep.memory.renewing) && creep.ticksToLive < 1450){
-				if (!creep.memory.renewing){
-					creep.memory.renewing = true;
+			if (spawns.length && creep.room.energyAvailable >= 100 && (creep.ticksToLive < 100 || creep.memory.renewingSpawn) && creep.ticksToLive < 1450){
+				if (!creep.memory.renewingSpawn){
+					creep.memory.renewingSpawn = creep.pos.findClosestByPath(spawns).name;
 					if(creep.memory.targetId){
 						let target = Game.getObjectById(creep.memory.targetId);
 							if (target && target.memory && target.memory.harvesters){
@@ -333,20 +333,25 @@ module.exports = class{
 							}
 						delete creep.memory.targetId;
 					}
+					creep.say('renewing');
 				}
-				let nearSpawn = creep.pos.findClosestByPath(spawns);
-				if (creep.inRangeTo(nearSpawn,1)){
-					nearSpawn.renewCreep(creep);
-					creep.say('zzz');
+				let nearSpawn = Game.spawns[creep.memory.renewingSpawn];
+				if(nearSpawn){
+					if (creep.inRangeTo(nearSpawn,1)){
+						nearSpawn.renewCreep(creep);
+						creep.say('zzz');
+					}else{
+						creep.travelTo(nearSpawn);
+					}
 				}else{
-					creep.travelTo(nearSpawn);
+					delete creep.memory.renewingSpawn;
 				}
 			}else{
-				if (creep.memory.renewing){
-					delete creep.memory.renewing;
+				if (creep.memory.renewingSpawn){
+					delete creep.memory.renewingSpawn;
 				}
 			}
-			return creep.memory.renewing;
+			return creep.memory.renewingSpawn? true : false;
 		}
 
 		static findClosestSpawn(targetRoomName,addDistance=0){
@@ -364,7 +369,7 @@ module.exports = class{
                     spawnList.push(j);
                 }
             }
-            return spawnList;
+            return ["Spawn1"];//spawnList;
         }
 		
 		static creepBuilder(spawnList,memberList,size,body,memory){
