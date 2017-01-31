@@ -31,30 +31,21 @@ module.exports.loop = function () {
             }
 	    }
 	}
-
+	
 	for(var name in Memory.myRooms) {
-
 		var room = Game.rooms[name];
+		if (room){
 
-		/*
-		room.findConstructionSites();
-		room.findResources();
-		room.findStructures();
-		room.findHostileCreeps();
-		room.findMyCreeps();
-		*/
+			//autoMemory.fixSourceSlots(room);
+			invasionCounter.run(room);
 
-		//autoMemory.fixSourceSlots(room);
-		invasionCounter.run(room);
+			autoSpawn.run(room.spawns);
 
-		//if(Game.time % 10 == 0){
-		//var spawnList = (room.find(FIND_MY_STRUCTURES,{filter: (structure) => structure.structureType == STRUCTURE_SPAWN}));
-		autoSpawn.run(room.spawns);
-		//}
-
-		//var creepList = (room.find(FIND_MY_CREEPS,{filter: (creep) => creep.room.name == name}));
-		autoCreep.run(room.myCreeps);
-
+			autoCreep.run(room.myCreeps);
+		
+		}else{
+			delete Memory.myRooms[name];
+		}
 	}
 
 	if(Game.time % 10 == 0){
