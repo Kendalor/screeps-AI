@@ -330,25 +330,6 @@ module.exports = class{
             }else{
                 var path=Memory.operations[id].sources[source.id].path;
             }
-
-                          room.find(FIND_CONSTRUCTION_SITES).forEach(function(constr) {
-                            if(constr.structureType == STRUCTURE_ROAD)  {
-                                costs.set(constr.pos.x, constr.pos.y, 2);
-                            }else if(constr.structureType == STRUCTURE_RAMPART) {
-                                costs.set(constr.pos.x, constr.pos.y,2);
-                            }else{
-                                costs.set(constr.pos.x, constr.pos.y,0xff);
-                            }
-                          });
-
-                          return costs;
-
-                          }}).path;
-
-                        Memory.operations[id].sources[source.id].path=path;
-                }else{
-                    var path=Memory.operations[id].sources[source.id].path;
-                }
                  Memory.operations[id].sources[s_id].ticksToSource=Object.keys(path).length;
                      for(var i in path){
                         //console.log(JSON.stringify(path));
