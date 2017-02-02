@@ -1116,7 +1116,7 @@ module.exports = function(){
 					if (this.isBlocked()){
 						return this.moveTo(destination,filter);
 					}else{
-						return this.moveTo(destination,{ignoreCreeps: true,reusePath: 100});
+						return this.moveTo(destination,{ignoreCreeps: true,reusePath: 50});
 					}
 				},
 				writable: true,
