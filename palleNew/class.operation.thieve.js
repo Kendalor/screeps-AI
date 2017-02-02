@@ -65,7 +65,7 @@ module.exports = class{
                 Memory.operations[this.id].size=1;
                 Memory.operations[this.id].members= {};
                 Memory.operations[this.id].storageRoomName=this.findClosestStorageRoom(flag);
-				Memory.operations[this.id].pathLength = 20+2*PathFinder.search(Game.rooms[Memory.operations[this.id].storageRoomName].storage.pos,Game.flags[Memory.operations[this.id].flagName].pos).path.length;
+				Memory.operations[this.id].pathLength = parseInt(2.15*PathFinder.search(Game.rooms[Memory.operations[this.id].storageRoomName].storage.pos,Game.flags[Memory.operations[this.id].flagName].pos).path.length);
 				Memory.operations[this.id].complete = false;
 
             }
