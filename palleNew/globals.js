@@ -1,5 +1,10 @@
 module.exports = function(){
-	var ALLY = ["Cade","InfiniteJoe","Iskarioth","Kendalor","Palle"];
+	var ALLY = ["Cade",
+				"dragoonreas"
+				"InfiniteJoe",
+				"Iskarioth",
+				"Kendalor",
+				"Palle"];
 	
 	/* 
 	 * Add constants to Memory
