@@ -482,9 +482,9 @@ module.exports = {
 			this.idle(creep);
 		}
 		if (!creep.memory.job && creep.carry.energy > 0){
-			var targets = creep.room.extensions.filter((structure) => structure.energy < structure.energyCapacity && creep.room.name == structure.room.name);
+			var targets = creep.room.spawns.filter((structure) => structure.energy < structure.energyCapacity);
 			if (!targets.length){
-				targets = creep.room.spawns.filter((structure) => structure.energy < structure.energyCapacity && creep.room.name == structure.room.name);
+				targets = creep.room.extensions.filter((structure) => structure.energy < structure.energyCapacity);
 			}
 			if (creep.memory.role != 'supplier' && !targets.length && creep.carry.energy > 0 ){//creep.carryCapacity/4){
 				targets = creep.room.towers.filter((structure) => structure.energy < structure.energyCapacity-100 && creep.room.name == structure.room.name);
@@ -505,13 +505,24 @@ module.exports = {
 		if (creep.memory.job == 'haul' && creep.carry.energy > 0){
 			var target = Game.getObjectById(creep.memory.targetId);
 			if (target.structureType == STRUCTURE_STORAGE){
-				if(target.store.energy < target.storeCapacity && creep.transfer(target, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+				if (target.store.energy < target.storeCapacity && creep.inRangeTo(target,1)){
+					creep.transfer(target, RESOURCE_ENERGY);
+				}else{
 					creep.travelTo(target);
 				}
-			}
-			else{
-				if(target.energy < target.energyCapacity && creep.transfer(target, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
-				creep.travelTo(target);
+			}else{
+				if (target.energy < target.energyCapacity && creep.inRangeTo(target,1)){
+					creep.transfer(target, RESOURCE_ENERGY);
+					/*
+					let extensions = creep.room.extensions;
+					extensions = extensions.filter(e => Math.abs(e.pos.x - creep.pos.x) <= 1 && Math.abs(e.pos.y - creep.pos.y) <= 1 && target.energy < target.energyCapacity);
+					for(let i in extensions){
+						if (creep.carry.energy > 0){
+							creep.transfer(extensions[i], RESOURCE_ENERGY);
+						}
+					}*/
+				}else{
+					creep.travelTo(target);
 				}
 			}
 		}
