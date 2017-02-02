@@ -7,6 +7,12 @@ module.exports = class{
         static run(id){
             if(!this.checkForDelete(id)){
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
+				//Recalc path length if necessary
+				if(Game.flags[Memory.operations[id].flagName].pos.roomName != Memory.operations[id].roomName){
+					Memory.operations[id].roomName
+					Memory.operations[id].pathLength = parseInt(2.15*PathFinder.search(Game.rooms[Memory.operations[id].storageRoomName].storage.pos,Game.flags[Memory.operations[id].flagName].pos).path.length);
+				}
+			
 				if(!Memory.operations[id].spawnList){
                     Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
                 }
