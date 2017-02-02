@@ -177,12 +177,12 @@ module.exports = class{
 			*	CASES:
 			*			CREEP HAS ENERGY
 			*				IN HOME ROOM 				-> FILL STORAGE , BECOME SUPPLIER IF COMPLETE, SUICIDE IF TTL LOW
-			*				NOT IN HOME ROOM			-> GOTO FLAG
+			*				NOT IN HOME ROOM			-> GOTO HOME ROOM
 			*			CREEP HAS NO ENERGY
 			*				IN FLAG ROOM
 			*					NO MEMORIZED STORAGE	-> MEMORIZE IT OR SET COMPLETE TRUE
 			*					HAS STORAGE W ENERGY	-> STEAL ENERGY
-			*				NOT IN FLAG ROOM			-> GOTO HOME STORAGE
+			*				NOT IN FLAG ROOM			-> GOTO FLAG
 			*/
 			if(creep.carry.energy > 0 || Memory.operations[id].complete){	// CREEP HAS ENERGY
 				if(creep.pos.roomName == homeRoomName){									// IN HOME ROOM
