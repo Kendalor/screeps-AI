@@ -11,6 +11,7 @@ var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper'
 var reserveOperation = require('class.operation.reserve');
 var scoutingOperation = require('class.operation.scouting');
 //var thiefOperation = require('class.operation.steal');
+var thieveOperation = require('class.operation.thieve');
 var tankOperation = require('class.operation.tank');
 
 
@@ -34,9 +35,10 @@ module.exports = {
                     case 'tank':
                         tankOperation.run(id);
                         break;
-                    case 'steal':
+                    case 'thieve':
                         //console.log('Case: Steal');
                         //thiefOperation.run(id);
+						thieveOperation.run(id);
                         break;
                     case 'reserve':
                         reserveOperation.run(id);
@@ -96,7 +98,7 @@ module.exports = {
                 }else if (this.colorMatch(flag,COLOR_GREEN,COLOR_GREEN)){ //GREEN/GREEN
                     tankOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
-                }else if(this.colorMatch(flag,COLOR_GREEN,COLOR_RED)){
+                }else if(this.colorMatch(flag,COLOR_GREEN,COLOR_RED)){ //GREEN/RED
                     rangedAttackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
                 }else if (this.colorMatch(flag,COLOR_WHITE,COLOR_GREEN)){ // WHITE/GREEN
@@ -119,6 +121,10 @@ module.exports = {
 
                 else if(this.colorMatch(flag,COLOR_GREY,COLOR_GREY)){ //GREY/GREY
                     //demolishOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+                }
+				
+				else if(this.colorMatch(flag,COLOR_ORANGE,COLOR_ORANGE)){ //ORANGE/ORANGE
+                    thieveOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
                 }
 
         }
