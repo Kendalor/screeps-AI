@@ -1,6 +1,6 @@
 module.exports = function(){
 	var ALLY = ["Cade",
-				"dragoonreas"
+				"dragoonreas",
 				"InfiniteJoe",
 				"Iskarioth",
 				"Kendalor",
