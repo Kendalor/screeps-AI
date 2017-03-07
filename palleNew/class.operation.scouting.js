@@ -16,14 +16,17 @@ module.exports = class{
         constructor(){
         }
         static run(id){
+            var spawnName = 'Spawn4';
             // tank
             //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH];
             // scout
             var creep_body = [MOVE];
+            //var creep_body = [MOVE,CLAIM];
+            //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM];
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
                 if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
-                    if(Game.spawns['Spawn1'].canCreateCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.spawns['Spawn1'].createCreep(creep_body,undefined,{role: 'scout', operation_id: id});
+                    if(Game.spawns[spawnName].canSpawnCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        var name=Game.spawns[spawnName].createCreep(creep_body,undefined,{role: 'scout', operation_id: id});
                         var creep=Game.creeps[name];
                         Memory.operations[id].creep=name;
                     }
@@ -35,14 +38,23 @@ module.exports = class{
                     var creep= Game.creeps[Memory.operations[id].creep];
 					var flag = Game.flags[Memory.operations[id].flagName];
 					//if (!creep.clearSign()){
-					if (!creep.makeScreepsPinkAgain()){
+					if (true || !creep.makeScreepsPinkAgain()){
 						if(!creep.inRangeTo(flag,0)){
 							creep.journeyTo(flag);
 						}
 					}
+					/* ATTACK CONTROLLER
                     if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
                         //Game.flags[Memory.operations[id].flagName].remove();
+                        var contr = creep.room.controller;
+                        var uName = contr.owner.username;
+                        if(uName === undefined){
+                            creep.claimController(contr);
+                        }else if(uName != "Palle"){
+                            creep.attackController(contr);
+                        }
                     }
+                    */
                 }
             }
         }

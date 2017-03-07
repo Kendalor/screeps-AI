@@ -1,4 +1,4 @@
-var WHITELIST = {'Cade' : true,'InfiniteJoe' : false,'Kendalor' : true,'Palle' : true};
+var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true,'dragoonreas' : true,'KermitFrog' : true};
 
 module.exports = class{
         
@@ -12,7 +12,11 @@ module.exports = class{
 				//var creep_body = [ATTACK,ATTACK,ATTACK,ATTACK,MOVE,MOVE,MOVE,MOVE];
 				//var creep_body = [MOVE,MOVE,MOVE,ATTACK,RANGED_ATTACK,HEAL];
 				//var creep_body = [TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,RANGED_ATTACK,MOVE];
-				var creep_body = [TOUGH,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,MOVE,HEAL];
+				//var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,RANGED_ATTACK,MOVE,HEAL];
+				//let creep_body = Array(50).fill(ATTACK,0,5).fill(MOVE,5,32).fill(RANGED_ATTACK,32,42).fill(HEAL,42,50);
+				//let creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(RANGED_ATTACK,30,35).fill(ATTACK,35,45).fill(HEAL,45,50);
+				let creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,35).fill(RANGED_ATTACK,35,45).fill(HEAL,45,50);
+				//var creep_body = [TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,RANGED_ATTACK,RANGED_ATTACK,RANGED_ATTACK,ATTACK,MOVE,HEAL];
 				//var creep_body = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,HEAL];
 				//var creep_body = Array(50).fill(TOUGH,0,5).fill(MOVE,5,30).fill(ATTACK,30,50);
 				//var creep_body = Array(50).fill(MOVE,0,25).fill(ATTACK,25,50);
@@ -21,12 +25,14 @@ module.exports = class{
 				//var creep_body = Array(15).fill(MOVE).concat(Array(13).fill(ATTACK)).concat(Array(2).fill(HEAL)); // Needs 2290 Energy
 				if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
 					// BUILD CREEPS UNTIL SQUAD SIZE REACHED
+					this.calcEscapeExit(id);
 
 					if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
 						//console.log('Spawning');
-						//console.log(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}));
-						if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canCreateCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
-							var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).createCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
+						//console.log(Game.getObjectById(Memory.operations[id].nearest_spawnId).canSpawnCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}));
+						if(Game.getObjectById(Memory.operations[id].nearest_spawnId).canSpawnCreep(creep_body, undefined, {role: 'attacker', operation: id, target: Memory.operations[id].flagName}) == OK){
+							//var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).spawnCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
+							var name=Game.getObjectById(Memory.operations[id].nearest_spawnId).spawnCreep(creep_body,undefined,{role: 'attacker', operation_id: id, target: Memory.operations[id].flagName});
 							Memory.operations[id].members[name]= 'attacker';
 							console.log('Did spawn creep '+name);
 						}
@@ -45,9 +51,9 @@ module.exports = class{
 							delete Memory.operations[id].members[cr];
 						}
 
-
+                        var flag = Game.flags[Memory.operations[id].flagName];
 						if(Memory.operations[id].reached==false && Memory.operations[id].assembled==true){
-							if(Game.flags[Memory.operations[id].flagName].pos.inRangeTo(Game.creeps[cr],2)){
+							if(Game.creeps[cr].inRangeTo(flag,2)){
 								reached = reached+1;
 							}
 							if(reached == Memory.operations[id].size){
@@ -168,7 +174,8 @@ module.exports = class{
         // IDLE MOVESET
         static creepIdle(creep){
             var target = Game.getObjectById(Memory.operations[creep.memory.operation_id].rallyPoint);
-            creep.moveTo(target);
+            creep.journeyTo(target);
+            //creep.travelTo(target);
 
         }
         // TRAVEL TO FLAG
@@ -198,67 +205,18 @@ module.exports = class{
             var spawn = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES,{filter: (str) => str.structureType == STRUCTURE_TOWER && WHITELIST[str.owner.username] == undefined,ignoreDestructibleStructures: true});
             var hostileConstruction=creep.pos.findClosestByRange(FIND_HOSTILE_CONSTRUCTION_SITES,{filter: (str) => WHITELIST[str.owner.username] == undefined,ignoreDestructibleStructures: true});
             //console.log(hostileConstruction);
-
-
-
-
-
-
-
-
-
-
-
-
             if(priorityTarget[0]){
                 //console.log(creep.name);
                 //console.log(priorityTarget);
                 //console.log(creep.attack(priorityTarget));
-                if(creep.attack(priorityTarget[0]) == ERR_NOT_IN_RANGE){
-                        creep.moveTo(priorityTarget[0],{ignoreDestructibleStructures: true});
-                        //console.log(creep.moveTo(priorityTarget[0],{ignoreDestructibleStructures: true, ignoreCreeps: true}));
-                        creep.heal(creep);
-                        creep.say('prio 1');
-                    }
-            }
-            else if(closestHostile){
-                //console.log(creep.name);
-                //console.log('TEST2');
-                if(creep.attack(closestHostile) == ERR_NOT_IN_RANGE){
-					creep.rangedAttack(closestHostile);
-                    creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
-                    creep.heal(creep);
-                    creep.say('1attacking 1');
-                }else{
-					//if(!creep.inRangeTo(closestHostile,2)){
-					creep.moveTo(closestHostile,{ignoreDestructibleStructures: false});
-					//}
-					//creep.rangedAttack(closestHostile);
-					creep.rangedMassAttack();
-                    creep.heal(creep);
-                    creep.say('1attacking 1');
-				}
+                creep.say('PRIO');
+                this.attackManeuver(creep,priorityTarget[0]);
+            }else if(closestHostile){
+                creep.say('RAWR');
+                this.attackManeuver(creep,closestHostile);
             }else if(closestHostile_all){
-                //console.log('TEST3');
-                if(creep.attack(closestHostile_all) == ERR_NOT_IN_RANGE){
-					creep.rangedAttack(closestHostile_all);
-                    creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
-                    creep.heal(creep);
-                    creep.say('2attacking 2');
-                }else{
-					//if(!creep.inRangeTo(closestHostile_all,2)){
-					creep.moveTo(closestHostile_all,{ignoreDestructibleStructures: false});
-					//}
-					//creep.rangedAttack(closestHostile_all);
-					creep.rangedMassAttack();
-                    creep.heal(creep);
-                    creep.say('1attacking 2');
-				}
-
-            }else if (creep.hits < creep.hitsMax){
-                //console.log('TEST4');
-                creep.heal(creep);
-
+                creep.say('RAWR');
+                this.attackManeuver(creep,closestHostile_all);
             }else if(closestStr){
                 //console.log('TEST5');
                 if(creep.attack(closestStr) == ERR_NOT_IN_RANGE){
@@ -287,7 +245,83 @@ module.exports = class{
 					creep.moveTo(flag);
 				}
             }
-
+        }
+        
+        static attackManeuver(creep,target){
+            var range = creep.pos.getRangeTo(target);
+            var rangedAttacked = false;
+            switch(range){
+                case 1:
+                    if(creep.rangedMassAttack() == OK){
+                        rangedAttacked = undefined;
+                    }else{
+                        creep.attack(target);
+                    }
+                case 2:
+                    if(rangedAttacked == undefined || creep.rangedAttack(target) == OK){
+                        rangedAttacked = true;
+                        var x,y;
+                        var roomExit = creep.pos.findClosestByPath(Memory.operations[creep.memory.operation_id].escapeExit);
+                        var escapePath = creep.room.findPath(creep.pos, roomExit, {
+                            costCallback: function(roomName, costMatrix) {
+                        	    creep.room.hostileCreeps.forEach(function(hostile) {
+                        	        for (x = hostile.pos.x-2;(x<hostile.pos.x+2 || x < 50) && x >=0;x++){
+                        	            for (y = hostile.pos.y-2;(y<hostile.pos.y+2 || y < 50) && y >=0;y++){
+                        	                costMatrix.set(x, y, 30);
+                        	            }
+                        	        }
+                        		})
+                        	}
+                        });
+                        creep.moveByPath(escapePath);
+                        break;
+                    }
+                case 3:
+                    if(rangedAttacked || creep.rangedAttack(target) == OK){
+                        if(creep.hits < creep.hitsMax){
+                            creep.heal(creep);
+                        }
+                        break;
+                    }
+                default:
+                    creep.moveTo(target,{ignoreDestructibleStructures: true});
+                    if(creep.hits < creep.hitsMax){
+                        creep.heal(creep);
+                    }
+            }
+            /*
+            if(creep.inRangeTo(target,3)){
+                if(creep.rangedAttack(target) == OK){
+                    if(creep.inRangeTo(target,2)){
+                        let x,y;
+                        //let centerPos = new RoomPosition(25, 25, creep.room.name);
+                        let roomExit = creep.pos.findClosestByPath(Memory.operations[creep.memory.operation_id].escapeExit);
+                        let escapePath = creep.room.findPath(creep.pos, roomExit, {
+                            costCallback: function(roomName, costMatrix) {
+                        	    creep.room.hostileCreeps.forEach(function(hostile) {
+                        	        for (x = hostile.pos.x-2;(x<hostile.pos.x+2 || x < 50) && x >=0;x++){
+                        	            for (y = hostile.pos.y-2;(y<hostile.pos.y+2 || y < 50) && y >=0;y++){
+                        	                costMatrix.set(x, y, 30);
+                        	            }
+                        	        }
+                        		})
+                        	}
+                        });
+                        creep.moveByPath(escapePath);
+                    }
+                }else{
+                    creep.moveTo(target,{ignoreDestructibleStructures: true});
+                    creep.rangedMassAttack();
+                    creep.attack(target);
+                }
+            }else{
+                creep.moveTo(target,{ignoreDestructibleStructures: true});
+                creep.rangedMassAttack();
+                if(creep.hits < creep.hitsMax){
+                    creep.heal(creep);
+                }
+            }
+            */
         }
 
         static refreshTimer(creep){
@@ -299,7 +333,15 @@ module.exports = class{
             }
         }
 
-
+        static calcEscapeExit(id){
+            var flag = Game.flags[Memory.operations[id].flagName];
+            var currentRoomName = flag.pos.roomName;
+            if(currentRoomName != Memory.operations[id].roomName){
+                Memory.operations[id].roomName = currentRoomName;
+                var spawn = Game.getObjectById(Memory.operations[id].nearest_spawnId);
+                Memory.operations[id].escapeExit = Game.map.findExit(currentRoomName, spawn.pos.roomName);
+            }
+        }
 
 
 

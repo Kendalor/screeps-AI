@@ -1,4 +1,4 @@
-var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
+var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true,'dragoonreas' : true,'KermitFrog' : true};
 
 module.exports = class{
         constructor(){
@@ -12,8 +12,8 @@ module.exports = class{
             if(Object.keys(Memory.operations[id].members).length < Memory.operations[id].size && !Memory.operations[id].members.assembled){
                 var spawn = Game.getObjectById(Memory.operations[id].nearestSpawnId);
                 var body = Memory.operations[id].default_body;
-                if(spawn.canCreateCreep(body, undefined, {role: 'ranged_attack', operation: id, target: Memory.operations[id].flagName}) == OK){
-                    var name=spawn.createCreep(body,undefined,{role: 'ranged_attack', operation_id: id, target: Memory.operations[id].flagName});
+                if(spawn.canSpawnCreep(body, undefined, {role: 'ranged_attack', operation: id, target: Memory.operations[id].flagName}) == OK){
+                    var name=spawn.spawnCreep(body,undefined,{role: 'ranged_attack', operation_id: id, target: Memory.operations[id].flagName});
                     Memory.operations[id].members[name]= 'tank';
                     console.log('Did spawn creep '+name);
                 }

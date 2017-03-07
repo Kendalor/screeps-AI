@@ -1,3 +1,5 @@
+var MIN_STORED_ENERGY = 200000;
+
 module.exports = class{
         constructor(){
         }
@@ -17,7 +19,7 @@ module.exports = class{
                     if(Game.rooms[i]){
                         var room=Game.rooms[i];
                         if(Memory.operations[id].rooms[i].type == 'supply'){
-                            if(room.terminal.store[RESOURCE_ENERGY]>5000){
+                            if(room.terminal.store[RESOURCE_ENERGY]>5000 && _.sum(Game.rooms[room_focus].terminal.store)<room.terminal.storeCapacity-5000){
                                 room.terminal.send(RESOURCE_ENERGY,room.terminal.store[RESOURCE_ENERGY]/2,room_focus);
                             }
                         }
@@ -95,8 +97,8 @@ module.exports = class{
             var body= Memory.operations[id].hauler_body;
             var spawn = room.find(FIND_MY_SPAWNS)[0];
             if(!Memory.operations[id].rooms[room.name].hauler){
-                if(spawn.canCreateCreep(body,undefined,{role: 'focusEnergy', operation_id: id, storage_id: room.storage.id , terminal_id: room.terminal.id, room_type: Memory.operations[id].rooms[room.name].type}) == OK){// NO SPAWN IT IF POSSIBLE !
-                    var name=spawn.createCreep(body,undefined,{role: 'focusEnergy', operation_id: id, storage_id: room.storage.id , terminal_id: room.terminal.id, room_type: Memory.operations[id].rooms[room.name].type});
+                if(spawn.canSpawnCreep(body,undefined,{role: 'focusEnergy', operation_id: id, storage_id: room.storage.id , terminal_id: room.terminal.id, room_type: Memory.operations[id].rooms[room.name].type}) == OK){// NO SPAWN IT IF POSSIBLE !
+                    var name=spawn.spawnCreep(body,undefined,{role: 'focusEnergy', operation_id: id, storage_id: room.storage.id , terminal_id: room.terminal.id, room_type: Memory.operations[id].rooms[room.name].type});
                     Memory.operations[id].rooms[room.name].hauler=name;
                 }
             }else if(!Game.creeps[Memory.operations[id].rooms[room.name].hauler]){
@@ -137,7 +139,7 @@ module.exports = class{
 
         static creepSupply(creep,storage,terminal){
             creep.say('Supply');
-            if(creep.carry.energy == 0 && storage.store[RESOURCE_ENERGY] > 15000){
+            if(creep.carry.energy == 0 && storage.store[RESOURCE_ENERGY] > MIN_STORED_ENERGY){
                 var err=creep.withdraw(storage,RESOURCE_ENERGY);
                 if(err == ERR_NOT_IN_RANGE){
                     creep.moveTo(storage);

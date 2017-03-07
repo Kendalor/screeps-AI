@@ -10,7 +10,7 @@ module.exports = class{
 				if(!Memory.operations[id].spawnList){
                     Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
                 }
-				let body=[WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE];
+				let body=[WORK,WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
 				Memory.operations[id].members = this.creepBuilder(Memory.operations[id].spawnList,Memory.operations[id].members,Memory.operations[id].size,body,{role: 'remote_builder', operation_id: id});
 				for(var cr in Memory.operations[id].members){
 					// DELETE NONEXISTING CREEPS FROM OPERATION
@@ -144,14 +144,14 @@ module.exports = class{
 				var constructions = [];
 				if(constructions.length == 0 ) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_SPAWN });}
 				if(constructions.length == 0 && creep.room.controller && creep.room.controller.level >= 2) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_EXTENSION });}
-				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});}
+				//if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_STORAGE});}
 				if(constructions.length == 0 && creep.room.controller && creep.room.controller.level >= 3) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_TOWER});}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_WALL});}
 				if(constructions.length == 0) {constructions = creep.room.find(FIND_CONSTRUCTION_SITES);}
 				if(constructions.length > 0){
-					creep.memory.targetId = creep.pos.findClosestByRange(constructions).id;
+					creep.memory.targetId = creep.pos.findClosestByPath(constructions).id;
 				}else{
 					if (Game.flags[Memory.operations[creep.memory.operation_id].flagName].pos.roomName != Memory.operations[creep.memory.operation_id].roomName){
 						let pos = new RoomPosition(1, 1, Memory.operations[creep.memory.operation_id].roomName);
@@ -262,8 +262,8 @@ module.exports = class{
                     var spawn=Game.spawns[spawnList[i]];
                     if(spawn.spawning == null){
                         if(Object.keys(out).length < size){
-                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
-                                var name=spawn.createCreep(body,undefined,memory);
+                            if(spawn.canSpawnCreep(body, undefined, memory) == OK){
+                                var name=spawn.spawnCreep(body,undefined,memory);
                                 out[name]= {};
                             }
                         }

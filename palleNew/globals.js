@@ -4,6 +4,7 @@ module.exports = function(){
 				"InfiniteJoe",
 				"Iskarioth",
 				"Kendalor",
+				"KermitFrog",
 				"Palle"];
 	
 	/* 

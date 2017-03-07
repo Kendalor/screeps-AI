@@ -5,8 +5,6 @@ module.exports = class{
 
         }
         static run(id){
-
-
             if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
             // BUILD CREEPS UNTIL SQUAD SIZE REACHED
 
@@ -16,7 +14,10 @@ module.exports = class{
                     this.creepHandle(creep,id);
                 }
 
-
+                if(Object.keys(Memory.operations[id].members) == 0 && Memory.operations[id].size == 0){
+                    var flag = Game.flags[Memory.operations[id].flagName];
+                    flag.remove();
+                }
 
             }
         }
@@ -27,7 +28,7 @@ module.exports = class{
 			if(flag.pos.x == 0 || flag.pos.y == 0 || flag.pos.x == 49 || flag.pos.y == 49){// Is Flag placed on exit zone?
 				if(creep.hits == creep.hitsMax){
 					if(creep.room.name != flag.pos.roomName || !creep.room.controller.owner){
-						creep.moveTo(Game.flags[Memory.operations[id].flagName]);
+						creep.journeyTo(Game.flags[Memory.operations[id].flagName]);
 						creep.heal(creep);
 						var sources=creep.pos.findInRange(FIND_DROPPED_ENERGY,1);
 						if(sources.length >0){
@@ -51,6 +52,7 @@ module.exports = class{
 					}
 				}
 			}else{ // Flag is not placed on exit zone
+				let gap = 0;
 			    if(creep.pos.roomName == flag.pos.roomName){
                     if(creep.hits == creep.hitsMax){ // creep fully alive?
                         let wounded = creep.room.find(FIND_MY_CREEPS,{filter: (c) => c.hits < c.hitsMax});
@@ -67,41 +69,50 @@ module.exports = class{
                             //Get most Wounded
                             var range=creep.pos.getRangeTo(mostWounded);
                             if(range <= 1){
-                                creep.heal(mostWounded);
+								if(mostWounded.hits < mostWounded.hitsMax-gap)
+									creep.heal(mostWounded);
                             }else if(range >=2){
-                                creep.rangedHeal(mostWounded);
-                                creep.moveTo(mostWounded);
+								if(mostWounded.hits < mostWounded.hitsMax-gap)
+									creep.rangedHeal(mostWounded);
+                                //creep.moveTo(mostWounded);
                             }
+							creep.moveTo(flag);
                         }else{ // try to engage the flag
                             creep.moveTo(flag);
                             // rage
-							let targets = creep.pos.findInRange(FIND_HOSTILE_CREEPS,1).filter((hostile) => hostile.getActiveBodyparts(ATTACK) == 0);
+							let targets = creep.pos.findInRange(FIND_HOSTILE_CREEPS,1).filter((hostile) => hostile.getActiveBodyparts(ATTACK) == 0 && !Memory.globals.ally[hostile.owner.username]);
 							if (!targets.length){targets = creep.pos.findInRange(FIND_HOSTILE_STRUCTURES,1);}
 							if (targets.length){
 								creep.say("RAWR!");
+								creep.dismantle(targets[0]);
 								creep.attack(targets[0]);
 							}
                         }
-                    }else if(creep.hits < creep.hitsMax-100){ // wounded itself -> heal
+                    }else if(creep.hits < creep.hitsMax-200){ // wounded itself -> heal
                         if(creep.pos.roomName == Game.flags[Memory.operations[id].flagName].pos.roomName){
                             creep.say("flee");
                             var home=creep.pos.findClosestByPath(FIND_EXIT);
                             creep.moveTo(home);
-                            creep.heal(creep);
+							if(creep.hits < creep.hitsMax-gap)
+								creep.heal(creep);
                         }else{
-                            this.leaveBorder(creep);
-                            creep.heal(creep);
+                            if(creep.hits < creep.hitsMax-gap){
+                                this.leaveBorder(creep);
+								creep.heal(creep);
+                            }
                         }
                     }else{
                         creep.say("Charge!");
                         creep.moveTo(flag);
-                        creep.heal(creep);
+						if(creep.hits < creep.hitsMax-gap)
+							creep.heal(creep);
                     }
                 }else{
                     creep.say("Charge!");
                     //creep.moveTo(flag);
 					creep.journeyTo(flag);
-                    creep.heal(creep);
+					if(creep.hits < creep.hitsMax-gap)
+						creep.heal(creep);
                 }
 			}
         }
@@ -149,8 +160,10 @@ module.exports = class{
                 //Memory.operations[this.id].default_body=Array(50).fill(ATTACK,0,1).fill(TOUGH,1,15).fill(MOVE,15,35).fill(HEAL,35,50);
                 //Memory.operations[this.id].default_body=Array(50).fill(ATTACK,0,1).fill(TOUGH,1,15).fill(MOVE,15,35).fill(HEAL,35,50);
                 //Memory.operations[this.id].default_body=Array(50).fill(TOUGH,0,5).fill(ATTACK,5,10).fill(MOVE,10,35).fill(HEAL,35,50);
-				Memory.operations[this.id].default_body=[TOUGH,MOVE,MOVE,MOVE,HEAL,HEAL];
-
+				//Memory.operations[this.id].default_body=[TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,HEAL,HEAL,HEAL,HEAL];
+				//Memory.operations[this.id].default_body=[TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,MOVE,MOVE,MOVE,MOVE,HEAL,HEAL,HEAL,HEAL];
+                Memory.operations[this.id].default_body=[TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL,HEAL];
+                //Memory.operations[this.id].default_body=[MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,WORK,HEAL]
                 //console.log(JSON.stringify(Memory.operations[this.id]));
             }
 
@@ -188,10 +201,10 @@ module.exports = class{
             if(Object.keys(out).length < size){
                 for(var i in spawnList){
                     var spawn=Game.spawns[spawnList[i]];
-                    if(spawn.spawning == null){
+                    if(spawn.spawning == null && spawn.inactive == undefined){
                         if(Object.keys(out).length < size){
-                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
-                                var name=spawn.createCreep(body,undefined,memory);
+                            if(spawn.canSpawnCreep(body, undefined, memory) == OK){
+                                var name=spawn.spawnCreep(body,undefined,memory);
                                 out[name]= {};
                             }
                         }

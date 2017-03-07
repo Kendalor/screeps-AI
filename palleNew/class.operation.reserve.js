@@ -20,8 +20,9 @@ module.exports = class{
 					var body = [MOVE,CLAIM]
 					if (spawn.room.energyCapacityAvailable >= 1300)
 						body = [MOVE,CLAIM,MOVE,CLAIM]
-                    if(spawn.canCreateCreep(body,undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=spawn.createCreep(body,undefined,{role: 'reserve', operation_id: id});
+                    if(spawn.canSpawnCreep(body,undefined,{role: 'reserve', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
+                        //var name=spawn.spawnCreep(body,undefined,{role: 'reserve', operation_id: id});
+                        var name=spawn.spawnCreep(body,undefined,{role: 'reserve', operation_id: id});
                         var creep=Game.creeps[name];
                         Memory.operations[id].creep=name;
                     }
@@ -31,25 +32,22 @@ module.exports = class{
                     delete Memory.operations[id].creep;
                 }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
                     var creep= Game.creeps[Memory.operations[id].creep];
-
-                    if(creep.room.name != Memory.operations[id].roomName){
-                        creep.travelTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
+                    var roomName = Memory.operations[id].roomName;
+                    if(creep.room.name != roomName){
+                        creep.travelTo(Game.flags[Memory.operations[id].flagName]);
                         creep.say('Traveling to Room');
-                    }else if(creep.room.name == Memory.operations[id].roomName){
-                        if(!Memory.operations[id].controller_id){
-                            Memory.operations[id].controller_id=Game.rooms[Memory.operations[id].roomName].controller.id;
-                        }else{
-                            if(creep.reserveController(Game.getObjectById(Memory.operations[id].controller_id)) == ERR_NOT_IN_RANGE){
-                            creep.travelTo(Game.getObjectById(Memory.operations[id].controller_id));
+                    }else{
+                        let controller = Game.rooms[Memory.operations[id].roomName].controller;
+                        if(creep.inRangeTo(controller)){
+                            creep.reserveController(controller);
                             creep.say('Reserve');
-
-                            }else if(!Memory.operations[id].ticksToController || Memory.operations[id].ticksToController > 500-creep.ticksToLive){
+                            if(!Memory.operations[id].ticksToController || Memory.operations[id].ticksToController > 500-creep.ticksToLive){
                                 Memory.operations[id].ticksToController=500-creep.ticksToLive;
                                 //Memory.operations[id].spawnCreepAtTime=Game.time
                             }
-
+                        }else{
+                            creep.travelTo(controller);
                         }
-
                     }
                 }
             }

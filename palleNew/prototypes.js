@@ -1,3 +1,20 @@
+// CONSTANTS FOR NAME GENERATION
+
+const ID_LENGTH = 3;
+const ALPHABET = ['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
+const ALPHABET_LENGTH = 62;
+
+/*
+* Auxiliary Functions
+*/
+getName = function(job){
+    let _name = job? job[0]:"";
+    for(i=0;i<ID_LENGTH;i++){
+        _name += ALPHABET[parseInt(Math.random()*ALPHABET_LENGTH)];
+    }
+    return _name;
+}
+
 // CACHE REFRESH CONSTANTS
 
 
@@ -1087,6 +1104,34 @@ module.exports = function(){
 				enumerable: false
 			},
 			
+			"mine" : {
+			    value: function(target){
+			        if(creep.inRangeTo(target)) {
+        			    if (target.energy){
+        				    return creep.harvest(target);
+        			    }
+        			}else{
+        				return creep.travelTo(position);
+        			}
+			    },
+				writable: true,
+				enumerable: true
+			},
+			
+			"extract" : {
+			    value: function(target){
+			        if(creep.inRangeTo(target)) {
+        			    if (Game.time%6){
+        				    return creep.harvest(target);
+        			    }
+        			}else{
+        				return creep.travelTo(position);
+        			}
+			    },
+				writable: true,
+				enumerable: true
+			},
+			
 			/**
 			* Returns pos.inRangeTo(target,range) iff creep and target share a room, else returns false
 			* @param {Object} target
@@ -1114,9 +1159,15 @@ module.exports = function(){
 			"travelTo" : {
 				value: function(destination, filter = {ignoreCreeps: false,reusePath: 5}){
 					if (this.isBlocked()){
-						return this.moveTo(destination,filter);
+					    return this.moveTo(destination,filter);
 					}else{
-						return this.moveTo(destination,{ignoreCreeps: true,reusePath: 50});
+					    let err = this.moveTo(destination,{ignoreCreeps: true,reusePath: 150,maxOps: 6000});
+					    if (err != ERR_NO_PATH){
+						    return err;
+					    }else{
+					        delete this.memory._move;
+					        return this.moveTo(destination,{ignoreCreeps: false,reusePath: 6});
+					    }
 					}
 				},
 				writable: true,
@@ -1129,7 +1180,7 @@ module.exports = function(){
 			* @return {Boolean} 
 			*/
 			"journeyTo": {
-				value: function(destination, filter = {ignoreCreeps: false,reusePath: 5}){
+				value: function(destination, filter = {ignoreCreeps: false,reusePath: 50,ignoreRoads: true}){
 					let targetRoomName = destination.roomName || destination.pos.roomName;
 					if (!this.memory._move){
 						this.memory._move = {};
@@ -1154,15 +1205,58 @@ module.exports = function(){
 								case FIND_EXIT_LEFT  : nextHop = new RoomPosition( 1,25,this.memory._move.rooms[this.memory._move.rooms.length-2].room); break;
 								default: nextHop = destination;
 							}
-							this.travelTo(nextHop,filter);
+							
+							
+							if (this.isBlocked()){
+        					    return this.moveTo(nextHop,filter);
+        					}else{
+        					    let err = this.moveTo(nextHop,filter);
+        					    if (err != ERR_NO_PATH){
+        						    return err;
+        					    }else{
+        					        delete this.memory._move;
+        					        return this.moveTo(nextHop,filter);
+        					    }
+        					}
+							
+							
+							
 						}else{
-							this.travelTo(destination,filter);
+							
+							
+							if (this.isBlocked()){
+        					    return this.moveTo(destination,filter);
+        					}else{
+        					    let err = this.moveTo(destination,filter);
+        					    if (err != ERR_NO_PATH){
+        						    return err;
+        					    }else{
+        					        delete this.memory._move;
+        					        return this.moveTo(destination,filter);
+        					    }
+        					}
+							
+							
 						}
 					}else{
 						if(this.memory._move.rooms){
 							delete this.memory._move.rooms;
 						}
-						this.travelTo(destination,filter);
+						
+						
+						if (this.isBlocked()){
+    					    return this.moveTo(destination,filter);
+    					}else{
+    					    let err = this.moveTo(destination,filter);
+    					    if (err != ERR_NO_PATH){
+    						    return err;
+    					    }else{
+    					        delete this.memory._move;
+    					        return this.moveTo(destination,filter);
+    					    }
+    					}
+						
+						
 					}
 				},
 				writable: true,
@@ -1181,7 +1275,7 @@ module.exports = function(){
 				value: function(){
 					let bool = false;
 					if (this.memory._move && this.memory._move.path){
-						let pathLength = (this.memory._move.path.length + this.memory._move.path.length)+this.fatigue || 0;
+						let pathLength = (this.memory._move.path.length + this.memory._move.path.length)+this.fatigue || this.fatigue;
 						if (pathLength == this.memory._move.pathLength || this.memory._move.path == ""){
 							bool = true;
 						}else if (pathLength < this.memory._move.pathLength){
@@ -1550,6 +1644,19 @@ module.exports = function(){
 	/*
 	* STRUCTURE_CONTROLLER
 	*/
+	Object.defineProperties(StructureController.prototype,{
+	    'get' : {
+    		    value: function(body,name){
+    		        if(this.spawning == null && !this.inactive){
+                        return this.canCreateCreep(body,"_cr");
+    		        }else{
+    		            return ERR_BUSY;
+    		        }
+    		    },
+    			writable: true,
+    			enumerable: false
+    		},
+	});
 
 	/*
 	* STRUCTURE_EXTENSION
@@ -1624,14 +1731,39 @@ module.exports = function(){
 				enumerable: false
 			},
 			
-			"createCustomCreep" : {
-				value: function(spawnEnergyCap, creepType){
-					//TODO
-					return false;
-				},
-				writable: true,
-				enumerable: true
-			},
+			
+			'canSpawnCreep' : {
+    		    value: function(body,name){
+    		        if(this.spawning == null && !this.inactive){
+                        return this.canCreateCreep(body,"_cr");
+    		        }else{
+    		            return ERR_BUSY;
+    		        }
+    		    },
+    			writable: true,
+    			enumerable: false
+    		},
+			
+    		'spawnCreep' : {
+    		    value: function(body,name,memory){
+    		        if(this.spawning == null && this.inactive == undefined){
+        		        let _name = getName(name);
+    		            while(Game.creeps[_name]){
+    		                _name = getName(name);
+                        }
+                        let err = this.createCreep(body,_name,memory);
+                        if(typeof err == "string"){
+                            this.inactive = false;
+                        }
+                        return err;
+    		        }else{
+    		            return ERR_BUSY;
+    		        }
+    		    },
+    			writable: true,
+    			enumerable: false
+    		},
+            
 			
 			"enQueueCreep" : {
 				value: function(body, name,memory,priority){

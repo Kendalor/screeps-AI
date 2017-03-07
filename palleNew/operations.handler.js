@@ -1,8 +1,6 @@
 var attackOperation = require('class.operation.attack');
 var colonizeOperation = require('class.operation.colonize');
 var defendKeeperOperation = require('class.operation.defend_keeper');
-//var demolishOperation = require('class.operation.demolish');
-//var devAidOperation = require('class.operation.developmentAid');
 var focusEnergyOperation = require('class.operation.focusEnergy');
 var rangedAttackOperation = require('class.operation.ranged_attack');
 var remoteBuildOperation = require('class.operation.remote_build');
@@ -10,7 +8,6 @@ var remoteMiningOperation = require('class.operation.remote_mining');
 var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
 var reserveOperation = require('class.operation.reserve');
 var scoutingOperation = require('class.operation.scouting');
-//var thiefOperation = require('class.operation.steal');
 var thieveOperation = require('class.operation.thieve');
 var tankOperation = require('class.operation.tank');
 

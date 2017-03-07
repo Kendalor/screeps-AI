@@ -3,9 +3,22 @@ module.exports = class{
 
         }
         static run(id){
+			
 			//this.checkForInvaders(Game.flags[Memory.operations[id].flagName].room);
 			//Memory.operations[id].size = 3
 			if (Game.flags[Memory.operations[id].flagName].room != undefined){ // ALREADY MY CONTROLLER? BUILD SPAWN CONSTRUCTION SITE
+				let room = Game.flags[Memory.operations[id].flagName].room;
+				let towers = room.towers;
+				let hostiles = room.hostileCreeps;
+				if(towers.length && hostiles.length){
+				    let target;
+				    towers.forEach(function(tower){
+				        target = tower.pos.findClosestByRange(hostiles);
+				        if(tower.pos.inRangeTo(target,13+(Game.time%2))){
+				            tower.attack(target);
+				        }
+				    })
+				}
 				if(Game.flags[Memory.operations[id].flagName].room.controller.my && !Memory.operations[id].spawn){
 					Memory.operations[id].spawn = true;
 					this.initSourceMemory(Game.flags[Memory.operations[id].flagName].room); // Initialize source memory
@@ -15,7 +28,7 @@ module.exports = class{
 					if (spawns && spawns.length){
 						Memory.operations[id].spawnBuilt = true;
 					}
-				}else if (Game.flags[Memory.operations[id].flagName].room.energyCapacityAvailable >=1000){
+				}else if (Game.flags[Memory.operations[id].flagName].room.energyCapacityAvailable >=1300){
 					Game.flags[Memory.operations[id].flagName].room.minerals; // Initialize memory just in case
 					Game.flags[Memory.operations[id].flagName].room.sources;
 					for(let cr in Memory.operations[id].members){ 
@@ -30,17 +43,17 @@ module.exports = class{
 			var creep_body = undefined;
 			if (Memory.operations[id].spawnBuilt){
 				//creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE];
-				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE]; // 1000
-				Memory.operations[id].size = 8;
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE]//,MOVE,HEAL]; // 1300
+				Memory.operations[id].size = 5;
 				if (Game.rooms[Memory.operations[id].roomName].hostileCreeps.filter((hostile) =>
 						hostile.body.filter((body) => body.type == 'attack' || body.type == 'ranged_attack').length > 0
 					).length){
 					Game.rooms[Memory.operations[id].roomName].controller.activateSafeMode();
 				}
 			}else if(Game.rooms[Memory.operations[id].roomName] != undefined && Game.rooms[Memory.operations[id].roomName].controller.my){
-				Memory.operations[id].size = 8;
+				Memory.operations[id].size = 5;
 				//creep_body = [WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE,WORK,CARRY,MOVE,MOVE];
-				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE]; // 1000
+				creep_body = [WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE,WORK,CARRY,MOVE]//,MOVE,HEAL]; // 1300
 			}else{
 				Memory.operations[id].size = 1
 				creep_body = [CLAIM,MOVE]; // Claimer suicides after claiming - no need for much more
@@ -151,7 +164,9 @@ module.exports = class{
             //creep.travelTo(flag);
 			creep.journeyTo(flag);
             creep.say('travel');
-
+            if(creep.hits < creep.hitsMax){
+                creep.heal(creep);
+            }
         }
         // COLONIZE CODE
         static creepColonize(creep){
@@ -160,24 +175,15 @@ module.exports = class{
             if(creep.claimController(creep.room.controller) == ERR_NOT_IN_RANGE){
               creep.travelTo(creep.room.controller);
               creep.say('Claiming');
-            }else{/*
-				if(creep.room.controller.owner.username != 'undefined' && !creep.room.controller.my){
-					console.log("Cannot claim "+creep.room.name);
-					/* optional cancel
-					delete Memory.flags[Memory.operations[id].flagName];
-					Game.flags[Memory.operations[id].flagName].remove(); // quit the job
-					delete Memory.operations[id];
-					
-				}else{*/
-					creep.suicide();
-				//}
+            }else{
+		    	creep.suicide();
 			}
           }
           // SET JOB
           else{
 			if(!this.renewCreep(creep)){
             if (creep.memory.targetId == null){
-              if (creep.carry.energy == creep.carryCapacity && creep.room.controller.ticksToDowngrade < 500){ // CHARGE CONTROLLER
+              if (creep.carry.energy == creep.carryCapacity && (creep.room.controller.ticksToDowngrade < 2500 || creep.room.controller.level == 1)){ // CHARGE CONTROLLER
                 creep.memory.targetId = creep.room.controller.id;
               }
               else if (creep.carry.energy < creep.carryCapacity/2){ // SALVAGE
@@ -222,7 +228,7 @@ module.exports = class{
               }
               if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // CHARGE SPAWN & EXTENSIONS
                 var structure = creep.room.find(FIND_STRUCTURES, {filter: (struct) => (struct.structureType == STRUCTURE_EXTENSION ||
-                    struct.structureType == STRUCTURE_SPAWN) && struct.energy < struct.energyCapacity});
+                    struct.structureType == STRUCTURE_SPAWN || struct.structureType == STRUCTURE_TOWER) && struct.energy < struct.energyCapacity});
                 if (structure.length > 0){
                   creep.memory.targetId = creep.pos.findClosestByRange(structure).id;
                   creep.say('Hauling');
@@ -230,6 +236,10 @@ module.exports = class{
               }
               if (creep.memory.targetId == null && creep.carry.energy >= creep.carryCapacity/4){ // BUILD INFRASTRUCTURE
                 var structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_ROAD});
+                if (structure.length == 0)
+                  structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_TOWER});
+                if (structure.length == 0)
+                  structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_STORAGE});
 				if (structure.length == 0)
                   structure = creep.room.find(FIND_CONSTRUCTION_SITES,{filter: (site) => site.structureType == STRUCTURE_CONTAINER});
                 if (structure.length == 0)
@@ -271,9 +281,13 @@ module.exports = class{
                         creep.travelTo(target);
                     }
                  }else{
-                    if(creep.harvest(target) == ERR_NOT_IN_RANGE){
-                        creep.travelTo(target);
-                    }
+                    if(creep.inRangeTo(target)) {
+        				if (target.energy){
+        				    creep.harvest(target);
+        			    }
+        			}else{
+        				creep.travelTo(target);
+        			}
                  }
                   if(creep.harvest(target) == ERR_NOT_IN_RANGE || creep.pickup(RESOURCE_ENERGY)){
                     creep.travelTo(target);
@@ -294,11 +308,11 @@ module.exports = class{
                 }
               }
               else if(target.progress != undefined && target.structureType == STRUCTURE_CONTROLLER){
-                var err = creep.upgradeController(target);
-                if (err == ERR_NOT_IN_RANGE){
-                  creep.travelTo(target);
+                if(!creep.inRangeTo(target,1)){
+                  creep.travelTo(target);    
                 }
-                else if (err == ERR_FULL){
+                var err = creep.upgradeController(target);
+                if (err == ERR_FULL){
                   creep.memory.targetId = null;
                 }
               }
@@ -324,7 +338,7 @@ module.exports = class{
 		
 		static renewCreep(creep){
 			let spawns = creep.room.spawns;
-			if (spawns.length && creep.room.energyAvailable >= 100 && (creep.ticksToLive < 100 || creep.memory.renewingSpawn) && creep.ticksToLive < 1450){
+			if (spawns.length && creep.room.energyAvailable >= 550 && (creep.ticksToLive < 100 || creep.memory.renewingSpawn) && creep.ticksToLive < 1450){
 				if (!creep.memory.renewingSpawn){
 					creep.memory.renewingSpawn = creep.pos.findClosestByPath(spawns).name;
 					if(creep.memory.targetId){
@@ -380,8 +394,8 @@ module.exports = class{
                     var spawn=Game.spawns[spawnList[i]];
                     if(spawn.spawning == null){
                         if(Object.keys(out).length < size){
-                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
-                                var name=spawn.createCreep(body,undefined,memory);
+                            if(spawn.canSpawnCreep(body, undefined, memory) == OK){
+                                var name=spawn.spawnCreep(body,undefined,memory);
                                 out[name]= {};
                             }
                         }

@@ -1,4 +1,4 @@
-var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
+var WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true,'dragoonreas' : true,'KermitFrog' : true};
 
 module.exports = class{
 
@@ -84,7 +84,7 @@ module.exports = class{
             var target=Game.getObjectById(creep.memory.target);
             if(target){
                 if(creep.pos.roomName != target.pos.roomName){
-                    creep.moveTo(target);
+                    creep.journeyTo(target);
                     if(creep.hits < creep.hitsMax){
                         creep.heal(creep);
                     }
@@ -123,8 +123,11 @@ module.exports = class{
                     }
                 }
             }else{
-                    delete creep.memory.target;
+                delete creep.memory.target;
+                if(creep.pos.roomName != Memory.operations[id].roomName){
+                    creep.journeyTo(Game.flags[Memory.operations[id].flagName]);
                 }
+            }
 
         }
 
@@ -248,8 +251,11 @@ module.exports = class{
             creep.say('FUCK');
             if(creep.room.name != Memory.operations[defendId].roomName && !creep.memory.targetId){
                 let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
-                creep.moveTo(pos);
+                creep.journeyTo(pos);
                 creep.say('travel');
+                if(creep.hits < creep.hitsMax){
+                    creep.heal(creep);
+                }
             }else{
                 if(creep.memory.targetId){
                     creep.say('hunting');
@@ -292,9 +298,11 @@ module.exports = class{
                         this.invasionBehaviour(creep,id,defendId);
                     }else{
                         let pos = new RoomPosition(25,25,Memory.operations[defendId].roomName);
-                        creep.moveTo(pos);
-                        creep.heal(creep);
+                        creep.journeyTo(pos);
                         creep.say('NOFUCKINGTARGET');
+                        if(creep.hits < creep.hitsMax){
+                            creep.heal(creep);
+                        }
                     }
                 }
             }
@@ -310,7 +318,7 @@ module.exports = class{
                 var spawn=Game.getObjectById(creep.memory.nearestSpawn);
                 if(spawn){
                     if(creep.room.name != spawn.room.name){
-                        creep.moveTo(spawn);
+                        creep.journeyTo(spawn);
                     }else{
                         var range=creep.pos.getRangeTo(spawn);
                         console.log(spawn.spawning == null);
@@ -374,7 +382,8 @@ module.exports = class{
                 Memory.operations[this.id].size=1; // NUMBER OF SQUADS ATTACKER = SQUAD LEADER
                 //COST 12xMOVE = 600 + 12 ATTACK = 960 =1560
                 //Memory.operations[this.id].default_Abody=Array(50).fill(TOUGH,0,28).fill(MOVE,28,36).fill(ATTACK,36,50);// COST 2300
-                Memory.operations[this.id].default_Abody=Array(50).fill(MOVE,0,17).fill(ATTACK,17,40).fill(HEAL,40,50);// COST 2300
+                //Memory.operations[this.id].default_Abody=Array(50).fill(MOVE,0,17).fill(ATTACK,17,40).fill(HEAL,40,50);// COST 2300
+                Memory.operations[this.id].default_Abody=Array(50).fill(MOVE,0,25).fill(ATTACK,25,44).fill(HEAL,44,50);// COST 2300
                 Memory.operations[this.id].SpawnList=this.findClosestSpawn(roomName);
                 Memory.operations[this.id].members={};
                 Memory.operations[this.id].invasionHandler={};
@@ -416,8 +425,8 @@ module.exports = class{
                     var spawn=Game.spawns[spawnList[i]];
                     if(spawn.spawning == null){
                         if(Object.keys(out).length < size){
-                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
-                                var name=spawn.createCreep(body,undefined,memory);
+                            if(spawn.canSpawnCreep(body, undefined, memory) == OK){
+                                var name=spawn.spawnCreep(body,undefined,memory);
                                 out[name]= {};
                             }
                         }

@@ -581,7 +581,7 @@ module.exports = class{
                     }else if(creep.room.name != pos.roomName){
                         creep.travelTo(flag,{reusePath: 5,ignoreCreeps: false});
                     }else if(creep.harvest(source) == ERR_NOT_IN_RANGE){
-                        creep.travelTo(source);
+                        creep.travelTo(pos);
                     }
                 }
                 if(creep.carry.energy > 0 && creep.room.name == pos.roomName){
@@ -686,8 +686,8 @@ module.exports = class{
                     var spawn=Game.spawns[spawnList[i]];
                     if(spawn.spawning == null){
                         if(Object.keys(out).length < size){
-                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
-                                var name=spawn.createCreep(body,undefined,memory);
+                            if(spawn.canSpawnCreep(body, undefined, memory) == OK){
+                                var name=spawn.spawnCreep(body,undefined,memory);
                                 out[name]= {};
                             }
                         }

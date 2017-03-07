@@ -16,7 +16,20 @@ module.exports = class{
 				if(!Memory.operations[id].spawnList){
                     Memory.operations[id].spawnList=this.findClosestSpawn(Game.flags[Memory.operations[id].flagName].pos.roomName,1);
                 }
-				let body=[CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE,CARRY,MOVE]; // 1200 = 12MOVE+12CARRY
+				let maxEnergy=0;
+				let tmpE;
+				let tmpSpawn;
+				for(tmpSpawn in Memory.operations[id].spawnList){
+				    tmpE = Game.spawns[tmpSpawn].room.energyCapacityAvailable;
+                    if(maxEnergy < tmpE){
+                        maxEnergy = tmpE;
+                    }
+				}
+				let bodyCount = parseInt(maxEnergy/100);
+				if (bodyCount >25){
+				    bodyCount = 25;
+				}
+				let body = Array(2*bodyCount).fill(MOVE,0,bodyCount).fill(CARRY,bodyCount,2*bodyCount);
 				Memory.operations[id].members = this.creepBuilder(Memory.operations[id].spawnList,Memory.operations[id].members,Memory.operations[id].size,body,{role: 'thief', operation_id: id});
 				for(var cr in Memory.operations[id].members){
 					// DELETE NONEXISTING CREEPS FROM OPERATION
@@ -158,8 +171,8 @@ module.exports = class{
                     var spawn=Game.spawns[spawnList[i]];
                     if(spawn.spawning == null){
                         if(Object.keys(out).length < size){
-                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
-                                var name=spawn.createCreep(body,undefined,memory);
+                            if(spawn.canSpawnCreep(body, undefined, memory) == OK){
+                                var name=spawn.spawnCreep(body,undefined,memory);
                                 out[name]= {};
                             }
                         }
