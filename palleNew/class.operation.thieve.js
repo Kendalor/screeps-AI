@@ -18,13 +18,12 @@ module.exports = class{
                 }
 				let maxEnergy=0;
 				let tmpE;
-				let tmpSpawn;
-				for(tmpSpawn in Memory.operations[id].spawnList){
-				    tmpE = Game.spawns[tmpSpawn].room.energyCapacityAvailable;
+				Memory.operations[id].spawnList.forEach(function(spawnName){
+				    tmpE = Game.spawns[spawnName].room.energyCapacityAvailable;
                     if(maxEnergy < tmpE){
                         maxEnergy = tmpE;
                     }
-				}
+				});
 				let bodyCount = parseInt(maxEnergy/100);
 				if (bodyCount >25){
 				    bodyCount = 25;
