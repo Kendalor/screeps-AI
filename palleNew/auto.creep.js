@@ -297,7 +297,6 @@ module.exports = {
     					creep.travelTo(container);
     				}
     				else{
-    				    creep.say("hi")
     					creep.transfer(container,RESOURCE_ENERGY);
     				}
 				}
