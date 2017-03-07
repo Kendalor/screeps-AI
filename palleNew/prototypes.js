@@ -1158,16 +1158,20 @@ module.exports = function(){
 			*/
 			"travelTo" : {
 				value: function(destination, filter = {ignoreCreeps: false,reusePath: 5}){
-					if (this.isBlocked()){
-					    return this.moveTo(destination,filter);
-					}else{
-					    let err = this.moveTo(destination,{ignoreCreeps: true,reusePath: 150,maxOps: 6000});
-					    if (err != ERR_NO_PATH){
-						    return err;
-					    }else{
-					        delete this.memory._move;
-					        return this.moveTo(destination,{ignoreCreeps: false,reusePath: 6});
-					    }
+				    if(!this.fatigue){
+    					if (this.isBlocked()){
+    					    return this.moveTo(destination,filter);
+    					}else{
+    					    let err = this.moveTo(destination,{ignoreCreeps: true,reusePath: 150,maxOps: 6000});
+    					    if (err != ERR_NO_PATH){
+    						    return err;
+    					    }else{
+    					        delete this.memory._move;
+    					        return this.moveTo(destination,{ignoreCreeps: false,reusePath: 6});
+    					    }
+    					}
+				    }else{
+					    return ERR_TIRED;
 					}
 				},
 				writable: true,
@@ -1206,35 +1210,41 @@ module.exports = function(){
 								default: nextHop = destination;
 							}
 							
-							
-							if (this.isBlocked()){
-        					    return this.moveTo(nextHop,filter);
+							if(!this.fatigue){
+    							if (this.isBlocked()){
+            					    return this.moveTo(nextHop,filter);
+            					}else{
+            					    let err = this.moveTo(nextHop,filter);
+            					    if (err != ERR_NO_PATH){
+            						    return err;
+            					    }else{
+            					        delete this.memory._move;
+            					        return this.moveTo(nextHop,filter);
+            					    }
+            					}
         					}else{
-        					    let err = this.moveTo(nextHop,filter);
-        					    if (err != ERR_NO_PATH){
-        						    return err;
-        					    }else{
-        					        delete this.memory._move;
-        					        return this.moveTo(nextHop,filter);
-        					    }
-        					}
+            					    return ERR_TIRED;
+            				}
 							
 							
 							
 						}else{
 							
-							
-							if (this.isBlocked()){
-        					    return this.moveTo(destination,filter);
-        					}else{
-        					    let err = this.moveTo(destination,filter);
-        					    if (err != ERR_NO_PATH){
-        						    return err;
-        					    }else{
-        					        delete this.memory._move;
-        					        return this.moveTo(destination,filter);
-        					    }
-        					}
+							if(!this.fatigue){
+    							if (this.isBlocked()){
+            					    return this.moveTo(destination,filter);
+            					}else{
+            					    let err = this.moveTo(destination,filter);
+            					    if (err != ERR_NO_PATH){
+            						    return err;
+            					    }else{
+            					        delete this.memory._move;
+            					        return this.moveTo(destination,filter);
+            					    }
+            					}
+					    	}else{
+        					    return ERR_TIRED;
+            				}
 							
 							
 						}
@@ -1411,6 +1421,60 @@ module.exports = function(){
 					let errorCode = OK;
 					//TODO
 					return errorCode;
+				},
+				writable: true,
+				enumerable: true
+			},
+			
+			"park" : {
+				value: function(){
+					onRoad = this.pos.lookFor(LOOK_STRUCTURES).filter((s)=>s.StructureType == STRUCTURE_ROAD).length;
+					if(onRoad){
+					    var x = pos.x || this.pos.x;
+					    var xLBorder = Math.min(x,48);
+					    var y = pos.y || this.pos.y;
+					    var yLBorder = Math.max(y,2);
+					    var yUBorder = Math.min(y,48);
+					    for(i=Math.max(x,2);i<xUBorder;i++){
+					        for(j=yUBorder;j<yUBorder;j++){
+					            if(x != i || y != j){
+					                if(!this.room.lookForAt(LOOK_STRUCTURES,i,j).filter((s)=> s.structureType != STRUCTURE_RAMPART).length){
+					                    this.move(getDirectionTo(i,j));
+					                    if(this.pos.x == i && this.pos.y == j){
+					                        this.memory.pX=x;
+					                        this.memory.pY=y;
+					                        return true;
+					                    }else{
+					                        return false;
+					                    }
+					                }
+					            }
+					        }
+					    }
+					}
+				},
+				writable: true,
+				enumerable: true
+			},
+			
+			"unpark" : {
+				value: function(force){
+				    if(force){
+					    delete this.memory.pX;
+					    delete this.memory.pY;
+					    return true;
+			    	}else if(this.memory.pX && this.memory.pY){
+					    this.move(getDirectionTo(this.memory.pX,this.memory.pY));
+					    if(this.pos.x == this.memory.pX && this.pos.y ==this.memory.pY){
+					        delete this.memory.pX;
+    					    delete this.memory.pY;
+    					    return true;
+					    }else{
+					        return false;
+					    }
+					}else{
+				        return true;
+				    }
 				},
 				writable: true,
 				enumerable: true

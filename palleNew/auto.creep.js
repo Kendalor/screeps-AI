@@ -290,14 +290,16 @@ module.exports = {
 					creep.memory.containerId = containers[0].id;
 					creep.room.memory.sources[creep.memory.source].containerId = containers[0].id;
 				}
-			} else if(creep.energy > 35 && creep.memory.containerId != null){
-				var pos = creep.room.memory.sources[creep.memory.source].containerPos;
-				pos = new RoomPosition(pos.x,pos.y,pos.roomName);
-				if(creep.pos.x != pos.x || creep.pos.y != pos.y){
-					creep.travelTo(pos);
-				}
-				else{
-					creep.drop(RESOURCE_ENERGY);
+			}else if(creep.carry.energy > 35 && creep.memory.containerId != null){
+				var container = Game.getObjectById(creep.memory.containerId);
+				if(container){
+    				if(!creep.inRangeTo(container)){
+    					creep.travelTo(container);
+    				}
+    				else{
+    				    creep.say("hi")
+    					creep.transfer(container,RESOURCE_ENERGY);
+    				}
 				}
 			}
 		}
@@ -418,6 +420,7 @@ module.exports = {
 		var target = Game.getObjectById(creep.memory.targetId);
 		if(creep.carry.energy > 0 && creep.memory.job == 'build' && target != null){
 		    if(creep.inRangeTo(target)){
+		        creep.park();
     			if(creep.build(target) == ERR_INVALID_TARGET){
     				if (target.structureType == STRUCTURE_RAMPART){ 
     					this.idle(creep);
@@ -433,6 +436,7 @@ module.exports = {
 		    }
 		}
 		if((target == null || creep.carry.energy == 0) && creep.memory.job == 'build'){
+		    creep.unpark(true);
 			this.idle(creep);
 		}
 	},
@@ -479,12 +483,14 @@ module.exports = {
 		var target = Game.getObjectById(creep.memory.targetId);
 		if(creep.carry.energy > 0 && creep.memory.job == 'repair' && target != null && target.hits < target.hitsMax){
 		    if(creep.inRangeTo(target)){
+		        creep.park();
 		        creep.repair(target,RESOURCE_ENERGY);
 		    }else{
 				creep.travelTo(target);
 	    	}
 		}
 		if((target == null || creep.carry.energy == 0 || target.hits == target.hitsMax) && creep.memory.job == 'repair'){
+		    creep.unpark(true);
 			this.idle(creep);
 		}
 	},
@@ -574,6 +580,7 @@ module.exports = {
 			if (creep.memory.job == 'upgrade'){
 				var target=Game.getObjectById(creep.memory.targetId);
 				if(creep.inRangeTo(target,3)) {
+				    creep.park();
 					creep.upgradeController(target);
 					if (creep.memory.role == 'maintance'){
 						if(!creep.inRangeTo(target,2)){
@@ -595,6 +602,7 @@ module.exports = {
 			if (!(!creep.memory.cFlagId)){
 				delete creep.memory.cFlagId;
 			}
+			creep.unpark(true);
 			this.idle(creep);
 		}
 	},

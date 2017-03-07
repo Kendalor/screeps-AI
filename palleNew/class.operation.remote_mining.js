@@ -615,7 +615,7 @@ module.exports = class{
 
 
 
-                }else if(creep.energy > 35 && container.length){ // DROP ENERGY
+                }else if(creep.carry.energy > 35 && container.length){ // DROP ENERGY
                     if(!Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId){ // SET GLOBAL OPERATION VAR
                       Memory.operations[creep.memory.operation_id].sources[creep.memory.source_id].containerId = container[0].id;
                     }
@@ -631,7 +631,7 @@ module.exports = class{
                             }
 
                         }else{
-                            creep.drop(RESOURCE_ENERGY);
+                            creep.transfer(container[0],RESOURCE_ENERGY);
                         }
                     }
                 }
