@@ -1,14 +1,15 @@
 var attackOperation = require('class.operation.attack');
 var colonizeOperation = require('class.operation.colonize');
-var defendKeeperOperation = require('class.operation.defend_keeper');
+//var defendKeeperOperation = require('class.operation.defend_keeper');
 var focusEnergyOperation = require('class.operation.focusEnergy');
+var processPowerOperation = require('class.operation.processPower');
 var rangedAttackOperation = require('class.operation.ranged_attack');
-var remoteBuildOperation = require('class.operation.remote_build');
+//var remoteBuildOperation = require('class.operation.remote_build');
 var remoteMiningOperation = require('class.operation.remote_mining');
-var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
+//var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
 var reserveOperation = require('class.operation.reserve');
 var scoutingOperation = require('class.operation.scouting');
-var thieveOperation = require('class.operation.thieve');
+//var thieveOperation = require('class.operation.thieve');
 var tankOperation = require('class.operation.tank');
 
 
@@ -26,11 +27,12 @@ module.exports = {
                         scoutingOperation.run(id);
                         break;
                     case 'attack':
-
-                        attackOperation.run(id);
+                        if(Game.cpu.bucket > 5000)
+                            attackOperation.run(id);
                         break;
                     case 'tank':
-                        tankOperation.run(id);
+                        if(Game.cpu.bucket > 4000)
+                            tankOperation.run(id);
                         break;
                     case 'thieve':
                         //console.log('Case: Steal');
@@ -68,6 +70,10 @@ module.exports = {
 					case 'demolish':
 						//demolishOperation.run(id);
                         break;
+                    case 'power':
+                        if(Game.cpu.bucket > 3000)
+                            processPowerOperation.run(id);
+                        break;
                 }
             }
             catch(err) {
@@ -82,6 +88,9 @@ module.exports = {
 
                 if (this.colorMatch(flag,COLOR_RED,COLOR_RED)){ // RED/RED
                     attackOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
+
+                }else if (this.colorMatch(flag,COLOR_RED,COLOR_YELLOW)){ // RED/YELLOW
+                    processPowerOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);
 
                 }else if (this.colorMatch(flag,COLOR_RED,COLOR_BLUE)){ //RED/BLUE
                     defendKeeperOperation.init(Game.flags[flag].pos.roomName,Game.flags[flag].name);

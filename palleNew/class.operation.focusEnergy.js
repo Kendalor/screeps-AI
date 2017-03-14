@@ -4,23 +4,25 @@ module.exports = class{
         constructor(){
         }
         static run(id){
-            // DELETE NONEXISTING CREEPS FROM OPERATION
-            if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-                for(var i in Memory.operations[id].rooms){
-                    if(Game.rooms[i]){
-                        var room=Game.rooms[i];
-                        this.buildAndRunCreeps(id,room);
+            if(!Memory.operations[id].pause){
+                // DELETE NONEXISTING CREEPS FROM OPERATION
+                if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
+                    for(var i in Memory.operations[id].rooms){
+                        if(Game.rooms[i]){
+                            var room=Game.rooms[i];
+                            this.buildAndRunCreeps(id,room);
+                        }
+                        if(Memory.operations[id].rooms[i].type == 'focus'){
+                            var room_focus=i;
+                        }
                     }
-                    if(Memory.operations[id].rooms[i].type == 'focus'){
-                        var room_focus=i;
-                    }
-                }
-                for(var i in Memory.operations[id].rooms){
-                    if(Game.rooms[i]){
-                        var room=Game.rooms[i];
-                        if(Memory.operations[id].rooms[i].type == 'supply'){
-                            if(room.terminal.store[RESOURCE_ENERGY]>5000 && _.sum(Game.rooms[room_focus].terminal.store)<room.terminal.storeCapacity-5000){
-                                room.terminal.send(RESOURCE_ENERGY,room.terminal.store[RESOURCE_ENERGY]/2,room_focus);
+                    for(var i in Memory.operations[id].rooms){
+                        if(Game.rooms[i]){
+                            var room=Game.rooms[i];
+                            if(Memory.operations[id].rooms[i].type == 'supply'){
+                                if(room.terminal.store[RESOURCE_ENERGY]>5000 && _.sum(Game.rooms[room_focus].terminal.store)<room.terminal.storeCapacity-5000){
+                                    room.terminal.send(RESOURCE_ENERGY,room.terminal.store[RESOURCE_ENERGY]/2,room_focus);
+                                }
                             }
                         }
                     }

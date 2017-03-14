@@ -15,6 +15,13 @@ getName = function(job){
     return _name;
 }
 
+/*
+* Looks for the greatest open space square around origin point in a given radius
+*/
+getFreeSquareCenter = function(origin,rangeToOrigin,squareRadius){
+    return false;
+}
+
 // CACHE REFRESH CONSTANTS
 
 
@@ -56,8 +63,29 @@ module.exports = function(){
 	
 		Object.defineProperties(Room.prototype,{
 			
+			/**
+		     * Returns the rooms coordinates regarding map position and their ids
+			 * @return {String,Number,String,Number} xId,x,yId,y
+		     */
+		    'coords' : {
+		        get: function(){
+		            var arr = this.name.match(/[A-Z]|[0-9]+/g);
+		            var out;
+		            if(arr.length == 4){
+		                out = {};
+		                out.xId= arr[0];
+		                out.x = parseInt(arr[1]);
+		                out.yId= arr[2];
+		                out.y = parseInt(arr[3]);
+		            }
+                    return out;
+		        },
+				configurable: true,
+				enumerable: false
+		    },
+			
 			/** 
-			* Returns timestam the object was last searched for
+			* Returns timestamp the object was last searched for
 			* @param {string}
 			* @return {Number}
 			*/
@@ -1427,16 +1455,19 @@ module.exports = function(){
 			},
 			
 			"park" : {
+			    value: function(){return true},
+			    /*
 				value: function(){
-					onRoad = this.pos.lookFor(LOOK_STRUCTURES).filter((s)=>s.StructureType == STRUCTURE_ROAD).length;
-					if(onRoad){
-					    var x = pos.x || this.pos.x;
-					    var xLBorder = Math.min(x,48);
-					    var y = pos.y || this.pos.y;
+					onRoad = this.pos.lookFor(LOOK_STRUCTURES).filter((s) => s.structureType == STRUCTURE_ROAD).length;
+					if(onRoad > 0){
+					    var x = this.pos.x;
+					    var xUBorder = Math.min(x,48);
+					    var y = this.pos.y;
 					    var yLBorder = Math.max(y,2);
 					    var yUBorder = Math.min(y,48);
 					    for(i=Math.max(x,2);i<xUBorder;i++){
 					        for(j=yUBorder;j<yUBorder;j++){
+					            this.say("hi")
 					            if(x != i || y != j){
 					                if(!this.room.lookForAt(LOOK_STRUCTURES,i,j).filter((s)=> s.structureType != STRUCTURE_RAMPART).length){
 					                    this.move(getDirectionTo(i,j));
@@ -1452,12 +1483,13 @@ module.exports = function(){
 					        }
 					    }
 					}
-				},
+				},*/
 				writable: true,
 				enumerable: true
 			},
 			
 			"unpark" : {
+			    value: function(){return true},/*
 				value: function(force){
 				    if(force){
 					    delete this.memory.pX;
@@ -1475,7 +1507,7 @@ module.exports = function(){
 					}else{
 				        return true;
 				    }
-				},
+				},*/
 				writable: true,
 				enumerable: true
 			},
@@ -1709,7 +1741,7 @@ module.exports = function(){
 	* STRUCTURE_CONTROLLER
 	*/
 	Object.defineProperties(StructureController.prototype,{
-	    'get' : {
+	    'getLink' : {
     		    value: function(body,name){
     		        if(this.spawning == null && !this.inactive){
                         return this.canCreateCreep(body,"_cr");

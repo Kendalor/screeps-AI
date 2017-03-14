@@ -311,8 +311,8 @@ module.exports = class{
                           room.find(FIND_STRUCTURES).forEach(function(structure) {
                             if(structure.structureType == STRUCTURE_ROAD)  {
                                 costs.set(structure.pos.x, structure.pos.y, 2);
-                            }else if(structure.structureType == STRUCTURE_RAMPART) {
-                                costs.set(structure.pos.x, structure.pos.y,2);
+                            }else if(structure.structureType == STRUCTURE_RAMPART || structure.structureType == STRUCTURE_CONTAINER) {
+                                
                             }else{
                                 costs.set(structure.pos.x, structure.pos.y,0xff);
                             }
@@ -321,8 +321,8 @@ module.exports = class{
                           room.find(FIND_CONSTRUCTION_SITES).forEach(function(constr) {
                             if(constr.structureType == STRUCTURE_ROAD)  {
                                 costs.set(constr.pos.x, constr.pos.y, 2);
-                            }else if(constr.structureType == STRUCTURE_RAMPART) {
-                                costs.set(constr.pos.x, constr.pos.y,2);
+                            }else if(constr.structureType == STRUCTURE_RAMPART || constr.structureType == STRUCTURE_CONTAINER) {
+                                
                             }else{
                                 costs.set(constr.pos.x, constr.pos.y,0xff);
                             }
@@ -356,7 +356,7 @@ module.exports = class{
                         }else{
                             //console.log('create Road');
                             //console.log(Game.rooms[Memory.operations[id].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD));
-                            if(Game.rooms[path[i].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
+                            if(Game.rooms[path[i].roomName] && Game.rooms[path[i].roomName].createConstructionSite(path[i].x,path[i].y,STRUCTURE_ROAD) != OK){
 
                                 var temp_id=Game.rooms[path[i].roomName].lookForAt(LOOK_CONSTRUCTION_SITES,path[i].x,path[i].y);
                                 if(temp_id.length >0 && !Memory.operations[id].constructionSites[temp_id[0].id]){
@@ -581,10 +581,8 @@ module.exports = class{
             if(creep.carry.energy < creep.carryCapacity){
                 var source = Game.getObjectById(creep.memory.source_id);
                 var flag = Game.flags[Memory.operations[creep.memory.operation_id].flagName];
-				if (creep.room.storage != undefined){
-					creep.travelTo(flag,{reusePath: 5,ignoreCreeps: false});
-                }else if(creep.room.name != pos.roomName){
-                    creep.travelTo(pos,{reusePath: 30,ignoreCreeps: false});
+				if(creep.room.name != pos.roomName){
+                    creep.travelTo(pos);
                 }else if(creep.inRangeTo(pos,0)) {
     				if (source.energy){
     				    creep.harvest(source);
@@ -653,10 +651,11 @@ module.exports = class{
                 }else if(!Game.creeps[Memory.operations[id].s_creep].spawning){ //IF CREEP FINISHED SPAWNING
 
                     var creep= Game.creeps[Memory.operations[id].s_creep];
-                    creep.travelTo(Game.flags[Memory.operations[id].flagName], {reusePath: 30});
+                    creep.travelTo(Game.flags[Memory.operations[id].flagName]);
                     creep.say('scouting');
                     if(creep.room.name == Memory.operations[id].roomName){
                         Memory.operations[id].scouting=false;
+                        creep.suicide();
                     }
                 }
 

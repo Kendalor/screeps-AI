@@ -145,7 +145,7 @@ module.exports = {
 			this.build(creep);
 			this.repair(creep);
 			this.haul(creep);
-			//this.upgrade(creep);
+			this.upgrade(creep);
 			this.salvage(creep);
 			this.gather(creep);
 		}else{
@@ -259,7 +259,7 @@ module.exports = {
 		}
 		if(creep.memory.job == 'mine' && creep.carry.energy < creep.carryCapacity){
 			var source = Game.getObjectById(creep.memory.source);
-			if(creep.inRangeTo(source)) {
+			if(creep.inRangeTo(pos,0)) {
 			    if (source.energy){
 				    creep.harvest(source);
 			    }
@@ -297,8 +297,14 @@ module.exports = {
     					creep.travelTo(container);
     				}
     				else{
-    					creep.transfer(container,RESOURCE_ENERGY);
+    				    if(container.hits < container.hitsMax-1000){
+    				        creep.repair(container);
+    				    }else{
+    					    creep.transfer(container,RESOURCE_ENERGY);
+    				    }
     				}
+				}else{
+				    delete creep.memory.containerId;
 				}
 			}
 		}
@@ -358,6 +364,7 @@ module.exports = {
 				creep.memory.containerId = containers.filter((struct) => struct.pos.x == pos.x && struct.pos.y == pos.y)[0];
 			}else{
 				var noHaulContainer;
+				if (creep.room.terminal && creep.room.controller.level<8 && creep.room.storage.store[RESOURCE_ENERGY] > creep.carryCapacity) noHaulContainer = creep.room.terminal;
 				if (creep.room.storage && creep.room.storage.store[RESOURCE_ENERGY] > creep.carryCapacity) noHaulContainer = creep.room.storage;
 				if (noHaulContainer == null && creep.role != 'upgrader') 
 					noHaulContainer = creep.pos.findClosestByPath(creep.room.containers, {filter: (s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity && creep.room.name == s.room.name})
@@ -449,10 +456,8 @@ module.exports = {
 	repair: function(creep) {
 	    var room = creep.room;
 		if(creep.carry.energy > 0 && !creep.memory.job){
-			var repairTargets = creep.room.roads.filter((structure) => 
-			    (structure.room.name == creep.room.name && structure.hits < structure.hitsMax-2000)
-			);
-			if(creep.room.energyCapacityAvailable>=1300){
+			var repairTargets = creep.room.roads.filter((structure) => structure.hits < structure.hitsMax-1500);
+			if(!repairTargets.length && creep.room.energyCapacityAvailable>=1300){
 			    if(!room.memory.structureHitsMin){
 			       room.memory.structureHitsMin = 5000; 
 			    }
@@ -517,6 +522,12 @@ module.exports = {
 			}
 			if (!targets.length && creep.room.terminal && creep.room.terminal.store.energy<50000){
 			    targets = [creep.room.terminal];
+			}
+			if (!targets.length && creep.room.labs.length){
+			    targets = creep.room.labs.filter((l)=>l.energy < 1000);
+			}
+			if (!targets.length && creep.room.powerSpawn && creep.room.powerSpawn.energy<creep.room.powerSpawn.energyCapacity){
+			    targets = [creep.room.powerSpawn];
 			}
 			if (!targets.length && creep.room.nuker && creep.room.nuker.energy<creep.room.nuker.energyCapacity){
 			    targets = [creep.room.nuker];

@@ -1,3 +1,4 @@
+const MIN_ENERGY = 300;
 module.exports = class{
         constructor(){
 
@@ -308,7 +309,7 @@ module.exports = class{
                 }
               }
               else if(target.progress != undefined && target.structureType == STRUCTURE_CONTROLLER){
-                if(!creep.inRangeTo(target,1)){
+                if(!creep.inRangeTo(target,2)){
                   creep.travelTo(target);    
                 }
                 var err = creep.upgradeController(target);
@@ -338,7 +339,7 @@ module.exports = class{
 		
 		static renewCreep(creep){
 			let spawns = creep.room.spawns;
-			if (spawns.length && creep.room.energyAvailable >= 550 && (creep.ticksToLive < 100 || creep.memory.renewingSpawn) && creep.ticksToLive < 1450){
+			if (spawns.length && creep.room.energyAvailable > 30 && creep.room.energyCapacityAvailable >= MIN_ENERGY && (creep.ticksToLive < 100 || creep.memory.renewingSpawn) && creep.ticksToLive < 1450){
 				if (!creep.memory.renewingSpawn){
 					creep.memory.renewingSpawn = creep.pos.findClosestByPath(spawns).name;
 					if(creep.memory.targetId){

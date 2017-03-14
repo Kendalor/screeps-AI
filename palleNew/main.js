@@ -17,7 +17,7 @@ module.exports.loop = function () {
     if (Game.cpu.bucket < 10000){ // To check if accumulated bonus CPU is used sometimes
     		console.log("Used additional CPU.\nAccumulated bucket:  "+Game.cpu.bucket+"/10000");
 	}
-    
+
     if(!pause){
     
     	if(!Memory.myRooms){
@@ -43,24 +43,56 @@ module.exports.loop = function () {
     
     			autoCreep.run(room.myCreeps);
     			
-    			//Market
-    			if((Game.time+125) % 250 == 0 && room.terminal && room.terminal.store.energy > 200000){
-    			    var amount = 40000;
-        			var orders = Game.market.getAllOrders(order => order.resourceType == RESOURCE_ENERGY && 
-    	                order.type == ORDER_BUY && 
-                        Game.market.calcTransactionCost(amount, name, order.roomName) < amount*2);
-                    if(orders.length){
-                        var bestOrder = orders[0];
-                        orders.forEach(function(order){
-                            if(order.price > bestOrder.price){
-                                bestOrder = order;
+    			if((Game.time+125) % 45 == 0 && room.terminal){
+    			    if(room.controller.level < 8){
+    			        if(!Memory.rre){//roomRequiresEnergy
+    			            Memory.rre = {};
+    			        }
+    			        if(room.terminal.store.energy < 200000){
+    			            if(!Memory.rre[name]){//roomRequiresEnergy
+    			                Memory.rre[name] = 250000-room.terminal.store.energy;
+    			            }
+    			        }else{
+    			            if(!Memory.rre[name]){//roomRequiresEnergy
+    			                Memory.rre[name] = undefined;
+    			            }
+    			        }
+        			//Market
+        			}else{
+        			    if(room.terminal.store.energy > 100000 && Memory.rre){
+        			        var keys = Object.keys(Memory.rre);
+        			        var notHelped = true;
+        			        var i;
+        			        for(i = 0;i < keys.length && notHelped;i++){
+            			        var amount = 10000
+            			        var cost = Game.market.calcTransactionCost(amount, name, keys[i]);
+            			        if(cost < amount){
+            			            room.terminal.send(RESOURCE_ENERGY, amount, keys[i], "Support");
+            			            notHelped = false;
+            			        }
+        			        }
+        			    }
+        			    if(room.terminal.store.energy > 150000){
+            			    var amount = 10000;
+                			var orders = Game.market.getAllOrders(order => order.resourceType == RESOURCE_ENERGY && 
+            	                order.type == ORDER_BUY && 
+                                Game.market.calcTransactionCost(amount, name, order.roomName) < amount*2);
+                            if(orders.length){
+                                var bestOrder = orders[0];
+                                orders.forEach(function(order){
+                                    //if(order.price > bestOrder.price){
+                                    if((order.price*order.amount)/Game.market.calcTransactionCost(order.amount, name, order.roomName)
+                                        > (bestOrder.price*order.amount)/Game.market.calcTransactionCost(bestOrder.amount, name, bestOrder.roomName)){
+                                        bestOrder = order;
+                                    }
+                                });
+                                var amount = Math.min(100000,Math.min(bestOrder.amount,bestOrder.remainingAmount));
+                                Game.market.deal(bestOrder.id,amount,name);
                             }
-                        });
-                        var amount = Math.min(100000,Math.min(bestOrder.amount,bestOrder.remainingAmount));
-                        Game.market.deal(bestOrder.id,amount,name);
-                    }
-    			}
-    			//Market End
+        			    }
+        			}
+        			//Market End
+    		    }
     		
     		}else{
     		    delete room.memory;
@@ -69,7 +101,7 @@ module.exports.loop = function () {
     	}
     	
     	//Kendalor Code
-        if (Game.cpu.bucket > 5000){
+        if (Game.cpu.bucket > 2000){
     	    operationsHandler.init();
     	    operationsHandler.run();
         }
@@ -78,5 +110,6 @@ module.exports.loop = function () {
     		autoMemory.clearDeadCreeps();
     		//autoMemory.clearFlags();
     	}
+    	
     }
 }/**/

@@ -3,6 +3,7 @@ var constants = require('var.const');
 var creepRole = constants.creepRole();
 var maintanceUnits = 1;
 var upgradeUnits = 1;
+var supplierUnits = 1;
 
 
 module.exports = {
@@ -14,6 +15,7 @@ module.exports = {
 		if (spawnList.length){
             var spawn = spawnList[spawnList.length-1];
             var room = spawn.room;
+            var ctrlLvl = spawn.room.controller.level;
             //if(spawn.spawning == null){
             if(spawn.spawning == null && spawn.inactive == undefined){
                 //this.roomProfiler(spawn);
@@ -47,7 +49,7 @@ module.exports = {
 						}
 						upgradeUnits = 1;
 					}else{
-					    if(spawn.room.controller.level < 8){
+					    if(ctrlLvl < 8){
 						    upgradeUnits = Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-4,0),6);
 					    }else{
 					        upgradeUnits = 1;//Math.min(Math.max(parseInt(spawn.room.storage.store[RESOURCE_ENERGY]/30000)-12,0),6);
@@ -56,6 +58,9 @@ module.exports = {
 					}
 				}else{
 					spawn.room.sources;
+				}
+				if(ctrlLvl > 5){
+				    supplierUnits = 2;
 				}
 
                 //for every type of creep
@@ -142,7 +147,7 @@ module.exports = {
                             break;
 
                         case 5: //supplier
-                            if(supplierAmount < 2 && spawn.room.storage && spawn.room.storage.store.energy > 1000){
+                            if(supplierAmount < supplierUnits && spawn.room.storage && spawn.room.storage.store.energy > 1000){
                                 //spawn.spawnCreep(this.supplierPreset(spawn), undefined, {role: creepRole[5].name});
                                 let body = this.supplierPreset(spawn);
                                 if(spawn.canSpawnCreep(body) == OK){
