@@ -162,8 +162,8 @@ module.exports = class{
 
         // TRAVEL TO FLAG
         static creepTravel(creep,flag){
-            //creep.travelTo(flag);
-			creep.journeyTo(flag);
+            creep.travelTo(flag);
+			//creep.journeyTo(flag);
             creep.say('travel');
             if(creep.hits < creep.hitsMax){
                 creep.heal(creep);

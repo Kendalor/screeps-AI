@@ -359,16 +359,16 @@ module.exports = {
 		}
 
 		if (!creep.memory.containerId){
-			if (creep.role == 'hauler') {
+			if (creep.memory.role == 'hauler' && !creep.memory.containerId) {
 				var pos = creep.room.memory.sources[creep.memory.source].containerPos;
 				creep.memory.containerId = containers.filter((struct) => struct.pos.x == pos.x && struct.pos.y == pos.y)[0];
 			}else{
 				var noHaulContainer;
-				if (creep.room.terminal && creep.room.controller.level<8 && creep.room.storage.store[RESOURCE_ENERGY] > creep.carryCapacity) noHaulContainer = creep.room.terminal;
-				if (creep.room.storage && creep.room.storage.store[RESOURCE_ENERGY] > creep.carryCapacity) noHaulContainer = creep.room.storage;
-				if (noHaulContainer == null && creep.role != 'upgrader') 
+				if (creep.memory.role != 'upgrader' && creep.room.controller.level<8 && creep.room.terminal && creep.room.terminal.store.energy > 51000) noHaulContainer = creep.room.terminal;
+				if (!noHaulContainer && creep.room.storage && creep.room.storage.store[RESOURCE_ENERGY] > creep.carryCapacity) noHaulContainer = creep.room.storage;
+				if (!noHaulContainer && creep.memory.role != 'upgrader') 
 					noHaulContainer = creep.pos.findClosestByPath(creep.room.containers, {filter: (s) => s.store[RESOURCE_ENERGY] > creep.carryCapacity && creep.room.name == s.room.name})
-				if (noHaulContainer != null){
+				if (noHaulContainer){
 					creep.memory.containerId = noHaulContainer.id;
 				}
 			}
