@@ -48,12 +48,12 @@ module.exports.loop = function () {
     			        if(!Memory.rre){//roomRequiresEnergy
     			            Memory.rre = {};
     			        }
-    			        if(room.terminal.store.energy < 200000){
+    			        if(room.terminal.store.energy < 100000){
     			            if(!Memory.rre[name]){//roomRequiresEnergy
-    			                Memory.rre[name] = 250000-room.terminal.store.energy;
+    			                Memory.rre[name] = room.terminal.store.energy;
     			            }
     			        }else{
-    			            if(!Memory.rre[name]){//roomRequiresEnergy
+    			            if(Memory.rre[name]){//roomRequiresEnergy
     			                Memory.rre[name] = undefined;
     			            }
     			        }
@@ -66,7 +66,7 @@ module.exports.loop = function () {
         			        for(i = 0;i < keys.length && notHelped;i++){
             			        var amount = 10000
             			        var cost = Game.market.calcTransactionCost(amount, name, keys[i]);
-            			        if(cost < amount){
+            			        if(cost < amount*3){
             			            room.terminal.send(RESOURCE_ENERGY, amount, keys[i], "Support");
             			            notHelped = false;
             			        }
@@ -110,6 +110,6 @@ module.exports.loop = function () {
     		autoMemory.clearDeadCreeps();
     		//autoMemory.clearFlags();
     	}
-    	
+        	
     }
 }/**/

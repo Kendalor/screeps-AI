@@ -1,15 +1,15 @@
 var attackOperation = require('class.operation.attack');
 var colonizeOperation = require('class.operation.colonize');
-//var defendKeeperOperation = require('class.operation.defend_keeper');
+var defendKeeperOperation = require('class.operation.defend_keeper');
 var focusEnergyOperation = require('class.operation.focusEnergy');
-var processPowerOperation = require('class.operation.processPower');
+//var processPowerOperation = require('class.operation.processPower');
 var rangedAttackOperation = require('class.operation.ranged_attack');
-//var remoteBuildOperation = require('class.operation.remote_build');
+var remoteBuildOperation = require('class.operation.remote_build');
 var remoteMiningOperation = require('class.operation.remote_mining');
-//var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
+var remoteMiningKeeperOperation = require('class.operation.remote_mining_keeper');
 var reserveOperation = require('class.operation.reserve');
 var scoutingOperation = require('class.operation.scouting');
-//var thieveOperation = require('class.operation.thieve');
+var thieveOperation = require('class.operation.thieve');
 var tankOperation = require('class.operation.tank');
 
 
@@ -49,6 +49,7 @@ module.exports = {
                         //devAidOperation.run(id);
                         break;
                     case 'remote_mining':
+                        //Memory.operations[id].scouting = undefined;
                         remoteMiningOperation.run(id);
                         break;
                     case 'remote_build':
