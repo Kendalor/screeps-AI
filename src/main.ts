@@ -1,7 +1,8 @@
 import {JobManager} from "./jobManager/jobManager";
-
 export const loop = function() {
-    console.log("running!!");
-    t=new JobManager();
-    t.sayHello();
-}
+    const manager = new JobManager();
+    while(manager.canRun()) {
+      manager.runJob();
+    }
+    manager.kill();
+};
