@@ -1,20 +1,24 @@
 import {Job} from "./jobManager/Job";
-interface HarvestJobData{
+interface HarvestJobData {
   name: string;
+  source: string;
 }
-
 
 export class HarvestJob extends Job {
   public data: HarvestJobData;
   public run() {
     const creep: Creep = Game.getObjectById(this.data.name);
+    if (!creep) {
+      return;
+    }
+
     if (creep.carry.energy === 0) {
-      const sources = this.data.source
+      const sources: Source = Game.getObjectById(this.data.source);
       if (creep.harvest(sources[0]) === ERR_NOT_IN_RANGE) {
         creep.moveTo(sources[0], {visualizePathStyle: {stroke: "#ffaa00"}});
       }
     } else {
-      const targets = creep.room.find(FIND_STRUCTURES, {
+      const targets: Structure = creep.room.find(FIND_STRUCTURES, {
         filter: (structure) => {
           return (structure.structureType === STRUCTURE_EXTENSION || structure.structureType === STRUCTURE_SPAWN) &&
             structure.energy < structure.energyCapacity;
