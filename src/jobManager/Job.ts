@@ -1,14 +1,19 @@
 import {JobManager} from "./jobManager";
 
+/**
+ * The Jobclass meant to be exported
+ */
+
 export class Job {
-  public name: string;
-  public type: string;
-  public priority: number;
-  public data: any;
-  public wait: string | number | boolean;
-  public manager: JobManager;
-  public completed = false;
-  public parent: Job | undefined;
+  public name: string; // Name of the Job, is its unique key
+  public type: string; // String describing the JobClass
+  public priority: number; // Priority of theJob
+  public data: any; // Data of the Job, declared in the interace pre Job Definition, should be seralizeable
+  public wait: string | number | boolean; // Is the job postopned ? Waiting for a Number of ticks or for  another Job
+  public manager: JobManager; // link to the JobManager
+  public completed: boolean; // Did the Job run this tick ?
+  public parent: Job | undefined; // was it forked by another Job ?
+  public ticked: boolean;
 
   constructor(data: SerializedJob, manager: JobManager) {
     this.name = data.name;
@@ -18,8 +23,13 @@ export class Job {
     this.priority = data.priority;
     this.data = data.data;
     this.manager = manager;
+    this.ticked = false;
   }
 
+  /**
+   * Returns a seralized job meant to be saved to memory
+   * @returns {SerializedJob}
+   */
   public serialize() {
     let parent;
     if (this.parent) {
@@ -34,10 +44,20 @@ export class Job {
       parent} as SerializedJob;
   }
 
+  /**
+   * Forks the job in the jobmanager generating a new Job with the designated data
+   * @param {string} name
+   * @param jobType
+   * @param {number} priority
+   * @param data
+   */
   public fork(name: string, jobType: any, priority: number, data: any) {
     this.manager.addJob(name, jobType , priority, data, this.name);
   }
 
+  /**
+   * The Run Method, overwritten by extending classes
+   */
   public run() {
     console.log("Job " + this.name + " is missing a type.");
     this.completed = true;

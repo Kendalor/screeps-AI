@@ -1,4 +1,4 @@
-import {Job} from "./jobManager/Job";
+import {Job} from "../src/jobManager/Job";
 interface HarvestJobData {
   name: string;
   source: string;
@@ -6,7 +6,7 @@ interface HarvestJobData {
 
 export class HarvestJob extends Job {
   public data: HarvestJobData;
-  public run() {
+  static run() {
     const creep: Creep = Game.getObjectById(this.data.name);
     if (!creep) {
       return;
@@ -18,7 +18,7 @@ export class HarvestJob extends Job {
         creep.moveTo(sources[0], {visualizePathStyle: {stroke: "#ffaa00"}});
       }
     } else {
-      const targets: Structure = creep.room.find(FIND_STRUCTURES, {
+      const targets: Structure[] = creep.room.find(FIND_STRUCTURES, {
         filter: (structure) => {
           return (structure.structureType === STRUCTURE_EXTENSION || structure.structureType === STRUCTURE_SPAWN) &&
             structure.energy < structure.energyCapacity;
@@ -35,4 +35,5 @@ export class HarvestJob extends Job {
       }
     }
   }
+
 }

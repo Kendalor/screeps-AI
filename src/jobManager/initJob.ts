@@ -1,3 +1,4 @@
+import {CreateRoomData} from "./CreateRoomData";
 import {Job} from "./Job";
 import {RoomManager} from "./RoomManager";
 
@@ -5,7 +6,33 @@ export class InitJob extends Job {
   public type= "InitJob";
   public run() {
     this.cleanMemory();
+    for (const i in Game.rooms) {
+      this.manager.addJob("CreateRoomData_" + i, CreateRoomData, 90, {name: i});
+    }
+    /*
+    If Memroy.myRooms is not found add it and add every room with a spawn
+    It is used to initalize the RoomManager which manages alle owned rooms with spawns
+     */
+    if (!Memory.myRooms) {
+      Memory.myRooms = {};
+      for (const i in Game.spawns) {
+        console.log("Added " + Game.spawns[i].room.name + "to myRooms");
+        Memory.myRooms[Game.spawns[i].room.name] = {};
+      }
+    }
+    //Respawned? Delete Memory.myRooms
+    if (Game.time % 200 === 0){
+      if(Object.keys(Memory.myRooms).length === 0) {
+        delete Memory.myRooms;
+        console.log("Respawn detected");
+      }
+    }
 
+
+    for (const i in Memory.myRooms) {
+      this.manager.addJob("RoomManager_" + i , RoomManager , 80 , {name: i});
+    }
+    this.completed = true;
   }
 
   public cleanMemory() {

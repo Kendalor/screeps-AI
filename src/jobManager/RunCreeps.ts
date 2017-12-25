@@ -1,4 +1,4 @@
-import {Harvest} from "../HarvestJob";
+import {HarvestJob} from "../../palleNew/HarvestJob";
 import {Upgrade} from "../Upgrade";
 import {Job} from "./Job";
 import {JobManager} from "./jobManager";
@@ -13,7 +13,7 @@ export class RunCreeps extends Job {
     for (const name in Game.creeps) {
       const creep = Game.creeps[name];
       if (creep.memory.role === "harvester") {
-        Harvest.run(creep);
+        HarvestJob.run();
       }
       if (creep.memory.role === "upgrader") {
         Upgrade.run(creep);

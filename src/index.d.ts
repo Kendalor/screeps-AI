@@ -5,6 +5,8 @@
 /// <reference path="../typings/modules/webpack-chain/index.d.ts" />
 /// <reference path="../typings/modules/webpack/index.d.ts" />
 
+
+
 interface CreepData {
   name: string;
 }
@@ -24,17 +26,37 @@ interface SerializedJob {
 }
 
 interface RoomData {
-  constructionSites: ConstructionSite[];
-  containers: StructureContainer[];
-  extensions: StructureExtension[];
-  extractor: StructureExtractor | undefined;
-  mineral: Mineral | undefined;
-  labs: StructureLab[];
-  roads: StructureRoad[];
+  lastUpdated: number;
+  numConstructionSites: number;
   spawns: StructureSpawn[];
-  sources: Source[];
-  sourceContainers: {[id: string]: StructureContainer | undefined};
+  extensions: StructureExtension[];
+  containers: StructureContainer[];
+  links: StructureLink[];
   towers: StructureTower[];
-  upgradeContainer: StructureContainer | undefined;
-  sourceSlots: {[id: string]: number};
+  walls: StructureWall[];
+  ramparts: StructureRampart[];
+  sources: Source[];
+  mineral: Mineral;
+  sourceContainers: {[key: string]: StructureContainer | StructureLink};
+  controllerLink: StructureLink;
+  extractor: StructureExtractor;
+  constructionSites: ConstructionSite[];
+  roads: StructureRoad[];
+  sourceSlots: {[key: string]: number};
+}
+
+interface RoomManagerData {
+  status: string;
+}
+
+declare namespace NodeJS {
+  interface Global {
+    SCRIPT_VERSION: number;
+    lastTick: number;
+    LastMemory: Memory;
+    Memory: Memory;
+    roomData: {
+      [key: string]: RoomData
+    };
+  }
 }

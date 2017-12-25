@@ -1,18 +1,28 @@
+import {InitialBuildUpJob} from "./InitialBuildUpJob";
 import {Job} from "./Job";
+
+/**
+ * RoomManager Class
+ * Manages all owned Rooms,is initialized every tick in the Init Job.
+ * Forks Jobs To generate Creeps, handle creeps and Build structures.
+ */
 
 export class RoomManager extends Job {
   public type = "RoomManager";
-
+  public room: Room;
+  public  roomData: RoomData;
   public run() {
-    const room = Game.rooms[this.data.roomName];
-
-    const harvestersPerSoruce = 3;
-    let sources: Source[] = _.forEach(room.find(FIND_SOURCES));
-    for(let i=0;i<harvestersPerSoruce;i++){
-      sources.forEach(function(entry) {
-        this.manager.addJobIfNotExist("harvest_" + i.toString() + "_" + entry.id.toString(), "HarvestJob" , 60, {source: entry.id})
-      });
+    this.room = Game.rooms[this.data.name];
+    this.roomData = this.manager.data.roomData[this.data.name];
+    if (!this.room || !this.roomData) {
+      this.completed = true;
+      console.log("Room: " + !this.room + " roomData " + !this.roomData);
+      delete Memory.myRooms[this.data.name];
+      return;
     }
-
+    if (this.room.controller.my && this.room.energyCapacityAvailable === 300) {
+      this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
+    }
+    this.completed = true;
   }
 }

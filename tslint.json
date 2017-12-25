@@ -2,10 +2,11 @@
   "extends" : [
     "tslint:recommended"
   ],
+  "max-line-length": [false, 120],
   "rules": {
+    "no-console": [false],
     "forin": false,
     "interface-name": [false],
-    "no-console": [false],
     "trailing-comma": [
       true,
       "never"

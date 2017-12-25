@@ -1,39 +1,56 @@
 
-import {BuildCreeps} from "./BuildCreeps";
-//import {InitJob} from "./initJob";
+import {IBUCreep} from "./IBUCreepJob";
+import {InitialBuildUpJob} from "./InitialBuildUpJob";
+import {InitJob} from "./initJob";
 import {Job} from "./Job";
 import {RoomManager} from "./RoomManager";
-import {RunCreeps} from "./RunCreeps";
 
-const jobTypes = {
-  "RunCreeps": RunCreeps,
-  "BuildCreeps": BuildCreeps,
-  "R_M": RoomManager
+/**
+ * LOokup Table for all classes used for jobs so Jobs can be initalized depending on the string in the seralizedJob variable in Memory
+ * @type {{[p: string]: any}}
+ */
+export const jobTypes = {
+  "RoomManager": RoomManager,
+  "InitJob": InitJob,
+  "IBU": InitialBuildUpJob,
+  "IBUCreep": IBUCreep
 } as {[type: string]: any};
 
+interface JobManagerData {
+  roomData: {[name: string]: RoomData};
+}
 interface JobList {
   [name: string]: Job;
 }
 
+/**
+ * The Jobmanager class
+ * Keeps a list of Jobs to execute, ordered by priority
+ */
 export class JobManager {
   public jobList: JobList= {};
   public spawns;
   public limit = Game.cpu.limit;
+  public data = {roomData: {}} as JobManagerData;
   constructor() {
     if (!Memory.JobManager) {
-      Memory.JobMananager = {};
+      Memory.JobManager = {};
     }
     this.readJobsFromMemory();
 
-    //this.addJob("InitJob", InitJob, 99 , {});
-    this.addJob("RunCreeps", RunCreeps, 80 , {});
-    this.addJob("BuildCreeps", BuildCreeps, 80 , {});
-  }
+    this.addJob("InitJob", InitJob, 99 , {});
+    }
 
+  /**
+   * Testing Puropses
+   */
  public sayHello() {
    console.log("Test");
  }
 
+  /**
+   * Executes a Job with the highest priority
+   */
  public runJob() {
     const job = this.getJobWithPriority();
     try {
@@ -41,29 +58,45 @@ export class JobManager {
     } catch (e) {
       console.log("job " + job.name + " failed with error " + e);
     }
-    job.completed = true;
- }
-  public getJobWithPriority(): Job {
-    const jobs = _.filter(this.jobList, function(entry) {
-      return (!entry.completed && entry.wait === false);
-    });
-    return _.sortBy(jobs, "prority").reverse()[0];
+    job.ticked = true;
  }
 
+  /**
+   * Searches the Joblist for the job with the highest priority which isn't completed and not on wait mode
+   * @returns {Job}
+   */
+  public getJobWithPriority(): Job {
+    const jobs = _.filter(this.jobList, function(entry) {
+      return (!entry.ticked && entry.wait === false);
+    });
+    return _.sortBy(jobs, "prority")[0];
+ }
+
+  /**
+   * Looks if there is an executable Job in the List
+   * @returns {boolean}
+   */
  public canRun() {
    return (!!this.getJobWithPriority());
  }
 
-public writeJobsToMemory() {
+  /**
+   * Writes all not executed Jobs into Memory for next tick
+   */
+  public writeJobsToMemory() {
   const list: SerializedJob[] = [];
   _.forEach(this.jobList, function(entry) {
     if (!entry.completed) {
       list.push(entry.serialize());
     }
   });
-  Memory.jobManager.jobList = list;
+  Memory.JobManager.jobList = list;
 }
-public readJobsFromMemory() {
+
+  /**
+   * Reads jobs from Memory and adds them into the Joblist
+   */
+  public readJobsFromMemory() {
     const manager = this;
     _.forEach(Memory.JobManager, function(entry) {
       if ( jobTypes[entry.name]) {
@@ -75,28 +108,49 @@ public readJobsFromMemory() {
 }
 
 public addJob(name: string, jobClass: any, priority: number, data: {}, parent?: string | undefined ) {
-  const job = new jobClass({name, prority: priority, data, wait: false, parent}, this);
+  const job = new jobClass({ name: name, priority: priority, data, wait: false, parent}, this);
   this.jobList[name] = job;
 }
 
-public removeJob(name: string) {
+  /**
+   * Removes a Job fromt he joblist depending on the Jobname
+   * @param {string} name of the Job to be removed
+   */
+  public removeJob(name: string) {
     if (this.jobList[name]) {
       delete this.jobList[name];
     }
 }
 
-public addJobIfNotExist(name: string, jobClass: any, priority: number, data: {}, parent?: string | undefined ) {
+  /**
+   * Checks if the Job is already in the list and if not the Job will be added to the List
+   * @param {string} name
+   * @param jobClass
+   * @param {number} priority
+   * @param {{}} data
+   * @param {string | undefined} parent
+   */
+  public addJobIfNotExist(name: string, jobClass: any, priority: number, data: {}, parent?: string | undefined ) {
     if (!this.hasJob(name)) {
       this.addJob(name, jobClass, priority, data, parent);
     }
   }
 
-public hasJob(name: string) {
+  /**
+   * Returns a boolean depending if a Job with a given Name is already in the List
+   * @param {string} name
+   * @returns {boolean}
+   */
+  public hasJob(name: string) {
     return !!this.jobList[name];
 }
 
+  /**
+   * Terminates the Jobmanager
+   */
  public kill() {
     this.writeJobsToMemory();
+    global.roomData = this.data.roomData;
   }
 
 }
