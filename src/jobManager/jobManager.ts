@@ -55,12 +55,16 @@ export class JobManager {
     const job = this.getJobWithPriority();
     try {
       job.run();
+      console.log("Did Run Job: "+ job.name + " at "+ Game.time);
     } catch (e) {
       console.log("job " + job.name + " failed with error " + e);
     }
     job.ticked = true;
  }
 
+ public getJob(name: string): Job{
+   return this.jobList[name];
+ }
   /**
    * Searches the Joblist for the job with the highest priority which isn't completed and not on wait mode
    * @returns {Job}

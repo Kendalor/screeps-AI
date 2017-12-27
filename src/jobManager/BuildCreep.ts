@@ -12,15 +12,14 @@ export class BuildCreep extends Job {
   public data: BuildCreepData;
   public spawns: Spawn[];
   public run() {
-    console.log("BuildCreepBugfix:");
     this.spawns = this.data.spawns.map(function(entry) {return Game.getObjectById(entry); });
-    console.log(this.spawns);
     for (const i in this.spawns) {
       const spawn = this.spawns[i];
       if (!spawn.spawning && spawn.spawnCreep(this.data.body, this.data.name, {dryRun: true}) === OK ) {
         const result = spawn.spawnCreep(this.data.body, this.data.name);
         if (result === OK) {
           this.completed = true;
+          this.manager.getJob(this.parent).wait = false;
           break;
         }
       }

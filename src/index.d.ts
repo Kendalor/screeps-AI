@@ -21,7 +21,7 @@ interface SerializedJob {
   type: string;
   priority: number;
   data: any;
-  wait: undefined | string | number;
+  wait: boolean;
   parent: string | undefined;
 }
 

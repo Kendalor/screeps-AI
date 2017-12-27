@@ -9,10 +9,10 @@ export class Job {
   public type: string; // String describing the JobClass
   public priority: number; // Priority of theJob
   public data: any; // Data of the Job, declared in the interace pre Job Definition, should be seralizeable
-  public wait: string | number | boolean; // Is the job postopned ? Waiting for a Number of ticks or for  another Job
+  public wait: boolean; // Is the job postopned ? Waiting for a Number of ticks or for  another Job
   public manager: JobManager; // link to the JobManager
   public completed: boolean; // Did the Job run this tick ?
-  public parent: Job | undefined; // was it forked by another Job ?
+  public parent: string | undefined; // was it forked by another Job ?
   public ticked: boolean;
 
   constructor(data: SerializedJob, manager: JobManager) {
@@ -33,7 +33,7 @@ export class Job {
   public serialize() {
     let parent;
     if (this.parent) {
-      parent = this.parent.name;
+      parent = this.parent;
     }
     return {
       name: this.name,
