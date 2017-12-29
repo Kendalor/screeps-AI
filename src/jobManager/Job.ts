@@ -22,6 +22,7 @@ export class Job {
     this.wait = data.wait;
     this.priority = data.priority;
     this.data = data.data;
+    this.parent = data.parent;
     this.manager = manager;
     this.ticked = false;
   }
@@ -30,6 +31,15 @@ export class Job {
    * Returns a seralized job meant to be saved to memory
    * @returns {SerializedJob}
    */
+  public complete() {
+    console.log("Completed Job: "+this.name);
+    this.completed = true;
+    if (!!this.parent) {
+      console.log("And set reset Parent wait");
+      this.manager.getJob(this.parent).wait = false;
+    }
+  }
+
   public serialize() {
     let parent;
     if (this.parent) {

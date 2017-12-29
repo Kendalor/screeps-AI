@@ -4,6 +4,11 @@ import {InitialBuildUpJob} from "./InitialBuildUpJob";
 import {InitJob} from "./initJob";
 import {Job} from "./Job";
 import {RoomManager} from "./RoomManager";
+import {BuildCreep} from "./BuildCreep";
+import {CreepHarvest} from "./CreepHarvest";
+import {CreepUpgrade} from "./CreepUpgrade";
+import {CreepBuild} from "./CreepBuild";
+import {CreepSupply} from "./CreepSupply";
 
 /**
  * LOokup Table for all classes used for jobs so Jobs can be initalized depending on the string in the seralizedJob variable in Memory
@@ -13,7 +18,12 @@ export const jobTypes = {
   "RoomManager": RoomManager,
   "InitJob": InitJob,
   "IBU": InitialBuildUpJob,
-  "IBUCreep": IBUCreep
+  "IBUCreep": IBUCreep,
+  "BuildCreep": BuildCreep,
+  "CreepHarvest": CreepHarvest,
+  "CreepBuild": CreepBuild,
+  "CreepSupply": CreepSupply,
+  "CreepUpgrade": CreepUpgrade,
 } as {[type: string]: any};
 
 interface JobManagerData {
@@ -55,8 +65,9 @@ export class JobManager {
     const job = this.getJobWithPriority();
     try {
       job.run();
-      console.log("Did Run Job: "+ job.name + " at "+ Game.time);
+      console.log("Did Run Job: "+ job.name + " with Wait: " + job.wait + " at " + Game.time);
     } catch (e) {
+      job.complete();
       console.log("job " + job.name + " failed with error " + e);
     }
     job.ticked = true;
@@ -70,7 +81,7 @@ export class JobManager {
    * @returns {Job}
    */
   public getJobWithPriority(): Job {
-    const jobs = _.filter(this.jobList, function(entry) {
+    let jobs = _.filter(this.jobList, function(entry) {
       return (!entry.ticked && entry.wait === false);
     });
     return _.sortBy(jobs, "prority")[0];
@@ -102,8 +113,8 @@ export class JobManager {
    */
   public readJobsFromMemory() {
     const manager = this;
-    _.forEach(Memory.JobManager, function(entry) {
-      if ( jobTypes[entry.name]) {
+    _.forEach(Memory.JobManager.jobList, function(entry) {
+      if ( jobTypes[entry.type]) {
         manager.jobList[entry.name] = new jobTypes[entry.type](entry, manager);
       } else {
         manager.jobList[entry.name] = new Job(entry, manager);
@@ -135,7 +146,9 @@ public addJob(name: string, jobClass: any, priority: number, data: {}, parent?: 
    * @param {string | undefined} parent
    */
   public addJobIfNotExist(name: string, jobClass: any, priority: number, data: {}, parent?: string | undefined ) {
+    //console.log( "Job" + name + " in Joblist: " + !this.hasJob(name) );
     if (!this.hasJob(name)) {
+      //console.log("Nontheless Added Job");
       this.addJob(name, jobClass, priority, data, parent);
     }
   }
