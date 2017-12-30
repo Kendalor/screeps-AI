@@ -125,6 +125,7 @@ export class JobManager {
 public addJob(name: string, jobClass: any, priority: number, data: {}, parent?: string | undefined ) {
   const job = new jobClass({ name: name, priority: priority, data, wait: false, parent}, this);
   this.jobList[name] = job;
+  console.log("added Job: " + job.name);
 }
 
   /**

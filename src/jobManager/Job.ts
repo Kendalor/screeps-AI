@@ -34,7 +34,7 @@ export class Job {
   public complete() {
     console.log("Completed Job: "+this.name);
     this.completed = true;
-    if (!!this.parent) {
+    if (!!this.parent && !! this.manager.getJob(this.parent)) {
       console.log("And set reset Parent wait");
       this.manager.getJob(this.parent).wait = false;
     }
