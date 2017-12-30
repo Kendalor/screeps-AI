@@ -5,6 +5,7 @@ import {JobManager} from "./jobManager/jobManager";
  */
 
 export const loop = function() {
+    //delete Memory.JobManager.jobList;
     const manager = new JobManager();
     if(!global.roomData){
       global.roomData = {};

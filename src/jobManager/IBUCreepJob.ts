@@ -33,6 +33,7 @@ export class IBUCreep extends Job {
           this.manager.addJobIfNotExist( "CreepHarvest_" + this.name, CreepHarvest, 30, {source: this.data.source, name: this.name}, this.name);
           this.wait = true;
           console.log(this.name + ": Added Harvest Job: " + "CreepHarvest_" + this.name);
+          this.data.lastJob="CreepHarvest_" + this.name;
         } else {
           if ( this.room.energyAvailable < this.room.energyCapacityAvailable ) {
             let target: Structure;
@@ -46,16 +47,19 @@ export class IBUCreep extends Job {
             console.log(this.name + ": Added Supply Job: " + "CreepSupply_" + this.name);
             this.manager.addJobIfNotExist( "CreepSupply_" + this.name, CreepSupply, 30, {target: target.id, name: this.name}, this.name);
             this.wait = true;
+            this.data.lastJob="CreepSupply_" + this.name;
           } else {
             if ( global.roomData[this.room.name].constructionSites.length > 0) {
                 const target = global.roomData[this.room.name].constructionSites[0];
                 this.manager.addJobIfNotExist( "CreepBuild_" + this.name, CreepBuild, 30, {target: target.id, name: this.name}, this.name);
                 this.wait = true;
                 console.log(this.name + ": Added Build Job: " + "CreepBuild_" + this.name);
+                this.data.lastJob="CreepBuild_" + this.name;
             } else {
               this.manager.addJobIfNotExist( "CreepUpgrade_" + this.name, CreepUpgrade, 30, {target: this.room.controller.id, name: this.name}, this.name);
               this.wait = true;
               console.log(this.name + ": Added Upgrade Job: " + "CreepUpgrade_" + this.name);
+              this.data.lastJob="CreepUpgrade_" + this.name;
             }
           }
         }

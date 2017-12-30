@@ -20,7 +20,7 @@ export class RoomManager extends Job {
       delete Memory.myRooms[this.data.name];
       return;
     }
-    if (this.room.controller.my && this.room.energyCapacityAvailable === 300) {
+    if (this.room.controller.my && !this.room.storage) {
       this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
     }
     this.completed = true;
