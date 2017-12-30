@@ -65,7 +65,7 @@ export class JobManager {
     const job = this.getJobWithPriority();
     try {
       job.run();
-      console.log("Did Run Job: "+ job.name + " with Wait: " + job.wait + " at " + Game.time);
+      //console.log("Did Run Job: "+ job.name + " with Wait: " + job.wait + " at " + Game.time);
     } catch (e) {
       job.complete();
       console.log("job " + job.name + " failed with error " + e);
