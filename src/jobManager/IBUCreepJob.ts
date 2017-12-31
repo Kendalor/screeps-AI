@@ -14,10 +14,12 @@ export class IBUCreep extends Job {
     if (!this.creep) {
       this.spawnMe();
     } else {
-      if (!this.data.mode) {
-        this.changeMode();
+      if(!this.creep.spawning) {
+        if (!this.data.mode) {
+          this.changeMode();
+        }
+        this.executeMode();
       }
-      this.executeMode();
     }
   }
 
@@ -61,8 +63,6 @@ export class IBUCreep extends Job {
 
   public executeMode() {
     switch (this.data.mode) {
-      case "spawning":
-        break;
       case "harvest":
         this.harvest();
         break;
@@ -95,8 +95,10 @@ export class IBUCreep extends Job {
       case ERR_NOT_IN_RANGE:
         this.creep.moveTo(this.source);
         break;
+      case OK:
+        break;
       default:
-        console.log("Error in harvest");
+        console.log("Error in harvest for job: " + this.name + "Err: " + err);
         break;
     }
   }
@@ -116,7 +118,6 @@ export class IBUCreep extends Job {
   public build() {
     const target = global.roomData[this.room.name].constructionSites[0];
     const err = this.creep.build(target);
-    console.log(err);
     switch (err) {
       case ERR_NOT_IN_RANGE:
         this.creep.moveTo(target);
@@ -132,7 +133,6 @@ export class IBUCreep extends Job {
 
   public supply() {
     let target: StructureExtension | StructureSpawn;
-    console.log(this.name + ":");
     const spawns = global.roomData[this.room.name].spawns.filter(function(entry) {return entry.energy < entry.energyCapacity; });
     const extensions = global.roomData[this.room.name].extensions.filter(function(entry) {return entry.energy < entry.energyCapacity; });
     if ( spawns.length > 0) {
@@ -140,16 +140,29 @@ export class IBUCreep extends Job {
     } else {
       target = extensions[0];
     }
-    if (!target || target.energyCapacity  === target.energy || !this.creep || this.creep.carry[RESOURCE_ENERGY] === 0) {
-      console.log("Bool True nonetheless");
+    console.log("running: " + this.name);
+    console.log("spawns: " + spawns);
+    console.log("Extensions: " + extensions);
+    console.log("Spawns bool: " + (spawns.length >0));
+    console.log("Target: " + target);
+    console.log("Target Bool: " + !target);
+    if(target){
+      console.log("target energy: " + target.energy);
+    }
+    if (!target || !this.creep || this.creep.carry[RESOURCE_ENERGY] === 0) {
       this.changeMode();
     } else {
       const err = this.creep.transfer(target, RESOURCE_ENERGY);
-      console.log(err);
-      if ( err === ERR_NOT_IN_RANGE) {
-        this.creep.moveTo(target);
-      } else {
-        console.log(err);
+      console.log("ERr: " + err);
+      switch(err){
+        case ERR_NOT_IN_RANGE:
+          this.creep.moveTo(target);
+          break;
+        case ERR_FULL:
+          break;
+        default:
+          this.changeMode();
+          break;
       }
     }
   }
