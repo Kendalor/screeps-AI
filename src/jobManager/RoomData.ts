@@ -1,5 +1,11 @@
 
 export class RoomData {
+  get repairDefense(): any[] {
+    if (!this._repairDefense) {
+      this._repairDefense = this.structures.filter(function(entry) {return ((entry.hits < entry.hitsMax * 0.1)  && (entry.structureType === (STRUCTURE_RAMPART || STRUCTURE_WALL))); });
+    }
+    return this._repairDefense;
+  }
   get myStructures(): Structure[] {
     if (!this._myStructures) {
       if (!Memory.rooms[this.room.name]._myStructures) {
@@ -39,16 +45,12 @@ export class RoomData {
     }
     return this._supplyTargets;
   }
-  get repairTargets(): any[] {
-    if (!this._repairTargets) {
+  get repairBuildings(): any[] {
+    if (!this._repairBuildings) {
       const list = [];
-      list.concat(this.roads.filter(function(entry) {return entry.hits < entry.hitsMax; }));
-      list.concat(this.roads.filter(function(entry) {return entry.hits < entry.hitsMax; }));
-      list.concat(this.roads.filter(function(entry) {return entry.hits < entry.hitsMax; }));
-      list.concat(this.roads.filter(function(entry) {return entry.hits < entry.hitsMax; }));
-
+      list.concat(this.structures.filter(function(entry) {return (entry.hits < entry.hitsMax) && ((entry.structureType !== (STRUCTURE_WALL || STRUCTURE_RAMPART ))) ; }));
     }
-    return this._repairTargets;
+    return this._repairBuildings;
   }
   get timeStamp(): number {
     return this._timeStamp;
@@ -243,7 +245,8 @@ export class RoomData {
   private _roads: StructureRoad[];
   private _timeStamp: number;
   private _supplyTargets: any[];
-  private _repairTargets: any[];
+  private _repairBuildings: any[];
+  private _repairDefense: any[];
 
   constructor(name: string) {
     this.room = Game.rooms[name];
