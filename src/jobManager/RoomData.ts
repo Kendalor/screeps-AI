@@ -1,5 +1,55 @@
 
 export class RoomData {
+  get myStructures(): Structure[] {
+    if (!this._myStructures) {
+      if (!Memory.rooms[this.room.name]._myStructures) {
+        this.buildMyStructures();
+      } else {
+        const temp = this.deserialize(Memory.rooms[this.room.name]._MyStructures);
+        if (temp[1]) {
+          this._myStructures = temp[0] as Structure[];
+        } else {
+          this.buildMyStructures();
+        }
+      }
+    }
+    return this._myStructures;
+  }
+  get structures(): Structure[] {
+    if (!this._structures) {
+      if (!Memory.rooms[this.room.name]._structures) {
+        this.buildStructures();
+      } else {
+        const temp = this.deserialize(Memory.rooms[this.room.name]._structures);
+        if (temp[1]) {
+          this._structures = temp[0] as Structure[];
+        } else {
+          this.buildStructures();
+        }
+      }
+    }
+    return this._structures;
+  }
+  get supplyTargets(): any[] {
+    if (!this._supplyTargets) {
+     const list = [];
+     list.concat(this.extensions.filter(function(entry) {return entry.energy < entry.energyCapacity; } ) ) ;
+     list.concat(this.spawns.filter(function(entry) {return entry.energy < entry.energyCapacity; } ) ) ;
+     this._supplyTargets = list;
+    }
+    return this._supplyTargets;
+  }
+  get repairTargets(): any[] {
+    if (!this._repairTargets) {
+      const list = [];
+      list.concat(this.roads.filter(function(entry) {return entry.hits < entry.hitsMax; }));
+      list.concat(this.roads.filter(function(entry) {return entry.hits < entry.hitsMax; }));
+      list.concat(this.roads.filter(function(entry) {return entry.hits < entry.hitsMax; }));
+      list.concat(this.roads.filter(function(entry) {return entry.hits < entry.hitsMax; }));
+
+    }
+    return this._repairTargets;
+  }
   get timeStamp(): number {
     return this._timeStamp;
   }
@@ -9,7 +59,7 @@ export class RoomData {
         this.buildRoads();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._roads);
-        if(temp[1]){
+        if (temp[1]) {
           this._roads = temp[0] as StructureRoad[];
         } else {
           this.buildRoads();
@@ -24,7 +74,7 @@ export class RoomData {
         this.buildMineral();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._mineral);
-        if(temp[1]){
+        if (temp[1]) {
           this._mineral = temp[0] as Mineral[];
         } else {
           this.buildMineral();
@@ -45,7 +95,7 @@ export class RoomData {
         this.buildConstructionSites();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._constructionSites);
-        if(temp[1]){
+        if (temp[1]) {
           this._constructionSites = temp[0] as ConstructionSite[];
         } else {
           this.buildConstructionSites();
@@ -60,7 +110,7 @@ export class RoomData {
         this.buildSources();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._sources);
-        if(temp[1]){
+        if (temp[1]) {
           this._sources = temp[0] as Source[];
         } else {
           this.buildSources();
@@ -75,7 +125,7 @@ export class RoomData {
         this.buildRamparts();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._ramparts);
-        if(temp[1]){
+        if (temp[1]) {
           this._ramparts = temp[0] as StructureRampart[];
         } else {
           this.buildRamparts();
@@ -90,7 +140,7 @@ export class RoomData {
         this.buildWalls();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._walls);
-        if(temp[1]){
+        if (temp[1]) {
           this._walls = temp[0] as StructureWall[];
         } else {
           this.buildWalls();
@@ -105,7 +155,7 @@ export class RoomData {
         this.buildTowers();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._towers);
-        if(temp[1]){
+        if (temp[1]) {
           this._towers = temp[0] as StructureTower[];
         } else {
           this.buildTowers();
@@ -120,7 +170,7 @@ export class RoomData {
         this.buildLinks();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._links);
-        if(temp[1]){
+        if (temp[1]) {
           this._links = temp[0] as StructureLink[];
         } else {
           this.buildLinks();
@@ -135,7 +185,7 @@ export class RoomData {
         this.buildContainers();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._containers);
-        if(temp[1]){
+        if (temp[1]) {
           this._containers = temp[0] as StructureContainer[];
         } else {
           this.buildContainers();
@@ -150,7 +200,7 @@ export class RoomData {
         this.buildSpawns();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._spawns);
-        if(temp[1]){
+        if (temp[1]) {
           this._spawns = temp[0] as StructureSpawn[];
         } else {
           this.buildSpawns();
@@ -165,7 +215,7 @@ export class RoomData {
         this.buildExtensions();
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._extensions);
-        if(temp[1]){
+        if (temp[1]) {
           this._extensions = temp[0] as StructureExtension[];
         } else {
           this.buildExtensions();
@@ -177,8 +227,8 @@ export class RoomData {
 
   public fields = ["_spawns", "_extensions", "_containers", "_links", "_towers", "_walls", "_ramparts", "sources", "_mineral", "extractor", "_constructionSites", "_roads"];
   public room: Room;
-  private structures: Structure[];
-  private myStructures: Structure[];
+  private _structures: Structure[];
+  private _myStructures: Structure[];
   private _spawns: StructureSpawn[];
   private _extensions: StructureExtension[];
   private _containers: StructureContainer[];
@@ -192,6 +242,8 @@ export class RoomData {
   private _constructionSites: ConstructionSite[];
   private _roads: StructureRoad[];
   private _timeStamp: number;
+  private _supplyTargets: any[];
+  private _repairTargets: any[];
 
   constructor(name: string) {
     this.room = Game.rooms[name];
@@ -228,51 +280,36 @@ export class RoomData {
     return [out, success];
   }
 
-  public build(): void {
-    if (!this.myStructures) {
-      this.structures = this.room.find(FIND_STRUCTURES) as Structure[];
-    }
-    if (!this.structures) {
-      this.myStructures = this.room.find(FIND_MY_STRUCTURES) as Structure[];
-    }
-  }
-
   public buildSpawns(): void {
-    this.build();
-    this._spawns = _.filter(this.myStructures, function(entry) {
+    this._spawns = _.filter(this._myStructures, function(entry) {
       return (entry.structureType === STRUCTURE_SPAWN);
     }) as StructureSpawn[];
     Game.rooms[this.room.name].memory._spawns = this.seralize(this._spawns);
   }
 
-
   public buildExtensions(): void {
-    this.build();
-    this._extensions = _.filter(this.myStructures, function(entry) {
+    this._extensions = _.filter(this._myStructures, function(entry) {
       return (entry.structureType === STRUCTURE_EXTENSION);
     }) as StructureExtension[];
     Game.rooms[this.room.name].memory._extensions = this.seralize(this._extensions);
   }
 
   public buildContainers(): void {
-    this.build();
-    this._containers = _.filter(this.structures, function(entry) {
+    this._containers = _.filter(this._structures, function(entry) {
       return (entry.structureType === STRUCTURE_CONTAINER);
     }) as StructureContainer[];
     Game.rooms[this.room.name].memory._containers = this.seralize(this._containers);
   }
 
   public buildLinks(): void {
-    this.build();
-    this._links = _.filter(this.myStructures, function(entry) {
+    this._links = _.filter(this._myStructures, function(entry) {
       return (entry.structureType === STRUCTURE_LINK);
     }) as StructureLink[];
     Game.rooms[this.room.name].memory._links = this.seralize(this._links);
   }
 
   public buildTowers(): void {
-    this.build();
-    this._towers = _.filter(this.myStructures, function(entry) {
+    this._towers = _.filter(this._myStructures, function(entry) {
       return (entry.structureType === STRUCTURE_TOWER);
     }) as StructureTower[];
     Game.rooms[this.room.name].memory._towers = this.seralize(this._towers);
@@ -280,28 +317,25 @@ export class RoomData {
 
   public buildWalls(): void {
     this.build();
-    this._walls = _.filter(this.structures, function(entry) {
+    this._walls = _.filter(this._structures, function(entry) {
       return (entry.structureType === STRUCTURE_WALL);
     }) as StructureWall[];
     Game.rooms[this.room.name].memory._walls = this.seralize(this._walls);
   }
 
   public buildRamparts(): void {
-    this.build();
-    this._ramparts = _.filter(this.myStructures, function(entry) {
+    this._ramparts = _.filter(this._myStructures, function(entry) {
       return (entry.structureType === STRUCTURE_RAMPART);
     }) as StructureRampart[];
     Game.rooms[this.room.name].memory._ramparts = this.seralize(this._ramparts);
   }
 
   public buildSources(): void {
-    this.build();
     this._sources = this.room.find(FIND_SOURCES) as Source[];
     Game.rooms[this.room.name].memory._sources = this.seralize(this._sources);
   }
 
   public buildMineral(): void {
-    this.build();
     this._mineral = this.room.find(FIND_MINERALS) as Mineral[];
     Game.rooms[this.room.name].memory._mineral = this.seralize(this._mineral);
   }
@@ -310,17 +344,14 @@ export class RoomData {
   }
 
   public buildSourceSlots(): void {
-    this.build();
     this._sourceSlots = this.calculateSourceSlots();
   }
   public buildConstructionSites(): void {
-    this.build();
     this._constructionSites = this.room.find(FIND_CONSTRUCTION_SITES) as ConstructionSite[];
     Game.rooms[this.room.name].memory._constructionSites = this.seralize(this._constructionSites);
   }
   public buildRoads(): void {
-    this.build();
-    this._roads = _.filter(structures, function(entry) {
+    this._roads = _.filter(this.structures, function(entry) {
       return (entry.structureType === STRUCTURE_ROAD);
     }) as StructureRoad[];
     Game.rooms[this.room.name].memory._roads = this.seralize(this._roads);
@@ -330,4 +361,14 @@ export class RoomData {
     this._timeStamp = Game.time;
   }
 
+  private buildStructures() {
+    this._structures = this.room.find(FIND_STRUCTURES);
+    Game.rooms[this.room.name].memory._structures = this.seralize(this._structures);
+  }
+
+  private buildMyStructures() {
+    this._myStructures = this.room.find(FIND_MY_STRUCTURES);
+    Game.rooms[this.room.name].memory._myStructures = this.seralize(this._myStructures);
+
+  }
 }
