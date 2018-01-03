@@ -7,6 +7,8 @@
 
 
 
+import {RoomData} from "./jobManager/RoomData";
+
 interface CreepData {
   name: string;
 }
@@ -23,30 +25,6 @@ interface SerializedJob {
   data: any;
   wait: boolean;
   parent: string | undefined;
-}
-
-interface RoomData {
-  lastUpdated: number;
-  numConstructionSites: number;
-  spawns: StructureSpawn[];
-  extensions: StructureExtension[];
-  containers: StructureContainer[];
-  links: StructureLink[];
-  towers: StructureTower[];
-  walls: StructureWall[];
-  ramparts: StructureRampart[];
-  sources: Source[];
-  mineral: Mineral;
-  sourceContainers: {[key: string]: StructureContainer | StructureLink};
-  controllerLink: StructureLink;
-  extractor: StructureExtractor;
-  constructionSites: ConstructionSite[];
-  roads: StructureRoad[];
-  sourceSlots: {[key: string]: number};
-}
-
-interface RoomManagerData {
-  status: string;
 }
 
 declare namespace NodeJS {
