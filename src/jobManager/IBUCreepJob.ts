@@ -1,5 +1,6 @@
 import {BuildCreep} from "./BuildCreep";
 import {Job} from "./Job";
+import {RoomData} from "./RoomData";
 
 export class IBUCreep extends Job {
   public type = "IBUCreep";
@@ -8,13 +9,15 @@ export class IBUCreep extends Job {
   public source: Source;
   public mode: string;
   public target: string;
+  public roomData: RoomData;
   public run() {
     this.creep = Game.creeps[this.name];
     this.room = Game.rooms[this.data.name];
+    this.roomData = this.manager.roomData[this.room.name];
     if (!this.creep) {
       this.spawnMe();
     } else {
-      if(!this.creep.spawning) {
+      if (!this.creep.spawning) {
         if (!this.data.mode) {
           this.changeMode();
         }
@@ -30,13 +33,25 @@ export class IBUCreep extends Job {
         body = [WORK, MOVE, CARRY, CARRY, MOVE];
         break;
       case 550:
-        body = [WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE, MOVE];
+        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, MOVE];
+        break;
+      case 600:
+        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE];
+        break;
+      case 800:
+        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE];
+        break;
+      case 1000:
+        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE];
+        break;
+      case 1200:
+        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE];
         break;
       default:
         body = [WORK, MOVE, CARRY, CARRY, MOVE];
         break;
     }
-    const spawns = global.roomData[this.room.name].spawns.map(function(entry) {return entry.id; });
+    const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
     this.manager.addJobIfNotExist("BuildCreep_" + this.name, BuildCreep, 30, {body, spawns, name: this.name}, this.name);
     this.wait = true;
   }
@@ -49,7 +64,7 @@ export class IBUCreep extends Job {
         if ( this.room.energyAvailable < this.room.energyCapacityAvailable ) {
           this.data.mode = "supply";
         } else {
-          if ( global.roomData[this.room.name].constructionSites.length > 0) {
+          if ( this.roomData.constructionSites.length > 0) {
             this.data.mode = "build";
           } else {
             this.data.mode = "upgrade";
@@ -77,7 +92,6 @@ export class IBUCreep extends Job {
         break;
       default:
         this.changeMode();
-        this.executeMode();
         break;
     }
   }
@@ -86,7 +100,7 @@ export class IBUCreep extends Job {
     if (!this.source) {
       this.source = Game.getObjectById(this.data.source);
     }
-    if(_.sum(this.creep.carry) === this.creep.carryCapacity){
+    if (_.sum(this.creep.carry) === this.creep.carryCapacity) {
       this.changeMode();
       return;
     }
@@ -116,7 +130,7 @@ export class IBUCreep extends Job {
   }
 
   public build() {
-    const target = global.roomData[this.room.name].constructionSites[0];
+    const target = this.roomData.constructionSites[0];
     const err = this.creep.build(target);
     switch (err) {
       case ERR_NOT_IN_RANGE:
@@ -132,29 +146,12 @@ export class IBUCreep extends Job {
   }
 
   public supply() {
-    let target: StructureExtension | StructureSpawn;
-    const spawns = global.roomData[this.room.name].spawns.filter(function(entry) {return entry.energy < entry.energyCapacity; });
-    const extensions = global.roomData[this.room.name].extensions.filter(function(entry) {return entry.energy < entry.energyCapacity; });
-    if ( spawns.length > 0) {
-      target = spawns[0];
-    } else {
-      target = extensions[0];
-    }
-    console.log("running: " + this.name);
-    console.log("spawns: " + spawns);
-    console.log("Extensions: " + extensions);
-    console.log("Spawns bool: " + (spawns.length >0));
-    console.log("Target: " + target);
-    console.log("Target Bool: " + !target);
-    if(target){
-      console.log("target energy: " + target.energy);
-    }
-    if (!target || !this.creep || this.creep.carry[RESOURCE_ENERGY] === 0) {
+    const target = this.roomData.supplyTargets[0];
+    if (!target || !this.creep || (this.creep.carry[RESOURCE_ENERGY] === 0)) {
       this.changeMode();
     } else {
       const err = this.creep.transfer(target, RESOURCE_ENERGY);
-      console.log("ERr: " + err);
-      switch(err){
+      switch (err) {
         case ERR_NOT_IN_RANGE:
           this.creep.moveTo(target);
           break;

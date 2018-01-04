@@ -19,8 +19,11 @@ export class CreateRoomData extends Job {
       this.completed = true;
       return;
     } else {
-      if (!global.roomData[this.room.name]) {
-        global.roomData[this.room.name] = new RoomData(this.room.name);
+      if (!this.manager.roomData) {
+        this.manager.roomData = {};
+      }
+      if (!this.manager.roomData[this.room.name]) {
+        this.manager.roomData[this.room.name] = new RoomData(this.room.name);
       }
     }
     this.completed = true;

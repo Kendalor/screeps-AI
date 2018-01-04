@@ -1,5 +1,6 @@
 import {InitialBuildUpJob} from "./InitialBuildUpJob";
 import {Job} from "./Job";
+import {RoomData} from "./RoomData";
 
 /**
  * RoomManager Class
@@ -13,13 +14,14 @@ export class RoomManager extends Job {
   public  roomData: RoomData;
   public run() {
     this.room = Game.rooms[this.data.name];
-    this.roomData = this.manager.data.roomData[this.data.name];
+    this.roomData = this.manager.roomData[this.data.name];
     if (!this.room || !this.roomData) {
       this.completed = true;
       console.log("Room: " + !this.room + " roomData " + !this.roomData);
       delete Memory.myRooms[this.data.name];
       return;
     }
+
     if (this.room.controller.my && !this.room.storage) {
       this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
     }

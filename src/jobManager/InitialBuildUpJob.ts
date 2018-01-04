@@ -1,14 +1,15 @@
 import {Job} from "./Job";
 import {IBUCreep} from "./IBUCreepJob";
+import {RoomData} from "./RoomData";
 
 export class InitialBuildUpJob extends Job {
   public type = "IBU";
   public room: Room;
   public roomData: RoomData;
-  public run(){
+  public run() {
     const job = this;
     this.room = Game.rooms[this.data.name];
-    this.roomData = global.roomData[this.data.name];
+    this.roomData = global.roomData[this.room.name];
     let numWorkers = 0;
     for (const i in job.roomData.sourceSlots) {
       for (let j = 0; j < job.roomData.sourceSlots[i]; j++) {

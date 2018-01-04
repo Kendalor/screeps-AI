@@ -1,3 +1,4 @@
+//import {BunkerPlanner} from "./jobManager/BunkerPlanner";
 import {JobManager} from "./jobManager/jobManager";
 
 /**
@@ -6,8 +7,11 @@ import {JobManager} from "./jobManager/jobManager";
 
 export const loop = function() {
     //delete Memory.JobManager.jobList;
+    console.log("Created Bunker");
+    //const bunker = new BunkerPlanner(Game.rooms["W2N5"]);
+    //bunker.run();
     const manager = new JobManager();
-    if(!global.roomData){
+    if (!global.roomData) {
       global.roomData = {};
     }
     while (manager.canRun()) {

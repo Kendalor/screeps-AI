@@ -5,10 +5,6 @@
 /// <reference path="../typings/modules/webpack-chain/index.d.ts" />
 /// <reference path="../typings/modules/webpack/index.d.ts" />
 
-
-
-import {RoomData} from "./jobManager/RoomData";
-
 interface CreepData {
   name: string;
 }
@@ -34,7 +30,7 @@ declare namespace NodeJS {
     LastMemory: Memory;
     Memory: Memory;
     roomData: {
-      [key: string]: RoomData
+      [key: string]: any;
     };
   }
 }

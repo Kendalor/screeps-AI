@@ -9,6 +9,7 @@ import {CreepHarvest} from "./CreepHarvest";
 import {CreepUpgrade} from "./CreepUpgrade";
 import {CreepBuild} from "./CreepBuild";
 import {CreepSupply} from "./CreepSupply";
+import {RoomData} from "./RoomData";
 
 /**
  * LOokup Table for all classes used for jobs so Jobs can be initalized depending on the string in the seralizedJob variable in Memory
@@ -26,9 +27,6 @@ export const jobTypes = {
   "CreepUpgrade": CreepUpgrade,
 } as {[type: string]: any};
 
-interface JobManagerData {
-  roomData: {[name: string]: RoomData};
-}
 interface JobList {
   [name: string]: Job;
 }
@@ -41,13 +39,13 @@ export class JobManager {
   public jobList: JobList= {};
   public spawns;
   public limit = Game.cpu.limit;
-  public data = {roomData: {}} as JobManagerData;
+  public roomData: {[key: string]: RoomData};
   constructor() {
     if (!Memory.JobManager) {
       Memory.JobManager = {};
     }
     this.readJobsFromMemory();
-
+    this.roomData = {};
     this.addJob("InitJob", InitJob, 99 , {});
     }
 
@@ -65,7 +63,7 @@ export class JobManager {
     const job = this.getJobWithPriority();
     try {
       job.run();
-      //console.log("Did Run Job: "+ job.name + " with Wait: " + job.wait + " at " + Game.time);
+      //console.log("Did Run Job: " + job.name + " with Wait: " + job.wait + "and Priority: " + job.priority + " at " + Game.time);
     } catch (e) {
       job.complete();
       console.log("job " + job.name + " failed with error " + e);
@@ -84,7 +82,7 @@ export class JobManager {
     let jobs = _.filter(this.jobList, function(entry) {
       return (!entry.ticked && entry.wait === false);
     });
-    return _.sortBy(jobs, "prority")[0];
+    return _.sortBy(jobs, "prority").reverse()[0];
  }
 
   /**
@@ -168,7 +166,6 @@ public addJob(name: string, jobClass: any, priority: number, data: {}, parent?: 
    */
  public kill() {
     this.writeJobsToMemory();
-    global.roomData = this.data.roomData;
   }
 
 }
