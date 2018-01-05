@@ -29,6 +29,7 @@ declare namespace NodeJS {
     lastTick: number;
     LastMemory: Memory;
     Memory: Memory;
+    verbose: boolean;
     roomData: {
       [key: string]: any;
     };

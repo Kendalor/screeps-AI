@@ -1,6 +1,6 @@
 //import {BunkerPlanner} from "./jobManager/BunkerPlanner";
 import {JobManager} from "./jobManager/jobManager";
-
+global.verbose = false;
 /**
  * Main loop for screeps, everything in Mainlooop is executed every tick
  */

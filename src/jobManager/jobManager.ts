@@ -64,7 +64,9 @@ export class JobManager {
       const tick = Game.cpu.getUsed();
       job.run();
       const used = Game.cpu.getUsed() - tick;
-      console.log("Did Run Job: " + job.name + " Priority: " + job.priority + " at GameTime: " + Game.time + " used " + used + " CPU");
+      if (global.verbose) {
+        console.log("Did Run Job: " + job.name + " Priority: " + job.priority + " at GameTime: " + Game.time + " used " + used + " CPU");
+      }
     } catch (e) {
       //job.complete();
       console.log("job " + job.name + " failed with error " + e);
