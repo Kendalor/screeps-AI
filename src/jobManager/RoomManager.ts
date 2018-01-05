@@ -14,10 +14,11 @@ export class RoomManager extends Job {
   public  roomData: RoomData;
   public run() {
     this.room = Game.rooms[this.data.name];
-    this.roomData = this.manager.roomData[this.data.name];
+    this.roomData = global.roomData[this.data.name];
     if (!this.room || !this.roomData) {
       this.completed = true;
       console.log("Room: " + !this.room + " roomData " + !this.roomData);
+      console.log("Delete: " + this.data.name + " from myRooms");
       delete Memory.myRooms[this.data.name];
       return;
     }

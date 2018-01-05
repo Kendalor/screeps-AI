@@ -45,7 +45,6 @@ export class JobManager {
       Memory.JobManager = {};
     }
     this.readJobsFromMemory();
-    this.roomData = {};
     this.addJob("InitJob", InitJob, 99 , {});
     }
 
@@ -62,10 +61,12 @@ export class JobManager {
  public runJob() {
     const job = this.getJobWithPriority();
     try {
+      const tick = Game.cpu.getUsed();
       job.run();
-      //console.log("Did Run Job: " + job.name + " with Wait: " + job.wait + "and Priority: " + job.priority + " at " + Game.time);
+      const used = Game.cpu.getUsed() - tick;
+      console.log("Did Run Job: " + job.name + " Priority: " + job.priority + " at GameTime: " + Game.time + " used " + used + " CPU");
     } catch (e) {
-      job.complete();
+      //job.complete();
       console.log("job " + job.name + " failed with error " + e);
     }
     job.ticked = true;
@@ -79,10 +80,10 @@ export class JobManager {
    * @returns {Job}
    */
   public getJobWithPriority(): Job {
-    let jobs = _.filter(this.jobList, function(entry) {
+    const jobs = _.filter(this.jobList, function(entry) {
       return (!entry.ticked && entry.wait === false);
     });
-    return _.sortBy(jobs, "prority").reverse()[0];
+    return _.sortBy(jobs, "priority").reverse()[0];
  }
 
   /**

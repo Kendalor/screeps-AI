@@ -16,6 +16,7 @@ export class CreateRoomData extends Job {
   public run() {
     this.room = Game.rooms[this.data.name];
     if (!this.room) {
+      console.log("Couldn't Create RoomData for: " + this.data.name);
       this.completed = true;
       return;
     } else {
@@ -23,7 +24,7 @@ export class CreateRoomData extends Job {
         this.manager.roomData = {};
       }
       if (!this.manager.roomData[this.room.name]) {
-        this.manager.roomData[this.room.name] = new RoomData(this.room.name);
+        this.manager.roomData[this.room.name] = new RoomData(this.room.name)
       }
     }
     this.completed = true;

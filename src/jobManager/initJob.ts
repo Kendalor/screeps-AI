@@ -7,7 +7,7 @@ export class InitJob extends Job {
   public run() {
     this.cleanMemory();
     for (const i in Game.rooms) {
-      this.manager.addJob("CreateRoomData_" + i, CreateRoomData, 90, {name: i});
+      this.manager.addJob("CreateRoomData_" + i, CreateRoomData, 98, {name: i});
     }
     /*
     If Memroy.myRooms is not found add it and add every room with a spawn
@@ -21,7 +21,7 @@ export class InitJob extends Job {
       }
     }
     //Respawned? Delete Memory.myRooms
-    if (Game.time % 50 === 0){
+    if (Game.time % 5 === 0){
       if(Object.keys(Memory.myRooms).length === 0) {
         delete Memory.myRooms;
         delete Memory.JobManager.jobList;

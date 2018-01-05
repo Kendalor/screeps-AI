@@ -232,7 +232,6 @@ export class RoomData {
       } else {
         const temp = this.deserialize(Memory.rooms[this.room.name]._extensions);
         if (temp[1]) {
-          console.log(temp[0]);
           this._extensions = temp[0] as StructureExtension[];
         } else {
           this.buildExtensions();

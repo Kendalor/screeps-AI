@@ -26,6 +26,7 @@ export class IBUCreep extends Job {
     }
   }
 
+
   public spawnMe() {
     let body = [];
     switch (this.room.energyCapacityAvailable) {
