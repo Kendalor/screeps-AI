@@ -26,32 +26,21 @@ export class IBUCreep extends Job {
     }
   }
 
+  public getBody() {
+    const body: string[] = [];
+    let t = true;
+    while (t) {
+      body.push(MOVE, WORK, CARRY);
+      if (body.reduce(function(cost, part) {return cost + BODYPART_COST[part]; }, 0) > this.room.energyCapacityAvailable) {
+        t = false;
+      }
+      body.push(MOVE, WORK, CARRY);
+    }
+    return body;
+  }
 
   public spawnMe() {
-    let body = [];
-    switch (this.room.energyCapacityAvailable) {
-      case 300:
-        body = [WORK, MOVE, CARRY, CARRY, MOVE];
-        break;
-      case 550:
-        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, MOVE];
-        break;
-      case 600:
-        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE];
-        break;
-      case 800:
-        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE];
-        break;
-      case 1000:
-        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE];
-        break;
-      case 1200:
-        body = [WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE, WORK, CARRY, MOVE];
-        break;
-      default:
-        body = [WORK, MOVE, CARRY, CARRY, MOVE];
-        break;
-    }
+    const body = this.getBody();
     const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
     this.manager.addJobIfNotExist("BuildCreep_" + this.name, BuildCreep, 30, {body, spawns, name: this.name}, this.name);
     this.wait = true;
