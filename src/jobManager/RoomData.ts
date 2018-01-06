@@ -7,7 +7,7 @@ export class RoomData {
     this._numConstructionSites = this.room.memory._numConstructionSites;
     return this._numConstructionSites;
   }
-  public get repairDefense(): any[] {
+  public get repairDefense(): Structure[] {
     if (!this._repairDefense) {
       this._repairDefense = this.structures.filter(function(entry) {return ((entry.hits < entry.hitsMax * 0.1)  && (entry.structureType === (STRUCTURE_RAMPART || STRUCTURE_WALL))); });
     }
@@ -51,14 +51,17 @@ export class RoomData {
       let list = [];
       list = list.concat(this.extensions.filter(function(entry) {return (entry.energy < entry.energyCapacity); } ) ) ;
       list = list.concat(this.spawns.filter(function(entry) {return (entry.energy < entry.energyCapacity); } ) ) ;
+      list = list.concat(this.towers.filter(function(entry) {return (entry.energy < entry.energyCapacity); } ) ) ;
       this._supplyTargets = list;
     }
     return this._supplyTargets;
   }
-  public get repairBuildings(): any[] {
+  public get repairBuildings(): Structure[] {
     if (!this._repairBuildings) {
-      const list = [];
-      list.concat(this.structures.filter(function(entry) {return (entry.hits < entry.hitsMax) && ((entry.structureType !== (STRUCTURE_WALL || STRUCTURE_RAMPART ))) ; }));
+      let list = [];
+      list = list.concat(this.structures.filter(function(entry) {return (entry.hits < entry.hitsMax * 0.5) && ((entry.structureType !== (STRUCTURE_WALL || STRUCTURE_RAMPART ))) ; }));
+      console.log(list);
+      this._repairBuildings = list;
     }
     return this._repairBuildings;
   }
@@ -260,8 +263,8 @@ export class RoomData {
   private _roads: StructureRoad[];
   private _timeStamp: number;
   private _supplyTargets: any[];
-  private _repairBuildings: any[];
-  private _repairDefense: any[];
+  private _repairBuildings: Structure[];
+  private _repairDefense: Structure[];
 
   constructor(name: string) {
     this.room = Game.rooms[name];

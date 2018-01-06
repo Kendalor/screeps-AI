@@ -1,8 +1,7 @@
-import {BuildCreep} from "./BuildCreep";
-import {Job} from "./Job";
+import {CreepJob} from "./CreepJob";
 import {RoomData} from "./RoomData";
 
-export class IBUCreep extends Job {
+export class IBUCreep extends CreepJob {
   public type = "IBUCreep";
   public creep: Creep;
   public room: Room;
@@ -16,7 +15,8 @@ export class IBUCreep extends Job {
     this.roomData = this.manager.roomData[this.room.name];
     if (!this.creep) {
       const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
-      this.spawnMe(this.getBody(), spawns);
+      const body = this.getBody();
+      this.spawnMe(body, spawns);
     } else {
       if (!this.creep.spawning) {
         if (!this.data.mode) {
@@ -31,20 +31,15 @@ export class IBUCreep extends Job {
     const body: string[] = [];
     let t = true;
     while (t) {
-      if (body.reduce(function (cost, part) {
+      if (body.reduce(function(cost, part) {
           return cost + BODYPART_COST[part];
         }, 0) + 200 > this.room.energyCapacityAvailable) {
         t = false;
       } else {
         body.push(MOVE, CARRY, WORK);
       }
-      return body;
     }
-  }
-
-  public spawnMe(body, spawns) {
-    this.manager.addJobIfNotExist("BuildCreep_" + this.name, BuildCreep, 30, {body, spawns, name: this.name}, this.name);
-    this.wait = true;
+    return body;
   }
 
   public changeMode() {
@@ -55,10 +50,14 @@ export class IBUCreep extends Job {
         if ( this.room.energyAvailable < this.room.energyCapacityAvailable ) {
           this.data.mode = "supply";
         } else {
-          if ( this.roomData.constructionSites.length > 0) {
-            this.data.mode = "build";
+          if( this.roomData.repairBuildings.length > 0){
+            this.data.mode = "repair";
           } else {
-            this.data.mode = "upgrade";
+            if ( this.roomData.constructionSites.length > 0) {
+              this.data.mode = "build";
+            } else {
+              this.data.mode = "upgrade";
+            }
           }
         }
       }
@@ -81,8 +80,31 @@ export class IBUCreep extends Job {
       case "upgrade":
         this.upgrade();
         break;
+      case "repair":
+        this.repair();
       default:
         this.changeMode();
+        break;
+    }
+  }
+  public repair(): void {
+    const repairTarget: Structure = this.creep.pos.findClosestByRange(this.roomData.repairBuildings);
+    const err = this.creep.repair(repairTarget);
+    switch(err) {
+      case ERR_NOT_IN_RANGE:
+        this.smartMove(repairTarget);
+        break;
+      case OK:
+        break;
+      case ERR_NOT_ENOUGH_RESOURCES:
+        this.data.state = "harvest";
+        this.executeMode();
+        break;
+      case ERR_INVALID_TARGET:
+        this.changeMode();
+        break;
+      default:
+        console.log("Error in harvest for job: " + this.name + "Err: " + err);
         break;
     }
   }
@@ -115,7 +137,7 @@ export class IBUCreep extends Job {
       return;
     } else {
       if (this.creep.upgradeController(controller) === ERR_NOT_IN_RANGE) {
-        this.creep.moveTo(controller);
+        this.smartMove(controller);
       }
     }
   }
@@ -125,7 +147,7 @@ export class IBUCreep extends Job {
     const err = this.creep.build(target);
     switch (err) {
       case ERR_NOT_IN_RANGE:
-        this.creep.moveTo(target);
+        this.smartMove(target);
         break;
       case ERR_RCL_NOT_ENOUGH:
         this.data.mode = "upgrade";
@@ -137,14 +159,14 @@ export class IBUCreep extends Job {
   }
 
   public supply() {
-    const target = this.roomData.supplyTargets[0];
+    const target = this.creep.pos.findClosestByRange(this.roomData.supplyTargets);
     if (!target || !this.creep || (this.creep.carry[RESOURCE_ENERGY] === 0)) {
       this.changeMode();
     } else {
       const err = this.creep.transfer(target, RESOURCE_ENERGY);
       switch (err) {
         case ERR_NOT_IN_RANGE:
-          this.creep.moveTo(target);
+          this.smartMove(target);
           break;
         case ERR_FULL:
           break;
