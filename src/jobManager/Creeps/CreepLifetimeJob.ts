@@ -1,5 +1,5 @@
 import {CreepJob} from "./CreepJob";
-import {JobManager} from "./jobManager";
+import {JobManager} from "../jobManager";
 import {BuildCreep} from "./BuildCreep";
 
 export class CreepLifetimeJob extends CreepJob {

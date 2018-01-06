@@ -1,16 +1,14 @@
 import {CreepJob} from "./CreepJob";
-import {RoomData} from "./RoomData";
+import {RoomData} from "../Rooms/RoomData";
 
 export class IBUCreep extends CreepJob {
   public type = "IBUCreep";
-  public creep: Creep;
   public room: Room;
   public source: Source;
   public mode: string;
   public target: string;
   public roomData: RoomData;
   public run() {
-    this.creep = Game.creeps[this.name];
     this.room = Game.rooms[this.data.name];
     this.roomData = this.manager.roomData[this.room.name];
     if (!this.creep) {

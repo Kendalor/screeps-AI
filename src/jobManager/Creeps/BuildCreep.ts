@@ -1,5 +1,5 @@
 //TODO Add Check if spawns are sufficient to spawn the creep at all
-import {Job} from "./Job";
+import {Job} from "../Job";
 
 interface BuildCreepData {
   body: string[];

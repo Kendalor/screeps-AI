@@ -1,4 +1,4 @@
-import {Job} from "./Job";
+import {Job} from "../Job";
 
 export class CreepSupply extends Job {
   public type = "CreepSupply";

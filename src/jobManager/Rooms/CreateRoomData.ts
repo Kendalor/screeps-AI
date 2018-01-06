@@ -1,5 +1,5 @@
-///<reference path="../../typings/globals/node/index.d.ts"/>
-import {Job} from "./Job";
+///<reference path="../../../typings/globals/node/index.d.ts"/>
+import {Job} from "../Job";
 import {RoomData} from "./RoomData";
 
 /**

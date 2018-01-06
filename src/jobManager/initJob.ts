@@ -1,6 +1,6 @@
-import {CreateRoomData} from "./CreateRoomData";
+import {CreateRoomData} from "./Rooms/CreateRoomData";
 import {Job} from "./Job";
-import {RoomManager} from "./RoomManager";
+import {RoomManager} from "./Rooms/RoomManager";
 
 export class InitJob extends Job {
   public type= "InitJob";

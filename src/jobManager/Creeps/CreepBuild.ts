@@ -1,5 +1,5 @@
 import {CreepUpgrade} from "./CreepUpgrade";
-import {Job} from "./Job";
+import {Job} from "../Job";
 
 export class CreepBuild extends Job {
   public type = "CreepBuild";

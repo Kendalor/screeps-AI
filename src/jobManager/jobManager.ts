@@ -1,15 +1,15 @@
 
-import {IBUCreep} from "./IBUCreepJob";
+import {IBUCreep} from "./Creeps/IBUCreepJob";
 import {InitialBuildUpJob} from "./InitialBuildUpJob";
 import {InitJob} from "./initJob";
 import {Job} from "./Job";
-import {RoomManager} from "./RoomManager";
-import {BuildCreep} from "./BuildCreep";
-import {CreepHarvest} from "./CreepHarvest";
-import {CreepUpgrade} from "./CreepUpgrade";
-import {CreepBuild} from "./CreepBuild";
-import {CreepSupply} from "./CreepSupply";
-import {RoomData} from "./RoomData";
+import {RoomManager} from "./Rooms/RoomManager";
+import {BuildCreep} from "./Creeps/BuildCreep";
+import {CreepHarvest} from "./Creeps/CreepMiner";
+import {CreepUpgrade} from "./Creeps/CreepUpgrade";
+import {CreepBuild} from "./Creeps/CreepBuild";
+import {CreepSupply} from "./Creeps/CreepSupply";
+import {RoomData} from "./Rooms/RoomData";
 
 /**
  * LOokup Table for all classes used for jobs so Jobs can be initalized depending on the string in the seralizedJob variable in Memory

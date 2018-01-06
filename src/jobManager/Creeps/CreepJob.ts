@@ -1,6 +1,6 @@
 import {BuildCreep} from "./BuildCreep";
-import {Job} from "./Job";
-import {JobManager} from "./jobManager";
+import {Job} from "../Job";
+import {JobManager} from "../jobManager";
 
 export class CreepJob extends Job {
   public creep;

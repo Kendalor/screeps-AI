@@ -1,5 +1,5 @@
-import {Job} from "./Job";
-import {JobManager} from "./jobManager";
+import {Job} from "../Job";
+import {JobManager} from "../jobManager";
 import {RoomData} from "./RoomData";
 
 export class RoomJob extends Job {

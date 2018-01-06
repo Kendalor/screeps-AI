@@ -1,7 +1,7 @@
-import {HarvestJob} from "../../palleNew/HarvestJob";
-import {Upgrade} from "../Upgrade";
-import {Job} from "./Job";
-import {JobManager} from "./jobManager";
+import {HarvestJob} from "../../../palleNew/HarvestJob";
+import {Upgrade} from "../../Upgrade";
+import {Job} from "../Job";
+import {JobManager} from "../jobManager";
 
 export class RunCreeps extends Job {
   public type= "RunCreeps";

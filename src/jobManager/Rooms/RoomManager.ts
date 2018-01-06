@@ -1,5 +1,5 @@
-import {InitialBuildUpJob} from "./InitialBuildUpJob";
-import {Job} from "./Job";
+import {InitialBuildUpJob} from "../InitialBuildUpJob";
+import {Job} from "../Job";
 import {RoomData} from "./RoomData";
 
 /**
