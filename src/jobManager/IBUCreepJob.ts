@@ -28,16 +28,18 @@ export class IBUCreep extends Job {
   }
 
   public getBody() {
-    let body: string[] = [];
+    const body: string[] = [];
     let t = true;
     while (t) {
-      if (body.reduce(function(cost, part) {return cost + BODYPART_COST[part]; }, 0) + 200 > this.room.energyCapacityAvailable) {
+      if (body.reduce(function (cost, part) {
+          return cost + BODYPART_COST[part];
+        }, 0) + 200 > this.room.energyCapacityAvailable) {
         t = false;
       } else {
         body.push(MOVE, CARRY, WORK);
       }
+      return body;
     }
-    return body;
   }
 
   public spawnMe(body, spawns) {
