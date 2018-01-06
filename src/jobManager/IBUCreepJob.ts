@@ -15,7 +15,8 @@ export class IBUCreep extends Job {
     this.room = Game.rooms[this.data.name];
     this.roomData = this.manager.roomData[this.room.name];
     if (!this.creep) {
-      this.spawnMe();
+      const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
+      this.spawnMe(this.getBody(), spawns);
     } else {
       if (!this.creep.spawning) {
         if (!this.data.mode) {
@@ -27,21 +28,19 @@ export class IBUCreep extends Job {
   }
 
   public getBody() {
-    const body: string[] = [];
+    let body: string[] = [];
     let t = true;
     while (t) {
-      body.push(MOVE, WORK, CARRY);
-      if (body.reduce(function(cost, part) {return cost + BODYPART_COST[part]; }, 0) > this.room.energyCapacityAvailable) {
+      if (body.reduce(function(cost, part) {return cost + BODYPART_COST[part]; }, 0) + 200 > this.room.energyCapacityAvailable) {
         t = false;
+      } else {
+        body.push(MOVE, CARRY, WORK);
       }
-      body.push(MOVE, WORK, CARRY);
     }
     return body;
   }
 
-  public spawnMe() {
-    const body = this.getBody();
-    const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
+  public spawnMe(body, spawns) {
     this.manager.addJobIfNotExist("BuildCreep_" + this.name, BuildCreep, 30, {body, spawns, name: this.name}, this.name);
     this.wait = true;
   }
