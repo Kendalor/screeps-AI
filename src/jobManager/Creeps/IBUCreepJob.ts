@@ -12,8 +12,12 @@ export class IBUCreep extends CreepJob {
     this.room = Game.rooms[this.data.name];
     this.roomData = this.manager.roomData[this.room.name];
     if (!this.creep) {
+      console.log("Did Not found :");
+      console.log(this.creep.name);
+      console.log("Spawning");
       const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
       const body = this.getBody();
+      console.log("Spawning");
       this.spawnMe(body, spawns);
     } else {
       if (!this.creep.spawning) {

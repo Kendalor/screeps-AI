@@ -6,7 +6,7 @@ export class CreepJob extends Job {
   public creep;
   constructor(data: SerializedJob, manager: JobManager) {
     super(data, manager);
-    this.creep = Game.creeps[data.data.name];
+    this.creep = Game.creeps[this.name];
   }
   public spawnMe(body, spawns) {
     this.manager.addJobIfNotExist("BuildCreep_" + this.name, BuildCreep, 30, {body, spawns, name: this.name}, this.name);
