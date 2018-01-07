@@ -20,7 +20,7 @@ export class BuildCreep extends Job {
         if (result === OK) {
           this.completed = true;
           this.manager.getJob(this.parent).wait = false;
-          console.log("Set " + this.manager.getJob(this.parent).wait + " to false");
+          console.log("Set Wait of: " + this.parent + " from " + this.manager.getJob(this.parent).wait + " to " + " to false");
           break;
         }
       }
