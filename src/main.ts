@@ -6,7 +6,7 @@ global.verbose = false;
  */
 
 export const loop = function() {
-    //delete Memory.JobManager.jobList;
+    delete Memory.JobManager.jobList;
     //const bunker = new BunkerPlanner(Game.rooms["W2N5"]);
     //bunker.run();
     const manager = new JobManager();

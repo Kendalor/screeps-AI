@@ -11,16 +11,37 @@ export class MineSourceJob extends CreepLifetimeJob {
     super(data, manager);
     this.source = Game.getObjectById(this.data.source);
   }
-  public run() {
-    if (this.creep.room.name === this.homeRoom.name) {
-      if (!this.container) {
-        if (!this.roomData) {
-          this.roomData = this.manager.roomData[this.homeRoom.name];
-        }
-        this.container = this.roomData.sourceContainers[this.source.id];
+  public init() {
+    this.homeRoom = Game.rooms[this.data.name];
+    this.roomData = this.manager.roomData[this.homeRoom.name];
+  }
+
+  public getBody() {
+    const body: string[] = [MOVE,CARRY,WORK];
+    let t = true;
+    while (t) {
+      const cost = body.reduce(function(cost, part) { return cost + BODYPART_COST[part]; }, 0) + 100;
+      if ( (cost > this.homeRoom.energyCapacityAvailable)  && (cost < 700 )) {
+        t = false;
+      } else {
+        body.push(WORK);
       }
+    }
+    return body;
+  }
+  public run() {
+    this.init();
+    if (!this.creep) {
+      const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
+      const body = this.getBody();
+      this.spawnMe(body, spawns);
     } else {
-      this.smartMove(this.source);
+      if (!this.creep.spawning) {
+        if (!this.data.mode) {
+          this.changeMode();
+        }
+        this.executeMode();
+      }
     }
   }
   public executeMode() {
@@ -139,6 +160,6 @@ export class MineSourceJob extends CreepLifetimeJob {
     }
   }
   public transfer(){
-    
+
   }
 }
