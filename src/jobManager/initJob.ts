@@ -21,7 +21,7 @@ export class InitJob extends Job {
       }
     }
     //Respawned? Delete Memory.myRooms
-    if (Game.time % 5 === 0){
+    if (Game.time % 5 === 0) {
       if(Object.keys(Memory.myRooms).length === 0) {
         delete Memory.myRooms;
         delete Memory.JobManager.jobList;

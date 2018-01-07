@@ -1,6 +1,6 @@
-import {Job} from "./Job";
-import {IBUCreep} from "./Creeps/IBUCreepJob";
-import {RoomData} from "./Rooms/RoomData";
+import {Job} from "../Job";
+import {IBUCreep} from "../Creeps/IBUCreepJob";
+import {RoomData} from "../Rooms/RoomData";
 
 export class InitialBuildUpJob extends Job {
   public type = "IBU";

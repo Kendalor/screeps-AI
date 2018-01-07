@@ -1,14 +1,10 @@
 
 import {IBUCreep} from "./Creeps/IBUCreepJob";
-import {InitialBuildUpJob} from "./InitialBuildUpJob";
+import {InitialBuildUpJob} from "./Managers/InitialBuildUpJob";
 import {InitJob} from "./initJob";
 import {Job} from "./Job";
 import {RoomManager} from "./Rooms/RoomManager";
 import {BuildCreep} from "./Creeps/BuildCreep";
-import {CreepHarvest} from "./Creeps/CreepMiner";
-import {CreepUpgrade} from "./Creeps/CreepUpgrade";
-import {CreepBuild} from "./Creeps/CreepBuild";
-import {CreepSupply} from "./Creeps/CreepSupply";
 import {RoomData} from "./Rooms/RoomData";
 
 /**
@@ -21,10 +17,6 @@ export const jobTypes = {
   "IBU": InitialBuildUpJob,
   "IBUCreep": IBUCreep,
   "BuildCreep": BuildCreep,
-  "CreepHarvest": CreepHarvest,
-  "CreepBuild": CreepBuild,
-  "CreepSupply": CreepSupply,
-  "CreepUpgrade": CreepUpgrade,
 } as {[type: string]: any};
 
 interface JobList {
@@ -70,6 +62,7 @@ export class JobManager {
     } catch (e) {
       //job.complete();
       console.log("job " + job.name + " failed with error " + e);
+      console.log(e.stack);
     }
     job.ticked = true;
  }

@@ -8,6 +8,6 @@ export class RoomJob extends Job {
   constructor(data: SerializedJob, manager: JobManager) {
     super(data, manager);
     this.room = Game.rooms[data.data.name];
-    this.roomData = this.manager.roomData[this.room.name];
+    //this.roomData = this.manager.roomData[this.room.name];
   }
 }

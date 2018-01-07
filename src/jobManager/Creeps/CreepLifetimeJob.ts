@@ -7,7 +7,7 @@ export class CreepLifetimeJob extends CreepJob {
   public homeRoom: Room;
   constructor(data: SerializedJob, manager: JobManager) {
     super(data, manager);
-    this.homeRoom = Game.rooms[data.data.name];
+    this.homeRoom = Game.rooms[data.data.homeRoom];
   }
 
   public spawnMe(body, spawns) {

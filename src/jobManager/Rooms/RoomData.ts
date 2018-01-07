@@ -1,5 +1,27 @@
 
 export class RoomData {
+  get sourceContainers(): { [p: string]: any } {
+    if ( !this._sourceContainers) {
+      if (!this.room.memory._sourceContainers) {
+        this.buildSourceContainers();
+      } else {
+        for(let i in this.room.memory.sourceContainers){
+          if(this.room.memory.sourceContainers[i] === undefined) {
+            this._sourceContainers[i] = undefined;
+          } else {
+            const item = Game.getObjectById(this.room.memory.sourceContainers);
+            if( item !== undefined) {
+              this._sourceContainers[i] = item;
+            } else {
+              this.buildSourceContainers();
+              return this._sourceContainers;
+            }
+          }
+        }
+      }
+    }
+    return this._sourceContainers;
+  }
   get numConstructionSites(): number {
     if (!this.room.memory._numConstructionSites) {
       this.room.memory._numConstructionSites = Object.keys(Game.constructionSites).length;
@@ -257,6 +279,7 @@ export class RoomData {
   private _walls: StructureWall[];
   private _ramparts: StructureRampart[];
   private _sources: Source[];
+  private _sourceContainers: {[key: string]: any}
   private _mineral: Mineral[];
   private _sourceSlots: {[key: string]: number};
   private _constructionSites: ConstructionSite[];
@@ -366,7 +389,24 @@ export class RoomData {
     Game.rooms[this.room.name].memory._mineral = this.seralize(this._mineral);
   }
   public buildSourceContainers(): void {
-    //TODO
+    const sourceContainers = {};
+    this.room.memory._sourceContainers = {};
+    for(const i in this.sources) {
+      const links = this.sources[i].pos.findInRange(this.links, 1);
+      if(links.length > 0) {
+        sourceContainers[this.sources[i].id] = links[0].id;
+        this.room.memory._sourceContainers[this.sources[i].id] = links[0].id;
+      } else {
+        const container = this.sources[i].pos.findInRange(this.containers, 1);
+        if(container.length > 0) {
+          sourceContainers[this.sources[i].id] = container[0].id;
+          this.room.memory._sourceContainers[this.sources[i].id] = container[0].id;
+        }
+        sourceContainers[this.sources[i].id] = undefined;
+        this.room.memory._sourceContainers[this.sources[i].id] = undefined;
+      }
+    }
+    this._sourceContainers = sourceContainers;
   }
 
   public buildSourceSlots(): void {
