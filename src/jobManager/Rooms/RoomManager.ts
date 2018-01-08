@@ -23,7 +23,7 @@ export class RoomManager extends Job {
       return;
     }
 
-    if (this.room.controller.my && !this.room.storage) {
+    if (this.room.controller.my) {
       this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
     }
     this.completed = true;

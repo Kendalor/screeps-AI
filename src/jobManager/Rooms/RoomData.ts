@@ -60,7 +60,6 @@ export class RoomData {
     if (!this._repairBuildings) {
       let list = [];
       list = list.concat(this.structures.filter(function(entry) {return (entry.hits < entry.hitsMax * 0.5) && ((entry.structureType !== (STRUCTURE_WALL || STRUCTURE_RAMPART ))) ; }));
-      console.log(list);
       this._repairBuildings = list;
     }
     return this._repairBuildings;

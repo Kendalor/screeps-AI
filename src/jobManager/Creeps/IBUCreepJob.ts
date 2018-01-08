@@ -108,14 +108,15 @@ export class IBUCreep extends CreepJob {
       case OK:
         break;
       case ERR_NOT_ENOUGH_RESOURCES:
-        this.data.state = "harvest";
+        this.data.mode = "harvest";
         this.executeMode();
         break;
       case ERR_INVALID_TARGET:
         this.changeMode();
         break;
       default:
-        console.log("Error in harvest for job: " + this.name + "Err: " + err);
+        console.log("Error in harvest for job: ")
+        console.log(this.name + "Err: " + err);
         break;
     }
   }
