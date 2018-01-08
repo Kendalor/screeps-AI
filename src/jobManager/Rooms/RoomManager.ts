@@ -13,12 +13,13 @@ export class RoomManager extends RoomJob {
     this.room = Game.rooms[this.data.name];
     this.roomData = this.manager.roomData[this.data.name];
     this.checkIfStillMyRoom();
+    this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
 
     //IF storage does not exist use Initial BuildUp
-    if (this.room.controller.my && !this.room.storage) {
-      this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
-    } else {
+    if (this.room.controller.my && this.room.storage) {
       this.manager.addJobIfNotExist("MiningManager_" + this.room.name, 70, 60, {name: this.room.name}, this.name);
+    } else {
+      this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
     }
   }
 

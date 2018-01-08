@@ -6,6 +6,8 @@ import {Job} from "./Job";
 import {RoomManager} from "./Rooms/RoomManager";
 import {BuildCreep} from "./Creeps/BuildCreep";
 import {RoomData} from "./Rooms/RoomData";
+import {MiningManager} from "./Managers/MiningManager";
+import {MineSourceJob} from "./Creeps/MineSourceJob";
 
 /**
  * LOokup Table for all classes used for jobs so Jobs can be initalized depending on the string in the seralizedJob variable in Memory
@@ -17,6 +19,8 @@ export const jobTypes = {
   "IBU": InitialBuildUpJob,
   "IBUCreep": IBUCreep,
   "BuildCreep": BuildCreep,
+  "MineSourceJob": MineSourceJob,
+  "MiningManager": MiningManager
 } as {[type: string]: any};
 
 interface JobList {

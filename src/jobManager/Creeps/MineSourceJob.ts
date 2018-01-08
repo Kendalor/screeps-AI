@@ -3,7 +3,7 @@ import {RoomData} from "../Rooms/RoomData";
 import {CreepLifetimeJob} from "./CreepLifetimeJob";
 
 export class MineSourceJob extends CreepLifetimeJob {
-  public type = "CreepHarvest";
+  public type = "MineSourceJob";
   public source: Source;
   public container: StructureContainer;
   public roomData: RoomData;
@@ -17,7 +17,7 @@ export class MineSourceJob extends CreepLifetimeJob {
   }
 
   public getBody() {
-    const body: string[] = [MOVE,CARRY,WORK];
+    const body: string[] = [MOVE, CARRY, WORK, WORK];
     let t = true;
     while (t) {
       const cost = body.reduce(function(cost, part) { return cost + BODYPART_COST[part]; }, 0) + 100;
@@ -134,7 +134,7 @@ export class MineSourceJob extends CreepLifetimeJob {
   }
 
   public build() {
-    let target = Game.getObjectById(this.data.constructionSites);
+    let target = Game.getObjectById(this.data.constructionSite);
     if (!target) {
       const constructionSites = this.source.pos.findInRange(this.roomData.constructionSites, 1).filter((i) => i.structureType === (STRUCTURE_CONTAINER || STRUCTURE_LINK));
       if (constructionSites.length > 0) {
@@ -159,7 +159,22 @@ export class MineSourceJob extends CreepLifetimeJob {
       }
     }
   }
-  public transfer(){
+  public transfer() {
+    if (!this.container) {
+      this.data.mode = "build";
+    } else {
+      const err = this.creep.transfer(this.container);
+      switch (err) {
+        case ERR_NOT_IN_RANGE:
+          this.smartMove(target);
+          break;
+        case ERR_FULL:
+          break;
+        default:
+          this.changeMode();
+          break;
+      }
+    }
 
   }
 }
