@@ -10,7 +10,7 @@ export class CreepJob extends Job {
   }
   public spawnMe(body, spawns) {
     console.log( "Used Spawnme Function: ");
-    this.manager.addJobIfNotExist("BuildCreep_" + this.name, BuildCreep, 30, {body, spawns, name: this.name}, this.name);
+    this.manager.addJobIfNotExist("BuildCreep_" + this.name, BuildCreep, this.priority - 1, {body, spawns, name: this.name}, this.name);
     console.log("Setting wait to True for: " + this.name);
     this.wait = true;
   }
