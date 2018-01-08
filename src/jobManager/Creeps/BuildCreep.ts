@@ -12,6 +12,13 @@ export class BuildCreep extends Job {
   public data: BuildCreepData;
   public spawns: Spawn[];
   public run() {
+    if(!this.data.age){
+      this.data.age = Game.time;
+    } else {
+      if (this.data.age > 1000){
+        this.data.body = [WORK,MOVE,MOVE,CARRY,CARRY];
+      }
+    }
     this.spawns = this.data.spawns.map(function(entry) {return Game.getObjectById(entry); });
     for (const i in this.spawns) {
       const spawn = this.spawns[i];
