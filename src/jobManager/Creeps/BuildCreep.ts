@@ -18,9 +18,8 @@ export class BuildCreep extends Job {
       if (!spawn.spawning && spawn.spawnCreep(this.data.body, this.data.name, {dryRun: true}) === OK ) {
         const result = spawn.spawnCreep(this.data.body, this.data.name);
         if (result === OK) {
-          this.completed = true;
-          this.manager.getJob(this.parent).wait = false;
           console.log("Set Wait of: " + this.parent + " from " + this.manager.getJob(this.parent).wait + " to " + " to false");
+          this.complete();
           break;
         }
       }

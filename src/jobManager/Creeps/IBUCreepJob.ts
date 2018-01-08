@@ -31,11 +31,21 @@ export class IBUCreep extends CreepJob {
     while (t) {
       if (body.reduce(function(cost, part) {
           return cost + BODYPART_COST[part];
-        }, 0) + 200 > this.room.energyCapacityAvailable) {
+        }, 0) + 150 > this.room.energyCapacityAvailable) {
         t = false;
+        break;
       } else {
-        body.push(MOVE, CARRY, WORK);
+        body.push(MOVE, WORK);
       }
+      if (body.reduce(function(cost, part) {
+          return cost + BODYPART_COST[part];
+        }, 0) + 50 > this.room.energyCapacityAvailable) {
+        t = false;
+        break;
+      } else {
+        body.push(CARRY);
+      }
+
     }
     return body;
   }
