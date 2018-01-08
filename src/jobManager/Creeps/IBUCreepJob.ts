@@ -8,9 +8,12 @@ export class IBUCreep extends CreepJob {
   public mode: string;
   public target: string;
   public roomData: RoomData;
-  public run() {
+  public init() {
     this.room = Game.rooms[this.data.name];
     this.roomData = this.manager.roomData[this.room.name];
+  }
+  public run() {
+    this.init();
     if (!this.creep) {
       const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
       const body = this.getBody();
@@ -31,11 +34,21 @@ export class IBUCreep extends CreepJob {
     while (t) {
       if (body.reduce(function(cost, part) {
           return cost + BODYPART_COST[part];
-        }, 0) + 200 > this.room.energyCapacityAvailable) {
+        }, 0) + 150 > this.room.energyCapacityAvailable) {
         t = false;
+        break;
       } else {
-        body.push(MOVE, CARRY, WORK);
+        body.push(MOVE, WORK);
       }
+      if (body.reduce(function(cost, part) {
+          return cost + BODYPART_COST[part];
+        }, 0) + 50 > this.room.energyCapacityAvailable) {
+        t = false;
+        break;
+      } else {
+        body.push(CARRY);
+      }
+
     }
     return body;
   }
@@ -95,14 +108,15 @@ export class IBUCreep extends CreepJob {
       case OK:
         break;
       case ERR_NOT_ENOUGH_RESOURCES:
-        this.data.state = "harvest";
+        this.data.mode = "harvest";
         this.executeMode();
         break;
       case ERR_INVALID_TARGET:
         this.changeMode();
         break;
       default:
-        console.log("Error in harvest for job: " + this.name + "Err: " + err);
+        console.log("Error in harvest for job: ")
+        console.log(this.name + "Err: " + err);
         break;
     }
   }
