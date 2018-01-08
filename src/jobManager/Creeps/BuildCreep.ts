@@ -5,6 +5,7 @@ interface BuildCreepData {
   body: string[];
   spawns: string[];
   name: string;
+  age: number;
 }
 
 export class BuildCreep extends Job {
@@ -15,9 +16,14 @@ export class BuildCreep extends Job {
     if(!this.data.age){
       this.data.age = Game.time;
     } else {
-      if (this.data.age > 1000){
+      if (this.data.age + 1000 < Game.time) {
         this.data.body = [WORK,MOVE,MOVE,CARRY,CARRY];
       }
+    }
+    if(Game.creeps[this.data.name]){
+      console.log("Set Wait of: " + this.parent + " from " + this.manager.getJob(this.parent).wait + " to " + " to false");
+      this.complete();
+      return;
     }
     this.spawns = this.data.spawns.map(function(entry) {return Game.getObjectById(entry); });
     for (const i in this.spawns) {
@@ -25,8 +31,6 @@ export class BuildCreep extends Job {
       if (!spawn.spawning && spawn.spawnCreep(this.data.body, this.data.name, {dryRun: true}) === OK ) {
         const result = spawn.spawnCreep(this.data.body, this.data.name);
         if (result === OK) {
-          console.log("Set Wait of: " + this.parent + " from " + this.manager.getJob(this.parent).wait + " to " + " to false");
-          this.complete();
           break;
         }
       }

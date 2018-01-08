@@ -70,7 +70,7 @@ export class JobManager {
     } catch (e) {
       //job.complete();
       console.log("job " + job.name + " failed with error " + e);
-      //console.log(e.stack);
+      console.log(e.stack);
     }
     job.ticked = true;
  }

@@ -13,6 +13,7 @@ export class IBUCreep extends CreepJob {
     this.roomData = this.manager.roomData[this.room.name];
   }
   public run() {
+    this.init();
     if (!this.creep) {
       const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
       const body = this.getBody();
