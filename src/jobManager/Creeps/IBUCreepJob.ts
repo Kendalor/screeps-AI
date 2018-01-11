@@ -8,24 +8,30 @@ export class IBUCreep extends CreepJob {
   public mode: string;
   public target: string;
   public roomData: RoomData;
+
   public init() {
     this.room = Game.rooms[this.data.name];
     this.roomData = this.manager.roomData[this.room.name];
   }
   public run() {
     this.init();
-    if (!this.creep) {
-      const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
-      const body = this.getBody();
-      this.spawnMe(body, spawns);
+    if (this.room.storage.store[RESOURCE_ENERGY] > 5000) {
+      this.complete();
     } else {
-      if (!this.creep.spawning) {
-        if (!this.data.mode) {
-          this.changeMode();
+      if (!this.creep) {
+        const spawns = this.roomData.spawns.map(function(entry) {return entry.id; });
+        const body = this.getBody();
+        this.spawnMe(body, spawns);
+      } else {
+        if (!this.creep.spawning) {
+          if (!this.data.mode) {
+            this.changeMode();
+          }
+          this.executeMode();
         }
-        this.executeMode();
       }
     }
+
   }
 
   public getBody() {
@@ -93,6 +99,9 @@ export class IBUCreep extends CreepJob {
         break;
       case "repair":
         this.repair();
+      case "fetch":
+        this.fetch();
+        break;
       default:
         this.changeMode();
         break;
@@ -120,8 +129,32 @@ export class IBUCreep extends CreepJob {
         break;
     }
   }
-
+  public fetch() {
+    if (!this.room.storage) {
+      this.data.mode = "harvest";
+      return;
+    }
+    const err = this.creep.withdraw(this.room.storage, RESOURCE_ENERGY);
+    switch (err) {
+      case OK:
+        break;
+      case ERR_NOT_IN_RANGE:
+        this.smartMove(this.room.storage);
+        break;
+      case ERR_FULL:
+        this.changeMode();
+        this.executeMode();
+        break;
+      default:
+        console.log("Error in: " + this.name + " err: " + err);
+        break;
+    }
+  }
   public harvest() {
+    if (this.room.storage.store[RESOURCE_ENERGY] > 0){
+      this.data.mode = "fetch";
+      this.executeMode();
+    }
     if (!this.source) {
       this.source = Game.getObjectById(this.data.source);
     }

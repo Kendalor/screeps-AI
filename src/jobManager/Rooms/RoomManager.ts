@@ -1,5 +1,7 @@
 import {InitialBuildUpJob} from "../Managers/InitialBuildUpJob";
 import {RoomJob} from "./RoomJob";
+import {MiningManager} from "../Managers/MiningManager";
+import {SupplyJob} from "../Creeps/SupplyJob";
 
 /**
  * RoomManager Class
@@ -13,13 +15,17 @@ export class RoomManager extends RoomJob {
     this.room = Game.rooms[this.data.name];
     this.roomData = this.manager.roomData[this.data.name];
     this.checkIfStillMyRoom();
-    this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
 
     //IF storage does not exist use Initial BuildUp
+    this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name}, this.name);
     if (this.room.controller.my && this.room.storage) {
-      this.manager.addJobIfNotExist("MiningManager_" + this.room.name, 70, 60, {name: this.room.name}, this.name);
+      this.manager.addJobIfNotExist("MiningManager_" + this.room.name, MiningManager, 60, {name: this.room.name}, this.name);
+    }
+    if (this.room.storage.store[RESOURCE_ENERGY] < 5000) {
+      this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name}, this.name);
     } else {
-      this.manager.addJobIfNotExist("IBU_" + this.room.name, InitialBuildUpJob, 60, {name: this.room.name});
+      console.log("Adding Supply Job");
+      this.manager.addJobIfNotExist("Supply_" + this.room.name, SupplyJob, 71, {name: this.room.name, storage: this.room.storage.id}, this.name);
     }
   }
 

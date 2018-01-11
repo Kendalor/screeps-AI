@@ -16,7 +16,7 @@ export class BuildCreep extends Job {
     if(!this.data.age){
       this.data.age = Game.time;
     } else {
-      if (this.data.age + 1000 < Game.time) {
+      if (this.data.age + 150 < Game.time) {
         this.data.body = [WORK,MOVE,MOVE,CARRY,CARRY];
       }
     }

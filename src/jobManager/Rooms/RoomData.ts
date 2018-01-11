@@ -2,15 +2,17 @@
 export class RoomData {
   get sourceContainers(): { [p: string]: any } {
     if ( !this._sourceContainers) {
+      this._sourceContainers = {};
+      console.log(!this.room.memory._sourceContainers);
       if (!this.room.memory._sourceContainers) {
         this.buildSourceContainers();
       } else {
-        for(let i in this.room.memory.sourceContainers){
-          if(this.room.memory.sourceContainers[i] === undefined) {
+        for (const i in this.room.memory._sourceContainers) {
+          if (this.room.memory._sourceContainers[i] === undefined) {
             this._sourceContainers[i] = undefined;
           } else {
-            const item = Game.getObjectById(this.room.memory.sourceContainers);
-            if( item !== undefined) {
+            const item = Game.getObjectById(this.room.memory._sourceContainers[i]);
+            if (item) {
               this._sourceContainers[i] = item;
             } else {
               this.buildSourceContainers();
@@ -391,7 +393,7 @@ export class RoomData {
     const sourceContainers = {};
     this.room.memory._sourceContainers = {};
     for(const i in this.sources) {
-      const links = this.sources[i].pos.findInRange(this.links, 1);
+      const links = this.sources[i].pos.findInRange(this.links, 2);
       if(links.length > 0) {
         sourceContainers[this.sources[i].id] = links[0].id;
         this.room.memory._sourceContainers[this.sources[i].id] = links[0].id;
@@ -400,9 +402,10 @@ export class RoomData {
         if(container.length > 0) {
           sourceContainers[this.sources[i].id] = container[0].id;
           this.room.memory._sourceContainers[this.sources[i].id] = container[0].id;
+        } else {
+          sourceContainers[this.sources[i].id] = undefined;
+          this.room.memory._sourceContainers[this.sources[i].id] = undefined;
         }
-        sourceContainers[this.sources[i].id] = undefined;
-        this.room.memory._sourceContainers[this.sources[i].id] = undefined;
       }
     }
     this._sourceContainers = sourceContainers;

@@ -2,8 +2,17 @@ import {JobManager} from "../jobManager";
 import {RoomData} from "../Rooms/RoomData";
 import {CreepLifetimeJob} from "./CreepLifetimeJob";
 
+interface MinerSourceJobData {
+  source: string;
+  container: string | undefined;
+  name: string;
+  constructionSite: string | undefined;
+  mode: string;
+}
+
 export class MineSourceJob extends CreepLifetimeJob {
   public type = "MineSourceJob";
+  public data: MinerSourceJobData;
   public source: Source;
   public container: StructureContainer;
   public roomData: RoomData;
@@ -14,6 +23,7 @@ export class MineSourceJob extends CreepLifetimeJob {
   public init() {
     this.homeRoom = Game.rooms[this.data.name];
     this.roomData = this.manager.roomData[this.homeRoom.name];
+    this.container = this.roomData.sourceContainers[this.source.id];
   }
 
   public getBody() {
@@ -21,7 +31,7 @@ export class MineSourceJob extends CreepLifetimeJob {
     let t = true;
     while (t) {
       const cost = body.reduce(function(cost, part) { return cost + BODYPART_COST[part]; }, 0) + 100;
-      if ( (cost > this.homeRoom.energyCapacityAvailable)  && (cost < 700 )) {
+      if ( (cost > this.homeRoom.energyCapacityAvailable)  || (cost > 700 )) {
         t = false;
       } else {
         body.push(WORK);
@@ -49,7 +59,7 @@ export class MineSourceJob extends CreepLifetimeJob {
         case "spawning":
           this.changeMode();
           break;
-        case "mining":
+        case "harvest":
           this.harvest();
           break;
         case "build":
@@ -76,12 +86,9 @@ export class MineSourceJob extends CreepLifetimeJob {
         this.data.mode = "harvest";
         return;
       }
-      if (!this.data.container) {
-        this.data.mode = "build";
-        return;
-      }
       if (this.container.hits < this.container.hitsMax - 10000) {
         this.data.mode = "repair";
+        return;
       }
       if (_.sum(this.creep.carry) > 0) {
         this.data.mode = "transfer";
@@ -136,6 +143,14 @@ export class MineSourceJob extends CreepLifetimeJob {
   public build() {
     let target = Game.getObjectById(this.data.constructionSite);
     if (!target) {
+      delete this.data.constructionSite;
+      const container = this.source.pos.findInRange(this.roomData.containers,2).filter( (i) => i.structureType === (STRUCTURE_CONTAINER || STRUCTURE_LINK) );
+      if(container.length > 0) {
+        this.roomData.buildSourceContainers();
+        this.container = this.roomData.sourceContainers[this.source.id];
+        this.data.container = this.roomData.sourceContainers[this.source.id];
+        this.data.mode = "harvest";
+      }
       const constructionSites = this.source.pos.findInRange(this.roomData.constructionSites, 1).filter((i) => i.structureType === (STRUCTURE_CONTAINER || STRUCTURE_LINK));
       if (constructionSites.length > 0) {
         target = constructionSites[0];
@@ -152,21 +167,25 @@ export class MineSourceJob extends CreepLifetimeJob {
         case OK:
           break;
         case ERR_NOT_ENOUGH_RESOURCES:
-          this.changeMode();
+          this.data.mode = "harvest";
           break;
+        case ERR_INVALID_TARGET:
+
         default:
           console.log("Error for: " + this.creep.name + " with err: " + err);
       }
     }
   }
   public transfer() {
-    if (!this.container) {
+    const container = Game.getObjectById(this.data.container);
+    if (!container) {
       this.data.mode = "build";
     } else {
-      const err = this.creep.transfer(this.container);
+      const err = this.creep.transfer(container, RESOURCE_ENERGY);
+      console.log(err);
       switch (err) {
         case ERR_NOT_IN_RANGE:
-          this.smartMove(target);
+          this.smartMove(container);
           break;
         case ERR_FULL:
           break;
