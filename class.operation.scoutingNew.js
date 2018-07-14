@@ -16,49 +16,14 @@ module.exports = class{
         constructor(){
         }
         static run(id){
-            var spawnName = 'Spawn8';
-            // tank
-            //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,TOUGH];
-            // scout
-            var creep_body = [MOVE];
-            //var creep_body = [MOVE,CLAIM];
-            //var creep_body = [MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM,CLAIM];
-            if(!this.checkForDelete(id)){ // RUN ONLY IF APPLICABLE
-                if(!Memory.operations[id].creep){ //DOES THIS OPERATION ALREADY HAVE A CREEP?
-                    if(Game.spawns[spawnName].canSpawnCreep(creep_body,undefined,{role: 'scout', operation_id: id}) == OK){// NO SPAWN IT IF POSSIBLE !
-                        var name=Game.spawns[spawnName].createCreep(creep_body,undefined,{role: 'scout', operation_id: id});
-                        var creep=Game.creeps[name];
-                        Memory.operations[id].creep=name;
-                    }
-                }else if(!Game.creeps[Memory.operations[id].creep]){
-                    delete Memory.operations[id].creep;
-
-                }else if(!Game.creeps[Memory.operations[id].creep].spawning){ //IF CREEP FINISHED SPAWNING
-                
-                    var creep= Game.creeps[Memory.operations[id].creep];
-					var flag = Game.flags[Memory.operations[id].flagName];
-					//if (!creep.clearSign()){
-					if (!creep.makeScreepsPinkAgain()){
-						if(!creep.inRangeTo(flag,0)){
-							creep.journeyTo(flag);
-						}
-					}
-					/* ATTACK CONTROLLER
-                    if(creep.room.pos == Game.flags[Memory.operations[id].flagName].pos){
-                        //Game.flags[Memory.operations[id].flagName].remove();
-                        var contr = creep.room.controller;
-                        var uName = contr.owner.username;
-                        if(uName === undefined){
-                            creep.claimController(contr);
-                        }else if(uName != "Palle"){
-                            creep.attackController(contr);
-                        }
-                    }
-                    */
-                }
-            }
+			
+		}
+		static creepHandle(creep,id){
+			
+		}
+		static buildCreeps(id){
+            
         }
-
         static init(roomName,flag){
             if(!Game.flags[flag].memory.operation_id){
                 if(!Memory.operations){
@@ -84,11 +49,72 @@ module.exports = class{
                 //DEFINE ALL OP VARIABLES HERE
                 Memory.operations[this.id].roomName=roomName;
                 Memory.operations[this.id].flagName=flag;
+                Memory.operations[this.id].flagPos= Game.flags[flag].pos;
                 Memory.operations[this.id].permanent=false;
                 Memory.operations[this.id].type='scouting';
-                console.log(JSON.stringify(Memory.operations[this.id]));
+                Memory.operations[this.id].size=1;
+				Memory.operations[this.id].default_Abody=Array(1).fill(MOVE,0,1);// COST 50
+                Memory.operations[this.id].SpawnList=this.findClosestSpawn(roomName);
+                Memory.operations[this.id].members={};
+
+
+                //console.log(JSON.stringify(Memory.operations[this.id]));
             }
         }
+		
+// DONT
+// MODIFY
+// FUNCTIONS
+// BELOW HERE
+// THEY ARE FOR  FUTURE PROTOTYPES
+
+
+        static findClosestSpawn(targetRoomName,addDistance=0){
+            var min_dist=999;
+            var spawnList=[];
+            for(var i in Memory.myRooms){
+                if(min_dist > Object.keys(Game.map.findRoute(targetRoomName,i)).length){
+                    min_dist=Object.keys(Game.map.findRoute(targetRoomName,i)).length;
+                }
+            }
+            min_dist +=addDistance;
+            for(var j in Game.spawns){
+                let dist=Object.keys(Game.map.findRoute(targetRoomName,Game.spawns[j].pos.roomName)).length;;
+                if(min_dist >= Object.keys(Game.map.findRoute(Game.spawns[j].pos.roomName,targetRoomName)).length){
+                    spawnList.push(j);
+                }
+            }
+            return spawnList;
+        }
+
+        static creepBuilder(spawnList,memberList,size,body,memory){
+            var out=memberList;
+            if(Object.keys(out).length < size){
+                for(var i in spawnList){
+                    var spawn=Game.spawns[spawnList[i]];
+                    if(spawn.spawning == null){
+                        if(Object.keys(out).length < size){
+                            if(spawn.canCreateCreep(body, undefined, memory) == OK){
+                                var name=spawn.createCreep(body,undefined,memory);
+                                out[name]= {};
+                            }
+                        }
+                    }
+                }
+            }
+            return out;
+        }
+
+        static cleanUpCreeps(members){
+            var temp=members;
+            for(var i in temp){
+                if(!Game.creeps[i]){
+                    delete temp[i];
+                }
+            }
+            return temp;
+        }
+
         // CHECK IF ID IS AVAILABLE
         static isIdFree(id){
             var out=true;
@@ -96,9 +122,11 @@ module.exports = class{
                 if(Memory.operations[id]){
                     out= false;
                 }
+
             }
             return out;
         }
+        // CHECK IF FLAG IS STILL EXISITING, IF NOT => DELETE OPERATION IF NOT PERMANENT
         static checkForDelete(id){
             var flagname =  Memory.operations[id].flagName;
             if(!Game.flags[flagname] && !Memory.operations[id].permanent){

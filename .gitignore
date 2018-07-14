@@ -2,3 +2,7 @@
 .sync
 .idea/
 *.xml
+node_modules
+*.ts
+*.lock
+*.json
