@@ -1,15 +1,25 @@
 // example declaration file - remove these and add your own custom typings
 
 // memory extension samples
-interface CreepMemory {
-  role: string;
-  room: string;
-  working: boolean;
+interface Memory {
+  [name: string]: any;
+  creeps: { [name: string]: CreepMemory };
+  flags: { [name: string]: FlagMemory };
+  rooms: { [name: string]: RoomMemory };
+  spawns: { [name: string]: SpawnMemory };
 }
 
-interface Memory {
-  uuid: number;
-  log: any;
+interface CreepMemory {
+  [name: string]: any;
+}
+interface FlagMemory {
+  [name: string]: any;
+}
+interface RoomMemory {
+  [name: string]: any;
+}
+interface SpawnMemory {
+  [name: string]: any;
 }
 
 // `global` extension samples
