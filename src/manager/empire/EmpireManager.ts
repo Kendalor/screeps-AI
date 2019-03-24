@@ -1,23 +1,24 @@
 import {EmpireConfig} from "manager/empire/EmpireConfig";
-import { Manager } from "manager/Manager";
-import { RoomManager } from "manager/room/RoomManager";
+import {RoomManager} from "manager/empire/RoomManager";
 
-export class EmpireManager extends Manager<EmpireConfig> {
-
+export class EmpireManager  {
+    public config: EmpireConfig;
     constructor(){
-        super(EmpireConfig);
+       this.config= new EmpireConfig();
     }
     
     public run(): void{
+        console.log("Empire Manager doing Stuff ");
         const rooms: string[] = Object.keys(this.config.myRooms);
         for (const room in rooms){
-            console.log("Empire Manager doing Stuff ");
-            const roomManager = new RoomManager(this, rooms[room]);
+            const roomManager = new RoomManager(rooms[room]);
             roomManager.run();
-            roomManager.destroy();
         }
     }
-
+    /*
+     Increments a counter if no creeps are alive and only one room is owned
+    If counter reaches a threshold the  Memory of the Empire is reset. 
+    */
     public detectSpawn(): boolean {
         const rooms: string[] = Object.keys(Game.rooms);
         const creeps: string [] = Object.keys(Game.creeps);
@@ -64,19 +65,5 @@ export class EmpireManager extends Manager<EmpireConfig> {
             }
         }
         return false;
-    }
-
-
-    private validateConfig(): void {
-        console.log("Validate Config");
-        for(const i in Object.keys(this.config.myRooms)) {
-            console.log("Validate: "+ i);
-           /* const room: Room = Game.rooms[this.config.myRooms[i]];
-            if(room.controller === undefined) {
-                delete this.config.myRooms[i];
-            } else if (!room.controller.my) {
-               delete this.config.myRooms[i];
-            } */
-        }
     }
 }

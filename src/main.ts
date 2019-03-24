@@ -1,4 +1,3 @@
-import { RoomManager } from "manager/room/RoomManager";
 import { EmpireManager } from "manager/empire/EmpireManager";
 import { ErrorMapper } from "utils/ErrorMapper";
 
@@ -10,9 +9,7 @@ export const loop = ErrorMapper.wrapLoop(() => {
   const mgr: EmpireManager = new EmpireManager();
   
   mgr.run();
-  if(!mgr.detectSpawn()){
-    mgr.destroy();
-  }
+ 
 
 
   // Automatically delete memory of missing creeps

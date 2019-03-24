@@ -1,12 +1,11 @@
-import { Config } from "manager/Config";
-import { Manager } from "manager/Manager";
+
 
 interface EmpireConfigMemory {
     respawnSuspicion: number;
     myRooms: {[roomName: string]: {}};
 }
 
-export class EmpireConfig extends Config implements EmpireConfigMemory {
+export class EmpireConfig {
     public myRooms: {[roomName: string]: {}};
     public respawnSuspicion: number;
     constructor() {
@@ -16,7 +15,6 @@ export class EmpireConfig extends Config implements EmpireConfigMemory {
         if(Memory.empire.config === undefined) {
             Memory.empire.config = {};
         }
-        super();
         if(Memory.empire.config.respawnSuspicion === undefined) {
             this.respawnSuspicion = 0;
             Memory.empire.config.respawnSuspicion=this.respawnSuspicion;
@@ -41,11 +39,4 @@ export class EmpireConfig extends Config implements EmpireConfigMemory {
             this.myRooms = Memory.empire.config.myRooms;
         }
     }
-
-    public saveConfig(): void {
-        if(this.changed === Game.time) {
-            Memory.empire.config = this;
-        }
-    }
-
 }
