@@ -10,12 +10,15 @@ export class EmpireConfig {
     public respawnSuspicion: number;
     constructor() {
         if(Memory.empire === undefined) {
+            console.log("Creating new empire Memory");
             Memory.empire = {};
         }
         if(Memory.empire.config === undefined) {
+            console.log("Creating new empire Memory.config");
             Memory.empire.config = {};
         }
         if(Memory.empire.config.respawnSuspicion === undefined) {
+            console.log("Creating new empire Memory.config.respawnSuspicion");
             this.respawnSuspicion = 0;
             Memory.empire.config.respawnSuspicion=this.respawnSuspicion;
         } else {
@@ -38,5 +41,11 @@ export class EmpireConfig {
         } else {
             this.myRooms = Memory.empire.config.myRooms;
         }
+    }
+
+    public save(): void {
+        Memory.empire.config.myRooms = this.myRooms;
+        Memory.empire.config.respawnSuspicion = this.respawnSuspicion;
+        console.log("Empire Config saved");
     }
 }

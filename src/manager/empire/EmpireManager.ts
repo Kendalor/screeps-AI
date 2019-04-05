@@ -8,12 +8,14 @@ export class EmpireManager  {
     }
     
     public run(): void{
+        this.detectSpawn();
         console.log("Empire Manager doing Stuff ");
         const rooms: string[] = Object.keys(this.config.myRooms);
         for (const room in rooms){
-            const roomManager = new RoomManager(rooms[room]);
-            roomManager.run();
+                const roomManager = new RoomManager(rooms[room]);
+                roomManager.run(); 
         }
+        
     }
     /*
      Increments a counter if no creeps are alive and only one room is owned
@@ -57,8 +59,9 @@ export class EmpireManager  {
                         delete Memory.empire;
                         return true;
                     } else {
-                        this.config.respawnSuspicion += 1;
-                        console.log("Respawn detected ! Counting " + this.config.respawnSuspicion +" of 100 for Reset of Memory !")
+                        this.config.respawnSuspicion = this.config.respawnSuspicion + 1;
+                        console.log("Respawn detected ! Counting " + this.config.respawnSuspicion +" of 20 for Reset of Memory !")
+                        this.config.save();
                         return false;
                     }
                 }
