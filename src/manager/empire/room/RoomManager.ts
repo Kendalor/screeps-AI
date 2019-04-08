@@ -1,13 +1,15 @@
-import { AutoMemory } from "./AutoMemory";
-import { SpawnConfigAutoSpawn } from "./SpawnConfigAutoSpawn";
-import { TowerManager } from "./TowerManager";
+import { AutoMemory } from "../AutoMemory";
+import { SpawnConfigAutoSpawn } from "../SpawnConfigAutoSpawn";
+import { TowerManager } from "../TowerManager";
+import { RoomData } from "./RoomData";
 
 
 export class RoomManager {
     public roomName: string;
     public room: Room;
     public tmgr: TowerManager;
-    public config: SpawnConfigAutoSpawn;
+	public config: SpawnConfigAutoSpawn;
+	public data: RoomData;
 
 	public WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
@@ -16,7 +18,13 @@ export class RoomManager {
         this.room = Game.rooms[room];
 		this.tmgr = new TowerManager(this.room);
 		this.config = new SpawnConfigAutoSpawn(this.room);
-    }
+		this.data = new RoomData(room);
+	}
+	
+
+	public init(): void {
+		// TODO
+	}
 
     public run(): void {
 		if(this.room !== undefined ){
@@ -27,7 +35,11 @@ export class RoomManager {
 		} else {
 			console.log("ERROR: "+ this.roomName + "Cant Manage Room which is undefined");
 		}
-    }
+	}
+	
+	public destroy(): void {
+		// TODO
+	}
 
 
     public autoSpawn(): void {

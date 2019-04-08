@@ -1,5 +1,5 @@
 import {EmpireConfig} from "manager/empire/EmpireConfig";
-import {RoomManager} from "manager/empire/RoomManager";
+import {RoomManager} from "manager/empire/room/RoomManager";
 
 export class EmpireManager  {
     public config: EmpireConfig;
