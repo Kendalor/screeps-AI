@@ -11,7 +11,7 @@ import { SpawnEntry, SpawnEntryMemory } from "./SpawnEntry";
  * FUTURE TODO: Push this to the Empire Level 
  */
 
-export class SpawnManger {
+export class SpawnManager {
     public toSpawnList: SpawnEntry[] = [];
     public room: Room;
     public roomName: string;

@@ -1,7 +1,9 @@
-import { AutoMemory } from "../AutoMemory";
-import { SpawnConfigAutoSpawn } from "../SpawnConfigAutoSpawn";
+import { AutoMemory } from "../../../legacy/AutoMemory";
+import { SpawnConfigAutoSpawn } from "../../../legacy/SpawnConfigAutoSpawn";
 import { TowerManager } from "../TowerManager";
 import { RoomData } from "./RoomData";
+import { RoomOperationInterface } from "./RoomOperations/RoomOperationInterface";
+import { SpawnManager } from "./spawn/SpawnManager";
 
 
 export class RoomManager {
@@ -10,33 +12,45 @@ export class RoomManager {
     public tmgr: TowerManager;
 	public config: SpawnConfigAutoSpawn;
 	public data: RoomData;
+	public spawnmgr: SpawnManager;
+	public operations: RoomOperationInterface[];
 
+
+	// TEMPORARY PLACE, REMOVE THIS 
 	public WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
     constructor(room: string) {
-        this.roomName = room;
+		this.roomName = room;
+		// Init RoomOperationMemory
         this.room = Game.rooms[room];
 		this.tmgr = new TowerManager(this.room);
 		this.config = new SpawnConfigAutoSpawn(this.room);
 		this.data = new RoomData(room);
+		this.spawnmgr = new SpawnManager(this.roomName);
 	}
-	
+	/**
+	 * Start of Tick Method
+	 */
 
 	public init(): void {
 		// TODO
 	}
-
+	/**
+	 * Run Method executed per tick
+	 */
     public run(): void {
 		if(this.room !== undefined ){
 			console.log("Running RoomManger for Room: " + this.roomName);
-			this.tmgr.run();
-			this.autoSpawn();
-			this.autoCreep(this.room.myCreeps);
+			// this.tmgr.run();
+			// this.autoSpawn();
+			// this.autoCreep(this.room.myCreeps);
 		} else {
 			console.log("ERROR: "+ this.roomName + "Cant Manage Room which is undefined");
 		}
 	}
-	
+	/**
+	 * End of Tick Method
+	 */
 	public destroy(): void {
 		// TODO
 	}

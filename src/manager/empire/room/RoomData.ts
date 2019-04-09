@@ -1,12 +1,15 @@
-import { RoomDataMemory } from "./RoomData_Memory";
+import { RoomDataInterface } from "./RoomDataInterface";
+import { RoomOperationInterface } from "./RoomOperations/RoomOperationInterface";
 
-export class RoomData implements RoomDataMemory {
+export class RoomData implements RoomDataInterface {
     public mine: boolean;
-    public status: ROOM_STATUS;
+    public operations: RoomOperationInterface[];
+    public roomName: string;
 
     constructor(roomName: string){
+        this.roomName = roomName;
         if(Memory.rooms.roomName === undefined) {
-            Memory.rooms[roomName] = {} as RoomDataMemory;
+            Memory.rooms[roomName] = {} as RoomDataInterface;
             if(Game.rooms.roomName === undefined) {
                 this.mine = false;
                 this.status = "buildup";
@@ -27,16 +30,39 @@ export class RoomData implements RoomDataMemory {
             this.save(roomName);
         } else {
             this.mine = Memory.rooms.roomName.mine;
-            this.status = Memory.rooms.roomName.status;
 
         }
 
     }
 
 
+    public init(): void {
+        if( Memory.rooms[this.roomName] === undefined) {
+            Memory.rooms[this.roomName] = {};
+        }
+        if(Memory.rooms[this.roomName].mine === undefined ){
+            Memory.rooms[this.roomName].mine = (Memory.rooms[this.roomName].mine === undefined) ? 
+        }
+    }
+
+    public loadOperationList(): void {
+        // TODO
+    }
+
+    public saveOperationList(): void {
+        for(const op of this.operations) {
+            Memory.rooms[this.roomName].operations=[];
+        }
+    }
+
+    public destroy(): void {
+        // TODO
+        this.save();
+    }
+
     public save(roomName: string): void{
-        Memory.rooms.roomName.mine = this.mine;
-        Memory.rooms.roomName.status = this.status;
+        Memory.rooms[this.roomName].mine = this.mine;
+        this.saveOperationList();
     }
 
 }

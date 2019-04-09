@@ -12,10 +12,10 @@ export const loop = ErrorMapper.wrapLoop(() => {
   const mgr: EmpireManager = new EmpireManager();
   
   mgr.run();
-  //for(const c in Game.creeps) {
-   // Game.creeps[c].run();
+  for(const c in Game.creeps) {
+   Game.creeps[c].run();
 
-  //}
+  }
 
 
   // Automatically delete memory of missing creeps
