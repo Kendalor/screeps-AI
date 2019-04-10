@@ -1,5 +1,6 @@
 import { RoomManager } from "../RoomManager";
 import { InitialBuildUpPhaseData } from "./InitialBuildUpPhaseData";
+import { RoomOperation } from "./RoomOperation";
 import { RoomOperationInterface } from "./RoomOperationInterface";
 
 
@@ -10,14 +11,12 @@ import { RoomOperationInterface } from "./RoomOperationInterface";
  * This Phase is Active preStorage after the first Spawn,
  * it should also activate if room is in decline and needs recovery. 
  */
-export class InitialBuildUpPhase implements RoomOperationInterface {
-    public name: string = "InitialBuildUpPhase";
-    public manager: RoomManager;
-    public data: InitialBuildUpPhaseData;
-    public roomName: string;
+export class InitialBuildUpPhase extends RoomOperation{
+    
 
-    constructor(manager: RoomManager) {
-        this.manager = manager;
+    constructor(manager: RoomManager, entry: RoomOperationInterface) {
+        super(manager,entry);
+
         this.data = new InitialBuildUpPhaseData(manager.room.name);
         this.roomName = this.manager.room.name;
     }
