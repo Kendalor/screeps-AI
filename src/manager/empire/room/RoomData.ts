@@ -69,8 +69,7 @@ export class RoomData implements RoomDataInterface {
     }
 
     public save(): void{
-        Memory.rooms[this.roomName].mine = this.mine;
-        this.saveOperationList();
+        Memory.rooms[this.roomName] = this.toMemory();
     }
 
 }

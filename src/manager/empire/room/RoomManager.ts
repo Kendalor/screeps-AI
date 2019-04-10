@@ -11,8 +11,8 @@ import { SpawnManager } from "./spawn/SpawnManager";
 export class RoomManager {
     public roomName: string;
     public room: Room;
-    public tmgr: TowerManager;
-	public config: SpawnConfigAutoSpawn;
+    //public tmgr: TowerManager;
+	//public config: SpawnConfigAutoSpawn;
 	public data: RoomData;
 	public spawnmgr: SpawnManager;
 
@@ -24,8 +24,8 @@ export class RoomManager {
     constructor(roomName: string) {
 		this.roomName = roomName;
         this.room = Game.rooms[roomName];
-		this.tmgr = new TowerManager(this.room);
-		this.config = new SpawnConfigAutoSpawn(this.room);
+		//this.tmgr = new TowerManager(this.room);
+		//this.config = new SpawnConfigAutoSpawn(this.room);
 		this.data = new RoomData(this);
 		this.spawnmgr = new SpawnManager(this.roomName);
 		if(this.data.operations.length === 0){
@@ -59,6 +59,7 @@ export class RoomManager {
 	 * Run Method executed per tick
 	 */
     public run(): void {
+		this.init();
 		while( this.hasNextOperation()) {
 			this.runNextOperation();
 		}
@@ -104,14 +105,14 @@ export class RoomManager {
  */
     public runNextOperation(): void {
 		const op = this.getNextOperation();
-		try {
-			if( op !== undefined ) {
-				op.run();
+		if( op !== undefined ) {
+			try {
+					op.run();
+				
+			} catch (error) {
+				console.log("ERROR running Op:" + op.name + "With Error: " +error);
 			}
-		} catch (error) {
-			console.log("ERROR running Op:" + op.name + "With Error: " +error);
 		}
-
 	}
 
 	public getNextOperation(): RoomOperation | undefined {
