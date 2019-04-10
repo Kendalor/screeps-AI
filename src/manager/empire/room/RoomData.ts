@@ -1,33 +1,33 @@
 import { RoomDataInterface } from "./RoomDataInterface";
+import { RoomManager } from "./RoomManager";
+import { RoomOperation } from "./RoomOperations/RoomOperation";
 import { RoomOperationInterface } from "./RoomOperations/RoomOperationInterface";
 
 export class RoomData implements RoomDataInterface {
     public mine: boolean;
-    public operations: RoomOperationInterface[];
+	public operations: RoomOperation[] = [];
     public roomName: string;
+    public manager: RoomManager;
 
-    constructor(roomName: string){
-        this.roomName = roomName;
+    constructor(manager: RoomManager){
+        this.manager = manager;
+        this.roomName = this.manager.roomName;
         if(Memory.rooms.roomName === undefined) {
-            Memory.rooms[roomName] = {} as RoomDataInterface;
+            Memory.rooms[this.roomName] = {} as RoomDataInterface;
             if(Game.rooms.roomName === undefined) {
                 this.mine = false;
-                this.status = "buildup";
             } else {
                 if(Game.rooms.roomName.controller === undefined) {
                     this.mine = false;
-                    this.status = "buildup";
                 } else {
                     if(Game.rooms.roomName.controller.my) {
                         this.mine = true;
-                        this.status = "buildup";
                     } else {
                         this.mine = false;
-                        this.status = "buildup";
                     }
                 }
             }
-            this.save(roomName);
+            this.save();
         } else {
             this.mine = Memory.rooms.roomName.mine;
 
@@ -37,21 +37,29 @@ export class RoomData implements RoomDataInterface {
 
 
     public init(): void {
-        if( Memory.rooms[this.roomName] === undefined) {
-            Memory.rooms[this.roomName] = {};
-        }
-        if(Memory.rooms[this.roomName].mine === undefined ){
-            Memory.rooms[this.roomName].mine = (Memory.rooms[this.roomName].mine === undefined) ? 
-        }
-    }
-
-    public loadOperationList(): void {
         // TODO
     }
 
+
+    public toMemory(): any {
+        return {mine: this.mine, roomName: this.roomName, operations: this.operations.map( (entry) => entry.toMemory())}
+    }
+
+    public loadOperationList(): void {
+
+        for(const i in Memory.rooms[this.roomName].operations) {
+            this.operations.push(new RoomOperation(this.manager, Memory.rooms[this.roomName].operations[i] as RoomOperationInterface));
+        }
+    }
+
     public saveOperationList(): void {
-        for(const op of this.operations) {
-            Memory.rooms[this.roomName].operations=[];
+        Memory.rooms[this.roomName].operations = [];
+        for(const entry of this.operations) {
+            if(entry.pause > 0){
+                entry.pause = entry.pause -1;
+            }
+            Memory.rooms[this.roomName].operations.push(entry.toMemory(
+			));
         }
     }
 
@@ -60,7 +68,7 @@ export class RoomData implements RoomDataInterface {
         this.save();
     }
 
-    public save(roomName: string): void{
+    public save(): void{
         Memory.rooms[this.roomName].mine = this.mine;
         this.saveOperationList();
     }

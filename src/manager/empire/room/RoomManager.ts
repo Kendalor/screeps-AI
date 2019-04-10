@@ -2,8 +2,10 @@ import { AutoMemory } from "../../../legacy/AutoMemory";
 import { SpawnConfigAutoSpawn } from "../../../legacy/SpawnConfigAutoSpawn";
 import { TowerManager } from "../TowerManager";
 import { RoomData } from "./RoomData";
+import { RoomOperation } from "./RoomOperations/RoomOperation";
 import { RoomOperationInterface } from "./RoomOperations/RoomOperationInterface";
 import { SpawnManager } from "./spawn/SpawnManager";
+
 
 
 export class RoomManager {
@@ -13,32 +15,37 @@ export class RoomManager {
 	public config: SpawnConfigAutoSpawn;
 	public data: RoomData;
 	public spawnmgr: SpawnManager;
-	public operations: RoomOperationInterface[];
+
 
 
 	// TEMPORARY PLACE, REMOVE THIS 
 	public WHITELIST = {'Cade' : true,'InfiniteJoe' : true,'Kendalor' : true,'Palle' : true};
 
-    constructor(room: string) {
-		this.roomName = room;
-		// Init RoomOperationMemory
-        this.room = Game.rooms[room];
+    constructor(roomName: string) {
+		this.roomName = roomName;
+        this.room = Game.rooms[roomName];
 		this.tmgr = new TowerManager(this.room);
 		this.config = new SpawnConfigAutoSpawn(this.room);
-		this.data = new RoomData(room);
+		this.data = new RoomData(this);
 		this.spawnmgr = new SpawnManager(this.roomName);
+		if(this.data.operations.length === 0){
+			console.log("Encountered No Operations on Startup");
+			if(this.room !== undefined) {
+				console.log("Detected Room Object");
+				if(this.room.controller !== undefined) {
+					console.log(".. with Controller");
+					if(this.room.controller.my){
+						console.log("which is mine! ... Addding Operations!");
+					}
+				}			}
+		}
 	}
 	/**
 	 * Start of Tick Method
 	 */
 
 	public init(): void {
-		// TODO
-	}
-	/**
-	 * Run Method executed per tick
-	 */
-    public run(): void {
+		this.loadList();
 		if(this.room !== undefined ){
 			console.log("Running RoomManger for Room: " + this.roomName);
 			// this.tmgr.run();
@@ -49,11 +56,90 @@ export class RoomManager {
 		}
 	}
 	/**
+	 * Run Method executed per tick
+	 */
+    public run(): void {
+		while( this.hasNextOperation()) {
+			this.runNextOperation();
+		}
+	}
+	/**
 	 * End of Tick Method
 	 */
 	public destroy(): void {
 		// TODO
 	}
+
+    /**
+     * Load toSpawnList from Memory
+     */
+
+    public loadList(){
+		this.data.saveOperationList();
+    }
+/**
+ *  save toSpawnList from Meory
+ */
+    public saveList(){
+		this.data.loadOperationList();
+    }
+
+    /**
+     * push a new RoomOperation into the operations List of the RoomManager
+     * @param entry RoomOperation
+     */
+    public enque(entry: RoomOperation){
+        this.data.operations.push(new RoomOperation(this, entry as RoomOperationInterface));
+    }
+/**
+ * remove a new RoomOperation from the operations List of the RoomManager
+ * @param entry RoomOperation
+ */
+    public dequeue(entry: RoomOperation){
+        _.remove(this.data.operations, (e) => { return (e.type === entry.type && e.name === entry.name) 
+        });
+    }
+/**
+ * Run the next runable RoomOperation in the operations List with the highest Priority
+ */
+    public runNextOperation(): void {
+		const op = this.getNextOperation();
+		try {
+			if( op !== undefined ) {
+				op.run();
+			}
+		} catch (error) {
+			console.log("ERROR running Op:" + op.name + "With Error: " +error);
+		}
+
+	}
+
+	public getNextOperation(): RoomOperation | undefined {
+		// TODO
+		if(this.data.operations.length > 0){
+			return this.data.operations.filter((entry: RoomOperation) => entry.pause === 0 && entry.didRun === false).sort((entryA,entryB) => entryA.priority - entryB.priority)[0];
+		} else {
+			return undefined;
+		}
+	}
+	public hasNextOperation(): boolean {
+		if(this.data.operations.length > 0){
+			return this.data.operations.filter((entry: RoomOperation) => entry.pause === 0 && entry.didRun === false).sort((entryA,entryB) => entryA.priority - entryB.priority).length >0;
+		}
+		return false;
+	}
+	
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////        THEORETICAL END OF FILE        //////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 
 
     public autoSpawn(): void {

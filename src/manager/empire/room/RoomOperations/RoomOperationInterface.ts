@@ -1,4 +1,3 @@
-import { RoomManager } from "../RoomManager";
 import { RoomOperationDataInterface } from "./RoomOperationDataInterface";
 
 /**
@@ -8,8 +7,13 @@ import { RoomOperationDataInterface } from "./RoomOperationDataInterface";
  */
 export interface RoomOperationInterface {
     name: string;
-    data: RoomOperationDataInterface;
+    data: any;
     roomName: string;
+    type: string;
+    priority: number;
+    pause: number;
+
+
 
     /**
      * Logic executed at the beginning of EACH Tick
