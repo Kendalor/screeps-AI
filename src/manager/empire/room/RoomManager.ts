@@ -5,6 +5,7 @@ import { RoomData } from "./RoomData";
 import { RoomOperation } from "./RoomOperations/RoomOperation";
 import { RoomOperationInterface } from "./RoomOperations/RoomOperationInterface";
 import { SpawnManager } from "./spawn/SpawnManager";
+import { RoomOperationMemoryInterface } from "./RoomOperations/RoomOperationMemoryInterface";
 
 
 
@@ -28,6 +29,7 @@ export class RoomManager {
 		//this.config = new SpawnConfigAutoSpawn(this.room);
 		this.data = new RoomData(this);
 		this.spawnmgr = new SpawnManager(this.roomName);
+		console.log( "INIT RoomManger");
 		if(this.data.operations.length === 0){
 			console.log("Encountered No Operations on Startup");
 			if(this.room !== undefined) {
@@ -36,6 +38,7 @@ export class RoomManager {
 					console.log(".. with Controller");
 					if(this.room.controller.my){
 						console.log("which is mine! ... Addding Operations!");
+						this.enque(new RoomOperation(this, {name: "Test1", type: "Foo", data: {}, roomName: this.roomName, priority: 5,pause: 1,firstRun: true, lastRun: false}));
 					}
 				}			}
 		}
@@ -45,7 +48,6 @@ export class RoomManager {
 	 */
 
 	public init(): void {
-		this.loadList();
 		if(this.room !== undefined ){
 			console.log("Running RoomManger for Room: " + this.roomName);
 			// this.tmgr.run();
@@ -59,38 +61,33 @@ export class RoomManager {
 	 * Run Method executed per tick
 	 */
     public run(): void {
-		this.init();
+		console.log("RoomManager Doing Stuff");
+		//this.init();
+		let counter =0;
+
 		while( this.hasNextOperation()) {
+			console.log("Running Operations Nr: " + counter);
 			this.runNextOperation();
+			counter = counter +1;
 		}
+		this.destroy();
 	}
 	/**
 	 * End of Tick Method
 	 */
 	public destroy(): void {
-		// TODO
+		console.log("RoomManager Destroy --- Saving Data");
+		this.data.save();
+		this.spawnmgr.destroy();
 	}
 
-    /**
-     * Load toSpawnList from Memory
-     */
-
-    public loadList(){
-		this.data.saveOperationList();
-    }
-/**
- *  save toSpawnList from Meory
- */
-    public saveList(){
-		this.data.loadOperationList();
-    }
 
     /**
      * push a new RoomOperation into the operations List of the RoomManager
      * @param entry RoomOperation
      */
     public enque(entry: RoomOperation){
-        this.data.operations.push(new RoomOperation(this, entry as RoomOperationInterface));
+        this.data.operations.push(new RoomOperation(this, entry as RoomOperationMemoryInterface));
     }
 /**
  * remove a new RoomOperation from the operations List of the RoomManager
@@ -104,11 +101,11 @@ export class RoomManager {
  * Run the next runable RoomOperation in the operations List with the highest Priority
  */
     public runNextOperation(): void {
-		const op = this.getNextOperation();
+		let op = this.getNextOperation();
 		if( op !== undefined ) {
 			try {
 					op.run();
-				
+					console.log( "Did Run OP, didRUN: " + op.didRun + "")
 			} catch (error) {
 				console.log("ERROR running Op:" + op.name + "With Error: " +error);
 			}
