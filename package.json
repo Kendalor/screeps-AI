@@ -8,6 +8,7 @@
     "lint": "tslint -p tsconfig.json \"src/**/*.ts\"",
     "build": "rollup -c",
     "push-main": "rollup -c --environment DEST:main",
+	"push-dev": "rollup -c --environment DEST:dev",
     "push-pserver": "rollup -c --environment DEST:pserver",
     "push-sim": "rollup -c --environment DEST:sim",
     "watch-main": "rollup -cw --environment DEST:main",
