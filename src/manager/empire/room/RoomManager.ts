@@ -1,6 +1,6 @@
-import { AutoMemory } from "../../../legacy/AutoMemory";
-import { SpawnConfigAutoSpawn } from "../../../legacy/SpawnConfigAutoSpawn";
-import { TowerManager } from "../TowerManager";
+// import { AutoMemory } from "../../../legacy/AutoMemory";
+// import { SpawnConfigAutoSpawn } from "../../../legacy/SpawnConfigAutoSpawn";
+// import { TowerManager } from "../TowerManager";
 import { RoomData } from "./RoomData";
 import { RoomOperation } from "./RoomOperations/RoomOperation";
 import { RoomOperationInterface } from "./RoomOperations/RoomOperationInterface";
@@ -142,7 +142,7 @@ export class RoomManager {
 
 
 
-
+/*
     public autoSpawn(): void {
 
         const spawnList: StructureSpawn[] = this.room.find(FIND_MY_SPAWNS);
@@ -1094,5 +1094,6 @@ export class RoomManager {
                 Memory.rooms[room].stats.spawns[spawn.name].ticks_e=Memory.rooms[room].stats.spawns[spawn.name].ticks_e+1;
             }
         }
-    }
+	}
+	*/
 }
