@@ -2,7 +2,8 @@ import { RoomDataInterface } from "./RoomDataInterface";
 import { RoomManager } from "./RoomManager";
 import { RoomOperation } from "./RoomOperations/RoomOperation";
 import { RoomOperationInterface } from "./RoomOperations/RoomOperationInterface";
-import { ok } from "assert";
+import { RoomOperationMemoryInterface } from "./RoomOperations/RoomOperationMemoryInterface";
+import { OP_STORAGE } from "./RoomOperations/RoomOperationStorage";
 
 export class RoomData implements RoomDataInterface {
     public mine: boolean = false;
@@ -53,7 +54,7 @@ export class RoomData implements RoomDataInterface {
     public loadOperationList(): void {
 
         for(const i in Memory.rooms[this.roomName].operations) {
-            this.operations.push(new RoomOperation(this.manager, Memory.rooms[this.roomName].operations[i] as RoomOperationInterface));
+            this.operations.push(new OP_STORAGE[Memory.rooms[this.roomName].operations[i].type](this.manager, Memory.rooms[this.roomName].operations[i] as RoomOperationInterface));
         }
     }
 
@@ -71,7 +72,21 @@ export class RoomData implements RoomDataInterface {
             }
         }
     }
-
+    /**
+     * push a new RoomOperation into the operations List of the RoomManager
+     * @param entry RoomOperation
+     */
+    public enque(entry: RoomOperationMemoryInterface){
+        this.operations.push(new OP_STORAGE[entry.type](this, entry as RoomOperationMemoryInterface));
+    }
+/**
+ * remove a new RoomOperation from the operations List of the RoomManager
+ * @param entry RoomOperation
+ */
+    public dequeue(entry: RoomOperationMemoryInterface){
+        _.remove(this.operations, (e) => { return (e.type === entry.type && e.name === entry.name) 
+        });
+    }
     public destroy(): void {
         this.save();
     }

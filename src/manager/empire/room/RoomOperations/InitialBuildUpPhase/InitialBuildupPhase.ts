@@ -1,7 +1,7 @@
-import { RoomManager } from "../RoomManager";
+import { RoomManager } from "../../RoomManager";
+import { RoomOperation } from "../RoomOperation";
+import { RoomOperationInterface } from "../RoomOperationInterface";
 import { InitialBuildUpPhaseData } from "./InitialBuildUpPhaseData";
-import { RoomOperation } from "./RoomOperation";
-import { RoomOperationInterface } from "./RoomOperationInterface";
 
 
 
@@ -23,7 +23,7 @@ export class InitialBuildUpPhase extends RoomOperation{
 /**
  * Adds Creeps for this Phase to the spawnManager
  */
-    public firstRun(){
+    public onfirstRun(){
         // TODO
         if(this.data.firstRun === true) {
             if(Game.rooms[this.roomName] !== undefined ){
@@ -50,7 +50,7 @@ export class InitialBuildUpPhase extends RoomOperation{
         // TODO
     }
 
-    public lastRun() {
+    public onlastRun() {
         // TODO
     }
 

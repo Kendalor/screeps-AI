@@ -30,7 +30,7 @@ export class RoomOperation implements RoomOperationInterface {
         }
 
     public toMemory(): RoomOperationMemoryInterface {
-        return {roomName: this.roomName, data: {}, name: this.name, type: this.type, priority: this.priority, pause: this.pause, firstRun: this.firstRun, lastRun: this.lastRun};
+        return {roomName: this.roomName, data: this.data, name: this.name, type: this.type, priority: this.priority, pause: this.pause, firstRun: this.firstRun, lastRun: this.lastRun};
     }
 
     /**

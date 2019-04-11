@@ -4,16 +4,16 @@
 import { RoomData } from "./RoomData";
 import { RoomOperation } from "./RoomOperations/RoomOperation";
 import { RoomOperationInterface } from "./RoomOperations/RoomOperationInterface";
-import { SpawnManager } from "./spawn/SpawnManager";
 import { RoomOperationMemoryInterface } from "./RoomOperations/RoomOperationMemoryInterface";
+import { SpawnManager } from "./spawn/SpawnManager";
 
 
 
 export class RoomManager {
     public roomName: string;
     public room: Room;
-    //public tmgr: TowerManager;
-	//public config: SpawnConfigAutoSpawn;
+    // public tmgr: TowerManager;
+	// public config: SpawnConfigAutoSpawn;
 	public data: RoomData;
 	public spawnmgr: SpawnManager;
 
@@ -25,8 +25,8 @@ export class RoomManager {
     constructor(roomName: string) {
 		this.roomName = roomName;
         this.room = Game.rooms[roomName];
-		//this.tmgr = new TowerManager(this.room);
-		//this.config = new SpawnConfigAutoSpawn(this.room);
+		// this.tmgr = new TowerManager(this.room);
+		// this.config = new SpawnConfigAutoSpawn(this.room);
 		this.data = new RoomData(this);
 		this.spawnmgr = new SpawnManager(this.roomName);
 		console.log( "INIT RoomManger");
@@ -38,7 +38,8 @@ export class RoomManager {
 					console.log(".. with Controller");
 					if(this.room.controller.my){
 						console.log("which is mine! ... Addding Operations!");
-						this.enque(new RoomOperation(this, {name: "Test1", type: "Foo", data: {}, roomName: this.roomName, priority: 5,pause: 1,firstRun: true, lastRun: false}));
+						this.data.enque({name: "Test1", type: "SimpleCounter", data: {}, roomName: this.roomName, priority: 5,pause: 1,firstRun: true, lastRun: false});
+						this.data.enque({name: "Test1", type: "SimpleCounter", data: {}, roomName: this.roomName, priority: 5,pause: 5,firstRun: true, lastRun: false});
 					}
 				}			}
 		}
@@ -62,7 +63,7 @@ export class RoomManager {
 	 */
     public run(): void {
 		console.log("RoomManager Doing Stuff");
-		//this.init();
+		// this.init();
 		let counter =0;
 
 		while( this.hasNextOperation()) {
@@ -82,26 +83,12 @@ export class RoomManager {
 	}
 
 
-    /**
-     * push a new RoomOperation into the operations List of the RoomManager
-     * @param entry RoomOperation
-     */
-    public enque(entry: RoomOperation){
-        this.data.operations.push(new RoomOperation(this, entry as RoomOperationMemoryInterface));
-    }
-/**
- * remove a new RoomOperation from the operations List of the RoomManager
- * @param entry RoomOperation
- */
-    public dequeue(entry: RoomOperation){
-        _.remove(this.data.operations, (e) => { return (e.type === entry.type && e.name === entry.name) 
-        });
-    }
+
 /**
  * Run the next runable RoomOperation in the operations List with the highest Priority
  */
     public runNextOperation(): void {
-		let op = this.getNextOperation();
+		const op = this.getNextOperation();
 		if( op !== undefined ) {
 			try {
 					op.run();
@@ -126,6 +113,7 @@ export class RoomManager {
 		}
 		return false;
 	}
+
 	
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
