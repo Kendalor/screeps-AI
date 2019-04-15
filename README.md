@@ -15,6 +15,7 @@ Open the folder in your terminal and run your package manager to install install
 ```bash
 # npm
 npm install
+bash```
 
 Fire up your preferred editor with typescript installed and you are good to go!
 
