@@ -87,9 +87,9 @@ export class RoomManager {
 
 
 
-/**
- * Run the next runable RoomOperation in the operations List with the highest Priority
- */
+	/**
+	 * Run the next runable RoomOperation in the operations List with the highest Priority
+	 */
     public runNextOperation(): void {
 		const op = this.getNextOperation();
 		if( op !== undefined ) {

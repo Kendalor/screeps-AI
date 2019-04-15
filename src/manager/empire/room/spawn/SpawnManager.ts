@@ -31,9 +31,9 @@ export class SpawnManager {
     }
 
 
-/**
- * SpawmManger run function: For each Spawn in availableSpawns, tries to spawn the next spawnable creep with highest priority.
- */
+    /**
+     * SpawmManger run function: For each Spawn in availableSpawns, tries to spawn the next spawnable creep with highest priority.
+     */
     public run(){
         this.spawnNext();
     }
@@ -49,17 +49,17 @@ export class SpawnManager {
     public spawnAvailable(): boolean {
         return this.availableSpawns.length > 0;
     }
-/**
- * remove a new SpawnEntry from the toSpawnList of the SpawnManager
- * @param entry SpawnEntryMemory
- */
+    /**
+     * remove a new SpawnEntry from the toSpawnList of the SpawnManager
+     * @param entry SpawnEntryMemory
+     */
     public dequeue(entry: SpawnEntryMemory){
         _.remove(this.manager.data.toSpawnList, (e) => { return (e.body === entry.body && e.memory === entry.memory && e.name === entry.name && e.rebuild === e.rebuild) 
         });
     }
-/**
- * Spawn the next spawnable Creep in the toSpawnList with the highest Priority, indrement wait on success and deque otherwise
- */
+    /**
+     * Spawn the next spawnable Creep in the toSpawnList with the highest Priority, indrement wait on success and deque otherwise
+     */
     public spawnNext() {
         if(this.spawnAvailable()) {
             const entry: SpawnEntry | undefined = this.manager.data.toSpawnList.filter( (e) => e.getCost() <= this.room.energyAvailable && e.pause === 0 ).sort((a,b) => a.priority - b.priority ).pop();

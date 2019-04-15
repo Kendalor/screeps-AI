@@ -38,9 +38,9 @@ export class RoomData implements RoomDataInterface {
         }
 
     }
-/**
- * Load Operations and toSpawnlist From Memory
- */
+    /**
+     * Load Operations and toSpawnlist From Memory
+     */
 
     public init(): void {
         this.mine = Memory.rooms[this.roomName].mine
@@ -52,18 +52,18 @@ export class RoomData implements RoomDataInterface {
     public toMemory(): any {
         return {mine: this.mine, roomName: this.roomName, operations: [], toSpawnList: []}
     }
-/**
- * Load Operations from Memory
- */
+    /**
+     * Load Operations from Memory
+     */
     public loadOperationList(): void {
 
         for(const i in Memory.rooms[this.roomName].operations) {
             this.operations.push(new OP_STORAGE[Memory.rooms[this.roomName].operations[i].type](this.manager, Memory.rooms[this.roomName].operations[i] as RoomOperationInterface));
         }
     }
-/**
- * Save Operations to Memory
- */
+    /**
+     * Save Operations to Memory
+     */
     public saveOperationList(): void {
         Memory.rooms[this.roomName].operations = [];
         for(const entry of this.operations) {
@@ -83,10 +83,10 @@ export class RoomData implements RoomDataInterface {
     public enque(entry: RoomOperationMemoryInterface){
         this.operations.push(new OP_STORAGE[entry.type](this, entry as RoomOperationMemoryInterface));
     }
-/**
- * remove a new RoomOperation from the operations List of the RoomManager
- * @param entry RoomOperationMemoryInterface
- */
+    /**
+     * remove a new RoomOperation from the operations List of the RoomManager
+     * @param entry RoomOperationMemoryInterface
+     */
     public dequeue(entry: RoomOperationMemoryInterface){
         _.remove(this.operations, (e) => { return (e.type === entry.type && e.name === entry.name) 
         });
@@ -101,9 +101,9 @@ export class RoomData implements RoomDataInterface {
             this.toSpawnList.push(new SpawnEntry(Memory.rooms[this.roomName].toSpawnList[i] as SpawnEntryMemory));
         }
     }
-/**
- *  save toSpawnList to Memory
- */
+    /**
+     *  save toSpawnList to Memory
+     */
     public saveSpawnList(){
         Memory.rooms[this.roomName].toSpawnList = [];
         for(const entry of this.toSpawnList) {
