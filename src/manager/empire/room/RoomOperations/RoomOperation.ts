@@ -1,6 +1,6 @@
 import { RoomManager } from "../RoomManager";
-import { RoomOperationMemoryInterface } from "./RoomOperationMemoryInterface";
 import { RoomOperationInterface } from "./RoomOperationInterface";
+import { RoomOperationMemoryInterface } from "./RoomOperationMemoryInterface";
 
 
 

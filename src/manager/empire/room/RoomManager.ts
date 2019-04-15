@@ -28,7 +28,7 @@ export class RoomManager {
 		// this.tmgr = new TowerManager(this.room);
 		// this.config = new SpawnConfigAutoSpawn(this.room);
 		this.data = new RoomData(this);
-		this.spawnmgr = new SpawnManager(this.roomName);
+		this.spawnmgr = new SpawnManager(this,this.roomName);
 		console.log( "INIT RoomManger");
 		if(this.data.operations.length === 0){
 			console.log("Encountered No Operations on Startup");
@@ -38,10 +38,10 @@ export class RoomManager {
 					console.log(".. with Controller");
 					if(this.room.controller.my){
 						console.log("which is mine! ... Addding Operations!");
-						this.data.enque({name: "Test1", type: "SimpleCounter", data: {}, roomName: this.roomName, priority: 5,pause: 1,firstRun: true, lastRun: false});
-						this.data.enque({name: "Test1", type: "SimpleCounter", data: {}, roomName: this.roomName, priority: 5,pause: 5,firstRun: true, lastRun: false});
+						this.data.enque({name: "BuildUpNewRoom", type: "InitialBuildUpPhase", data: {}, roomName: this.roomName, priority: 100,pause: 1,firstRun: true, lastRun: false});
 					}
-				}			}
+				}
+			}
 		}
 	}
 	/**
@@ -71,7 +71,11 @@ export class RoomManager {
 			this.runNextOperation();
 			counter = counter +1;
 		}
+
+		this.spawnmgr.run();
 		this.destroy();
+
+		
 	}
 	/**
 	 * End of Tick Method
@@ -79,7 +83,6 @@ export class RoomManager {
 	public destroy(): void {
 		console.log("RoomManager Destroy --- Saving Data");
 		this.data.save();
-		this.spawnmgr.destroy();
 	}
 
 
@@ -92,7 +95,7 @@ export class RoomManager {
 		if( op !== undefined ) {
 			try {
 					op.run();
-					console.log( "Did Run OP, didRUN: " + op.didRun + "")
+					console.log( "Did Run OP: "+ op.name +", didRUN: " + op.didRun + "")
 			} catch (error) {
 				console.log("ERROR running Op:" + op.name + "With Error: " +error);
 			}

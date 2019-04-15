@@ -1,7 +1,6 @@
 import { RoomManager } from "../../RoomManager";
 import { RoomOperation } from "../RoomOperation";
 import { RoomOperationInterface } from "../RoomOperationInterface";
-import { InitialBuildUpPhaseData } from "./InitialBuildUpPhaseData";
 
 
 
@@ -16,26 +15,33 @@ export class InitialBuildUpPhase extends RoomOperation{
 
     constructor(manager: RoomManager, entry: RoomOperationInterface) {
         super(manager,entry);
-
-        this.data = new InitialBuildUpPhaseData(manager.room.name);
-        this.roomName = this.manager.room.name;
+        this.type = "InitialBuildUpPhase";
     }
 /**
  * Adds Creeps for this Phase to the spawnManager
  */
     public onfirstRun(){
-        // TODO
-        if(this.data.firstRun === true) {
-            if(Game.rooms[this.roomName] !== undefined ){
-                // SPAWN CREEPS HERE 
-                
+        console.log("Running super.onfirstRun()");
+        super.onfirstRun();
+        if(Game.rooms[this.roomName] !== undefined ){
+            // SPAWN CREEPS HERE 
+            console.log("InitialBuildUP OP Enqueue Creeps ! DASDASDASDASD")
+            const r: Room = this.manager.room;
+            console.log("Defined Room");
+            const numSources= r.find(FIND_SOURCES).length
+            console.log(" Found Sources: " + numSources);
+            for(let i=0; i<numSources *3; i++){
+                console.log("enqued Creep for: " + i);
+                this.manager.spawnmgr.enque({body: [WORK,WORK,MOVE,CARRY] ,
+                    memory: {role: "maintenance"},
+                    name: this.manager.roomName +"_"+this.type+"_"+i,
+                    pause: 0,
+                    priority: 100,
+                    rebuild: true});
             }
+            
         }
-
-
-
-
-        this.data.firstRun = false;
+        
     }
 
 
@@ -43,6 +49,14 @@ export class InitialBuildUpPhase extends RoomOperation{
         // TODO
     }
     public run() {
+        console.log("InitialBuildUP OP Enqueue Creeps !");
+        if(this.firstRun){
+            console.log("First run Detected, running onFirstRun()");
+            this.onfirstRun();
+        }
+        this.didRun=true;
+
+
         // TODO
     }
 

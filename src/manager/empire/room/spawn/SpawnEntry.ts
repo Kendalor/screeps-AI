@@ -30,4 +30,8 @@ export class SpawnEntry implements SpawnEntryMemory{
         }
         return out;
     }
+
+    public toMemory(): SpawnEntryMemory {
+        return {body:this.body, memory: this.memory, name: this.name, rebuild: this.rebuild, pause: this.pause, priority: this.priority};
+    }
 }
