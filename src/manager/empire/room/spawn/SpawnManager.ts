@@ -1,3 +1,4 @@
+import { RoomManager } from "../RoomManager";
 import { SpawnEntry, SpawnEntryMemory } from "./SpawnEntry";
 
 
@@ -12,49 +13,29 @@ import { SpawnEntry, SpawnEntryMemory } from "./SpawnEntry";
  */
 
 export class SpawnManager {
-    public toSpawnList: SpawnEntry[] = [];
     public room: Room;
     public roomName: string;
     public availableSpawns: StructureSpawn[];
+    public manager: RoomManager;
 
 
-    constructor(roomName: string) {
+    constructor(mgr: RoomManager, roomName: string) {
+        this.manager = mgr;
         this.roomName=roomName;
         this.room = Game.rooms[roomName];
         if(this.room !== undefined ){
             this.availableSpawns = this.room.find(FIND_MY_SPAWNS).filter((entry: StructureSpawn) => (entry.isActive && entry.spawning === null ));
-            this.loadList();
         } else {
-            this.toSpawnList = [];
             this.availableSpawns = [];
         }
     }
-    /**
-     * Load toSpawnList from Memory
-     */
 
-    public loadList(){
-        for(const i in this.room.memory.spawnList) {
-            this.toSpawnList.push(new SpawnEntry(this.room.memory.toSpawnList[i] as SpawnEntryMemory));
-        }
-    }
+
 /**
- *  save toSpawnList from Meory
- */
-    public saveList(){
-        Memory.rooms[this.roomName].toSpawnList = [];
-        for(const entry of this.toSpawnList) {
-            if(entry.pause > 0){
-                entry.pause = entry.pause -1;
-            }
-            Memory.rooms[this.roomName].toSpawnList.push(entry as SpawnEntryMemory);
-        }
-    }
-/**
- * SpawmManger run function
+ * SpawmManger run function: For each Spawn in availableSpawns, tries to spawn the next spawnable creep with highest priority.
  */
     public run(){
-        // TODO
+        this.spawnNext();
     }
 
     /**
@@ -62,22 +43,26 @@ export class SpawnManager {
      * @param entry SpawnEntryMemory
      */
     public enque(entry: SpawnEntryMemory){
-        this.toSpawnList.push(new SpawnEntry(entry));
+        this.manager.data.toSpawnList.push(new SpawnEntry(entry));
+    }
+
+    public spawnAvailable(): boolean {
+        return this.availableSpawns.length > 0;
     }
 /**
  * remove a new SpawnEntry from the toSpawnList of the SpawnManager
  * @param entry SpawnEntryMemory
  */
     public dequeue(entry: SpawnEntryMemory){
-        _.remove(this.toSpawnList, (e) => { return (e.body === entry.body && e.memory === entry.memory && e.name === entry.name && e.rebuild === e.rebuild) 
+        _.remove(this.manager.data.toSpawnList, (e) => { return (e.body === entry.body && e.memory === entry.memory && e.name === entry.name && e.rebuild === e.rebuild) 
         });
     }
 /**
  * Spawn the next spawnable Creep in the toSpawnList with the highest Priority, indrement wait on success and deque otherwise
  */
     public spawnNext() {
-        if(this.availableSpawns.length > 0) {
-            const entry: SpawnEntry | undefined = this.toSpawnList.filter( (e) => e.getCost() < this.room.energyAvailable && e.pause === 0 ).sort((a,b) => a.priority - b.priority ).pop();
+        if(this.spawnAvailable()) {
+            const entry: SpawnEntry | undefined = this.manager.data.toSpawnList.filter( (e) => e.getCost() < this.room.energyAvailable && e.pause === 0 ).sort((a,b) => a.priority - b.priority ).pop();
             if(entry !== undefined ){
                 for(const spawn of this.availableSpawns){
                     // Validate Name
@@ -96,11 +81,5 @@ export class SpawnManager {
                 }
             }
         }
-    }
-/**
- * End Tick Logic of the spawnManager
- */
-    public destroy() {
-        this.saveList();
     }
 }
