@@ -1,5 +1,24 @@
 # Kendalor Screeps AI
 
+## Typings
+
+The type definitions for Screeps come from [typed-screeps](https://github.com/screepers/typed-screeps). If you find a problem or have a suggestion, please open an issue there.
+
+## Structure
+
+### Managers
+
+All Logic is structured in levels  at coressponding 'Manager' classes. At the head is the Empire Manager, invoking Empire wide logic (trade, scouting, etc). For each Room exists a 'RoomManager' invoking the logic coressponding to each Room, which includes a 'SpawnManager'. 
+
+### Operations
+
+All Logic is bundled and executed in 'Operations'. This allows reusing code with different Parameters, for Defending a Room, Remote Mining, and other Tasks. 'Operations' can spawn other Operations and are structured in 3 Methods: 'onFirstRun()', 'run()' and 'onLastRun()'. Which executus Logic for the first Runs (e.g. enque needed Creeps in the SpawnManager), Logic executed every Tick (e.g. Check if 'onLastRun()' requirements are met). And lastly cleaning Up the operations (removing Creeps from the 'SpawnManager') or creating new Operations for this, or other Rooms. 
+
+### Data 
+
+Every read/write operation is located in corresponding 'Data'- Classes and nowhere else, to have only one place to look, if fields are missing, or have unpredicted values. 
+
+
 ## Basic Usage
 
 You will need:
@@ -28,21 +47,3 @@ Running `rollup -c` will compile your code and do a "dry run", preparing the cod
 Further NPM Scripts are implemented in the `package.json` for IDE integration. Running `npm run push-main` is equivalent to `rollup -c --environment DEST:main`, and `npm run watch-sim` is equivalent to `rollup -cw --dest sim`.
 
 #### Important! To upload code to a private server, you must have [screepsmod-auth](https://github.com/ScreepsMods/screepsmod-auth) installed and configured!
-
-## Typings
-
-The type definitions for Screeps come from [typed-screeps](https://github.com/screepers/typed-screeps). If you find a problem or have a suggestion, please open an issue there.
-
-## Structure
-
-### Managers
-
-All Logic is structured in levels  at coressponding 'Manager' classes. At the head is the Empire Manager, invoking Empire wide logic (trade, scouting, etc). For each Room exists a 'RoomManager' invoking the logic coressponding to each Room, which includes a 'SpawnManager'. 
-
-### Operations
-
-All Logic is bundled and executed in 'Operations'. This allows reusing code with different Parameters, for Defending a Room, Remote Mining, and other Tasks. 'Operations' can spawn other Operations and are structured in 3 Methods: 'onFirstRun()', 'run()' and 'onLastRun()'. Which executus Logic for the first Runs (e.g. enque needed Creeps in the SpawnManager), Logic executed every Tick (e.g. Check if 'onLastRun()' requirements are met). And lastly cleaning Up the operations (removing Creeps from the 'SpawnManager') or creating new Operations for this, or other Rooms. 
-
-### Data 
-
-Every read/write operation is located in corresponding 'Data'- Classes and nowhere else, to have only one place to look, if fields are missing, or have unpredicted values. 
