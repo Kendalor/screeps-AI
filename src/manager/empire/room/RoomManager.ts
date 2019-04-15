@@ -71,9 +71,11 @@ export class RoomManager {
 			this.runNextOperation();
 			counter = counter +1;
 		}
-		this.destroy();
 
 		this.spawnmgr.run();
+		this.destroy();
+
+		
 	}
 	/**
 	 * End of Tick Method
@@ -93,7 +95,7 @@ export class RoomManager {
 		if( op !== undefined ) {
 			try {
 					op.run();
-					console.log( "Did Run OP, didRUN: " + op.didRun + "")
+					console.log( "Did Run OP: "+ op.name +", didRUN: " + op.didRun + "")
 			} catch (error) {
 				console.log("ERROR running Op:" + op.name + "With Error: " +error);
 			}

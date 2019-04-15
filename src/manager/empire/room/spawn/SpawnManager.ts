@@ -62,7 +62,7 @@ export class SpawnManager {
  */
     public spawnNext() {
         if(this.spawnAvailable()) {
-            const entry: SpawnEntry | undefined = this.manager.data.toSpawnList.filter( (e) => e.getCost() < this.room.energyAvailable && e.pause === 0 ).sort((a,b) => a.priority - b.priority ).pop();
+            const entry: SpawnEntry | undefined = this.manager.data.toSpawnList.filter( (e) => e.getCost() <= this.room.energyAvailable && e.pause === 0 ).sort((a,b) => a.priority - b.priority ).pop();
             if(entry !== undefined ){
                 for(const spawn of this.availableSpawns){
                     // Validate Name

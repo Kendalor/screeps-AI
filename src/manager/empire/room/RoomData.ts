@@ -18,7 +18,6 @@ export class RoomData implements RoomDataInterface {
         this.roomName = this.manager.roomName;
         if(Memory.rooms[this.roomName] === undefined) {
 
-            console.log("Memory.rooms.roomName is undefined");
             Memory.rooms[this.roomName] = {} as RoomDataInterface;
             if(Game.rooms.roomName === undefined) {
                 this.mine = false;
@@ -44,16 +43,14 @@ export class RoomData implements RoomDataInterface {
  */
 
     public init(): void {
-        console.log("Init Room Data");
         this.mine = Memory.rooms[this.roomName].mine
         this.loadOperationList();
         this.loadSpawnList();
-        console.log("Loaded " + this.operations.length + " Operations");
     }
 
 
     public toMemory(): any {
-        return {mine: this.mine, roomName: this.roomName, operations: []}
+        return {mine: this.mine, roomName: this.roomName, operations: [], toSpawnList: []}
     }
 /**
  * Load Operations from Memory
@@ -68,9 +65,7 @@ export class RoomData implements RoomDataInterface {
  * Save Operations to Memory
  */
     public saveOperationList(): void {
-        console.log("Saving Operations to Memory");
         Memory.rooms[this.roomName].operations = [];
-        console.log("Resetted Operations Memory:" + Memory.rooms[this.roomName].operations.length)
         for(const entry of this.operations) {
             if(entry.lastRun === false){
                 if(entry.pause > 0){
@@ -101,8 +96,9 @@ export class RoomData implements RoomDataInterface {
      */
 
     public loadSpawnList(){
-        for(const i in Memory.rooms[this.roomName].memory.spawnList) {
-            this.toSpawnList.push(new SpawnEntry(Memory.rooms[this.roomName].memory.toSpawnList[i] as SpawnEntryMemory));
+        this.toSpawnList=[];
+        for(const i in Memory.rooms[this.roomName].toSpawnList) {
+            this.toSpawnList.push(new SpawnEntry(Memory.rooms[this.roomName].toSpawnList[i] as SpawnEntryMemory));
         }
     }
 /**
@@ -114,8 +110,9 @@ export class RoomData implements RoomDataInterface {
             if(entry.pause > 0){
                 entry.pause = entry.pause -1;
             }
-            Memory.rooms[this.roomName].toSpawnList.push(entry as SpawnEntryMemory);
+            Memory.rooms[this.roomName].toSpawnList.push(entry.toMemory() as SpawnEntryMemory);
         }
+
     }
 
 
