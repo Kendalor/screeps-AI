@@ -17,7 +17,7 @@ export class Allrounder {
         this.creep = creep;
         if(creep.memory.job !== undefined ){
             if(this.jobs[this.creep.memory.job] !== undefined ){
-                this.job = new this.jobs[j](this.creep) as Job;
+                this.job = new this.jobs[this.creep.memory.job](this.creep) as Job;
             } else {
                 throw new Error("Creep: " +  this.creep.name + " has wrong Job!");
             }
@@ -25,28 +25,32 @@ export class Allrounder {
     }
 
     public run(): void {
-        if(this.creep.memory.job === undefined ) {
+        if(this.job === undefined ) {
+            // Why is this here ? Memory Cleanup ?
+            /*
             if (this.creep.room.controller!.level > 2){
                 this.repairCancel(this.creep);
                 this.upgradeCancel(this.creep);
         
-                }
-                this.mineCancel(this.creep);
-                this.gatherCancel(this.creep);
-        
-                if(this.creep.room.controller!.level <= 2 && this.creep.room.controller!.ticksToDowngrade < 1000){
-                    this.upgrade(this.creep);
-                }
-                this.haul(this.creep);  
-                this.build(this.creep);
-                if (this.creep.room.controller!.level <= 2){
-                    this.repair(this.creep);
-                    this.upgrade(this.creep);
-                }
-                this.salvage(this.creep);
-                this.harvest(this.creep);
+            }
+            this.mineCancel(this.creep);
+            this.gatherCancel(this.creep);
+            */
+            if(this.creep.room.controller!.level <= 2 && this.creep.room.controller!.ticksToDowngrade < 1000){
+                this.setJob("Upgrade");
+            }
+            this.setJob("Haul");  
+            this.setJob("Build");
+            if (this.creep.room.controller!.level <= 2){
+                this.setJob("Repair");
+                this.setJob("Upgrade");
+            }
+            this.setJob("Salvage");
+            this.setJob("Harvest");
         } else {
-
+            if(this.job !== undefined){
+                this.job.run();
+            }
         }
     }
 
