@@ -1,15 +1,10 @@
 export class Job {
-    public creep: Creep;
 
-    constructor(creep: Creep){
-        this.creep = creep;
-    }
-
-    public run(): void {
+    public static run(creep: Creep): void {
         // TODO
     }
 
-    public cancel(): void {
+    public static  cancel(creep: Creep): void {
         // TODO
     }
 }
