@@ -2,15 +2,36 @@ import { Job } from "./Job";
 
 export class Salvage extends Job{
 
-    constructor(creep: Creep){
-        super(creep);
+    public static run(creep: Creep): void {
+        // RUN PART
+        if(creep.memory.job === 'Salvage' && creep.memory.targetId){
+            const salvage : Resource | null = Game.getObjectById(creep.memory.targetId);
+            if (salvage != null){
+                if(creep.inRangeTo(salvage,1)){
+                    creep.pickup(salvage);
+                }else{
+                    creep.moveTo(salvage);
+                }
+            }
+            else{
+                delete creep.memory.targetId;
+            }
+        }
+        // CANCEL CONDITION
+        if(creep.memory.job === 'Salvage' && (creep.room.memory.underAttack === true || !creep.memory.targetId || creep.carry.energy > 0)){
+            this.cancel(creep);
+        }
     }
 
-    public run(): void {
-        // TODO
+    public static runCondition(creep: Creep): boolean {
+        return (creep.room.memory.underAttack === undefined || creep.room.memory.underAttack === false) && creep.carry.energy <= creep.carryCapacity/2;
     }
 
-    public cancel(): void {
-        // TODO
+    public static getTargetId(creep: Creep): string | null {
+        const salvage = creep.pos.findClosestByPath(creep.room.find(FIND_DROPPED_RESOURCES), {filter: (s: Resource) => s.amount > creep.carryCapacity && creep.room.name === s.pos.roomName});
+        if (salvage !== null){
+            return salvage.id;
+        }
+        return null;
     }
 }

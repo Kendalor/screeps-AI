@@ -47,23 +47,27 @@ export class Repair extends Job{
         return null;
     }
 
-    public static cancel(creep: Creep): void {
-        if(creep.memory.job === 'Repair'){
-            creep.memory.targetId = undefined;
-            creep.memory.job = undefined;
-        }
-    }
 
     public static run(creep: Creep): void {
 
         const target: Structure | null = Game.getObjectById(creep.memory.targetId);
         // JOB CONDITION energy, target set, and needs repair.
-        if(creep.carry.energy > 0 && creep.memory.job ==='Repair' && target != null && target.hits < target.hitsMax){
-            // JOB EXECUTION
-            if(creep.inRangeTo(target,3)){
-                creep.repair(target);
-            }else{
-                creep.moveTo(target,{range:3,ignoreCreeps:true,reusePath:50}); // ignoreRoads:true
+        if(creep.carry.energy > 0 && creep.memory.job ==='Repair'){
+            if(target != null){
+                if(target.hits < target.hitsMax){
+                        // JOB EXECUTION
+                        if(creep.inRangeTo(target,3)){
+                            creep.repair(target);
+                        }else{
+                            creep.moveTo(target,{range:3,ignoreCreeps:true,reusePath:50}); // ignoreRoads:true
+                        }
+                } else {
+                    // Search for new Target
+                    // Will be done after Job Cancel and search for a new Job
+                }
+            } else {
+                // Search for new Target
+                // Will be done after Job Cancel and search for a new Job
             }
         }
         // JOB CANCEL CONDITION(S)

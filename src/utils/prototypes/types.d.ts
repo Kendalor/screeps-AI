@@ -48,8 +48,6 @@ interface Creep {
     mine(target: Resource): CreepMoveReturnCode | CreepActionReturnCode;
     extract(target: Resource): CreepMoveReturnCode | CreepActionReturnCode;
     inRangeTo(target: RoomObject,range: number): boolean;
-    travelTo(target: RoomObject): CreepMoveReturnCode;
-    journeyTo(target: RoomObject): CreepMoveReturnCode;
     isBlocked(): boolean;
     leaveBorder(gap: number): CreepMoveReturnCode;
     makeScreepsPinkAgain(): boolean;

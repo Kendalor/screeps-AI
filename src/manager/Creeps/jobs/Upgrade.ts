@@ -2,9 +2,6 @@ import { Job } from "./Job";
 
 export class Upgrade extends Job{
 
-    constructor(creep: Creep){
-        super(creep);
-    }
 
     public static runCondition(creep: Creep): boolean {
         return creep.carry.energy > 0 && this.getTargetId(creep) !== null;
@@ -15,7 +12,7 @@ export class Upgrade extends Job{
     }
 
     public static run(creep: Creep): void {
-        if(this.runCondition(creep){
+        if(this.runCondition(creep)){
             const target: StructureController | null = Game.getObjectById(creep.memory.targetId);
             if(target !== null) {
                 const rangeTo = creep.pos.getRangeTo(target);

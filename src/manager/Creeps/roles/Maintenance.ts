@@ -10,62 +10,53 @@ export class Maintenance {
     // TODO
     
     public creep: Creep;
-    public jobs: any = {Repair, Upgrade, Mine, Gather, Haul, Build, Harvest};
+		public jobs: any = {Repair, Upgrade, Mine, Gather, Haul, Build, Harvest};
     constructor(creep: Creep) {
         this.creep = creep;
     }
 
     public run(): void {
-        if (this.creep.memory.job === undefined) {
-            if(this.creep.room.controller!.ticksToDowngrade < 5000){
-				if (this.creep.carry.energy > 0){
-					this.creep.memory.targetId=this.creep.room.controller!.id;
-					this.setJob("Upgrade");
-					this.run();
-				}
-			}
-            
-			// if(creep.room.memory.underAttack)
-			//    this.repair(creep);
-			if(this.creep.carry.energy > 0 ){
-				let repairTargets: Structure[] = this.creep.room.roads.filter((structure) => structure.hits < structure.hitsMax-1500);
-				if(!repairTargets.length && this.creep.room.energyCapacityAvailable>=1300){
-					if(!this.creep.room.memory.structureHitsMin){
-						this.creep.room.memory.structureHitsMin = 5000; 
-					}
-					const minHits = this.creep.room.memory.structureHitsMin;
-					if(!repairTargets.length){
-						repairTargets = this.creep.room.ramparts.filter((structure) => structure.hits < minHits);
-					}
-					if(!repairTargets.length){
-						repairTargets = this.creep.room.constructedWalls.filter((structure) => structure.hits < minHits);
-					}
-					if(!repairTargets.length && minHits < 15000000){
-						this.creep.room.memory.structureHitsMin += 1000; 
-					}
-				}
-				if(repairTargets.length > 0){
-					const repairTarget = this.creep.pos.findClosestByPath(repairTargets);
-					if(repairTarget !== null){
-						const type = repairTarget.structureType;
-						if(type === STRUCTURE_RAMPART || type === STRUCTURE_WALL){
-							this.creep.room.memory.structureHitsMin = repairTarget.hits;
+        if (this.creep.memory.job === undefined) { 
+					if(this.creep.room.controller!.ticksToDowngrade < 5000){
+						if(this.jobs.Upgrade.runCondition(this.creep)){
+							this.creep.memory.targetId = this.jobs.Upgrade.getTargetId(this.creep);
+							this.setJob("Upgrade");
+							this.run();
 						}
-						this.creep.memory.job = "Repair";
-						this.creep.memory.targetId = repairTarget.id;
+					}
+					if (this.jobs.Repair.runCondition()){
+						this.creep.memory.targetId=this.jobs.Repair.getTargetId(this.creep);
 						this.setJob("Repair");
 						this.run();
 					}
+					if (this.jobs.Build.runCondition()){
+						this.creep.memory.targetId=this.jobs.Build.getTargetId(this.creep);
+						this.setJob("Build");
+						this.run();
+					}
+					if (this.jobs.Haul.runCondition()){
+						this.creep.memory.targetId=this.jobs.Haul.getTargetId(this.creep);
+						this.setJob("Haul");
+						this.run();
+					}
+					if (this.jobs.Upgrade.runCondition()){
+						this.creep.memory.targetId=this.jobs.Upgrade.getTargetId(this.creep);
+						this.setJob("Upgrade");
+						this.run();
+					}
+					if (this.jobs.Salvage.runCondition()){
+						this.creep.memory.targetId=this.jobs.Salvage.getTargetId(this.creep);
+						this.setJob("Salvage");
+						this.run();
+					}
+					
+					if (this.jobs.Gather.runCondition()){
+						this.creep.memory.targetId=this.jobs.Gather.getTargetId(this.creep);
+						this.setJob("Gather");
+						this.run();
+					}
 				}
-			}
-			this.setJob("Build");
-			
-			this.setJob("Haul");
-			this.setJob("Upgrade");
-			this.setJob("Salvage");
-			this.setJob("Gather");
-		}
-		this.jobs[this.creep.memory.job](this.creep).run();
+			this.jobs[this.creep.memory.job](this.creep).run();
     }
     public setJob(j: string): void {
 		this.creep.memory.job = j;
