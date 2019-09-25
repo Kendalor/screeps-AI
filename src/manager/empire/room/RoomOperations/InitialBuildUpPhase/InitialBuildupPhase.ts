@@ -32,7 +32,7 @@ export class InitialBuildUpPhase extends RoomOperation{
             console.log(" Found Sources: " + numSources);
             for(let i=0; i<numSources *3; i++){
                 console.log("enqued Creep for: " + i);
-                this.manager.spawnmgr.enque({body: [WORK,WORK,MOVE,CARRY] ,
+                this.manager.spawnmgr.enque({
                     memory: {role: "Maintenance"},
                     name: this.manager.roomName +"_"+this.type+"_"+i,
                     pause: 0,

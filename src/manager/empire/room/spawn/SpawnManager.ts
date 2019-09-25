@@ -1,6 +1,6 @@
+import {Maintenance} from "../../../Creeps/roles/Maintenance";
 import { RoomManager } from "../RoomManager";
 import { SpawnEntry, SpawnEntryMemory } from "./SpawnEntry";
-
 
 /**
  * Manages Spawning in one room. Has a List of Creeps to Spawn which is kept in Memory and loaded on Initializations.
@@ -17,6 +17,7 @@ export class SpawnManager {
     public roomName: string;
     public availableSpawns: StructureSpawn[];
     public manager: RoomManager;
+    public roles: any = {Maintenance};
 
 
     constructor(mgr: RoomManager, roomName: string) {
@@ -54,7 +55,7 @@ export class SpawnManager {
      * @param entry SpawnEntryMemory
      */
     public dequeue(entry: SpawnEntryMemory){
-        _.remove(this.manager.data.toSpawnList, (e) => { return (e.body === entry.body && e.memory === entry.memory && e.name === entry.name && e.rebuild === e.rebuild) 
+        _.remove(this.manager.data.toSpawnList, (e) => { return (e.memory === entry.memory && e.name === entry.name && e.rebuild === e.rebuild) 
         });
     }
     /**
@@ -62,18 +63,19 @@ export class SpawnManager {
      */
     public spawnNext() {
         if(this.spawnAvailable()) {
-            const entry: SpawnEntry | undefined = this.manager.data.toSpawnList.filter( (e) => e.getCost() <= this.room.energyAvailable && e.pause === 0 ).sort((a,b) => a.priority - b.priority ).pop();
+            const entry: SpawnEntry | undefined = this.manager.data.toSpawnList.filter( (e) => e.pause === 0 ).sort((a,b) => a.priority - b.priority ).pop();
             if(entry !== undefined ){
                 for(const spawn of this.availableSpawns){
                     // Validate Name
                     if(Game.creeps[entry.name] !== undefined ){
                         entry.name = entry.name + "_" + String(Game.time % 1000);
                     }
-                    const err: ScreepsReturnCode = spawn.spawnCreep(entry.body, entry.name, {memory: entry.memory, dryRun: true});
+                    const body: BodyPartConstant[] = this.roles[entry.memory.role].getBody(spawn.room.energyCapacityAvailable);
+                    const err: ScreepsReturnCode = spawn.spawnCreep(body, entry.name, {memory: entry.memory, dryRun: true});
                     if(err === OK ){
-                        spawn.spawnCreep(entry.body, entry.name, {memory: entry.memory, dryRun: false});
+                        spawn.spawnCreep(body, entry.name, {memory: entry.memory, dryRun: false});
                         if(entry.rebuild === true) {
-                            entry.pause = entry.body.length * 3 + 1500;
+                            entry.pause = body.length * 3 + 1500;
                         } else {
                             this.dequeue(entry as SpawnEntryMemory);
                         }
@@ -81,5 +83,13 @@ export class SpawnManager {
                 }
             }
         }
+    }
+
+    public getCost(body: BodyPartConstant[]): number {
+        let cost: number = 0;
+        for(const part of body){
+            cost=cost + BODYPART_COST[part];
+        }
+        return cost;
     }
 }

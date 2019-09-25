@@ -1,4 +1,5 @@
 import { Job } from "./Job";
+
 type HaulTargetwithStore = StructureStorage | StructureTerminal;
 type HaulTargetwithEnergy = StructureContainer | StructureTower | StructureSpawn | StructureExtension | StructureLink;
 type  HaulTarget = null | HaulTargetwithStore | HaulTargetwithEnergy;
@@ -22,22 +23,22 @@ export class Haul extends Job {
             if(target.energy === target.energyCapacity) {
                 this.cancel(creep);
             }
-        } else {
-            if (creep.carry.energy > 0){
-                // JOB EXECUTION
-                if(target !== null){
-                    if ( creep.inRangeTo(target,1)){
-                        creep.transfer(target, RESOURCE_ENERGY);
-                    }else{
-                        creep.travelTo(target);
-                    }
-                } else {
-                    this.cancel(creep);
+        } 
+        if (creep.carry.energy > 0){
+            // JOB EXECUTION
+            if(target !== null){
+                if ( creep.inRangeTo(target,1)){
+                    creep.transfer(target, RESOURCE_ENERGY);
+                }else{
+                    creep.moveTo(target);
                 }
             } else {
                 this.cancel(creep);
             }
+        } else {
+            this.cancel(creep);
         }
+        
     }
     
 
@@ -57,17 +58,19 @@ export class Haul extends Job {
             const tmpList: StructureTower[] = structures.filter((str) => str.structureType === STRUCTURE_TOWER) as StructureTower[];
             targets = tmpList.filter((structure) => structure.energy < structure.energyCapacity-800);
         }
-        // SPAWNS
-        if (!targets.length){
-            const tmpList: StructureSpawn[] = structures.filter((str) => str.structureType === STRUCTURE_SPAWN) as StructureSpawn[];
-            targets = tmpList.filter((structure) => structure.energy < structure.energyCapacity);
-        }
 
         // EXTENSIONS
         if(!targets.length){
             const tmpList: StructureExtension[] = structures.filter((str) => str.structureType === STRUCTURE_EXTENSION) as StructureExtension[];
             targets = tmpList.filter((structure) => structure.energy < structure.energyCapacity);
         }
+        // SPAWNS
+        if (!targets.length){
+            const tmpList: StructureSpawn[] = structures.filter((str) => str.structureType === STRUCTURE_SPAWN) as StructureSpawn[];
+            targets = tmpList.filter((structure) => structure.energy < structure.energyCapacity);
+        }
+
+
 
         // TERMINAL
         if (!targets.length && creep.room.terminal && creep.room.terminal.store.energy<50000){
@@ -97,7 +100,7 @@ export class Haul extends Job {
         }
 
         // STORAGE
-        if (creep.memory.role === 'Hauler' && !targets.length && creep.carry.energy > 0 ){
+        if (!targets.length && creep.carry.energy > 0 ){
             targets = [creep.room.storage].filter( (structure) => structure && structure.store.energy < structure.storeCapacity && creep.room.name === structure.room.name);
         }
         // TARGETS FOUND

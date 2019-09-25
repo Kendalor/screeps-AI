@@ -1,5 +1,6 @@
 import { Job } from "./Job";
 
+
 export class Salvage extends Job{
 
     public static run(creep: Creep): void {
@@ -28,7 +29,10 @@ export class Salvage extends Job{
     }
 
     public static getTargetId(creep: Creep): string | null {
-        const salvage = creep.pos.findClosestByPath(creep.room.find(FIND_DROPPED_RESOURCES), {filter: (s: Resource) => s.amount > creep.carryCapacity && creep.room.name === s.pos.roomName});
+        const salvage = creep.pos.findClosestByPath(creep.room.find(FIND_TOMBSTONES), {filter: (s: Tombstone) => 
+            s.creep.carry.energy > 100 &&
+             creep.room.name === s.pos.roomName
+             });
         if (salvage !== null){
             return salvage.id;
         }

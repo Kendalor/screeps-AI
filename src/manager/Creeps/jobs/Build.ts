@@ -14,7 +14,7 @@ export class Build extends Job {
                 this.run(creep);
             }
         } else {
-            if(creep.carry.energy > 0 && creep.memory.job === 'Build' && target !== null){
+            if(creep.carry.energy > 0 && target !== null){
                 if(creep.inRangeTo(target,1)){
                     if(creep.build(target) === ERR_INVALID_TARGET){
                         // TARGET INVALID => Target is Already Built or Destroyed

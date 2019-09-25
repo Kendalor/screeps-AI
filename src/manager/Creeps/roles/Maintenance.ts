@@ -1,65 +1,60 @@
 import { Build } from "../jobs/Build";
-import { Gather } from "../jobs/Gather";
 import { Harvest } from "../jobs/Harvest";
 import { Haul } from "../jobs/Haul";
-import { Mine } from "../jobs/Mine";
+import {PickupDropped} from "../jobs/PickupDropped";
+import {PickupTombstone} from "../jobs/PickupTombstone";
 import { Repair } from "../jobs/Repair";
 import { Upgrade } from "../jobs/Upgrade";
 
+
 export class Maintenance {
-    // TODO
+
     
-    public creep: Creep;
-		public jobs: any = {Repair, Upgrade, Mine, Gather, Haul, Build, Harvest};
+	public creep: Creep;
+	// ORDER OF ENTRIES  === PRIORITY
+	public jobs: {[name: string]: any} = {"Haul": Haul,
+	"Build": Build, "Repair": Repair, "Upgrade": Upgrade, "PickupDropped": PickupDropped, "PickupTomstone": PickupTombstone,  "Harvest": Harvest};
+	
     constructor(creep: Creep) {
         this.creep = creep;
     }
 
     public run(): void {
-        if (this.creep.memory.job === undefined) { 
-					if(this.creep.room.controller!.ticksToDowngrade < 5000){
-						if(this.jobs.Upgrade.runCondition(this.creep)){
-							this.creep.memory.targetId = this.jobs.Upgrade.getTargetId(this.creep);
-							this.setJob("Upgrade");
-							this.run();
-						}
-					}
-					if (this.jobs.Repair.runCondition()){
-						this.creep.memory.targetId=this.jobs.Repair.getTargetId(this.creep);
-						this.setJob("Repair");
-						this.run();
-					}
-					if (this.jobs.Build.runCondition()){
-						this.creep.memory.targetId=this.jobs.Build.getTargetId(this.creep);
-						this.setJob("Build");
-						this.run();
-					}
-					if (this.jobs.Haul.runCondition()){
-						this.creep.memory.targetId=this.jobs.Haul.getTargetId(this.creep);
-						this.setJob("Haul");
-						this.run();
-					}
-					if (this.jobs.Upgrade.runCondition()){
-						this.creep.memory.targetId=this.jobs.Upgrade.getTargetId(this.creep);
-						this.setJob("Upgrade");
-						this.run();
-					}
-					if (this.jobs.Salvage.runCondition()){
-						this.creep.memory.targetId=this.jobs.Salvage.getTargetId(this.creep);
-						this.setJob("Salvage");
-						this.run();
-					}
-					
-					if (this.jobs.Gather.runCondition()){
-						this.creep.memory.targetId=this.jobs.Gather.getTargetId(this.creep);
-						this.setJob("Gather");
+		if(this.creep.memory.job === undefined || this.jobs[this.creep.memory.job] === undefined) {
+			if(this.creep.room.controller!.ticksToDowngrade < 5000){
+				this.creep.memory.targetId = this.jobs.Upgrade.getTargetId(this.creep);
+				this.setJob("Upgrade");
+				this.run();
+			} else {
+				for(const job of Object.keys(this.jobs)) {
+					if( this.creep.memory.job === undefined && this.jobs[job].runCondition(this.creep) && this.jobs[job].getTargetId(this.creep) !== null) {
+						this.creep.memory.targetId = this.jobs[job].getTargetId(this.creep);
+						this.setJob(job);
 						this.run();
 					}
 				}
-			this.jobs[this.creep.memory.job](this.creep).run();
+			}
+		} else if( this.creep.memory.job !== undefined ) {
+			this.jobs[this.creep.memory.job].run(this.creep);
+		}
     }
     public setJob(j: string): void {
 		this.creep.memory.job = j;
-    }
+	}
+	
+	public static getBody(energy: number): BodyPartConstant[] {
+		const energyCap = Math.min(energy,1200);
+		let partArray: BodyPartConstant[] = [];
+		const fullSets = Math.min(Math.max(1, Math.floor(energyCap/200)), 4);
+		if(energyCap - fullSets*200 > 100){
+			partArray = [MOVE,CARRY]
+		}
+		for (let i = 0; i < fullSets; i++){
+			partArray = partArray.concat([WORK,CARRY,MOVE]);
+		}
+		return partArray;
+		
+	}
+
 
 }

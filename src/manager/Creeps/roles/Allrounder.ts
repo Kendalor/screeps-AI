@@ -12,12 +12,12 @@ import { Upgrade } from "../jobs/Upgrade";
 export class Allrounder {
     public creep: Creep;
     public jobs: any = {Repair, Upgrade, Mine, Gather, Haul, Build, Harvest};
-    public job: Job | undefined ;
+    public job: typeof Job | undefined ;
     constructor(creep: Creep) {
         this.creep = creep;
         if(creep.memory.job !== undefined ){
             if(this.jobs[this.creep.memory.job] !== undefined ){
-                this.job = new this.jobs[this.creep.memory.job](this.creep) as Job;
+                this.job = new this.jobs[this.creep.memory.job](this.creep);
             } else {
                 throw new Error("Creep: " +  this.creep.name + " has wrong Job!");
             }
@@ -49,12 +49,12 @@ export class Allrounder {
             this.setJob("Harvest");
         } else {
             if(this.job !== undefined){
-                this.job.run();
+                this.job.run(this.creep);
             }
         }
     }
 
     public setJob(j: string): void {
-        this.job = new this.jobs[j](this.creep) as Job;
+        this.job = new this.jobs[j](this.creep);
     }
 }
