@@ -2,6 +2,7 @@ import { Job } from "./Job";
 
 export class PickupStorage extends Job {
     public static run(creep: Creep): void {
+        super.run(creep);
         // RUN CODE
         const container: StructureStorage | null = Game.getObjectById(creep.memory.targetId);
         if(container !== null && creep.carry.energy < creep.carryCapacity){
@@ -19,14 +20,14 @@ export class PickupStorage extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        return this.getTargetId(creep) !== null  && creep.carry.energy <= creep.carryCapacity;
+        return creep.carry.energy < creep.carryCapacity;
     }
 
     public static getTargetId(creep: Creep): string | null {
         if(creep.memory.storageId){
             return creep.memory.storageId;
         } else {
-            if( creep.room.storage !== undefined ){
+            if( creep.room.storage != null ){
                 return creep.room.storage.id;
             }
         }

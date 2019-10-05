@@ -1,20 +1,21 @@
 import { Build } from "./Build";
 
-class BuildContainer extends Build {
+export class BuildContainer extends Build {
 
     public static run(creep: Creep): void {
         super.run(creep);
     }
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy > 0 && this.getTargetId(creep) !== null;
+        console.log("BuildContainer ?!")
+        return creep.carry.energy > 0 ;
     }
 
     public static getTargetId(creep: Creep): string | null {
-        if ( creep.memory.conatinerId !== null) {
-            return creep.memory.containerId;
-        } else {
-            const constructions: ConstructionSite[] = creep.room.constructionSitesByType(STRUCTURE_CONTAINER);
+        if ( creep.memory.conatinerId === null || creep.memory.containerId === undefined) {
+            const constructions: ConstructionSite[] = creep.room.find(FIND_MY_CONSTRUCTION_SITES).filter(
+                (constr) => constr.structureType === STRUCTURE_CONTAINER
+            );
             if(constructions.length !== 0) {
                 const site: ConstructionSite | null = creep.pos.findClosestByPath(constructions);
                 if (site !== null) {
@@ -22,7 +23,8 @@ class BuildContainer extends Build {
                 }
             
             }
-        return null;
+        
         }
+        return null;
     }
 }

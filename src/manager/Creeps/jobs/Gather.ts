@@ -4,7 +4,7 @@ import { Job } from "./Job";
 export class Gather extends Job {
 
     public static run(creep: Creep): void {
-
+        super.run(creep);
 
         // RUN CODE
         const container: StructureContainer | StructureStorage | StructureTerminal | null = Game.getObjectById(creep.memory.containerId);
@@ -38,7 +38,7 @@ export class Gather extends Job {
 
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy < creep.carryCapacity && this.getTargetId(creep) !== null;
+        return creep.carry.energy < creep.carryCapacity;
     }
 
 

@@ -4,6 +4,7 @@ import { Job } from "./Job";
 export class Salvage extends Job{
 
     public static run(creep: Creep): void {
+        super.run(creep);
         // RUN PART
         if(creep.memory.job === 'Salvage' && creep.memory.targetId){
             const salvage : Resource | null = Game.getObjectById(creep.memory.targetId);

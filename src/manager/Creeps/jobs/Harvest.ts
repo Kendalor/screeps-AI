@@ -4,6 +4,7 @@ export class Harvest extends Job{
 
 
     public static run(creep: Creep): void {
+        super.run(creep);
         // IS HARVEST CREEP AND ENERGY NOT FULL and HAS SOURCE
         if(creep.carry.energy < creep.carryCapacity){
             // JOB EXECUTION
@@ -36,7 +37,7 @@ export class Harvest extends Job{
         const sources = creep.room.find(FIND_SOURCES).filter(
             (src) => src.energy > 0
         ); 
-        const source = creep.pos.findClosestByPath(sources);
+        const source = creep.pos.findClosestByPath(sources, {ignoreCreeps: false});
         // Found Harvest Target ?
         if (source !== null) {
             return source.id

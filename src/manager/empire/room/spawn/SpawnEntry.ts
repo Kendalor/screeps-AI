@@ -1,16 +1,18 @@
 export interface SpawnEntryMemory {
     memory: CreepMemory;
     name: string;
-    rebuild: true;
+    rebuild: boolean;
     pause: number;
+    body?: BodyPartConstant[];
     priority: number;
 }
 
 export class SpawnEntry implements SpawnEntryMemory{
     public memory: CreepMemory;
     public name: string;
-    public rebuild: true;
+    public rebuild: boolean;
     public pause: number;
+    public body?: BodyPartConstant[];
     public priority: number;
     
     constructor(data: SpawnEntryMemory){
@@ -19,11 +21,12 @@ export class SpawnEntry implements SpawnEntryMemory{
         this.rebuild = data.rebuild;
         this.pause = data.pause;
         this.priority = data.priority;
+        this.body = data.body;
     }
 
 
 
     public toMemory(): SpawnEntryMemory {
-        return {memory: this.memory, name: this.name, rebuild: this.rebuild, pause: this.pause, priority: this.priority};
+        return {memory: this.memory, name: this.name, rebuild: this.rebuild, pause: this.pause, priority: this.priority, body: this.body};
     }
 }

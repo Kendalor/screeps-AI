@@ -3,6 +3,7 @@ import { Job } from "./Job";
 export class Build extends Job {
 
     public static run(creep: Creep): void {
+        super.run(creep);
         
         // RUN LOGIC 
         const target: ConstructionSite | null = Game.getObjectById(creep.memory.targetId);
@@ -34,7 +35,7 @@ export class Build extends Job {
 
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy > 0 && this.getTargetId(creep) !== null;
+        return creep.carry.energy > 0 ;
     }
 
     public static getTargetId(creep: Creep): string | null {
@@ -63,7 +64,7 @@ export class Build extends Job {
         // TAREGTS FOUND ?
         if(constructions.length > 0){
             // START JOB: SET MEMORY
-            const targetSite = creep.pos.findClosestByRange(constructions);
+            const targetSite = creep.pos.findClosestByPath(constructions);
             if (!(targetSite === null || targetSite === undefined)) {
                 return targetSite.id;
             }

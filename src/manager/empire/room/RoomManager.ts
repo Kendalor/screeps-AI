@@ -93,12 +93,14 @@ export class RoomManager {
     public runNextOperation(): void {
 		const op = this.getNextOperation();
 		if( op !== undefined ) {
-			try {
-					op.run();
-					console.log( "Did Run OP: "+ op.name +", didRUN: " + op.didRun + "")
-			} catch (error) {
-				console.log("ERROR running Op:" + op.name + "With Error: " +error);
-			}
+			op.run();
+			console.log( "Did Run OP: "+ op.name +", didRUN: " + op.didRun + "")
+			// try {
+			// 		op.run();
+			// 		console.log( "Did Run OP: "+ op.name +", didRUN: " + op.didRun + "")
+			// } catch (error) {
+			// 	console.log("ERROR running Op:" + op.name + "With Error: " +error);
+			// }
 		}
 	}
 

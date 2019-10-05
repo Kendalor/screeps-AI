@@ -2,9 +2,34 @@ import { Job } from "./Job";
 
 export class Repair extends Job{
 
+    public static run(creep: Creep): void {
+        super.run(creep);
+
+        const target: Structure | null = Game.getObjectById(creep.memory.targetId);
+        // JOB CONDITION energy, target set, and needs repair.
+        if(creep.carry.energy > 0 ){
+            if(target != null){
+                if(target.hits < target.hitsMax){
+                        // JOB EXECUTION
+                        if(creep.inRangeTo(target,3)){
+                            creep.repair(target);
+                        }else{
+                            creep.moveTo(target,{range:3, ignoreCreeps:false }); // ignoreRoads:true
+                        }
+                } else {
+                    this.cancel(creep);
+                }
+            } else {
+                this.cancel(creep);
+            }
+        } else {
+            this.cancel(creep);
+        }
+    }
+
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy > 0 && this.getTargetId(creep) !== null;
+        return creep.carry.energy > 0 ;
     }
 
     public static getTargetId(creep: Creep): string | null {
@@ -48,32 +73,6 @@ export class Repair extends Job{
     }
 
 
-    public static run(creep: Creep): void {
 
-        const target: Structure | null = Game.getObjectById(creep.memory.targetId);
-        // JOB CONDITION energy, target set, and needs repair.
-        if(creep.carry.energy > 0 && creep.memory.job ==='Repair'){
-            if(target != null){
-                if(target.hits < target.hitsMax){
-                        // JOB EXECUTION
-                        if(creep.inRangeTo(target,3)){
-                            creep.repair(target);
-                        }else{
-                            creep.moveTo(target,{range:3,ignoreCreeps:true,reusePath:50}); // ignoreRoads:true
-                        }
-                } else {
-                    // Search for new Target
-                    // Will be done after Job Cancel and search for a new Job
-                }
-            } else {
-                // Search for new Target
-                // Will be done after Job Cancel and search for a new Job
-            }
-        }
-        // JOB CANCEL CONDITION(S)
-        if((target === null || creep.carry.energy === 0 || target.hits === target.hitsMax) && creep.memory.job === 'Repair'){
-            this.cancel(creep);
-        }
-    }
 
 }

@@ -7,6 +7,7 @@ type  HaulTarget = null | HaulTargetwithStore | HaulTargetwithEnergy;
 export class Haul extends Job {
 
     public static run(creep: Creep): void {
+        super.run(creep);
         const target: HaulTarget = Game.getObjectById(creep.memory.targetId);
         // CANCEL CONDITION
         if(creep.carry.energy === 0 || target === null ) {
@@ -43,7 +44,7 @@ export class Haul extends Job {
     
 
     public static runCondition(creep: Creep): boolean {
-        if(creep.carry.energy > 0 && this.getTargetId(creep) !== null){
+        if(creep.carry.energy > 0 ){
             return true;
         }
         return false;

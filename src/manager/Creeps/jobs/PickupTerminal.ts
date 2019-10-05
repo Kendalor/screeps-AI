@@ -2,6 +2,7 @@ import { Job } from "./Job";
 
 export class PickupTerminal extends Job {
     public static run(creep: Creep): void {
+        super.run(creep);
         // RUN CODE
         const container: StructureTerminal | null = Game.getObjectById(creep.memory.targetId);
         if(container !== null && creep.carry.energy < creep.carryCapacity){
@@ -19,7 +20,7 @@ export class PickupTerminal extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        return this.getTargetId(creep) !== null  && creep.carry.energy <= creep.carryCapacity;
+        return creep.carry.energy <= creep.carryCapacity;
     }
 
     public static getTargetId(creep: Creep): string | null {

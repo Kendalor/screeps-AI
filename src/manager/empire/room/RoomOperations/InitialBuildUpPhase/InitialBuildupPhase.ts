@@ -54,8 +54,54 @@ export class InitialBuildUpPhase extends RoomOperation{
             console.log("First run Detected, running onFirstRun()");
             this.onfirstRun();
         }
+        if(this.manager.data.operations.length === 1){
+            console.log("Enque Miner Op");
+            this.manager.data.enque({name: "MinerOp", type: "MinerOperation", data: {}, roomName: this.roomName, priority: 90,pause: 1,firstRun: true, lastRun: false});
+        }
+        if(this.manager.data.operations.length === 2){
+            this.manager.data.enque({name: "HaulerOp", type: "HaulerOperation", data: {}, roomName: this.roomName, priority: 89,pause: 1,firstRun: true, lastRun: false});
+        }
+        if(this.manager.data.operations.filter( (op) => op.type === "DefenseOperation").length === 0){
+            console.log("Added Defense Operation");
+            this.manager.data.enque({name: "DefenseOp", type: "DefenseOperation", data: {}, roomName: this.roomName, priority: 91,pause: 1,firstRun: true, lastRun: false});
+        }
+        if(this.manager.data.operations.filter( (op) => op.type === "UpgradeOperation").length === 0){
+            console.log("Added Upgrade Operation");
+            this.manager.data.enque({name: "UpgradeOp", type: "UpgradeOperation", data: {}, roomName: this.roomName, priority: 70,pause: 1,firstRun: true, lastRun: false});
+        }
+        if(this.manager.data.operations.filter( (op) => op.type === "SupplyOperation").length === 0){
+            console.log("Added Supply Operation");
+            this.manager.data.enque({name: "SupplyOp", type: "SupplyOperation", data: {}, roomName: this.roomName, priority: 80,pause: 1,firstRun: true, lastRun: false});
+        }
+        if(this.manager.data.operations.filter( (op) => op.type === "BuildOperation").length === 0){
+            console.log("Added Build Operation");
+            this.manager.data.enque({name: "BuildOp", type: "BuildOperation", data: {}, roomName: this.roomName, priority: 60,pause: 1,firstRun: true, lastRun: false});
+        }
+        if(this.manager.data.operations.filter( (op) => op.type === "RepairOperation").length === 0){
+            console.log("Added Repair Operation");
+            this.manager.data.enque({name: "RepairOp", type: "RepairOperation", data: {}, roomName: this.roomName, priority: 65,pause: 1,firstRun: true, lastRun: false});
+        }
+        if(Game.rooms[this.roomName].controller!.level >= 4) {
+            const entries = this.manager.data.toSpawnList.filter( entry => entry.memory.role === "Maintenance" && entry.rebuild === true);
+            for(const e of entries){
+                this.manager.spawnmgr.dequeue(e);
+            }
+        }
+        if(this.manager.data.toSpawnList.filter( entry => entry.memory.role === "Maintenance").length === 0){
+            if(Game.rooms[this.roomName].find(FIND_MY_CREEPS).length === 0){
+                this.manager.spawnmgr.enque({
+                    memory: {role: "Maintenance"},
+                    name: this.manager.roomName +"_"+this.type ,
+                    pause: 0,
+                    priority: 100,
+                    rebuild: false});
+            }
+        }
+
+
         this.didRun=true;
 
+        
 
         // TODO
     }

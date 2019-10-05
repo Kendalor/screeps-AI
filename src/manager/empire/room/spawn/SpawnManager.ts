@@ -1,4 +1,9 @@
+import { Builder } from "../../../Creeps/roles/Builder";
 import {Maintenance} from "../../../Creeps/roles/Maintenance";
+import { Miner } from "../../../Creeps/roles/Miner";
+import { Repairer } from "../../../Creeps/roles/Repairer";
+import { Supply } from "../../../Creeps/roles/Supply";
+import { Upgrader } from "../../../Creeps/roles/Upgrader";
 import { RoomManager } from "../RoomManager";
 import { SpawnEntry, SpawnEntryMemory } from "./SpawnEntry";
 
@@ -17,7 +22,7 @@ export class SpawnManager {
     public roomName: string;
     public availableSpawns: StructureSpawn[];
     public manager: RoomManager;
-    public roles: any = {Maintenance};
+    public roles: any = {Maintenance, Miner, Upgrader, Supply, Builder, Repairer};
 
 
     constructor(mgr: RoomManager, roomName: string) {
@@ -70,12 +75,12 @@ export class SpawnManager {
                     if(Game.creeps[entry.name] !== undefined ){
                         entry.name = entry.name + "_" + String(Game.time % 1000);
                     }
-                    const body: BodyPartConstant[] = this.roles[entry.memory.role].getBody(spawn.room.energyCapacityAvailable);
+                    const body: BodyPartConstant[] = (entry.body != null) ? entry.body : this.roles[entry.memory.role].getBody(spawn);
                     const err: ScreepsReturnCode = spawn.spawnCreep(body, entry.name, {memory: entry.memory, dryRun: true});
                     if(err === OK ){
                         spawn.spawnCreep(body, entry.name, {memory: entry.memory, dryRun: false});
                         if(entry.rebuild === true) {
-                            entry.pause = body.length * 3 + 1500;
+                            entry.pause = 1500;
                         } else {
                             this.dequeue(entry as SpawnEntryMemory);
                         }

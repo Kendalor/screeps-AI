@@ -2,13 +2,18 @@ import { Job } from "./Job";
 
 export class PickupTombstone extends Job {
     public static run(creep: Creep): void {
+        super.run(creep);
         // RUN CODE
         const tombstone: Tombstone | null = Game.getObjectById(creep.memory.targetId);
         if(tombstone !== null && creep.carry.energy < creep.carryCapacity){
-            if (creep.inRangeTo(tombstone,1)){
-                creep.withdraw(tombstone,RESOURCE_ENERGY);
-            }else{
-                creep.moveTo(tombstone);
+            if(tombstone.store.energy > 0){
+                if (creep.inRangeTo(tombstone,1)){
+                    creep.withdraw(tombstone,RESOURCE_ENERGY);
+                }else{
+                    creep.moveTo(tombstone);
+                }
+            } else {
+                this.cancel(creep);
             }
         // CANCEL CONDITION
         } else {
@@ -17,7 +22,7 @@ export class PickupTombstone extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        return this.getTargetId(creep) !== null  && creep.carry.energy <= creep.carryCapacity;
+        return creep.carry.energy <= creep.carryCapacity;
     }
 
     public static getTargetId(creep: Creep): string | null {

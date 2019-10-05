@@ -1,7 +1,7 @@
 export class Job {
 
     public static run(creep: Creep): void {
-        // TODO
+        global.logger.debug("Creep: " + creep.name + " Run Function: ");
     }
 
     public static  cancel(creep: Creep): void {
@@ -10,12 +10,10 @@ export class Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        // TODO
         return false;
     }
 
     public static getTargetId(creep: Creep): string | null {
-        // TODO
         return null;
     }
 }
