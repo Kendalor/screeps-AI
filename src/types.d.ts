@@ -25,6 +25,7 @@ interface SpawnMemory {
 // `global` extension samples
 declare namespace NodeJS {
   interface Global {
+    empire: import("c:/Users/patrickr.INHOUSE/Documents/screeps/src/empire/EmpireManager").EmpireManager;
     logger: any;
   }
 }
