@@ -1,6 +1,6 @@
 
 import { BuildMiningContainer } from "../jobs/BuildMiningContainer";
-import { MineContainer } from "../jobs/MineContainer";
+import { Mine } from "../jobs/Mine";
 // import { SupplyMiningContainer } from "../jobs/SupplyMiningContainer";
 import { CreepRole } from "./CreepRole";
 
@@ -10,7 +10,7 @@ export class Miner extends CreepRole{
     
 
 	// ORDER OF ENTRIES  === PRIORITY
-	public jobs: {[name: string]: any} = {"MineContainer": MineContainer};
+	public jobs: {[name: string]: any} = {"MineContainer": Mine};
 	
     constructor(creep: Creep) {
         super(creep);

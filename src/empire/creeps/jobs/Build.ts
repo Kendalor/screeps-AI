@@ -8,22 +8,26 @@ export class Build extends Job {
         // RUN LOGIC 
         const target: ConstructionSite | null = Game.getObjectById(creep.memory.targetId);
         // RUN CONDITIONS + HAS TARGET
-        if(target === null) {
-            const id = this.getTargetId(creep);
-            if(id !== null) {
-                creep.memory.targetId = id;
-                this.run(creep);
-            }
+        // JOB CANCEL CONDITIONS
+		if((target == null || creep.carry.energy === 0)){
+			this.cancel(creep);
         } else {
-            if(creep.carry.energy > 0 && target !== null){
-                if(creep.pos.inRangeTo(target,1)){
-                    if(creep.build(target) === ERR_INVALID_TARGET){
+            if(creep.carry.energy > 0 ){
+                if(creep.pos.inRangeTo(target,3)){
+                    const err = creep.build(target);
+                    console.log("Creep: " + creep.name + " err: " + err);
+                    if(err === ERR_INVALID_TARGET){
                         // TARGET INVALID => Target is Already Built or Destroyed
                         this.cancel(creep);
+                    } else if (err !== OK){
+                        console.log(err);
                     }
                 }else{
-                    creep.moveTo(target);
+                    const err = creep.moveTo(target, {range: 3});
+                    console.log("Creep Move: " + creep.name + " err: " + err + "for Target: " + target.pos);
                 }
+            } else {
+                this.cancel(creep);
             }
         }
 
@@ -41,25 +45,7 @@ export class Build extends Job {
     public static getTargetId(creep: Creep): string | null {
         let constructions: ConstructionSite[] = [];
         if(constructions.length === 0 && creep.room.controller!.level > 1) {
-            constructions = creep.room.constructionSitesByType(STRUCTURE_EXTENSION);
-        }
-        if(constructions.length === 0) {
-            constructions = creep.room.constructionSitesByType(STRUCTURE_CONTAINER);
-        }
-        if(constructions.length === 0) {
-            constructions = creep.room.constructionSitesByType(STRUCTURE_STORAGE);
-        }
-        if(constructions.length === 0 && creep.room.controller!.level > 2) {
-            constructions = creep.room.constructionSitesByType(STRUCTURE_TOWER);
-        }
-        if(constructions.length === 0) {
-            constructions = creep.room.constructionSitesByType(STRUCTURE_ROAD);
-        }
-        if(constructions.length === 0) {
-            constructions = creep.room.constructionSitesByType(STRUCTURE_WALL);
-        }
-        if(constructions.length === 0) {
-            constructions = creep.room.constructionSites;
+            constructions = creep.room.find(FIND_CONSTRUCTION_SITES);
         }
         // TAREGTS FOUND ?
         if(constructions.length > 0){

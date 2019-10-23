@@ -5,7 +5,7 @@ export class PickupStorage extends Job {
         super.run(creep);
         // RUN CODE
         const container: StructureStorage | null = Game.getObjectById(creep.memory.targetId);
-        if(container !== null && creep.carry.energy < creep.carryCapacity){
+        if(container !== null && creep.carry.energy < creep.carryCapacity && container.store.energy > 0){
             if (creep.pos.inRangeTo(container,1)){
                 if(container.store.energy >= creep.carryCapacity-creep.carry.energy ){
                     creep.withdraw(container,RESOURCE_ENERGY);
@@ -27,7 +27,7 @@ export class PickupStorage extends Job {
         if(creep.memory.storageId){
             return creep.memory.storageId;
         } else {
-            if( creep.room.storage != null ){
+            if( creep.room.storage != null && creep.room.storage.store.energy > 0 ){
                 return creep.room.storage.id;
             }
         }

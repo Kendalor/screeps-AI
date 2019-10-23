@@ -1,4 +1,5 @@
 import { KillSelf } from "../jobs/KillSelf";
+import { PickupContainer } from "../jobs/PickupContainer";
 import { PickupStorage } from "../jobs/PickupStorage";
 import { SupplyExtension } from "../jobs/SupplyExtension";
 import { SupplySpawn } from "../jobs/SupplySpawn";
@@ -12,6 +13,7 @@ export class Supply extends CreepRole {
         "SupplySpawn": SupplySpawn,
 		"PickupStorage": PickupStorage,
 		"SupplyTower": SupplyTower,
+		"PickupContainer": PickupContainer,
 		"KillSelf": KillSelf};
 	
     constructor(creep: Creep) {
@@ -23,7 +25,7 @@ export class Supply extends CreepRole {
     }
 	
 	public static getBody(spawn: StructureSpawn): BodyPartConstant[] {
-		const energyCap = Math.min(Math.max(300,spawn.room.energyCapacityAvailable),1800);
+		const energyCap = Math.min(Math.max(300,spawn.room.energyAvailable),1800);
 		let partArray: BodyPartConstant[] = [];
 		const fullSets = Math.max(1, Math.floor(energyCap/150));
 		for (let i = 0; i < fullSets; i++){

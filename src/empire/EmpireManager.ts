@@ -39,7 +39,7 @@ export class EmpireManager  {
         global.logger.info(" INIT ----------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
         this.opMgr.init();
-        global.logger.info(" INIT ----------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
+        global.logger.info(" INIT ----------- OP  MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
         if(Object.keys(this.opMgr.operations).length === 0 ){
             global.logger.warn("No Operations Found");
@@ -62,7 +62,7 @@ export class EmpireManager  {
         global.logger.info(" DESTROY ------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
         this.opMgr.destroy();
-        global.logger.info(" DESTORY  ------ SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
+        global.logger.info(" DESTORY  ------ OP   MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
     }
 }

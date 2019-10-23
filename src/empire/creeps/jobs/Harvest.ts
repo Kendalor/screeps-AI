@@ -9,7 +9,7 @@ export class Harvest extends Job{
         if(creep.carry.energy < creep.carryCapacity){
             // JOB EXECUTION
             const source: Source | null = Game.getObjectById(creep.memory.targetId);
-            if( source !== null ){
+            if( source != null && source.energy > 0){
                 if(creep.pos.inRangeTo(source,1)) {
                     if (source.energy > 0){
                         creep.harvest(source);

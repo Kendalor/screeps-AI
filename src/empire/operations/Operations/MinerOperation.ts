@@ -20,6 +20,15 @@ export class MinerOperation extends RoomOperation{
             // Validate creeps:
             this.validateCreeps();
 
+
+            if(this.data.sources == null){
+                this.data.sources = {};
+                const sources: Source[] = r.find(FIND_SOURCES);
+                for(const s of sources){
+                    this.data.sources[s.id]={};
+                }
+            }
+
             if(this.data.creeps.length < 2 ){
                 const sources: Source[] = r.find(FIND_SOURCES);
                 for(const s of sources){

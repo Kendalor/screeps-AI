@@ -9,9 +9,11 @@ export class PickupContainer extends Job {
             if (creep.pos.inRangeTo(container,1)){
                 if(container.store.energy >= creep.carryCapacity-creep.carry.energy ){
                     creep.withdraw(container,RESOURCE_ENERGY);
+                } else {
+                    this.cancel(creep);
                 }
             }else{
-                creep.moveTo(container);
+                creep.moveTo(container, {ignoreCreeps: false});
             }
         // CANCEL CONDITION
         } else {

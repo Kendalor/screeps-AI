@@ -7,7 +7,6 @@ export class BuildContainer extends Build {
     }
 
     public static runCondition(creep: Creep): boolean {
-        console.log("BuildContainer ?!")
         return creep.carry.energy > 0 ;
     }
 

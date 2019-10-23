@@ -1,5 +1,8 @@
 import { EmpireManager } from "empire/EmpireManager";
+import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
+import { Claimer } from "./creeps/roles/Claimer";
+import { Colonize } from "./creeps/roles/Colonize";
 import { Hauler } from "./creeps/roles/Hauler";
 import { Maintenance } from "./creeps/roles/Maintenance";
 import { Miner } from "./creeps/roles/Miner";
@@ -7,7 +10,7 @@ import { Repairer } from "./creeps/roles/Repairer";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
 
-export const ROLE_STORE: any = {Maintenance, Miner, Hauler, Upgrader, Supply, Repairer, Builder};
+export const ROLE_STORE: any = {Maintenance, Miner, Hauler, Upgrader, Supply, Repairer, Builder, Claimer, Colonize, Attacker};
 
 export class CreepManager {
 
@@ -27,7 +30,7 @@ export class CreepManager {
                     console.log("Creep: " + c + "Has no Role !");
                 }
             } catch (error) {
-                console.log(error);
+                console.log("ERROR for Creep: " +c + "with Role: " + Game.creeps[c].memory.role + " ERROR MSG: " + error);
             }
 
         }

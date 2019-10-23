@@ -3,67 +3,55 @@ import { Mine } from "./Mine";
 export class MineContainer extends Mine {
 
     public static run(creep: Creep): void {
-        super.run(creep);
         // SETUP HAS SOURCE ID, HAS CONTAINER ID
-        if(creep.memory.containerId != null && creep.memory.pos_x == null && creep.memory.pos_x == null){
+        if(creep.memory.containerId != null ){
             const container: StructureContainer | null = Game.getObjectById(creep.memory.containerId);
             if(container != null ){
-                creep.memory.pos_x=container.pos.x;
-                creep.memory.pos_y=container.pos.y;
-            }
-        }
-
-        // SUPER CALL Mine Code
-        // IS HARVEST CREEP AND ENERGY NOT FULL and HAS SOURCE
-        super.run(creep);
-
-        // DROP IN CONTAINER, AND REPAIR LOGIC
-        global.logger.debug("CReep:" + creep.name + "Starting CONTAINER DROP AND REPAIR LOGIC");
-        if(creep.carry.energy >= 40){
-            global.logger.debug("CReep:" + creep.name + "GOt energy");
-            if(creep.memory.pos_x != null && creep.memory.pos_y != null){
-                global.logger.debug("CReep:" + creep.name + "Got COntainer Pos in Memory");
-                if(creep.memory.containerId != null){
-                    const container: StructureContainer | null = Game.getObjectById(creep.memory.containerId);
-                    global.logger.debug("CReep:" + creep.name + "Got COntainer Id in Memory");
-                    if(container != null){
-                        global.logger.debug("CReep:" + creep.name + "Container Exists");
-                        if(creep.pos.x === creep.memory.pos_x && creep.pos.y === creep.memory.pos_y ){
-                            global.logger.debug("CReep:" + creep.name + "Is standing on top of container");
-                            if(container.hits <= container.hitsMax-100 ) {
-                                global.logger.debug("CReep:" + creep.name + "Repair COntainer");
-                                creep.repair(container);
-                            } else {
-                                global.logger.debug("CReep:" + creep.name + "DROP COntainer");
-                                creep.drop(RESOURCE_ENERGY);
+                if(creep.memory.sourceId != null){
+                    const source: Source | null = Game.getObjectById(creep.memory.sourceId);
+                    if( source != null && source.energy > 0){
+                        if(creep.pos.inRangeTo(container,0)) {
+                            if (source.energy > 0){
+                                creep.harvest(source);
                             }
-                        } else {
+                        }else{
                             creep.moveTo(container);
-                        }
-                    } else {
-                        delete creep.memory.containerId;
+                        }  
                     }
-                }
+                } else {
+                    this.cancel(creep);
+                }   
+            } else {
+                this.cancel(creep);
             }
-        }
-
-        // CANCEL CONDITION
-        if(creep.carry.energy === creep.carryCapacity){
+        } else {
             this.cancel(creep);
         }
     }
 
     public static runCondition(creep: Creep): boolean {
-        if(super.runCondition(creep)) {
-            if(creep.memory.containerId != null){
-                const container: StructureContainer | null = Game.getObjectById(creep.memory.containerId);
-                if(container != null){
-                    return true;
+        console.log("MIne condition for RunContaienr");
+        if(creep.memory.containerId != null){
+            const container: StructureContainer | null = Game.getObjectById(creep.memory.containerId);
+            if(container != null){
+                return true;
+            } 
+        }else {
+            if(creep.memory.sourceId != null){
+                const source: Source | null = Game.getObjectById(creep.memory.sourceId);
+                if(source != null){
+                    const newContainer = creep.room.find(FIND_STRUCTURES).filter(str => str.structureType === STRUCTURE_CONTAINER).filter( str => str.pos.inRangeTo(source.pos.x, source.pos.y, 1));
+                    if(newContainer.length === 1){
+                        const c = newContainer.pop();
+                        if(c != null){
+                            creep.memory.containerId = c.id;
+                            return true;
+                        }
+                    }
                 }
             }
         }
         return false;
-
     }
 
     public static getTargetId(creep: Creep): string | null {

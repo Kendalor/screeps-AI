@@ -38,10 +38,12 @@ export class OperationsManager {
 
 		let counter =0;
 		
-		let time =0;
 		while( this.hasNextOperation()) {
-
-			this.runNextOperation();
+			try {
+				this.runNextOperation();
+			} catch (error) {
+				console.log(error);
+			}
 
 			counter = counter +1;
 		}
@@ -92,6 +94,7 @@ export class OperationsManager {
 	 */
     public loadOperationList(): void {
 		global.logger.debug("Loading Operations: " + Object.keys(Memory.empire.operations).length);
+		this.operations = {};
         for(const i of Object.keys(Memory.empire.operations)) {
 			if(OP_STORAGE[Memory.empire.operations[i].type] != null){
 				this.operations[i]= new OP_STORAGE[Memory.empire.operations[i].type](this, Memory.empire.operations[i] as OperationMemory);

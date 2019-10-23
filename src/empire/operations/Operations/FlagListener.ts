@@ -26,8 +26,20 @@ export class FlagListener extends Operation {
             switch(flag.secondaryColor){
                 // Remote Mining
                 case COLOR_GREEN:
-                        const name = this.manager.enque({type: "RemoteMiningOperation", data: {flag: flag.name}, priority: 30,pause: 1, lastRun: false});
-                        flag.memory.op = name;
+                        flag.memory.op = this.manager.enque({type: "RemoteMiningOperation", data: {flag: flag.name}, priority: 30,pause: 1, lastRun: false});
+                        break;
+                // COLONIZE
+                case COLOR_RED:
+                        flag.memory.op = this.manager.enque({type: "ColonizeOperation", data: {flag: flag.name}, priority: 50,pause: 1, lastRun: false});
+                        break;
+                        
+            }
+        } else if (flag.color === COLOR_BLUE ){
+            switch(flag.secondaryColor){
+                // Remote POLITICS
+                case COLOR_BLUE:
+                        flag.memory.op = this.manager.enque({type: "ClaimOperation", data: {flag: flag.name}, priority: 51,pause: 1, lastRun: false});
+                        break;
                         
             }
         }

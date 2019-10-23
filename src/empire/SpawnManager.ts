@@ -1,5 +1,8 @@
 import { EmpireManager } from "empire/EmpireManager";
+import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
+import { Claimer } from "./creeps/roles/Claimer";
+import { Colonize } from "./creeps/roles/Colonize";
 import {Maintenance} from "./creeps/roles/Maintenance";
 import { Miner } from "./creeps/roles/Miner";
 import { Repairer } from "./creeps/roles/Repairer";
@@ -21,7 +24,7 @@ export class SpawnManager {
     public availableSpawns: StructureSpawn[] = [];
     public empire: EmpireManager;
     public toSpawnList: {[name: string]: SpawnEntry} = {};
-    public roles: any = {Maintenance, Miner, Upgrader, Supply, Builder, Repairer};
+    public roles: any = {Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize };
 
 
     constructor(empire: EmpireManager) {
@@ -60,16 +63,23 @@ export class SpawnManager {
             if(roomEntries != null && roomEntries.length >0 ){
                 const entry = roomEntries.pop();
                 if(entry != null){
-                    const body: BodyPartConstant[] = (entry[1].body != null) ? entry[1].body : this.roles[entry[1].memory.role].getBody(spawn);
-                    const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: entry[1].memory, dryRun: true});
-                    if(err === OK ){
-                        spawn.spawnCreep(body, entry[0], {memory: entry[1].memory, dryRun: false});
-                        if(entry[1].rebuild === true) {
-                            entry[1].pause = 1500;
-                        } else {
-                            this.dequeueByName(entry[0]);
+                    try {
+                        const body: BodyPartConstant[] = (entry[1].body != null) ? entry[1].body : this.roles[entry[1].memory.role].getBody(spawn);
+                        const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: entry[1].memory, dryRun: true});
+                        if(err === OK ){
+                            spawn.spawnCreep(body, entry[0], {memory: entry[1].memory, dryRun: false});
+                            if(entry[1].rebuild === true) {
+                                entry[1].pause = 1500;
+                            } else {
+                                this.dequeueByName(entry[0]);
+                            }
                         }
+                    } catch (error) {
+                        console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");
+                        console.log(JSON.stringify(entry));
+                        this.dequeueByName(entry[0]);
                     }
+
                 }
 
 

@@ -34,7 +34,7 @@ export class HaulerOperation extends RoomOperation{
         this.validateCreeps();
 
         if( r != null && r.storage != null){
-            if(this.data.numHaulers === 0 || Game.time % 1000 === 0){
+            if(this.data.numHaulers === 0 || Game.time % 50 === 0){
 
                 // Find Containers
                 const containers = r.find(FIND_STRUCTURES).filter(
@@ -48,7 +48,9 @@ export class HaulerOperation extends RoomOperation{
                 const moveParts: number = Math.ceil(numCarryParts/2)+2;
                 const numHaulers = ((numCarryParts + moveParts)  * 50 <= r.energyCapacityAvailable) ? 1: 2;
                 this.data.numHaulers = numHaulers;
-                this.data.body = Array(numCarryParts/numHaulers).fill(CARRY).concat(Array(moveParts/numHaulers).fill(MOVE));
+                this.data.body = Array(Math.ceil(numCarryParts/numHaulers)).fill(CARRY).concat(Array(Math.ceil(moveParts/numHaulers)).fill(MOVE));
+
+                // Requeue BuildCreeps with new Body
             }
             if(this.data.numHaulers > this.data.creeps.length) {
                 for( let i=0; i< this.data.numHaulers - this.data.creeps.length; i++){
@@ -58,8 +60,12 @@ export class HaulerOperation extends RoomOperation{
                         memory: {role: "Hauler"},
                         pause: 0,
                         priority: 90,
-                        rebuild: true});
+                        rebuild: false});
                     this.data.creeps.push(name);
+                }
+            } else if( Game.time % 1500){
+                for(const name of this.data.creeps){
+                    this.manager.empire.spawnMgr.dequeueByName(name);
                 }
             }
 
