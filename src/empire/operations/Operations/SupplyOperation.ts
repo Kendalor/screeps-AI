@@ -34,7 +34,7 @@ export default class SupplyOperation extends RoomOperation{
                     memory: {role: "Supply"},
                     pause: 0,
                     priority: 100,
-                    rebuild: true});
+                    rebuild: false});
                 this.data.creeps.push(name);
             }
         }

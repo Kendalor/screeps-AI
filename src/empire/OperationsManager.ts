@@ -65,10 +65,11 @@ export class OperationsManager {
 	 * Run the next runable RoomOperation in the operations List with the highest Priority
 	 */
     public runNextOperation(): void {
-
 		const op = this.getNextOperation();
 		if( op !== undefined ) {
+			const time = Game.cpu.getUsed();
 			op.run();
+			this.empire.stats.addOp( Game.cpu.getUsed() - time, op.type);
 
 		}
 	}
@@ -104,6 +105,15 @@ export class OperationsManager {
 			}
             
 		}
+		if(Object.keys(this.operations).length === 0 ){
+            console.log("NO Operations");
+            this.enque({type: "InitOperation", data: {}, priority: 100,pause: 1, lastRun: false});
+            global.logger.warn("No Operations Found");
+            for(const key in Game.rooms){
+                global.logger.info("Added InitialRoomOperation for Room: " + key);
+                this.enque({type: "InitialRoomOperation", data: {roomName: Game.rooms[key].name}, priority: 100,pause: 1, lastRun: false});
+            }
+        }
 		this.enque({type: "FlagListener", data: {}, priority: 100, pause: 0, lastRun: true})
 		global.logger.debug("Loaded Operations List of Lengh: " + Object.keys(this.operations).length);
 

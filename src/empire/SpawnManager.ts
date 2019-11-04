@@ -3,8 +3,8 @@ import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
 import { Claimer } from "./creeps/roles/Claimer";
 import { Colonize } from "./creeps/roles/Colonize";
+import { ContainerMiner } from "./creeps/roles/ContainerMiner";
 import {Maintenance} from "./creeps/roles/Maintenance";
-import { Miner } from "./creeps/roles/Miner";
 import { Repairer } from "./creeps/roles/Repairer";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
@@ -24,7 +24,7 @@ export class SpawnManager {
     public availableSpawns: StructureSpawn[] = [];
     public empire: EmpireManager;
     public toSpawnList: {[name: string]: SpawnEntry} = {};
-    public roles: any = {Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize };
+    public roles: any = {Maintenance, ContainerMiner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize };
 
 
     constructor(empire: EmpireManager) {
@@ -48,6 +48,10 @@ export class SpawnManager {
             }
         }
     }
+    
+    public purge(): void {
+        this.toSpawnList = {};
+    }
 
     public destroy(): void {
         this.saveSpawnList();
@@ -65,9 +69,10 @@ export class SpawnManager {
                 if(entry != null){
                     try {
                         const body: BodyPartConstant[] = (entry[1].body != null) ? entry[1].body : this.roles[entry[1].memory.role].getBody(spawn);
-                        const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: entry[1].memory, dryRun: true});
+                        const mem = JSON.parse(JSON.stringify(entry[1].memory)); // DEEP Copy 
+                        const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: true});
                         if(err === OK ){
-                            spawn.spawnCreep(body, entry[0], {memory: entry[1].memory, dryRun: false});
+                            spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: false});
                             if(entry[1].rebuild === true) {
                                 entry[1].pause = 1500;
                             } else {
@@ -138,11 +143,16 @@ export class SpawnManager {
 
     public loadSpawnList(){
         this.toSpawnList={};
-        global.logger.debug("Loading Spawnlist of Length: " + Object.keys(Memory.empire.toSpawnList));
-        for(const i of Object.keys(Memory.empire.toSpawnList)) {
-            this.toSpawnList[i] = new SpawnEntry(Memory.empire.toSpawnList[i] as SpawnEntryMemory);
+        if(Memory.empire.toSpawnList != null){
+            global.logger.debug("Loading Spawnlist of Length: " + Object.keys(Memory.empire.toSpawnList));
+            for(const i of Object.keys(Memory.empire.toSpawnList)) {
+                this.toSpawnList[i] = new SpawnEntry(Memory.empire.toSpawnList[i] as SpawnEntryMemory);
+            }
+            global.logger.debug("Loaded Spawnlist of Length: " + Object.keys(this.toSpawnList));
+        } else {
+            Memory.empire.toSpawnList = {};
         }
-        global.logger.debug("Loaded Spawnlist of Length: " + Object.keys(this.toSpawnList));
+
     }
 
     /**

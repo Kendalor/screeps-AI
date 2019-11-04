@@ -24,7 +24,6 @@ export class Build extends Job {
                     }
                 }else{
                     const err = creep.moveTo(target, {range: 3});
-                    console.log("Creep Move: " + creep.name + " err: " + err + "for Target: " + target.pos);
                 }
             } else {
                 this.cancel(creep);

@@ -42,6 +42,14 @@ export class FlagListener extends Operation {
                         break;
                         
             }
+        } else if(flag.color === COLOR_GREY){
+            switch(flag.secondaryColor){
+                // Remote POLITICS
+                case COLOR_GREY:
+                        flag.memory.op = this.manager.enque({type: "RoomPlannerOperation", data: {flag: flag.name}, priority: 21,pause: 1, lastRun: false});
+                        break;
+                        
+            }
         }
         
         

@@ -1,8 +1,9 @@
 import { EmpireManager } from "empire/EmpireManager";
+import { Bunker } from "empire/operations/Operations/roomPlanner/Bunker";
 import { ErrorMapper } from "utils/ErrorMapper";
 import { Logger } from "utils/Logger";
-import { defineProtos } from "utils/prototypes/prototypes";
-import { RoomPlanner} from "utils/RoomPlanner";
+
+
 // defineProtos();
 console.log("Did run Import of protoypes");
 // When compiling TS to JS and bundling with rollup, the line numbers and file names in error messages change
@@ -18,10 +19,6 @@ export const loop = ErrorMapper.wrapLoop(() => {
   global.empire.run();
   global.empire.destroy();
 
-
-
-  // const planner = new RoomPlanner();
-  // planner.run();
 
   // Automatically delete memory of missing creeps
   for (const name in Memory.creeps) {

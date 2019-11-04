@@ -34,7 +34,7 @@ export class Repair extends Job{
 
     public static getTargetId(creep: Creep): string | null {
 
-        const repairTargets: Structure[] = creep.room.find(FIND_STRUCTURES).filter((structure) => structure.hits < structure.hitsMax*0.8);
+        const repairTargets: Structure[] = creep.room.find(FIND_STRUCTURES).filter((structure) =>  structure.structureType !== STRUCTURE_WALL && structure.structureType !== STRUCTURE_RAMPART && structure.hits < structure.hitsMax*0.8);
 
         if(repairTargets.length > 0){
             const repairTarget = creep.pos.findClosestByPath(repairTargets);

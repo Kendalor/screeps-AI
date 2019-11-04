@@ -47,17 +47,6 @@ export class DefenseOperation extends RoomOperation{
             }
         }
         this.didRun=true;
-
-
-        // TODO
-    }
-
-    public destroy() {
-        // TODO
-    }
-
-    public onlastRun() {
-        // TODO
     }
 
 }

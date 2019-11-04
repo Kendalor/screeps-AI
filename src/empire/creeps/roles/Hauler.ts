@@ -25,7 +25,7 @@ export class Hauler extends CreepRole {
     }
 	
 	public static getBody(spawn: StructureSpawn): BodyPartConstant[] {
-		const energyCap = Math.min(Math.max(300,spawn.room.energyAvailable),2500);
+		const energyCap = Math.min(Math.max(300,spawn.room.energyCapacityAvailable));
 		let partArray: BodyPartConstant[] = [];
 		const fullSets = Math.max(1, Math.floor(energyCap/150));
 		for (let i = 0; i < fullSets; i++){

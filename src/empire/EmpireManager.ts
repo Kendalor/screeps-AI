@@ -1,4 +1,5 @@
 import { CreepManager } from "empire/CreepManager";
+import { EmpireStats } from "./EmpireStats";
 import { OperationsManager } from "./OperationsManager";
 import { SpawnManager } from "./SpawnManager";
 
@@ -6,11 +7,13 @@ export class EmpireManager  {
     public opMgr: OperationsManager;
     public creepMgr: CreepManager;
     public spawnMgr: SpawnManager;
+    public stats: EmpireStats;
 
     constructor(){
         if(Memory.empire == null){
             Memory.empire= {};
         }
+        this.stats = new EmpireStats(this);
        this.opMgr = new OperationsManager(this);
        this.creepMgr = new CreepManager(this);
        this.spawnMgr = new SpawnManager(this);
@@ -28,12 +31,13 @@ export class EmpireManager  {
         time = Game.cpu.getUsed();
         this.opMgr.run();
         global.logger.info(" ----------------- OP   MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
-
+        this.stats.run();
         
     }
 
 
     public init(): void {
+        this.stats.init();
         let time = Game.cpu.getUsed();
         this.spawnMgr.init();
         global.logger.info(" INIT ----------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
@@ -41,19 +45,6 @@ export class EmpireManager  {
         this.opMgr.init();
         global.logger.info(" INIT ----------- OP  MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
-        if(Object.keys(this.opMgr.operations).length === 0 ){
-            global.logger.warn("No Operations Found");
-            if(Object.keys(Game.rooms).length === 1){
-                global.logger.warn("Only one Room Object found");
-                if(Object.keys(Game.creeps).length === 0){
-                    global.logger.warn("No Creeps Found");
-                    for(const key in Game.rooms){
-                        global.logger.info("Added InitialRoomOperation for Room: " + key);
-                        this.opMgr.enque({type: "InitialRoomOperation", data: {roomName: Game.rooms[key].name}, priority: 100,pause: 1, lastRun: false});
-                    }
-                }
-            }
-        }
     }
 
     public destroy(): void {
@@ -64,5 +55,6 @@ export class EmpireManager  {
         this.opMgr.destroy();
         global.logger.info(" DESTORY  ------ OP   MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
+        this.stats.destroy();
     }
 }

@@ -1,5 +1,8 @@
 import { Job } from "./Job";
 
+/**
+ *  Harvest Energy from ANY Source with nearest Path
+ */
 export class Harvest extends Job{
 
 

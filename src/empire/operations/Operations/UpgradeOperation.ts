@@ -40,16 +40,5 @@ export class UpgradeOperation extends RoomOperation{
                 }
             }
         }
-
-            
     }
-
-    public destroy() {
-        // TODO
-    }
-
-    public onlastRun() {
-        // TODO
-    }
-
 }
