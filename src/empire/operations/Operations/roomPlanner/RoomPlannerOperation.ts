@@ -1,21 +1,43 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { FlagOperation } from "../FlagOperation";
 import { OperationMemory } from "../OperationMemory";
+import { Base } from "./layouts/Base";
+
 
 export class RoomPlannerOperation extends FlagOperation {
+    private basePlan = new Base();
+
+    public anchor: {x: number, y:number} | null;
+    public sources: Array<{x: number, y:number}>| null;
+    public mineral: {x: number, y:number}| null;
+
     constructor(manager: OperationsManager, entry: OperationMemory){
         super(manager,entry);
+        this.anchor = entry.data.anchor;
+        this.sources = entry.data.sources;
+        this.mineral = entry.data.mineral;
     }
 
     public run(): void {
         super.run();
+        this.watchForFlags();
         console.log("RoomPlanner:");
+        
         if(Memory.rooms[this.flag.pos.roomName] == null){
             Memory.rooms[this.flag.pos.roomName] = {}
         }
         if(Memory.rooms[this.flag.pos.roomName].base == null){
-            Memory.rooms[this.flag.pos.roomName].base = {}
+            Memory.rooms[this.flag.pos.roomName].base = {};
+        
         }
+        if(Memory.rooms[this.flag.pos.roomName].base.anchor == null){
+            if(Memory.rooms[this.flag.pos.roomName].temp.distanceTransform != null){
+                Memory.rooms[this.flag.pos.roomName].base.anchor = this.getMostCenterPos(Memory.rooms[this.flag.pos.roomName].temp.distanceTransform);
+            }
+        } else {
+            this.drawBase();
+        }
+        
         
 
 
@@ -25,13 +47,50 @@ export class RoomPlannerOperation extends FlagOperation {
         if(Memory.rooms[this.flag.pos.roomName].temp.distanceTransform == null){
             Memory.rooms[this.flag.pos.roomName].temp.distanceTransform = this.doTransform(this.flag.pos.roomName);
         }
+        this.visualize();
 
-        this.visualize()
+       
         if(this.lastRun === true){
             delete Memory.rooms[this.flag.pos.roomName].temp;
         }
         
     }
+
+    private drawBase(): void {
+        
+        const anchor = Memory.rooms[this.flag.pos.roomName].base.anchor;
+        console.log("drawing" + JSON.stringify(anchor));
+        if(this.flag.room != null){
+            console.log("Drawing");
+            for(const entry of this.basePlan.buildings){
+                // console.log("Drawing entry. " + JSON.stringify(entry));
+                this.flag.room.visual.structure(entry.x + anchor.x, entry.y + anchor.y, entry.type, {opacity: 0.3});
+            }
+        }
+
+    }
+
+    private watchForFlags(): void {
+        for(const f of Object.keys(Game.flags)){
+            const flag = Game.flags[f];
+            if(flag.color === COLOR_GREY){
+                switch(flag.secondaryColor){
+                    case COLOR_WHITE:
+                        Memory.rooms[this.flag.pos.roomName].base.anchor = {x: flag.pos.x, y: flag.pos.y};
+                        flag.remove();
+                        break;
+                    case COLOR_YELLOW:
+                        if(this.flag.memory.seen == null) {
+                            this.flag.memory.seen = true;
+                            if(this.data.sources == null){
+                                this.data.sources = [];
+                            }
+                        }
+                }
+            }
+        }
+    }
+
 
     public doTransform(roomName: string): Array<{x: number, y: number}>{
         const out = new Array<{x: number, y: number}>();
@@ -40,11 +99,10 @@ export class RoomPlannerOperation extends FlagOperation {
         const dt = RoomPlannerOperation.distanceTransform(RoomPlannerOperation.walkablePixelsForRoom(roomName)); // a bare Uint8Array
         const cm = new PathFinder.CostMatrix();
         for(const i in dt){
-            if(dt[i] >= 6) {
+            if(dt[i] > 6) {
                 out.push({x: Math.floor(Number(i)/50), y: Number(i)%50})
             }
         }
-        
         
 
         time = (new Date()).getMilliseconds() - time;
@@ -52,6 +110,16 @@ export class RoomPlannerOperation extends FlagOperation {
 
         console.log(`dt for ${roomName} took ${time}ms  ${cpu}cpu `);
         return out;
+    }
+
+    public getMostCenterPos(input: Array<{x: number, y: number}>): {x: number, y: number} | null{
+        const center =24.5; 
+        const sorted = input.sort( (a,b) => (Math.abs(center- a.x) + Math.abs(center- a.y)) - (Math.abs(center- b.x) + Math.abs(center- b.y)));
+        const out = sorted.shift();
+        if( out != null){
+            return out;
+        }
+        return null;
     }
 
     public static distanceTransform(array: Uint8Array, oob = -1): Uint8Array {
@@ -113,18 +181,13 @@ export class RoomPlannerOperation extends FlagOperation {
     }
 
     public visualize(): void {
-        if(Game.rooms[this.flag.pos.roomName] != null){
-            const room = Game.rooms[this.flag.pos.roomName];
-            const vis = room.visual;
+        if(this.flag.room != null){
             if(Memory.rooms[this.flag.pos.roomName].temp.distanceTransform != null){
-                console.log("Drawing RoomVisual");
+                console.log("Drawing Circles over " + Memory.rooms[this.flag.pos.roomName].temp.distanceTransform.length + " positions");
                 for(const c of Memory.rooms[this.flag.pos.roomName].temp.distanceTransform){
-                    console.log("Drawing Circle");
-                    vis.circle(c.x,c.y);
+                    this.flag.room.visual.circle(c.x,c.y);
                 }
             }
         }
-
-
     }
 }

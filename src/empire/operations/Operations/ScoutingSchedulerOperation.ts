@@ -35,13 +35,13 @@ export class ScoutingSchedulerOperation extends Operation{
 
         // Init List of Owned Rooms
 
-        if( Game.time % 50 === 0) {
-            this.validateTodos();
-        }
-        if( Object.keys(this.data.toDo).length === 0){
-            this.incrementRange();
-            this.addRooms();
-        }
+        // if( Game.time % 50 === 0) {
+        //     this.validateTodos();
+        // }
+        // if( Object.keys(this.data.toDo).length === 0){
+        //     this.incrementRange();
+        //     this.addRooms();
+        // }
 
 
 

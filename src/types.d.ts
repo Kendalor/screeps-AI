@@ -8,6 +8,9 @@ interface Memory {
   rooms: { [name: string]: RoomMemory };
   spawns: { [name: string]: SpawnMemory };
 }
+interface RoomVisual {
+  structure(x: number, y: number, type: StructureConstant, opts?: undefined | any): void
+}
 
 interface CreepMemory {
   [name: string]: any;

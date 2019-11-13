@@ -12,7 +12,8 @@
     "noImplicitReturns": true,
     "allowSyntheticDefaultImports": true,
     "allowUnreachableCode": false,
-    "allowJs": true
+    "allowJs": true,
+    "resolveJsonModule": true
   },
   "exclude": [
     "node_modules",

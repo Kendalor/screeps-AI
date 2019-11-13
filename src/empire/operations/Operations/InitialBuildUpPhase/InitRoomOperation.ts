@@ -108,24 +108,7 @@ export class InitialRoomOperation extends Operation{
                             rebuild: false});
                         this.data.creeps.push(name);
                     }
-                } // below Max enegery
-                // if(r.energyAvailable < r.energyCapacityAvailable){
-                //     if(this.data.noEnergy == null){
-                //         this.data.noEnergy= 1;
-                //     } else if(this.data.energy === 200){
-                //         const name = this.manager.empire.spawnMgr.enque({
-                //             room: r.name,
-                //             memory: {role: "Maintenance"},
-                //             pause: 0,
-                //             priority: 100,
-                //             rebuild: false});
-                //         this.data.creeps.push(name);
-                //     }else {
-                //         this.data.noEnergy+=1;
-                //     }
-                // } else {
-                //     this.data.noEnergy=0;
-                // }
+                }
             }
         }
 
