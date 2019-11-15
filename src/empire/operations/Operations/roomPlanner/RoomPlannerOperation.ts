@@ -2,6 +2,7 @@ import { OperationsManager } from "empire/OperationsManager";
 import { FlagOperation } from "../FlagOperation";
 import { OperationMemory } from "../OperationMemory";
 import { Base } from "./layouts/Base";
+import { StructuredType, toEditorSettings } from "typescript";
 
 
 export class RoomPlannerOperation extends FlagOperation {
@@ -53,6 +54,7 @@ export class RoomPlannerOperation extends FlagOperation {
         if(this.lastRun === true){
             delete Memory.rooms[this.flag.pos.roomName].temp;
         }
+        console.log("Create Building List Test: " + JSON.stringify(this.createBuildingList()));
         
     }
 
@@ -68,6 +70,37 @@ export class RoomPlannerOperation extends FlagOperation {
             }
         }
 
+    }
+
+    private createBuildingList(): Array<{x: number, y: number, type: BuildableStructureConstant}> {
+        const todo = new Array<{x: number, y: number, type: BuildableStructureConstant}>()
+        if(this.flag.room != null){
+            const room: Room = this.flag.room;
+            if(room.controller != null){
+                const lvl: number = room.controller.level;
+                const structures: Structure[] = room.find(FIND_STRUCTURES);
+                const completeList = this.basePlan.buildings;
+                for( const type  of Object.keys(CONTROLLER_STRUCTURES)){
+                    const max = CONTROLLER_STRUCTURES[type as BuildableStructureConstant][lvl];
+                    if(max > 0) {
+                        const current = structures.filter( (str) => str.structureType === type ).length;
+                        if( current < max){
+                            const diff = max-current;
+                            const temp = todo.filter( entry => entry.type === type);
+                            for(let i=0; i< diff; i++){
+                                if(temp.length > 0){
+                                    const e = temp.pop();
+                                    if(e != null){
+                                        todo.push(e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return todo;
     }
 
     private watchForFlags(): void {
