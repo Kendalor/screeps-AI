@@ -4,8 +4,8 @@ import { OperationMemory } from "./OperationMemory";
 
 export class RemoteMiningOperation extends FlagOperation {
     
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+        super(name, manager,entry);
         this.type = "RemonteMiningOperation";
     }
 

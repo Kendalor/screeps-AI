@@ -9,8 +9,9 @@ export class Operation implements OperationMemory{
     public pause: number;
     public didRun: boolean;
     public lastRun: boolean;
+    public name: string;
 
-        constructor(manager: OperationsManager, entry: OperationMemory){
+        constructor(name: string, manager: OperationsManager, entry: OperationMemory){
             this.manager = manager;
             this.data=entry.data;
             this.type=entry.type;
@@ -18,6 +19,7 @@ export class Operation implements OperationMemory{
             this.pause = entry.pause;
             this.didRun = false;
             this.lastRun = entry.lastRun;
+            this.name = name;
         }
     public toMemory(): OperationMemory {
         return {type: this.type, priority:this.priority, pause: this.pause, data: this.data, lastRun: this.lastRun} as OperationMemory;

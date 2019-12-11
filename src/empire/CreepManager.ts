@@ -5,12 +5,13 @@ import { Claimer } from "./creeps/roles/Claimer";
 import { Colonize } from "./creeps/roles/Colonize";
 import { ContainerMiner } from "./creeps/roles/ContainerMiner";
 import { Hauler } from "./creeps/roles/Hauler";
+import { Logistic } from "./creeps/roles/Logistic";
 import { Maintenance } from "./creeps/roles/Maintenance";
 import { Repairer } from "./creeps/roles/Repairer";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
 
-export const ROLE_STORE: any = {Maintenance, ContainerMiner, Hauler, Upgrader, Supply, Repairer, Builder, Claimer, Colonize, Attacker};
+export const ROLE_STORE: any = {Logistic, Maintenance, ContainerMiner, Hauler, Upgrader, Supply, Repairer, Builder, Claimer, Colonize, Attacker};
 
 export class CreepManager {
 

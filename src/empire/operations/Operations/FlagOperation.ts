@@ -4,8 +4,8 @@ import { OperationMemory } from "./OperationMemory";
 
 export class FlagOperation extends Operation {
     public flag: Flag;
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+        super(name,manager,entry);
         this.flag = Game.flags[entry.data.flag];
     }
 

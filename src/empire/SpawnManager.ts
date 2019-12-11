@@ -4,11 +4,13 @@ import { Builder } from "./creeps/roles/Builder";
 import { Claimer } from "./creeps/roles/Claimer";
 import { Colonize } from "./creeps/roles/Colonize";
 import { ContainerMiner } from "./creeps/roles/ContainerMiner";
+import { Logistic } from "./creeps/roles/Logistic";
 import {Maintenance} from "./creeps/roles/Maintenance";
 import { Repairer } from "./creeps/roles/Repairer";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
 import { SpawnEntry, SpawnEntryMemory } from "./spawn/SpawnEntry";
+import { updateIf } from "typescript";
 
 /**
  * Manages Spawning. Has a List of Creeps to Spawn which is kept in Memory and loaded on Initializations.
@@ -24,7 +26,7 @@ export class SpawnManager {
     public availableSpawns: StructureSpawn[] = [];
     public empire: EmpireManager;
     public toSpawnList: {[name: string]: SpawnEntry} = {};
-    public roles: any = {Maintenance, ContainerMiner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize };
+    public roles: any = {Logistic, Maintenance, ContainerMiner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize };
 
 
     constructor(empire: EmpireManager) {
@@ -67,23 +69,53 @@ export class SpawnManager {
             if(roomEntries != null && roomEntries.length >0 ){
                 const entry = roomEntries.pop();
                 if(entry != null){
-                    try {
-                        const body: BodyPartConstant[] = (entry[1].body != null) ? entry[1].body : this.roles[entry[1].memory.role].getBody(spawn);
-                        const mem = JSON.parse(JSON.stringify(entry[1].memory)); // DEEP Copy 
-                        const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: true});
-                        if(err === OK ){
-                            spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: false});
-                            if(entry[1].rebuild === true) {
-                                entry[1].pause = 1500;
-                            } else {
-                                this.dequeueByName(entry[0]);
+                    if(entry[1].op != null && this.empire.opMgr.entryExists(entry[1].op)){
+                        try {
+                            const body: BodyPartConstant[] = (entry[1].body != null) ? entry[1].body : this.roles[entry[1].memory.role].getBody(spawn);
+                            let direction: DirectionConstant | null = null;
+                            
+
+                            const mem = JSON.parse(JSON.stringify(entry[1].memory)); // DEEP Copy 
+                            const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: true});
+                            if(err === OK ){
+                                if( entry[1].toPos != null ){
+                                    const pos = entry[1].toPos as RoomPosition;
+                                    direction = spawn.pos.getDirectionTo(pos);
+                                } else {
+                                    if(spawn.room.memory.base != null){
+                                        if(spawn.room.memory.base.anchor != null){
+                                            const roads = spawn.pos.findInRange(FIND_STRUCTURES,1).filter( str => str.structureType === STRUCTURE_ROAD);
+                                            if(roads.length > 0){
+                                                const road = roads.pop();
+                                                if(road != null){
+                                                    direction = spawn.pos.getDirectionTo(road);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if(direction == null){
+                                    spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: false});
+                                } else {
+                                    spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: false, directions: [direction]});
+                                }
+                                
+                                if(entry[1].rebuild === true) {
+                                    entry[1].pause = 1500;
+                                } else {
+                                    this.dequeueByName(entry[0]);
+                                }
                             }
+                        } catch (error) {
+                            console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");
+                            console.log(JSON.stringify(entry));
+                            console.log(JSON.stringify(error));
+                            this.dequeueByName(entry[0]);
                         }
-                    } catch (error) {
-                        console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");
-                        console.log(JSON.stringify(entry));
+                    } else {
                         this.dequeueByName(entry[0]);
                     }
+
 
                 }
 

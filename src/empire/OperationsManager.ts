@@ -98,7 +98,7 @@ export class OperationsManager {
 		this.operations = {};
         for(const i of Object.keys(Memory.empire.operations)) {
 			if(OP_STORAGE[Memory.empire.operations[i].type] != null){
-				this.operations[i]= new OP_STORAGE[Memory.empire.operations[i].type](this, Memory.empire.operations[i] as OperationMemory);
+				this.operations[i]= new OP_STORAGE[Memory.empire.operations[i].type](i, this, Memory.empire.operations[i] as OperationMemory);
 			} else {
 				console.log("INVALID OPERATION WITH TYPE: " +Memory.empire.operations[i].type + " DELETED" );
 				delete Memory.empire.operations[i];
@@ -147,7 +147,7 @@ export class OperationsManager {
      */
     public enque(entry: OperationMemory){
 		const name = this.generateName();
-		this.operations[name]=new OP_STORAGE[entry.type](this, entry as OperationMemory);
+		this.operations[name]=new OP_STORAGE[entry.type](name, this, entry as OperationMemory);
 		global.logger.debug(" ADDED Operation: " + name + " of Type: " + entry.type + " data: " + entry.data);
 
 		return name;

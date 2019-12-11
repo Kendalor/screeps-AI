@@ -1,5 +1,5 @@
 export class Base {
-    public buildings: Array<{x:number, y:number, type: StructureConstant}> = [
+    public buildings: Array<{x:number, y:number, type: BuildableStructureConstant}> = [
         {
             "type": "road",
             "x": -6,

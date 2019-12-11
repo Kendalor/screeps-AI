@@ -7,8 +7,8 @@ import { RoomOperation } from "./RoomOperation";
 export class MinerOperation extends RoomOperation{
     
 
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+        super(name, manager,entry);
         this.type = "MinerOperation";
     }
 
@@ -61,7 +61,7 @@ export class MinerOperation extends RoomOperation{
                     console.log("enqued Creep for: " + s.id);
                     const name = this.manager.empire.spawnMgr.enque({
                         room: s.room.name,
-                        memory: {role: "ContainerMiner", sourceId: s.id},
+                        memory: {role: "ContainerMiner", sourceId: s.id, op: this.name},
                         pause: 0,
                         priority: 90,
                         rebuild: true});

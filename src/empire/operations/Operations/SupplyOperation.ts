@@ -14,8 +14,8 @@ import { RoomOperation } from "./RoomOperation";
 export default class SupplyOperation extends RoomOperation{
     
 
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+        super(name, manager,entry);
         this.type = "SupplyOperation";
     }
 /**
@@ -31,7 +31,7 @@ export default class SupplyOperation extends RoomOperation{
             if(this.data.creeps.length === 0){
                 const name = this.manager.empire.spawnMgr.enque({
                     room: r.name,
-                    memory: {role: "Supply"},
+                    memory: {role: "Supply", op: this.name},
                     pause: 0,
                     priority: 100,
                     rebuild: false});

@@ -10,8 +10,8 @@ import { RoomOperation } from "./RoomOperation";
 export class BuildOperation extends RoomOperation{
     
 
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+        super(name, manager,entry);
         this.type = "BuildOperation";
     }
 /**
@@ -31,7 +31,7 @@ export class BuildOperation extends RoomOperation{
                     for(let j=0; j< numToSpawn - (currentBuilders); j++){
                         const name=this.manager.empire.spawnMgr.enque({
                             room: this.data.roomName,
-                            memory: {role: "Builder"},
+                            memory: {role: "Builder", op: this.name},
                             pause: 0,
                             body: undefined,
                             priority: 50,

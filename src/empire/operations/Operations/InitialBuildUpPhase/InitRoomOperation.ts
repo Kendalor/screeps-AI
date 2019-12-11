@@ -14,8 +14,8 @@ import { OperationMemory } from "../OperationMemory";
 export class InitialRoomOperation extends Operation{
     
 
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string,manager: OperationsManager, entry: OperationMemory) {
+        super(name,manager,entry);
         this.type = "InitialRoomOperation";
     }
 
@@ -62,6 +62,14 @@ export class InitialRoomOperation extends Operation{
                 } else {
                     if( !this.manager.entryExists(this.data.upgrade)){
                         this.data.upgrade = null;
+                    }
+                }
+                if( this.data.logistic == null){
+                    console.log("Enque Logistic Op");
+                    this.data.logistic = this.manager.enque({type: "RoomLogisticsOperation", data: {roomName: r.name}, priority: 70,pause: 1,lastRun: false});
+                } else {
+                    if( !this.manager.entryExists(this.data.logistic)){
+                        this.data.logistic = null;
                     }
                 }
             }

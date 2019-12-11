@@ -13,8 +13,8 @@ export class ScoutingSchedulerOperation extends Operation{
     
     private SCOUTING_INTERVALL = 10000;
     private myRooms: string[] = [];
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+        super(name, manager,entry);
         this.type = "ScoutingSchedulerOperation";
         for(const key of Object.keys(Game.rooms)){
             const r: Room = Game.rooms[key];
@@ -30,7 +30,6 @@ export class ScoutingSchedulerOperation extends Operation{
 
 
     public run() {
-        console.log("Scouting Sheduler: ");
         super.run();
 
         // Init List of Owned Rooms

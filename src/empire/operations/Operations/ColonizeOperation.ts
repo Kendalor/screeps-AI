@@ -15,8 +15,8 @@ import { OperationMemory } from "./OperationMemory";
 export class ColonizeOperation extends FlagOperation{
     public numCreeps: number = 6;
 
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+        super(name, manager,entry);
         this.type = "ColonizeOperation";
     }
 
@@ -32,7 +32,7 @@ export class ColonizeOperation extends FlagOperation{
                     const name = this.manager.empire.spawnMgr.enque({
                         room: roomName,
                         body: undefined,
-                        memory: {role: "Colonize", flag: this.flag.name},
+                        memory: {role: "Colonize", flag: this.flag.name, op: this.name},
                         pause: 0,
                         priority: 40,
                         rebuild: false});

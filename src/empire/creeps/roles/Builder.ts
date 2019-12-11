@@ -2,9 +2,9 @@ import { BuildContainer } from "../jobs/BuildContainer";
 import { BuildExtension } from "../jobs/BuildExtension";
 import { BuildExtractor } from "../jobs/BuildExtractor";
 import { BuildLab } from "../jobs/BuildLab";
-import { BuildLink } from "../jobs/BuildLink";
 import { BuildNuker } from "../jobs/BuildNuker";
 import { BuildObserver } from "../jobs/BuildObserver";
+import { BuildPowerSpawn } from "../jobs/BuildPowerSpawn";
 import { BuildRampart } from "../jobs/BuildRampart";
 import { BuildRoad } from "../jobs/BuildRoad";
 import { BuildSpawn } from "../jobs/BuildSpawn";
@@ -13,7 +13,7 @@ import { BuildTerminal } from "../jobs/BuildTerminal";
 import { BuildTower } from "../jobs/BuildTower";
 import { BuildWall } from "../jobs/BuildWall";
 import { KillSelf } from "../jobs/KillSelf";
-import { PickupStorage } from "../jobs/PickupStorage";
+import { PickupNearest } from "../jobs/PickupNearest";
 import { CreepRole } from "./CreepRole";
 
 export class Builder extends CreepRole {
@@ -32,8 +32,8 @@ export class Builder extends CreepRole {
         "BuildWall": BuildWall,
         "BuildLab": BuildLab,
         "BuildTerminal": BuildTerminal,
-    "BuildLink": BuildLink,
-    "PickupStorage": PickupStorage,
+        "BuildPowerSpawn": BuildPowerSpawn,
+        "PickupNearest": PickupNearest,
     "KillSelf": KillSelf};
 	
     constructor(creep: Creep) {
@@ -41,7 +41,7 @@ export class Builder extends CreepRole {
     }
 
     public run(): void {
-		super.run();
+		  super.run();
     }
 	
 	public static getBody(spawn: StructureSpawn): BodyPartConstant[] {

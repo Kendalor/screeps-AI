@@ -5,8 +5,8 @@ import { OperationMemory } from "./OperationMemory";
 export class RoomOperation extends Operation {
     public room: Room;
 
-    constructor(manager: OperationsManager, entry: OperationMemory) {
-        super(manager,entry);
+    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+        super(name, manager,entry);
         this.room=Game.rooms[entry.data.roomName];
     }
 
