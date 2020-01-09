@@ -7,11 +7,12 @@ export class FlagListener extends Operation {
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
         this.type = "FlagListener";
-        this.lastRun = true;
+        
     }
     public run() {
         super.run();
         this.cleanFlagMemory();
+        console.log("FlagListener Operation");
         for(const key of Object.keys(Game.flags)) {
             const flag: Flag = Game.flags[key];
             if(flag.memory.op == null) {
@@ -24,13 +25,9 @@ export class FlagListener extends Operation {
         // Economic Ops
         if(flag.color === COLOR_GREEN) {
             switch(flag.secondaryColor){
-                // Remote Mining
-                case COLOR_GREEN:
-                        flag.memory.op = this.manager.enque({type: "RemoteMiningOperation", data: {flag: flag.name}, priority: 30,pause: 1, lastRun: false});
-                        break;
                 // COLONIZE
                 case COLOR_RED:
-                        flag.memory.op = this.manager.enque({type: "ColonizeOperation", data: {flag: flag.name}, priority: 50,pause: 1, lastRun: false});
+                        flag.memory.op = this.manager.enque({type: "ColonizeOperation", data: {flag: flag.name}, priority: 50,pause: 1});
                         break;
                         
             }
@@ -38,15 +35,7 @@ export class FlagListener extends Operation {
             switch(flag.secondaryColor){
                 // Remote POLITICS
                 case COLOR_BLUE:
-                        flag.memory.op = this.manager.enque({type: "ClaimOperation", data: {flag: flag.name}, priority: 51,pause: 1, lastRun: false});
-                        break;
-                        
-            }
-        } else if(flag.color === COLOR_GREY){
-            switch(flag.secondaryColor){
-                // Remote POLITICS
-                case COLOR_GREY:
-                        flag.memory.op = this.manager.enque({type: "RoomPlannerOperation", data: {flag: flag.name}, priority: 21,pause: 1, lastRun: false});
+                        flag.memory.op = this.manager.enque({type: "ClaimOperation", data: {flag: flag.name}, priority: 51,pause: 1});
                         break;
                         
             }

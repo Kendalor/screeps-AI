@@ -3,14 +3,13 @@ import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
 import { Claimer } from "./creeps/roles/Claimer";
 import { Colonize } from "./creeps/roles/Colonize";
-import { ContainerMiner } from "./creeps/roles/ContainerMiner";
 import { Logistic } from "./creeps/roles/Logistic";
 import {Maintenance} from "./creeps/roles/Maintenance";
+import { Miner } from "./creeps/roles/Miner";
 import { Repairer } from "./creeps/roles/Repairer";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
-import { SpawnEntry, SpawnEntryMemory } from "./spawn/SpawnEntry";
-import { updateIf } from "typescript";
+import { SpawnEntry} from "./spawn/SpawnEntry";
 
 /**
  * Manages Spawning. Has a List of Creeps to Spawn which is kept in Memory and loaded on Initializations.
@@ -26,15 +25,11 @@ export class SpawnManager {
     public availableSpawns: StructureSpawn[] = [];
     public empire: EmpireManager;
     public toSpawnList: {[name: string]: SpawnEntry} = {};
-    public roles: any = {Logistic, Maintenance, ContainerMiner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize };
+    public roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize };
 
 
     constructor(empire: EmpireManager) {
         this.empire = empire;
-
-        if(Memory.empire == null ){
-            Memory.empire = {};
-        }
         if(Memory.empire.toSpawnList == null){
             Memory.empire.toSpawnList = {};
         }
@@ -105,6 +100,10 @@ export class SpawnManager {
                                 } else {
                                     this.dequeueByName(entry[0]);
                                 }
+                            } else if(err === ERR_INVALID_ARGS){
+                                this.dequeueByName(entry[0]);
+                            } else if(err === ERR_NAME_EXISTS){
+                                this.dequeueByName(entry[0]);
                             }
                         } catch (error) {
                             console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");

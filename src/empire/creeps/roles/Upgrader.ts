@@ -1,3 +1,4 @@
+import { PickupControllerLink } from "../jobs/PickupControllerLink";
 import { PickupStorage } from "../jobs/PickupStorage";
 import { Upgrade } from "../jobs/Upgrade";
 import { CreepRole } from "./CreepRole";
@@ -9,6 +10,7 @@ export class Upgrader extends CreepRole {
 	// ORDER OF ENTRIES  === PRIORITY
 	public jobs: {[name: string]: any} = {
 		"Upgrade": Upgrade,
+		"PickupControllerLink": PickupControllerLink,
 		"PickupStorage": PickupStorage};
 	
     constructor(creep: Creep) {

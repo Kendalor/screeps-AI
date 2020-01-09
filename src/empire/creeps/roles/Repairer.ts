@@ -1,4 +1,7 @@
+import { DoNotBlockStuff } from "../jobs/DoNotBlockStuff";
 import { KillSelf } from "../jobs/KillSelf";
+import { PickupContainer } from "../jobs/PickupContainer";
+import { PickupDropped } from "../jobs/PickupDropped";
 import { PickupStorage } from "../jobs/PickupStorage";
 import { RepairContainer } from "../jobs/RepairContainer";
 import { RepairExtension } from "../jobs/RepairExtension";
@@ -32,8 +35,11 @@ export class Repairer extends CreepRole {
         "RepairWall": RepairWall,
         "RepairLab": RepairLab,
         "RepairLink": RepairLink,
+        "PickupDropped": PickupDropped,
         "PickupStorage": PickupStorage,
-        "KillSelf": KillSelf};
+        "PickupContainer": PickupContainer,
+        "KillSelf": KillSelf,
+        "DoNotBlockStuff": DoNotBlockStuff};
 	// tslint:enable:object-literal-sort-keys
     constructor(creep: Creep) {
         super(creep);

@@ -8,9 +8,6 @@ export class EmpireStats {
 
     constructor(empire: EmpireManager){
         this.empire=empire;
-        if(Memory.empire.stats == null){
-            Memory.stats = {};
-        }
         this.memory = Memory.stats;
     }
     public init(): void {

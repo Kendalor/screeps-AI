@@ -58,6 +58,7 @@ export class PickupNearest extends Job {
     public static getTargetId(creep: Creep): string | null {
         let structures = creep.room.find(FIND_STRUCTURES).filter( str => PickupNearest.allowedStructure(str)) as PickupStructure[];
         structures = structures.filter( str => str.store.energy > 0);
+
         if(structures.length > 0 ){
             const nearest = creep.pos.findClosestByPath(structures);
             if(nearest != null){

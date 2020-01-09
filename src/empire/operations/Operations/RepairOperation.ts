@@ -27,7 +27,7 @@ export default class RepairOperation extends RoomOperation{
         
         const r: Room = this.room;
         if(r != null){     
-            const constrSites = r.find(FIND_STRUCTURES).filter( str => str.hits < str.hitsMax * 0.8);
+            const constrSites = r.find(FIND_STRUCTURES).filter( str => str.hits < str.hitsMax * 0.6);
 
             if(constrSites.length > 0) {
 
@@ -40,7 +40,7 @@ export default class RepairOperation extends RoomOperation{
                             memory: {role: "Repairer", op: this.name},
                             pause: 0,
                             body: undefined,
-                            priority: 50,
+                            priority: 40,
                             rebuild: false});
                         this.data.creeps.push(name);
                     }

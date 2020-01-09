@@ -3,13 +3,13 @@ import { OperationMemory } from "./Operations/OperationMemory";
 
 export class Operation implements OperationMemory{
     public data: any;
-    public type: string = "none";
+    public type: OPERATION;
     public priority: number;
     public manager: OperationsManager;
     public pause: number;
     public didRun: boolean;
-    public lastRun: boolean;
     public name: string;
+    public parent?: string;
 
         constructor(name: string, manager: OperationsManager, entry: OperationMemory){
             this.manager = manager;
@@ -18,11 +18,13 @@ export class Operation implements OperationMemory{
             this.priority= entry.priority;
             this.pause = entry.pause;
             this.didRun = false;
-            this.lastRun = entry.lastRun;
             this.name = name;
+            if(this.data.parent != null){
+                this.parent = this.data.parent;
+            }
         }
     public toMemory(): OperationMemory {
-        return {type: this.type, priority:this.priority, pause: this.pause, data: this.data, lastRun: this.lastRun} as OperationMemory;
+        return {type: this.type, priority:this.priority, pause: this.pause, data: this.data, parent: this.parent} as OperationMemory;
     }
 
     public run(): void {
@@ -46,6 +48,18 @@ export class Operation implements OperationMemory{
             }
         } else {
             this.data.creeps = [];
+        }
+    }
+    public removeSelf(): void {
+        this.manager.dequeue(this.name);
+    }
+
+    public checkParent(): void {
+        if(this.parent != null){
+            if(!this.manager.entryExists(this.parent)){
+                console.log("Removed " + this.name + " with Type: " + this.type + " because missing Parent: " + this.parent);
+                this.removeSelf();
+            }
         }
     }
 }

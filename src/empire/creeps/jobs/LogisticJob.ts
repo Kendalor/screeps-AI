@@ -1,23 +1,44 @@
+import { RoomLogisticsOperation } from "empire/operations/Operations/RoomLogisticsOperation";
 import { Job } from "./Job";
+
+type STORE_STRUCTURE = StructureLink | StructureSpawn | StructureStorage | StructureTerminal | StructureTower;
 
 export class LogisticJob extends Job {
     public static run(creep: Creep): void {
         if(!creep.spawning){
             super.run(creep);
             // RUN CODE
-            const container: StructureTerminal | null = Game.getObjectById(creep.memory.targetId);
-            if(container !== null && creep.carry.energy < creep.carryCapacity){
-                if (creep.pos.inRangeTo(container,1)){
-                    if(container.store.energy >= creep.carryCapacity-creep.carry.energy ){
-                        creep.withdraw(container,RESOURCE_ENERGY);
+            const op =global.empire.opMgr.getEntryByName<RoomLogisticsOperation>(creep.memory.op);
+            // LINK LOGIC 
+            if(op != null){
+                const linkEnergy = op.getLinkNetworkEnergyLevel();
+                const storageLink = op.getStorageLink();
+                const controllerLink = op.getControllerLink();
+                if(linkEnergy != null){
+                    if(controllerLink != null && controllerLink.store.energy === 0){
+                        if(creep.store.getFreeCapacity(RESOURCE_ENERGY) === 0){
+                            if( storageLink != null){
+                                creep.transfer(storageLink, RESOURCE_ENERGY);
+                            }
+                        } else {
+                            if(creep.room.storage != null){
+                                creep.withdraw(creep.room.storage, RESOURCE_ENERGY);
+                            }
+                        }
+                    } else if(linkEnergy > 800) {
+                        if(creep.store.getFreeCapacity(RESOURCE_ENERGY) === 0){
+                            if(creep.room.storage != null){
+                                creep.transfer(creep.room.storage, RESOURCE_ENERGY);
+                            }
+                        } else {
+                            if( storageLink != null){
+                                creep.withdraw(storageLink, RESOURCE_ENERGY);
+                            }
+                        }
                     }
-                }else{
-                    creep.moveTo(container);
                 }
-            // CANCEL CONDITION
-            } else {
-                this.cancel(creep);
             }
+
         }
 
     }
@@ -27,13 +48,17 @@ export class LogisticJob extends Job {
     }
 
     public static getTargetId(creep: Creep): string | null {
-        if(creep.memory.terminal){
-            return creep.memory.terminalId;
-        } else {
-            if( creep.room.terminal !== undefined ){
-                return creep.room.terminal.id
+        if(creep.memory.link == null){
+            const links = creep.room.lookForAt(LOOK_STRUCTURES,new RoomPosition(creep.pos.x, creep.pos.y-1, creep.pos.roomName)).filter(str => str.structureType === STRUCTURE_LINK);
+            if(links != null){
+                if(links.length > 0){
+                    const link = links.pop() as StructureLink;
+                    if(link != null){
+                        creep.memory.link = link.id;
+                    }
+                }
             }
         }
-        return null;
+        return "";
     }
 }

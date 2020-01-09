@@ -1,7 +1,9 @@
+
+
 export interface OperationMemory {
     data: any;
-    type: string;
+    type: OPERATION;
     priority: number;
     pause: number;
-    lastRun: boolean;
+    parent?: string;
 }

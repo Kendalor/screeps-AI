@@ -42,23 +42,27 @@ export class HaulerOperation extends RoomOperation{
                 const containers = r.find(FIND_STRUCTURES).filter(
                     str => str.structureType === STRUCTURE_CONTAINER
                 ) as StructureContainer[];
-                
-                const c1 = containers.filter( c => c.pos.isNearTo(sources[0])).pop() as StructureContainer;
-                const c2 = containers.filter( c => c.pos.isNearTo(sources[1])).pop() as StructureContainer;
-
-                // Calculate Required Carry/Move parts
-                const dist: number = r.storage.pos.findPathTo(c1, {ignoreCreeps: true}).length + r.storage.pos.findPathTo(c2, {ignoreCreeps: true}).length+5;
-                const numCarryParts: number = Math.ceil(2*dist*10/50)+4;
-                const moveParts: number = Math.ceil(numCarryParts/2)+2;
-                const numHaulers = ((numCarryParts + moveParts)  * 50 <= r.energyCapacityAvailable) ? 1: 2;
-                this.data.numHaulers = numHaulers;
-                this.data.body = Array(Math.ceil(numCarryParts/numHaulers)).fill(CARRY).concat(Array(Math.ceil(moveParts/numHaulers)).fill(MOVE));
-
-                // Requeue BuildCreeps with new Body
-                const res = _.sum(r.find(FIND_DROPPED_RESOURCES).filter ( resource => resource.resourceType === RESOURCE_ENERGY).map( resource => resource.amount));
-                if(res > 2000){
-                    this.data.numHaulers +=1;
+                if(containers.length > 0){
+                    const c1 = containers.filter( c => c.pos.isNearTo(sources[0])).pop() as StructureContainer;
+                    const c2 = containers.filter( c => c.pos.isNearTo(sources[1])).pop() as StructureContainer;
+    
+                    // Calculate Required Carry/Move parts
+                    const dist: number = r.storage.pos.findPathTo(c1, {ignoreCreeps: true}).length + r.storage.pos.findPathTo(c2, {ignoreCreeps: true}).length+5;
+                    const numCarryParts: number = Math.ceil(2*dist*10/50)+4;
+                    const moveParts: number = Math.ceil(numCarryParts/2)+2;
+                    const numHaulers = ((numCarryParts + moveParts)  * 50 <= r.energyCapacityAvailable) ? 1: 2;
+                    this.data.numHaulers = numHaulers;
+                    this.data.body = Array(Math.ceil(numCarryParts/numHaulers)).fill(CARRY).concat(Array(Math.ceil(moveParts/numHaulers)).fill(MOVE));
+    
+                    // Requeue BuildCreeps with new Body
+                    const res = _.sum(r.find(FIND_DROPPED_RESOURCES).filter ( resource => resource.resourceType === RESOURCE_ENERGY).map( resource => resource.amount));
+                    if(res > 2000){
+                        this.data.numHaulers +=1;
+                    }
+                } else {
+                    this.data.numHaulers=0;
                 }
+
             }
             if(this.data.numHaulers > this.data.creeps.length) {
                 for( let i=0; i< this.data.numHaulers - this.data.creeps.length; i++){

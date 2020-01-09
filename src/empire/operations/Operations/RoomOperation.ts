@@ -2,6 +2,7 @@ import { OperationsManager } from "empire/OperationsManager";
 import { Operation } from "../Operation";
 import { OperationMemory } from "./OperationMemory";
 
+
 export class RoomOperation extends Operation {
     public room: Room;
 
@@ -13,7 +14,17 @@ export class RoomOperation extends Operation {
     public run() {
         super.run()
         if(this.room == null) {
-            this.lastRun = true;
+            this.removeSelf();
         }
+        if(this.data.parent != null){
+            const parent = this.manager.getEntryByName(this.data.parent);
+            if(parent == null){
+                this.removeSelf();
+            }
+        }
+    }
+
+    public getBuildingList(): BuildEntry[] {
+        return [];
     }
 }

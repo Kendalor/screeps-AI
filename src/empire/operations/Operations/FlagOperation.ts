@@ -13,13 +13,16 @@ export class FlagOperation extends Operation {
         super.run();
 
         if(this.flag == null){
-            this.lastRun=true;
+            this.removeSelf();
         }
-        if(this.lastRun === true) {
-            if(this.flag != null) {
-                this.flag.remove();
-            }
+    }
+
+    public removeSelf(): void {
+        super.removeSelf();
+        if(this.flag != null){
+            this.flag.remove();
         }
+        
     }
 
     public findnearestRoom(): string | null{

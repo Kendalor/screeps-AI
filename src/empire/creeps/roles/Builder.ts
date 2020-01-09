@@ -2,6 +2,7 @@ import { BuildContainer } from "../jobs/BuildContainer";
 import { BuildExtension } from "../jobs/BuildExtension";
 import { BuildExtractor } from "../jobs/BuildExtractor";
 import { BuildLab } from "../jobs/BuildLab";
+import { BuildLink } from "../jobs/BuildLink";
 import { BuildNuker } from "../jobs/BuildNuker";
 import { BuildObserver } from "../jobs/BuildObserver";
 import { BuildPowerSpawn } from "../jobs/BuildPowerSpawn";
@@ -28,6 +29,7 @@ export class Builder extends CreepRole {
         "BuildNuker": BuildNuker,
         "BuildObserver": BuildObserver,
         "BuildRampart": BuildRampart,
+        "BuildLink": BuildLink,
         "BuildRoad": BuildRoad,
         "BuildWall": BuildWall,
         "BuildLab": BuildLab,

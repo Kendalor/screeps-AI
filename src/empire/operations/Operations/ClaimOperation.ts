@@ -22,25 +22,28 @@ export class ClaimOperation extends FlagOperation{
 
 
     public run() {
-        super.run();
+        
         this.validateCreeps();
-        if(this.data.creeps.length < this.numCreeps){
-            const roomName = this.findnearestRoom();
-            if(roomName != null){
-                for( let i=this.data.creeps.length; i< this.numCreeps; i++){
-                    const name = this.manager.empire.spawnMgr.enque({
-                        room: roomName,
-                        body: undefined,
-                        memory: {role: "Claimer", flag: this.flag.name, op: this.name},
-                        pause: 0,
-                        priority: 71,
-                        rebuild: false});
-                    this.data.creeps.push(name);
+        if(this.flag != null){
+            if(this.data.creeps.length < this.numCreeps){
+                const roomName = this.findnearestRoom();
+                if(roomName != null){
+                    for( let i=this.data.creeps.length; i< this.numCreeps; i++){
+                        const name = this.manager.empire.spawnMgr.enque({
+                            room: roomName,
+                            body: undefined,
+                            memory: {role: "Claimer", flag: this.flag.name, op: this.name},
+                            pause: 0,
+                            priority: 71,
+                            rebuild: false});
+                        this.data.creeps.push(name);
+                    }
+                } else {
+                    this.removeSelf();
                 }
-            } else {
-                this.lastRun = true;
             }
         }
+
 
 
 
@@ -49,6 +52,7 @@ export class ClaimOperation extends FlagOperation{
         if( r != null && r.controller != null && r.controller.my) {
             this.flag.remove();
         }
+        super.run();
     }
 
 

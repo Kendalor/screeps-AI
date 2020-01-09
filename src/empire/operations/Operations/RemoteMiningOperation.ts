@@ -6,7 +6,7 @@ export class RemoteMiningOperation extends FlagOperation {
     
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "RemonteMiningOperation";
+        this.type = "RemoteMiningOperation";
     }
 
     public run() {

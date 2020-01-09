@@ -25,6 +25,25 @@ export class MapRoom {
         return false;
     }
 
+    public isIntersection(): boolean {
+        if( this.x % 10 === 0 && this.y % 10 === 0){
+            return true;
+        }
+        return false;
+    }
+
+    public getRoomType(): ROOM_TYPE{
+        if(this.isIntersection()){
+            return 'Intersection';
+        }else if(this.isHighway()){
+            return 'HighwayRoom';
+        }else if(this.isKeeperRoom()){
+            return 'KeeperRoom';
+        } else {
+            return 'NormalRoom';
+        }
+    }
+
     public isKeeperRoom(): boolean {
         // tslint:disable-next-line:variable-name
         const x_new = this.x % 10;

@@ -11,18 +11,35 @@ export class MineOverflow extends Job {
                     creep.harvest(source);
                 }
             }else{
-                creep.moveTo(source, {ignoreCreeps: true, range: 1});
+                creep.moveTo(source, {ignoreCreeps: false, range: 1});
             }
         }
     }
 
     public static runCondition(creep: Creep): boolean {
-        return creep.memory.sourceId != null;
+        if(creep.memory.sourceId != null){
+            if(creep.memory.sourceId.length > 1){
+                return true;
+            }
+        }
+        return false;
     }
 
     public static getTargetId(creep: Creep): string | null {
         if( creep.memory.sourceId != null  ){
-            return creep.memory.sourceId;   
+            if(creep.memory.sourceId.length === 1){
+                return creep.memory.sourceId[0];  
+            } else {
+                for(const c of creep.memory.sourceId){
+                    const source = Game.getObjectById<Source>(c);
+                    if(source != null){
+                        if(source.energy){
+                            return source.id;
+                        }
+                    }
+                }
+            }
+             
         }
         return null;
     }

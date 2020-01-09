@@ -3,24 +3,14 @@ import { MineOverflow } from "./MineOverflow";
 export class MineContainer extends MineOverflow {
 
     public static run(creep: Creep): void {
-        // SETUP HAS SOURCE ID, HAS CONTAINER ID
         if(creep.memory.containerId != null ){
             const container: StructureContainer | null = Game.getObjectById(creep.memory.containerId);
             if(container != null ){
-                if(creep.memory.sourceId != null){
-                    const source: Source | null = Game.getObjectById(creep.memory.sourceId);
-                    if( source != null && source.energy > 0){
-                        if(creep.pos.inRangeTo(container,0)) {
-                            if (source.energy > 0){
-                                creep.harvest(source);
-                            }
-                        }else{
-                            creep.moveTo(container);
-                        }  
-                    }
-                } else {
-                    this.cancel(creep);
-                }   
+                if(creep.pos.inRangeTo(container,0)) {
+                    super.run(creep);
+                }else{
+                    creep.moveTo(container);
+                }  
             } else {
                 this.cancel(creep);
             }
@@ -35,6 +25,20 @@ export class MineContainer extends MineOverflow {
             if(container != null){
                 return true;
             } 
+        } else {
+            if(creep.memory.sourceId != null){
+                const source = Game.getObjectById<Source>(creep.memory.sourceId);
+                if(source != null){
+                    const containers = source.pos.findInRange(FIND_STRUCTURES,1).filter( str => str.structureType === STRUCTURE_CONTAINER);
+                    if( containers.length > 0){
+                        const container = containers.pop();
+                        if( container != null){
+                            creep.memory.containerId = container.id;
+                            return true;
+                        }
+                    }
+                }
+            }
         }
         return false;
     }

@@ -8,6 +8,7 @@ import { RoomOperation } from "./RoomOperation";
 
 
 
+
 /**
  * This Phase is Active preStorage after the first Spawn,
  * it should also activate if room is in decline and needs recovery. 
@@ -26,7 +27,6 @@ export class DefenseOperation extends RoomOperation{
     public run() {
 
         const r: Room = this.room;
-        console.log(r);
 
         if(r != null){
             const enemies: Creep[] = r.find(FIND_HOSTILE_CREEPS);
@@ -44,9 +44,54 @@ export class DefenseOperation extends RoomOperation{
                         r.controller.activateSafeMode();
                     }
                 }
+            } else {
+                const myCreeps = r.find(FIND_MY_CREEPS).filter(creep => creep.hits < creep.hitsMax);
+                if(myCreeps.length > 0) {
+                    const towers: StructureTower[] = r.find(FIND_MY_STRUCTURES).filter( str => str.structureType === STRUCTURE_TOWER) as StructureTower[];
+                    if (towers.length > 0 ){
+                        for( const t of towers){
+                            const a: Creep | null = t.pos.findClosestByRange(myCreeps);
+                            if( a!= null){
+                                t.heal(a); 
+                            }
+                        } 
+                    } else {
+                        if( r.controller != null ) {
+                            r.controller.activateSafeMode();
+                        }
+                    }
+                } else {
+                    if(this.data.repair == null){
+                        this.data.repair =[];
+                    }
+                    if(this.data.repair.length > 0){
+                        const targets = this.idsToObjects(this.data.repair);
+
+                    }
+                }
             }
         }
-        this.didRun=true;
+        
+    }
+    private idsToObjects(ids: string[]): Structure[] {
+        const out: Structure[] = [];
+        for(const i of ids){
+            const obj = Game.getObjectById(i) as Structure;
+            if( obj != null){
+                out.push(obj);
+            }
+        }
+        return out;
+    }
+
+    private objectsToIds(objs: Structure[]): string[] {
+        const out: string[] = [];
+        for(const i of objs){
+            if(i.hits <= i.hitsMax){
+                out.push(i.id);
+            }
+        }
+        return out;
     }
 
 }

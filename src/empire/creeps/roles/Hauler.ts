@@ -1,3 +1,4 @@
+import { DoNotBlockStuff } from "../jobs/DoNotBlockStuff";
 import { PickupContainer } from "../jobs/PickupContainer";
 import { PickupDropped } from "../jobs/PickupDropped";
 import { PickupTombstone } from "../jobs/PickupTombstone";
@@ -14,7 +15,8 @@ export class Hauler extends CreepRole {
         "SupplyStorage": SupplyStorage,
 		"PickupDropped": PickupDropped,
 		"PickupTombstone": PickupTombstone,
-		"PickupContainer": PickupContainer};
+		"PickupContainer": PickupContainer,
+		"DoNotBlockStuff": DoNotBlockStuff};
 	
     constructor(creep: Creep) {
         super(creep);

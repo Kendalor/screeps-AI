@@ -1,13 +1,4 @@
 
-export interface SpawnEntryMemory {
-    memory: any;
-    rebuild: boolean;
-    room: string;
-    pause: number;
-    body?: BodyPartConstant[];
-    priority: number;
-    toPos?: {x: number, y:number};
-}
 
 export class SpawnEntry implements SpawnEntryMemory{
     public memory: any;

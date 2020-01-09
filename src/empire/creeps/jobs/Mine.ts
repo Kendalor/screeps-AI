@@ -20,10 +20,6 @@ export class Mine extends Job {
                 this.cancel(creep);
             }
         }
-
-
-
-
         // CANCEL CONDITION
         if(creep.carry.energy === creep.carryCapacity){
             this.cancel(creep);
@@ -35,9 +31,8 @@ export class Mine extends Job {
     }
 
     public static getTargetId(creep: Creep): string | null {
-        if( creep.memory.sourceId !== null || creep.memory.sourceId !== undefined ){
-            return creep.memory.sourceId;
-            
+        if( creep.memory.sourceId != null ){
+            return creep.memory.sourceId;  
         } else {
             return super.getTargetId(creep);
         }

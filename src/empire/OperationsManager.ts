@@ -1,5 +1,6 @@
 import { EmpireManager } from "./EmpireManager";
 import { Operation } from "./operations/Operation";
+import { InitialRoomOperation } from "./operations/Operations/InitialBuildUpPhase/InitRoomOperation";
 import { OperationMemory } from "./operations/Operations/OperationMemory";
 import { OP_STORAGE } from "./operations/OperationStorage";
 
@@ -15,9 +16,6 @@ export class OperationsManager {
 
     constructor(emp: EmpireManager) {
 		this.empire=emp;
-		if(Memory.empire == null ) {
-			Memory.empire = {};
-		}
 		if(Memory.empire.operations== null){
 			Memory.empire.operations = {};
 		}
@@ -59,6 +57,16 @@ export class OperationsManager {
 		this.saveOperationList();
 	}
 
+	public getBaseOperations(): InitialRoomOperation[] {
+		const out = new Array<InitialRoomOperation>();
+		for(const op of Object.keys(this.operations)){
+			if(this.operations[op].type === "InitialRoomOperation"){
+				out.push(this.operations[op] as InitialRoomOperation);
+			}
+		}
+		return out;
+	}
+
 
 
 	/**
@@ -94,28 +102,25 @@ export class OperationsManager {
  	* Load Operations from Memory
 	 */
     public loadOperationList(): void {
-		global.logger.debug("Loading Operations: " + Object.keys(Memory.empire.operations).length);
+		
 		this.operations = {};
+		if(Memory.empire.operations == null){
+			Memory.empire.operations = {};
+		}
         for(const i of Object.keys(Memory.empire.operations)) {
 			if(OP_STORAGE[Memory.empire.operations[i].type] != null){
-				this.operations[i]= new OP_STORAGE[Memory.empire.operations[i].type](i, this, Memory.empire.operations[i] as OperationMemory);
+				try {
+					this.operations[i]= new OP_STORAGE[Memory.empire.operations[i].type](i, this, Memory.empire.operations[i] as OperationMemory);
+				} catch (error) {
+					console.log(error);
+				}
+				
 			} else {
 				console.log("INVALID OPERATION WITH TYPE: " +Memory.empire.operations[i].type + " DELETED" );
 				delete Memory.empire.operations[i];
 			}
             
 		}
-		if(Object.keys(this.operations).length === 0 ){
-            console.log("NO Operations");
-            this.enque({type: "InitOperation", data: {}, priority: 100,pause: 1, lastRun: false});
-            global.logger.warn("No Operations Found");
-            for(const key in Game.rooms){
-                global.logger.info("Added InitialRoomOperation for Room: " + key);
-                this.enque({type: "InitialRoomOperation", data: {roomName: Game.rooms[key].name}, priority: 100,pause: 1, lastRun: false});
-            }
-        }
-		this.enque({type: "FlagListener", data: {}, priority: 100, pause: 0, lastRun: true})
-		global.logger.debug("Loaded Operations List of Lengh: " + Object.keys(this.operations).length);
 
 		this.operationsTodo = Object.entries(this.operations).filter( entry => entry[1].pause === 0 && entry[1].didRun === false).sort( (entryA,entryB) => entryA[1].priority - entryB[1].priority);
     }
@@ -126,12 +131,10 @@ export class OperationsManager {
 		Memory.empire.operations = {};
 		global.logger.debug("Saving Operations List of Lengh: " + Object.keys(this.operations).length);
         for(const key of Object.keys(this.operations)) {
-            if(this.operations[key].lastRun === false){
-                if(this.operations[key].pause > 0){
-                    this.operations[key].pause = this.operations[key].pause -1;
-				}
-                Memory.empire.operations[key] = this.operations[key].toMemory() as OperationMemory;
-            }
+			if(this.operations[key].pause > 0){
+				this.operations[key].pause = this.operations[key].pause -1;
+			}
+			Memory.empire.operations[key] = this.operations[key].toMemory() as OperationMemory;
 		}
 		global.logger.debug("Saved Operations: " + Object.keys(Memory.empire.operations).length);
 	}
@@ -160,6 +163,14 @@ export class OperationsManager {
 
 	public entryExists(name: string ){
 		return this.operations[name] != null;
+	}
+
+	public getEntryByName<T extends Operation>(name: string): T | null {
+		if(this.entryExists(name)){
+			return this.operations[name] as T;
+		} else {
+			return null;
+		}
 	}
 
     public dequeue(name: string){

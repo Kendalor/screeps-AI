@@ -17,9 +17,10 @@ export class InitOperation extends Operation{
 
     public run() {
         if(this.data.scoutingScheduler == null){
-           const name =  this.manager.enque({type: "ScoutingSchedulerOperation",data: {}, priority: 100, pause: 0, lastRun: false });
-           this.data.scoutingScheduler = name;
+           // const name =  this.manager.enque({type: "ScoutingSchedulerOperation",data: {}, priority: 100, pause: 0 });
+           // this.data.scoutingScheduler = name;
         }
+        this.removeSelf();
     }
 
 
