@@ -10,11 +10,12 @@ export class FlagOperation extends Operation {
     }
 
     public run() {
-        super.run();
-
         if(this.flag == null){
             this.removeSelf();
         }
+        super.run();
+
+
     }
 
     public removeSelf(): void {
@@ -26,6 +27,7 @@ export class FlagOperation extends Operation {
     }
 
     public findnearestRoom(): string | null{
+        console.log("FindNearestRoom");
         if(this.data.nearestSpawn == null ){
             const targetRoom = this.flag.pos.roomName;
             const roomWithSpawns = Object.entries(Game.rooms).filter(
@@ -40,7 +42,7 @@ export class FlagOperation extends Operation {
                 }else {
                     return 50;
                 }}   )
-            const shortest = sorted.pop();
+            const shortest = sorted.shift();
             if(shortest != null){
                 this.data.nearestSpawn = shortest[1].name; 
                 return shortest[1].name;

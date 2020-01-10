@@ -18,7 +18,7 @@ export class MineOverflow extends Job {
 
     public static runCondition(creep: Creep): boolean {
         if(creep.memory.sourceId != null){
-            if(creep.memory.sourceId.length > 1){
+            if(creep.memory.sourceId.length >= 1){
                 return true;
             }
         }

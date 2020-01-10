@@ -61,6 +61,11 @@ export class HaulerOperation extends RoomOperation{
                     }
                 } else {
                     this.data.numHaulers=0;
+                    const res = _.sum(r.find(FIND_DROPPED_RESOURCES).filter ( resource => resource.resourceType === RESOURCE_ENERGY).map( resource => resource.amount));
+                    if(res > 2000){
+                        this.data.numHaulers +=1;
+                    }
+                    
                 }
 
             }

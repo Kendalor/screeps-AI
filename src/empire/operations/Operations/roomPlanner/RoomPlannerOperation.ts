@@ -1,10 +1,10 @@
 import { OperationsManager } from "empire/OperationsManager";
+import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { InitialRoomOperation } from "../InitialBuildUpPhase/InitRoomOperation";
 import { OperationMemory } from "../OperationMemory";
 import { RoomOperation } from "../RoomOperation";
 import { Base } from "./layouts/Base";
-import { RoomPlannerUtils } from "./RoomPlannerUtils";
-import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
+
 
 
 
@@ -37,11 +37,12 @@ export class RoomPlannerOperation extends RoomOperation {
                 this.inProgress = this.data.inProgress;
             }
         }
-        if(Memory.room[this.data.roomName].base.anchor != null){
+        if(RoomMemoryUtil.isBaseSet(this.room.name)){
             this.anchor = Memory.rooms[this.data.roomName]!.base!.anchor as {x: number, y:number};
         } else {
             this.anchor = null;
         }
+
         
 
     }
@@ -112,7 +113,7 @@ export class RoomPlannerOperation extends RoomOperation {
         if(this.parent != null){
             const base =this.manager.getEntryByName<InitialRoomOperation>(this.parent);
             
-            if(base != null){
+            if(base != null && base.type === 'InitialRoomOperation'){
                 const baseList = base.getBuildingList();
                 for(const i of baseList){
                     if(!out.has(i)){

@@ -22,8 +22,6 @@ export class RoomLogisticsOperation extends RoomOperation{
     private storageLink?: StructureLink;
     private controllerLink?: StructureLink;
     private sourceLinks?: StructureLink[];
-    private storage?: StructureStorage;
-    private terminal?: StructureTerminal;
     private tasks: LogisticTask[] = new Array<LogisticTask>();
 
 

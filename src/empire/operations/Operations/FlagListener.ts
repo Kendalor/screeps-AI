@@ -12,13 +12,13 @@ export class FlagListener extends Operation {
     public run() {
         super.run();
         this.cleanFlagMemory();
-        console.log("FlagListener Operation");
         for(const key of Object.keys(Game.flags)) {
             const flag: Flag = Game.flags[key];
             if(flag.memory.op == null) {
                 this.spawnOp(flag);
             }
         }
+        this.removeSelf();
     }
 
     public spawnOp(flag: Flag){

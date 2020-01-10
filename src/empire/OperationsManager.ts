@@ -37,11 +37,7 @@ export class OperationsManager {
 		let counter =0;
 		
 		while( this.hasNextOperation()) {
-			try {
 				this.runNextOperation();
-			} catch (error) {
-				console.log(error);
-			}
 
 			counter = counter +1;
 		}
@@ -79,6 +75,7 @@ export class OperationsManager {
 			op.run();
 			this.empire.stats.addOp( Game.cpu.getUsed() - time, op.type);
 
+
 		}
 	}
 
@@ -112,7 +109,7 @@ export class OperationsManager {
 				try {
 					this.operations[i]= new OP_STORAGE[Memory.empire.operations[i].type](i, this, Memory.empire.operations[i] as OperationMemory);
 				} catch (error) {
-					console.log(error);
+					console.log("Error for Operation: " + i + "of type: " + this.operations[i].type + " with Error: " +error);
 				}
 				
 			} else {

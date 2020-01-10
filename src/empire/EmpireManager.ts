@@ -108,6 +108,7 @@ export class EmpireManager  {
     private checkFlagListenerOperation(): void {
             if(this.data.flaglistener == null){
                 this.createFlaglistenerOperation();
+            } else {
                 if( !this.opMgr.entryExists(this.data.flaglistener)){
                     this.data.flaglistener = null;
                 }
@@ -129,6 +130,7 @@ export class EmpireManager  {
     private checkScoutingManagerOperation(): void {
         if(this.data.scoutingManager == null){
             this.createScoutingManagerOperation();
+        } else {
             if( !this.opMgr.entryExists(this.data.scoutingManager)){
                 this.data.scoutingManager = null;
             }

@@ -1,4 +1,5 @@
 import { EmpireManager } from "empire/EmpireManager";
+import { ErrorMapper } from "utils/ErrorMapper";
 import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
 import { Claimer } from "./creeps/roles/Claimer";
@@ -39,8 +40,11 @@ export class CreepManager {
                 } else {
                     console.log("Creep: " + c + "Has no Role !");
                 }
-            } catch (error) {
-                console.log("ERROR for Creep: " +c + "with Role: " + Game.creeps[c].memory.role + " ERROR MSG: " + error);
+            } catch (e) {
+                if(e instanceof Error){
+                    console.log("ERROR for Creep: " +c + "with Role: " + Game.creeps[c].memory.role + " ERROR MSG: " + `<span style='color:red'>${_.escape(ErrorMapper.sourceMappedStackTrace(e))}</span>`);
+                }
+                
             }
 
         }

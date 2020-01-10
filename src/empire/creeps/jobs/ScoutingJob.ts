@@ -10,26 +10,20 @@ export class ScoutingJob extends Job {
 
         const op =global.empire.opMgr.getEntryByName<OperationScoutingManager>(creep.memory.op);
         if(op != null){
-            console.log("Op != null");
             if(creep.memory.targetRoom != null){ // RoomName
-                console.log("Creep has TargetRoom:" + creep.memory.targetRoom);
+                console.log("Creep: " + creep.name + " is in Room: " + creep.room.name);
                 if(creep.room.name !== creep.memory.targetRoom){
-                    console.log("Creep Not in TargetRoom: "+ creep.memory.targetRoom);
-                    const exitDir = Game.map.findExit(creep.room, creep.memory.targetRoom);
-                    if(exitDir !== ERR_NO_PATH && exitDir !== ERR_INVALID_ARGS){
-                        const exit = creep.pos.findClosestByRange(exitDir);
-                        if(exit != null){
-                            console.log("Creep Move to Exit: "+ creep.memory.targetRoom);
-                            creep.moveTo(exit, {reusePath: 50} ); 
-                        }
-                    }
+                    console.log("Creep: " + creep.name + " is not in TargetRoom: " + creep.memory.targetRoom );
+                    // const targetPos =new RoomPosition(25,25,creep.memory.targetRoom);
+                    this.travel(creep);
                 } else {
-                    console.log("Creep in TargetRoom");
                     if(RoomMemoryUtil.checkIfRoomNeedsScouting(creep.memory.targetRoom)){
                         RoomMemoryUtil.setRoomMemory(creep.room);
+                        op.setChanged(true);
                     } else {
                         creep.memory.targetRoom = null;
-                        op.wakeup();
+                        creep.memory.path = null;
+                        
                     }
                 }
             } else {
@@ -37,6 +31,23 @@ export class ScoutingJob extends Job {
             }
         }
 
+    }
+
+    public static travel(creep: Creep): void {
+        if(creep.memory.path != null && creep.memory.path.length > 0  ){
+            console.log(creep.memory.path.length);
+            const target = creep.memory.path.shift() as RoomPosition;
+            console.log("target: " + JSON.stringify(target));
+            const direction = creep.pos.getDirectionTo(new RoomPosition(target.x,target.y,target.roomName));
+            console.log( "Direction: " + direction);
+            const err = creep.move(direction);
+
+        
+            console.log("Creep: " + creep.name+ " in Room: " + creep.room.name + " Code: " + err);
+        } else {
+            const targetPos =new RoomPosition(25,25,creep.memory.targetRoom);
+            creep.memory.path = RoomMemoryUtil.findPath(creep.pos,targetPos);
+        }
     }
 
     public static runCondition(creep: Creep): boolean {

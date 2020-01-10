@@ -14,7 +14,9 @@ import { OperationMemory } from "./OperationMemory";
 
 export class OperationScoutingManager extends Operation{
     private MAX_RANGE = 6;
-    private DEFAULT_PAUSE = 1000;
+    private DEFAULT_PAUSE = 500;
+    private DEFAULT_VALIDATION_INTERVALL = 1;
+
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
         this.type = "OperationScoutingManager";
@@ -22,20 +24,46 @@ export class OperationScoutingManager extends Operation{
 
 
     public run() {
+        console.log("Operation Scouting Manger");
         super.run();
-        this.validateTodo();
-        if(this.data.todo.length > 0){
-            this.data.numScouts = this.manager.empire.getMyRooms().length;
+        if(this.hasChanged()){
+            this.validateTodo();
+            this.setChanged(false);
         }
+        this.setNumScouts();
+
         this.validateCreeps();
+
         if(this.data.numScouts > this.data.creeps.length){
             this.enqueueCreeps();
         }
+
+        // this.sleep();
         console.log("ScoutingManager: Radius: "+ this.getScoutingRadius() + " Todos: " + this.data.todo.length + " Creeps: (" + this.data.creeps.length + "/" + this.data.numScouts + ")");
     }
 
     public wakeup(): void {
         this.pause =0;
+    }
+
+    public setChanged(a: boolean):void {
+        this.data.changed = a;
+    }
+
+    private hasChanged(): boolean {
+        if(this.data.changed == null || Game.time % 5000 === 0){
+            return true;
+        } else {
+            return this.data.changed;
+        }
+    }
+
+    private setNumScouts(): void {
+        if(this.data.todo.length > 0){
+            this.data.numScouts = this.manager.empire.getMyRooms().length;
+        } else {
+            this.data.numScouts =0;
+        }
     }
 
     private enqueueCreeps(): void {
@@ -61,25 +89,66 @@ export class OperationScoutingManager extends Operation{
         if(this.data.todo == null){
             this.data.todo = this.getRoomsInRange(this.manager.empire.getMyRooms(),this.getScoutingRadius());
         }
-        let newTodo = new Array<string>();
-        for(const e of this.data.todo){
-            if(Game.map.isRoomAvailable(e)){
-                if(RoomMemoryUtil.checkIfRoomNeedsScouting(e)){
-                    newTodo.push(e);
-                }
-            }
-        }
+        let newTodo = this.checkAllRooms(this.data.todo);
         if(newTodo.length === 0){
-            console.log("NewTodo length: " + newTodo.length);
+            let increased = false;
             if(this.getScoutingRadius() < this.MAX_RANGE){
                 this.incrementScoutingRadius();
-                newTodo = this.getRoomsInRange(this.manager.empire.getMyRooms(),this.getScoutingRadius());
-            } else {
-                this.pause = this.DEFAULT_PAUSE;
+                increased = true;
             }
+            if(this.validateMemory() || increased){
+
+                newTodo = this.getRoomsInRange(this.manager.empire.getMyRooms(),this.getScoutingRadius());
+
+            } else {
+                newTodo = this.checkAllRooms(RoomMemoryUtil.getRoomsInMemory());
+            }
+
+
         }
         this.data.todo = newTodo;
     }
+
+    private sleep(): void {
+        this.pause = this.DEFAULT_PAUSE;
+    }
+
+    private checkAllRooms(rooms: string[]): string[]{
+        let t = Game.cpu.getUsed();
+        const newTodo = new Array<string>();
+        let k = Game.cpu.getUsed();
+        console.log("CPU: for Array "+ (k-t));
+        for(const e of this.data.todo){
+            if(Game.map.isRoomAvailable(e)){
+                console.log("CheckAllRooms: "+ e);
+                t = Game.cpu.getUsed();
+                if(RoomMemoryUtil.checkIfRoomNeedsScouting(e)){
+                    newTodo.push(e);
+                }
+                k = Game.cpu.getUsed();
+                console.log("CPU: for "+e+  " "+ (k-t));
+
+            }
+        }
+        return newTodo;
+    }
+    public resetLastValidation(): void {
+        this.data.lastValidation = Game.time;
+    }
+
+    public validateMemory(): boolean {
+        if(this.data.lastValidation == null){
+            return true;
+        } else {
+            if(this.data.lastValidation +this.DEFAULT_VALIDATION_INTERVALL < Game.time ){
+                this.resetLastValidation();
+                return true;
+            }
+        }
+        return false;
+    }
+
+
 
 
 
@@ -139,6 +208,7 @@ export class OperationScoutingManager extends Operation{
         return out;
     }
 
+    /*
     private getRoomsInRange(roomName: string[], range: number): string[]{
         if(range === 0){
             return roomName;
@@ -151,6 +221,49 @@ export class OperationScoutingManager extends Operation{
             }
             return Array.from(new Set(out.concat(this.getRoomsInRange(out,range-1))));
         }
+    }
+    */
+
+    private getRoomsInRange(roomName: string[], range: number): string[]{
+        const out = new Set<string>();
+        const checked = new Set<string>();
+        let toCheck = new Set<string>(roomName);
+        let iterList =new Set<string>();
+        for(let i=0; i<range; i=i+1){
+            iterList = new Set<string>();
+            for(const r of toCheck){
+                if(!checked.has(r)){
+                    checked.add(r);
+                    const adjacent = this.getAdjacentRooms(r);
+                    for(const a of adjacent){
+                        if(!iterList.has(a)){
+                            iterList.add(a);
+                        }
+                    }
+                }
+            }
+            toCheck = new Set<string>();
+            for(const e of iterList){
+                if(!checked.has(e)){
+                    if(!toCheck.has(e)){
+                        toCheck.add(e);
+                    }
+                }
+            }
+        }
+        for(const a of checked){
+            if(!out.has(a)){
+                out.add(a);
+            }
+        }
+        for(const a of toCheck){
+            if(!out.has(a)){
+                out.add(a);
+            }
+        }
+
+
+        return Array.from(out);
     }
 
 

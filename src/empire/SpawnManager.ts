@@ -3,6 +3,7 @@ import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
 import { Claimer } from "./creeps/roles/Claimer";
 import { Colonize } from "./creeps/roles/Colonize";
+import { Hauler } from "./creeps/roles/Hauler";
 import { Logistic } from "./creeps/roles/Logistic";
 import {Maintenance} from "./creeps/roles/Maintenance";
 import { Miner } from "./creeps/roles/Miner";
@@ -18,14 +19,14 @@ import { SpawnEntry} from "./spawn/SpawnEntry";
  * On saveList(), the toSpawnList is saved to Memory and all pause timers are decreased by 1. 
  * 
  * 
- * FUTURE TODO: Push this to the Empire Level 
+ * 
  */
 
 export class SpawnManager {
     public availableSpawns: StructureSpawn[] = [];
     public empire: EmpireManager;
     public toSpawnList: {[name: string]: SpawnEntry} = {};
-    public roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize };
+    public roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize, Hauler };
 
 
     constructor(empire: EmpireManager) {

@@ -15,12 +15,11 @@ export class Build extends Job {
             if(creep.carry.energy > 0 ){
                 if(creep.pos.inRangeTo(target,3)){
                     const err = creep.build(target);
-                    console.log("Creep: " + creep.name + " err: " + err);
                     if(err === ERR_INVALID_TARGET){
                         // TARGET INVALID => Target is Already Built or Destroyed
                         this.cancel(creep);
                     } else if (err !== OK){
-                        console.log(err);
+                        console.log("Builder Creep: " + creep.name + " err: " + err);
                     }
                 }else{
                     const err = creep.moveTo(target, {range: 3});

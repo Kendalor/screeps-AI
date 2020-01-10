@@ -42,15 +42,11 @@ export class ClaimOperation extends FlagOperation{
                     this.removeSelf();
                 }
             }
-        }
+            const r = this.flag.room;
 
-
-
-
-        const r = this.flag.room;
-
-        if( r != null && r.controller != null && r.controller.my) {
-            this.flag.remove();
+            if( r != null && r.controller != null && r.controller.my) {
+                this.flag.remove();
+            }
         }
         super.run();
     }
