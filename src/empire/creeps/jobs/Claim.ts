@@ -7,7 +7,12 @@ export class Claim extends Job {
         const target: StructureController | null = Game.getObjectById(creep.memory.targetId) as StructureController;
         if(target != null){
             if(creep.pos.inRangeTo(target,1)){
-                creep.claimController(target);
+                if(target.reservation == null){
+                    creep.claimController(target);
+                }else {
+                    creep.attackController(target);
+                }
+                
             } else {
                 creep.moveTo(target);
             }
@@ -17,7 +22,7 @@ export class Claim extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        return creep.room.controller != null && creep.room.controller.level === 0;
+        return creep.room.controller != null && creep.room.controller.level === 0 && creep.room.name === creep.memory.targetRoom;
     }
 
     public static getTargetId(creep: Creep): string | null {

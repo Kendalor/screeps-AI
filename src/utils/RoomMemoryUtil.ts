@@ -12,13 +12,15 @@ export class RoomMemoryUtil {
             case 'NormalRoom':
                 if(!this.isRoomUpToDate(roomName)){
                     return true;
+                } else {
+                    if(!this.isBaseSet(roomName)){
+                        return true;
+                    }
+                    if(!this.isResourcesSet(roomName)){
+                        return true;
+                    }
                 }
-                if(!this.isBaseSet(roomName)){
-                    return true;
-                }
-                if(!this.isResourcesSet(roomName)){
-                    return true;
-                }
+
                 break;
             case 'HighwayRoom':
                 if(!this.isRoomUpToDate(roomName)){
@@ -34,9 +36,10 @@ export class RoomMemoryUtil {
             case 'KeeperRoom':
                 if(!this.isRoomUpToDate(roomName)){
                     return true;
-                }
-                if(!this.isResourcesSet(roomName)){
-                    return true;
+                } else {
+                    if(!this.isResourcesSet(roomName)){
+                        return true;
+                    }
                 }
                 break;
         }
@@ -61,35 +64,92 @@ export class RoomMemoryUtil {
 
     public static routeCallBack(roomName: string): number {
         const r = new MapRoom(roomName);
-        if(r.isHighway() || r.isIntersection()){
+        if(!Game.map.isRoomAvailable(roomName)){
+            return 254;
+        }else if(r.isHighway() || r.isIntersection()){
             return 1;
         } else if( !RoomMemoryUtil.isRoomFriendly(roomName)){
-            return 100;
+            return 120;
+        } else if(r.isKeeperRoom()) {
+            return 30;
         } else {
             return 2;
         }
     }
+
+    public static getRoomOwner(roomName: string): string | undefined {
+        const mem = Memory.rooms[roomName];
+        if(mem != null){
+            if(mem.owner != null){
+                return mem.owner;
+            }
+        }
+        return undefined;
+    }
+
+    public static getNearestColonizeAbleRoom(roomName: string): string | undefined{
+        const rooms = this.getColonizableRooms();
+        console.log("Rooms able to COlonize: "+ rooms);
+        let dist = 255;
+        let out ;
+        for( const r of rooms){
+            const d = this.getDistance(roomName,r);
+            if(dist > d  && d <= 8){
+                dist = d;
+                out = r;
+            }
+        }
+
+        return out;
+    }
+
     public static isRoomColonizeAble(roomName: string): boolean {
         const mem = Memory.rooms[roomName];
         if(mem != null){
             if(mem.roomType === 'NormalRoom'){
-                if(mem.owner === undefined){
-                    return true;
+                if(mem.owner == null){
+                    if(mem.base != null){
+                        if(mem.base.bunker === true){
+                            if(mem.base.anchor != null){
+                                if(mem.resources != null){
+                                    if(mem.resources.sources.length === 2){
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
         return false;
     }
 
+    public static reserveRoom(roomName: string): void {
+        const mem = Memory.rooms[roomName];
+        if(mem != null){
+            if(mem.roomType === 'NormalRoom'){
+                if(mem.owner == null){
+                    mem.owner = 'Kendalor';
+                }
+            }
+        }
+    }
+
     public static getDistance(from: string, to: string){
-        const route =Game.map.findRoute(from,to, {
-            routeCallback: this.routeCallBack
-        });
+        const route =this.getRoute(from,to);
         if(route !== -2){
             return route.length;
         } else {
             return 254;
         }
+    }
+
+    public static getRoute(from: string, to: string): Array<{exit: ExitConstant, room: string}> | ERR_NO_PATH {
+        const route =Game.map.findRoute(from,to, {
+            routeCallback: this.routeCallBack
+        });
+        return route;
     }
 
     public static findPath(from: RoomPosition, to: RoomPosition): RoomPosition[] | undefined{
@@ -116,6 +176,7 @@ export class RoomMemoryUtil {
         }
         return undefined;
     }
+
 
     public static setRoomMemory(room: Room): void {
             if(!this.isRoomTypeSet(room.name)){
@@ -158,6 +219,7 @@ export class RoomMemoryUtil {
                     if(!this.isResourcesSet(room.name)){
                         this.setRessources(room);
                     }
+                    this.setOwner(room);
                     break;
             }
     }
@@ -175,6 +237,28 @@ export class RoomMemoryUtil {
         }
         return false;
     }
+
+
+    public static getCostMatrix(roomName: string): CostMatrix {
+        const mem = Memory.rooms[roomName];
+        if(this.isCostMatrixSet(roomName)){
+            return mem.costMatrix;
+        } else {
+            return PathFinder.CostMatrix;
+        }
+    }
+
+    public static isCostMatrixSet(roomName: string): boolean {
+        const mem = Memory.rooms[roomName];
+        if(mem != null){
+            if(mem.costMatrix != null){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    
 
     public static isRoomTypeSet(roomName: string): boolean {
         if(Memory.rooms[roomName] != null){
@@ -201,11 +285,22 @@ export class RoomMemoryUtil {
                 if(room.controller != null){
                     if(room.controller.owner != null){
                         room.memory.owner = room.controller.owner.username;
+                    } else if(room.controller.reservation != null) {
+                        room.memory.owner = room.controller.reservation.username;
+                    } else {
+                        delete room.memory.owner;
                     }
                 }
             }
         }
     }
+
+    public static getColonizableRooms(): string[] {
+        return this.getRoomsInMemory().filter( s => this.isRoomColonizeAble(s));
+        
+    }
+
+
 
     public static isRoomNeutral(roomName: string){
         if(Memory.rooms[roomName].roomType === 'NormalRoom'){

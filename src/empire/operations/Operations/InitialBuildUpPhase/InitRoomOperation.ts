@@ -10,6 +10,7 @@ import { RoomOperation } from "../RoomOperation";
 import { RoomPlannerOperation } from "../roomPlanner/RoomPlannerOperation";
 import SupplyOperation from "../SupplyOperation";
 import { UpgradeOperation } from "../UpgradeOperation";
+import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 
 
 
@@ -54,6 +55,8 @@ export class InitialRoomOperation extends RoomOperation{
             if(this.data.roomPlanner == null){
                 console.log("Enqued RoomPlanner Op for Room: " + r.name);
                 this.createNewRoomPlanner();
+
+            }else {
                 if( !this.manager.entryExists(this.data.roomPlanner)){
                     console.log("Enqued RoomPlanner not found" + r.name);
                     this.data.roomPlanner = null;
@@ -123,21 +126,10 @@ export class InitialRoomOperation extends RoomOperation{
 
             // Validate creeps:
             this.validateCreeps();
+            this.colonize();
 
             if(r.storage == null) {
                 if(this.data.creeps.length < 6){
-                    if(r.find(FIND_MY_CREEPS).length === 0){
-                        const name = this.manager.empire.spawnMgr.enque({
-                            room: r.name,
-                            memory: {role: "Maintenance"},
-                            pause: 0,
-                            priority: 100,
-                            rebuild: false});
-                        this.data.creeps.push(name);
-                    }
-                }
-            } else {
-                if(this.data.creeps.length === 0){
                     if(r.find(FIND_MY_CREEPS).length === 0){
                         const name = this.manager.empire.spawnMgr.enque({
                             room: r.name,
@@ -156,17 +148,59 @@ export class InitialRoomOperation extends RoomOperation{
 
     }
 
+    private colonize(): void {
+        if(Math.random() <= 0.001){
+            if(this.canColonize()){
+                const room = RoomMemoryUtil.getNearestColonizeAbleRoom(this.room.name);
+                if( room != null){
+                    this.createColonizeOperation(room);
+                    RoomMemoryUtil.reserveRoom(room);
+                }
+            }
+        }
+    }
+
+    private canColonize(): boolean {
+        if(this.room.energyCapacityAvailable >= 650){
+            if(this.manager.getBaseOperations().length < Game.gcl.level && this.manager.getBaseOperations().length *3 < Game.cpu.limit){
+                this.checkColonizeOperation();
+                if(this.data.colonize == null){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private checkColonizeOperation(): void {
+        if(this.data.colonize != null){
+            if( !this.manager.entryExists(this.data.colonize)){
+                this.data.colonize = null;
+            }
+        }
+    }
+    
+    private createColonizeOperation(roomName: string): void {
+        if(this.data.colonize != null){
+            if( !this.manager.entryExists(this.data.colonize)){
+                this.data.colonize = null;
+            }
+        } else {
+            this.data.colonize = this.manager.enque({type: "ColonizeOperation", data: {room: roomName, parent: this.name, spawnRoom: this.room.name}, priority: 50,pause: 1});
+        }
+        
+    }
+
     private checkForEmergency(): void {
         if(this.data.emergencyCounter == null){
             this.data.emergencyCounter = 0;
         }
         if(this.room.energyAvailable <= 300 && this.room.controller!.level >= 4){
-            console.log("Emergency Detected in room: " + this.room.name + " incrementing COunter, currently at: " + this.data.emergencyCounter );
             this.data.emergencyCounter += 1; 
         } else if(this.room.energyAvailable >= this.room.energyCapacityAvailable -300) {
             this.data.emergencyCounter = 0;
         }
-        if(this.data.emergencyCounter > 100){
+        if(this.data.emergencyCounter > 1000){
             this.data.creepsMax = 5;
             this.validateCreeps();
             if(this.data.creepsMax > this.data.creeps.length){

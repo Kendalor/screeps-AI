@@ -7,6 +7,7 @@ import { Hauler } from "./creeps/roles/Hauler";
 import { Logistic } from "./creeps/roles/Logistic";
 import {Maintenance} from "./creeps/roles/Maintenance";
 import { Miner } from "./creeps/roles/Miner";
+import { RemoveInvader } from "./creeps/roles/RemoveInvader";
 import { Repairer } from "./creeps/roles/Repairer";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
@@ -26,7 +27,7 @@ export class SpawnManager {
     public availableSpawns: StructureSpawn[] = [];
     public empire: EmpireManager;
     public toSpawnList: {[name: string]: SpawnEntry} = {};
-    public roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize, Hauler };
+    public roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize, Hauler,RemoveInvader };
 
 
     constructor(empire: EmpireManager) {
@@ -69,10 +70,11 @@ export class SpawnManager {
                         try {
                             const body: BodyPartConstant[] = (entry[1].body != null) ? entry[1].body : this.roles[entry[1].memory.role].getBody(spawn);
                             let direction: DirectionConstant | null = null;
-                            
+                            console.log("Trying to Spawn: " + JSON.stringify(entry[1]));
 
                             const mem = JSON.parse(JSON.stringify(entry[1].memory)); // DEEP Copy 
                             const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: true});
+                            console.log("Return Code: " +err );
                             if(err === OK ){
                                 if( entry[1].toPos != null ){
                                     const pos = entry[1].toPos as RoomPosition;
@@ -105,6 +107,16 @@ export class SpawnManager {
                                 this.dequeueByName(entry[0]);
                             } else if(err === ERR_NAME_EXISTS){
                                 this.dequeueByName(entry[0]);
+                            }
+                            else if(err === ERR_NOT_ENOUGH_ENERGY){
+                                console.log("Not enough energy to spawn:" + spawn.room.name);
+                                if(spawn.room.energyAvailable === spawn.room.energyCapacityAvailable){
+                                    console.log("Room at Max energy:" + spawn.room.name);
+                                    this.dequeueByName(entry[0]);
+                                }
+                                
+                            } else {
+                                console.log ("Returned " + err);
                             }
                         } catch (error) {
                             console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");

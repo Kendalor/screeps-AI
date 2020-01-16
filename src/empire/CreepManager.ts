@@ -8,12 +8,13 @@ import { Hauler } from "./creeps/roles/Hauler";
 import { Logistic } from "./creeps/roles/Logistic";
 import { Maintenance } from "./creeps/roles/Maintenance";
 import { Miner } from "./creeps/roles/Miner";
+import { RemoveInvader } from "./creeps/roles/RemoveInvader";
 import { Repairer } from "./creeps/roles/Repairer";
 import { Scout } from "./creeps/roles/Scout";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
 
-export const ROLE_STORE: any = {Logistic, Maintenance, Miner, Hauler, Upgrader, Supply, Repairer, Builder, Claimer, Colonize, Attacker, Scout};
+export const ROLE_STORE: any = {Logistic, Maintenance, Miner, Hauler, Upgrader, Supply, Repairer, Builder, Claimer, Colonize, Attacker, Scout,RemoveInvader};
 
 export class CreepManager {
 

@@ -11,6 +11,7 @@ import {InitOperation} from "./Operations/InitOperation";
 import {MinerOperation} from "./Operations/MinerOperation";
 import {OperationScoutingManager} from "./Operations/OperationScoutingManager";
 import {RemoteMiningOperation} from "./Operations/RemoteMiningOperation";
+import {RemoveInvaderOperation} from "./Operations/RemoveInvaderOperation";
 import RepairOperation from "./Operations/RepairOperation";
 import {RoomLogisticsOperation} from "./Operations/RoomLogisticsOperation";
 import {RoomPlannerOperation} from "./Operations/roomPlanner/RoomPlannerOperation";
@@ -23,6 +24,7 @@ export const OP_STORAGE: (any) = {
         RoomLogisticsOperation,
         RoomPlannerOperation,
         UpdateRoomMemory,
+        RemoveInvaderOperation,
         OperationScoutingManager,
         InitOperation,
         RemoteMiningOperation,

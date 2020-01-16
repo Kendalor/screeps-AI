@@ -27,6 +27,9 @@ export class EmpireManager  {
        this.creepMgr = new CreepManager(this);
        this.spawnMgr = new SpawnManager(this);
        this.data=Memory.empire.data;
+       if(Memory.empire == null){
+           Memory.empire = {} as EmpireMemory;
+       }
        this.memory=Memory.empire;
 
     }
@@ -35,21 +38,16 @@ export class EmpireManager  {
         if(this.baseOps != null){
             return this.baseOps;
         } else {
-            if(this.memory.myRooms == null){
-                this.memory.myRooms = {};
-                // Fill Array With first Rooms index: RoomName: roomOp
-                out = this.opMgr.getBaseOperations();
-                if(out.length > 0){
-                    for(const c of out){
-                        this.memory.myRooms[c.room.name] =c.name;
-                    }
-                } else {
-                    // No Initial Room Operations, and no myRooms so far => Respawned OR Memory Lost ?
-                    this.createInitialRoomOperations();
+            this.memory.myRooms = {};
+            // Fill Array With first Rooms index: RoomName: roomOp
+            out = this.opMgr.getBaseOperations();
+            if(out.length > 0){
+                for(const c of out){
+                    this.memory.myRooms[c.room.name] =c.name;
                 }
             } else {
-                // Class Object not set but List in memory.myRooms exists
-                out = this.getBaseOpsFromMyRoomMemory();
+                // No Initial Room Operations, and no myRooms so far => Respawned OR Memory Lost ?
+                this.createInitialRoomOperations();
             }
         }
         return out;
@@ -65,6 +63,7 @@ export class EmpireManager  {
                 }
             }
         } else {
+            delete this.memory.myRooms;
             console.log("WTF, No BaseOperations Found in Memory, but myRooms is Initalized");
         }
         return out;
@@ -94,13 +93,24 @@ export class EmpireManager  {
     }
 
     private createInitialRoomOperations(): void {
+        console.log("Create Initial RoomOperations");
+        const myRooms= new Array<Room>();
         for(const name of Object.keys(Game.rooms)){
             const room = Game.rooms[name];
             if(room.controller != null){
                 if(room.controller.my){
-                    const opName = this.opMgr.enque({type: "InitialRoomOperation", data: {roomName: name}, priority: 100,pause: 1});
-                    this.memory.myRooms[name] = opName;
+                    myRooms.push(room);
+
                 }
+            }
+        }
+        if(this.memory.myRooms == null){
+            this.memory.myRooms = {};
+        }
+        for(const e of myRooms){
+            if(e.storage != null){
+                const opName = this.opMgr.enque({type: "InitialRoomOperation", data: {roomName: e.name}, priority: 100,pause: 1});
+                this.memory.myRooms[e.name] = opName;
             }
         }
     }
@@ -142,16 +152,16 @@ export class EmpireManager  {
     }
     
     public run(): void{
-        global.logger.debug("Empire Manager doing Stuff ");
+        console.log("Empire Manager doing Stuff ");
         let time = Game.cpu.getUsed();
         this.spawnMgr.run();
-        global.logger.info(" ----------------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
+        // console.log(" ----------------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
         this.creepMgr.run();
-        global.logger.info(" ----------------- CREEPMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
+        // console.log(" ----------------- CREEPMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
         this.opMgr.run();
-        global.logger.info(" ----------------- OP   MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
+        // console.log(" ----------------- OP   MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         this.stats.run();
         
     }
@@ -167,6 +177,10 @@ export class EmpireManager  {
         global.logger.info(" INIT ----------- OP  MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
         time = Game.cpu.getUsed();
         this.checkGlobalOperations();
+        if(Math.random() < 0.1){
+            this.validateMyRooms();
+        }
+        
     }
 
     public destroy(): void {

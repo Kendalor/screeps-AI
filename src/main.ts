@@ -37,11 +37,17 @@ global.logger = new Logger("ERROR");
 global.empire = new EmpireManager();
 
 export const loop = ErrorMapper.wrapLoop(() => {
-  console.log(`Current game tick is ${Game.time}` + " with Current Bucket " + Game.cpu.bucket);
-
+  // console.log(`Current game tick is ${Game.time}` + " with Current Bucket " + Game.cpu.bucket);
+  let time = Game.cpu.getUsed();
   global.empire.init();
+  // console.log(" ----------------- INIT CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
+  time = Game.cpu.getUsed();
   global.empire.run();
+  // console.log(" ----------------- RUN CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
+  time = Game.cpu.getUsed();
   global.empire.destroy();
+  // console.log(" ----------------- DESTROY CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
+  time = Game.cpu.getUsed();
 
 
   // Automatically delete memory of missing creeps
@@ -50,5 +56,5 @@ export const loop = ErrorMapper.wrapLoop(() => {
       delete Memory.creeps[name];
     }
   }
-  console.log(" CPU Used This Tick: " + Game.cpu.getUsed());
+  console.log(`Current game tick is ${Game.time}` +" CPU Used This Tick: " + Game.cpu.getUsed());
 });

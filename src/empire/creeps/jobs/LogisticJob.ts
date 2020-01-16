@@ -14,6 +14,7 @@ export class LogisticJob extends Job {
                 const linkEnergy = op.getLinkNetworkEnergyLevel();
                 const storageLink = op.getStorageLink();
                 const controllerLink = op.getControllerLink();
+                console.log("Logistic Creep: " + creep.room.name);
                 if(linkEnergy != null){
                     if(controllerLink != null && controllerLink.store.energy === 0){
                         if(creep.store.getFreeCapacity(RESOURCE_ENERGY) === 0){
@@ -26,13 +27,30 @@ export class LogisticJob extends Job {
                             }
                         }
                     } else if(linkEnergy > 800) {
-                        if(creep.store.getFreeCapacity(RESOURCE_ENERGY) === 0){
-                            if(creep.room.storage != null){
+                        console.log("Logistic Creep: " + creep.room.name + " linkEnergy > 800");
+                        if(creep.store.getUsedCapacity() > 0){
+                            console.log("Logistic Creep: " + creep.room.name + " creep energy !=0");
+                            if(creep.room.storage != null && creep.room.storage.store.energy < 800000){
+                                console.log("Logistic Creep: " + creep.room.name + " creep storage");
                                 creep.transfer(creep.room.storage, RESOURCE_ENERGY);
+                            } else if(creep.room.terminal != null  && creep.room.terminal.store.getFreeCapacity(RESOURCE_ENERGY) > 0){
+                                console.log("Logistic Creep: " + creep.room.name + " creep terminal");
+                                creep.transfer(creep.room.terminal, RESOURCE_ENERGY);
+                            } else {
+                                if(creep.room.storage != null){
+                                    console.log("Logistic Creep: " + creep.room.name + " creep storage2");
+                                    creep.transfer(creep.room.storage, RESOURCE_ENERGY);
+                                }
                             }
                         } else {
-                            if( storageLink != null){
+                            if( storageLink != null && storageLink.store.getUsedCapacity() !== 0){
                                 creep.withdraw(storageLink, RESOURCE_ENERGY);
+                            } else {
+                                if(creep.room.storage != null && creep.room.storage.store.energy > 80000){
+                                    creep.withdraw(creep.room.storage, RESOURCE_ENERGY);
+                                } else if( creep.room.terminal != null && creep.room.terminal.store.energy > 10000){
+                                    creep.withdraw(creep.room.terminal, RESOURCE_ENERGY);
+                                }
                             }
                         }
                     }

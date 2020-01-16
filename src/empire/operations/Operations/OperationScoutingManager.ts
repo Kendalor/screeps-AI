@@ -24,12 +24,14 @@ export class OperationScoutingManager extends Operation{
 
 
     public run() {
-        console.log("Operation Scouting Manger");
         super.run();
-        if(this.hasChanged()){
-            this.validateTodo();
-            this.setChanged(false);
+        if(Game.cpu.bucket > 400){
+            if(this.hasChanged() ){
+                this.validateTodo();
+                this.setChanged(false);
+            }
         }
+
         this.setNumScouts();
 
         this.validateCreeps();
@@ -51,7 +53,7 @@ export class OperationScoutingManager extends Operation{
     }
 
     private hasChanged(): boolean {
-        if(this.data.changed == null || Game.time % 5000 === 0){
+        if(this.data.changed == null || Game.time % 5000 === 0 || Math.random() < 0.05){
             return true;
         } else {
             return this.data.changed;
@@ -233,11 +235,15 @@ export class OperationScoutingManager extends Operation{
             iterList = new Set<string>();
             for(const r of toCheck){
                 if(!checked.has(r)){
-                    checked.add(r);
+                    if(Game.map.isRoomAvailable(r)){
+                        checked.add(r);
+                    }
                     const adjacent = this.getAdjacentRooms(r);
                     for(const a of adjacent){
-                        if(!iterList.has(a)){
-                            iterList.add(a);
+                        if(Game.map.isRoomAvailable(a)){
+                            if(!iterList.has(a)){
+                                iterList.add(a);
+                            }
                         }
                     }
                 }

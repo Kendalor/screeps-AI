@@ -1,7 +1,7 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Operation } from "../Operation";
 import { OperationMemory } from "./OperationMemory";
+import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 
 
 
@@ -13,12 +13,12 @@ import { OperationMemory } from "./OperationMemory";
  * This Phase is Active preStorage after the first Spawn,
  * it should also activate if room is in decline and needs recovery. 
  */
-export class ClaimOperation extends Operation{
+export class RemoveInvaderOperation extends Operation{
     public numCreeps: number = 1;
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "ClaimOperation";
+        this.type = "RemoveInvaderOperation";
     }
 
 
@@ -26,19 +26,16 @@ export class ClaimOperation extends Operation{
         
         this.validateCreeps();
         const r = Game.rooms[this.data.room];
+        
         if(r != null){
+            if(r.controller != null){
+                if(r.controller.reservation != null){
+                    if(r.controller.reservation.username !== 'Invader' && r.controller.reservation.username !== 'Kendalor'){
+                        this.numCreeps = 2;
+                    }
+                }
+            }
             this.cancelOp();
-            this.enqueueCreeps();
-            this.removeInvader();
-        }
-        super.run();
-    }
-
-    public cancelOp(): void {
-        const r = Game.rooms[this.data.room];
-        if( r != null && r.controller != null && r.controller.my) {
-            RoomMemoryUtil.setOwner(r);
-            this.removeSelf();
         }
         if(this.data.parent != null){
             const parent = this.manager.getEntryByName(this.data.parent);
@@ -53,34 +50,17 @@ export class ClaimOperation extends Operation{
                 }
             }
         }
+        this.enqueueCreeps();
     }
 
-    public removeInvader(): void {
+    public cancelOp(): void {
         const r = Game.rooms[this.data.room];
-        if(r != null){
-            if(r.controller != null){
-                if(r.controller.reservation != null){
-                    if(r.controller.reservation.username !== 'Kendalor'){
-                        this.checkKillInvaderOperation();
-                    } 
-                }
-            }
-
+        if( r != null && r.controller != null && r.controller.my) {
+            RoomMemoryUtil.setOwner(r);
+            this.removeSelf();
         }
     }
 
-    private checkKillInvaderOperation(): void {
-        if(this.data.killInvader == null){
-            this.createKillInvaderOperation();
-        } else {
-            if( !this.manager.entryExists(this.data.killInvader)){
-                this.data.killInvader = null;
-            }
-        }
-    }
-    private createKillInvaderOperation(): void {
-        this.data.killInvader = this.manager.enque({type: "RemoveInvaderOperation", data: {room: this.data.room, spawnRoom: this.data.spawnRoom, parent: this.name}, priority: 41,pause: 1});
-    }
 
     public enqueueCreeps(): void {
         if(this.data.creeps.length < this.numCreeps){
@@ -90,9 +70,9 @@ export class ClaimOperation extends Operation{
                     const name = this.manager.empire.spawnMgr.enque({
                         room: roomName,
                         body: undefined,
-                        memory: {role: "Claimer",targetRoom: this.data.room, op: this.name},
+                        memory: {role: "RemoveInvader",targetRoom: this.data.room, op: this.name},
                         pause: 0,
-                        priority: 71,
+                        priority: 72,
                         rebuild: false});
                     this.data.creeps.push(name);
                 }

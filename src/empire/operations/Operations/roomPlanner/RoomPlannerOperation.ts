@@ -60,7 +60,6 @@ export class RoomPlannerOperation extends RoomOperation {
     public run(): void {
         super.run();
         if(Game.cpu.bucket >= 3000){
-            console.log("RoomPlanner:" + this.data.roomName + " with name: " + this.name);
             if(Memory.rooms[this.data.roomName].base!.bunker !== false){
                 if(this.anchor != null) {
                     this.validateInProgressList();
@@ -90,7 +89,7 @@ export class RoomPlannerOperation extends RoomOperation {
                 this.pause = this.DEFAULT_PAUSE_TIME;
             }
         } else {
-            console.log("Skipped "+ this.name + " of type " + this.type + " for room: " + this.room.name + " becuase of current bucket");
+             // console.log("Skipped "+ this.name + " of type " + this.type + " for room: " + this.room.name + " becuase of current bucket");
         }
 
         this.writeToMemory();

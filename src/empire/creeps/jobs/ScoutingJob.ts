@@ -11,12 +11,10 @@ export class ScoutingJob extends Job {
         const op =global.empire.opMgr.getEntryByName<OperationScoutingManager>(creep.memory.op);
         if(op != null){
             if(creep.memory.targetRoom != null){ // RoomName
-                console.log("Creep: " + creep.name + " is in Room: " + creep.room.name);
                 if(creep.room.name !== creep.memory.targetRoom){
-                    console.log("Creep: " + creep.name + " is not in TargetRoom: " + creep.memory.targetRoom );
-                    // const targetPos =new RoomPosition(25,25,creep.memory.targetRoom);
-                    this.travel(creep);
+                    this.travel2(creep);
                 } else {
+                    this.leaveBorder(creep);
                     if(RoomMemoryUtil.checkIfRoomNeedsScouting(creep.memory.targetRoom)){
                         RoomMemoryUtil.setRoomMemory(creep.room);
                         op.setChanged(true);
@@ -33,20 +31,45 @@ export class ScoutingJob extends Job {
 
     }
 
-    public static travel(creep: Creep): void {
-        if(creep.memory.path != null && creep.memory.path.length > 0  ){
-            console.log(creep.memory.path.length);
-            const target = creep.memory.path.shift() as RoomPosition;
-            console.log("target: " + JSON.stringify(target));
-            const direction = creep.pos.getDirectionTo(new RoomPosition(target.x,target.y,target.roomName));
-            console.log( "Direction: " + direction);
-            const err = creep.move(direction);
 
-        
-            console.log("Creep: " + creep.name+ " in Room: " + creep.room.name + " Code: " + err);
+    public static leaveBorder(creep: Creep): void {
+        const x = creep.pos.x;
+        const y = creep.pos.y;
+        if( y === 0 ){
+            creep.move(BOTTOM);
+        } else if( y === 49){
+            creep.move(TOP);
+        }else if( x === 49){
+            creep.move(LEFT)
+        }else if(x === 0){
+            creep.move(RIGHT);
+        }
+
+    }
+    public static travel2(creep: Creep): void {
+        if(creep.memory.route == null){
+            creep.memory.route = RoomMemoryUtil.getRoute(creep.room.name, creep.memory.targetRoom);
         } else {
-            const targetPos =new RoomPosition(25,25,creep.memory.targetRoom);
-            creep.memory.path = RoomMemoryUtil.findPath(creep.pos,targetPos);
+            if(creep.memory.route.length > 0){
+                if(creep.room.name === creep.memory.route[0].room){
+                    creep.memory.route.shift();
+                }
+                if(creep.memory.route.length > 0){
+                const exit = creep.pos.findClosestByRange(creep.memory.route[0].exit) as RoomPosition;
+
+
+                    if(exit != null){
+                        const r =creep.moveTo(exit, {reusePath: 50});
+                    }
+                    if(creep.room.name === creep.memory.route[0].room){
+                        creep.memory.route.shift();
+                        RoomMemoryUtil.setLastSeen(creep.room);
+                    }
+                }
+
+            } else {
+                creep.memory.route = null;
+            }
         }
     }
 

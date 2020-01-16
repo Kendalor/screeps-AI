@@ -4,7 +4,7 @@ export class Upgrade extends Job{
 
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy > 0 ;
+        return creep.carry.energy > 0  && creep.room.controller != null && creep.room.controller.my;
     }
 
     public static getTargetId(creep: Creep): string | null {

@@ -71,9 +71,14 @@ export class OperationsManager {
     public runNextOperation(): void {
 		const op = this.getNextOperation();
 		if( op !== undefined ) {
-			const time = Game.cpu.getUsed();
-			op.run();
-			this.empire.stats.addOp( Game.cpu.getUsed() - time, op.type);
+			if(Game.cpu.getUsed() < Game.cpu.tickLimit *0.8) {
+				const time = Game.cpu.getUsed();
+				op.run();
+				this.empire.stats.addOp( Game.cpu.getUsed() - time, op.type);
+			} else {
+				console.log("Skipped OP because empty Bucket");
+			}
+
 
 
 		}
