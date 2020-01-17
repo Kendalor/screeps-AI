@@ -4,6 +4,7 @@ import { ErrorMapper } from "utils/ErrorMapper";
 import { Logger } from "utils/Logger";
 import { defineProtos } from "utils/prototypes/prototypes";
 import { defineRoomVisualProto } from "utils/prototypes/visual";
+import { Traveler } from "utils/traveler/Traveler";
 
 
 defineRoomVisualProto();
@@ -35,6 +36,9 @@ const OPERATION_SCOUTINGSHEDULER = 'ScoutingShedulerOperation';
 
 global.logger = new Logger("ERROR");
 global.empire = new EmpireManager();
+Creep.prototype.travelTo = function(destination: RoomPosition|{pos: RoomPosition}, options?: TravelToOptions) {
+  return Traveler.travelTo(this, destination, options);
+};
 
 export const loop = ErrorMapper.wrapLoop(() => {
   // console.log(`Current game tick is ${Game.time}` + " with Current Bucket " + Game.cpu.bucket);

@@ -10,7 +10,7 @@ export class Attack extends Job {
             if(creep.pos.inRangeTo(target,1)){
                 creep.attack(target);
             } else {
-                creep.moveTo(target);
+                creep.travelTo(target);
             }
         } else {
             this.cancel(creep);

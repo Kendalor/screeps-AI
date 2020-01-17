@@ -12,7 +12,7 @@ export class ScoutingJob extends Job {
         if(op != null){
             if(creep.memory.targetRoom != null){ // RoomName
                 if(creep.room.name !== creep.memory.targetRoom){
-                    this.travel2(creep);
+                    creep.travelTo(new RoomPosition( 25,25,creep.memory.targetRoom), {range: 20});
                 } else {
                     this.leaveBorder(creep);
                     if(RoomMemoryUtil.checkIfRoomNeedsScouting(creep.memory.targetRoom)){
@@ -46,32 +46,7 @@ export class ScoutingJob extends Job {
         }
 
     }
-    public static travel2(creep: Creep): void {
-        if(creep.memory.route == null){
-            creep.memory.route = RoomMemoryUtil.getRoute(creep.room.name, creep.memory.targetRoom);
-        } else {
-            if(creep.memory.route.length > 0){
-                if(creep.room.name === creep.memory.route[0].room){
-                    creep.memory.route.shift();
-                }
-                if(creep.memory.route.length > 0){
-                const exit = creep.pos.findClosestByRange(creep.memory.route[0].exit) as RoomPosition;
 
-
-                    if(exit != null){
-                        const r =creep.moveTo(exit, {reusePath: 50});
-                    }
-                    if(creep.room.name === creep.memory.route[0].room){
-                        creep.memory.route.shift();
-                        RoomMemoryUtil.setLastSeen(creep.room);
-                    }
-                }
-
-            } else {
-                creep.memory.route = null;
-            }
-        }
-    }
 
     public static runCondition(creep: Creep): boolean {
         return true;

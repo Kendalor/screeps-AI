@@ -8,7 +8,7 @@ export class DoNotBlockStuff extends Job {
        if(creep.room.storage != null){
            const anchor = new RoomPosition(creep.room.storage.pos.x-1, creep.room.storage.pos.y, creep.room.name);
            if(creep.pos.getRangeTo(anchor) < 6){
-               creep.moveTo(anchor.x-6,anchor.y-1);
+               creep.travelTo(new RoomPosition(anchor.x-6, anchor.y-1, creep.room.name));
            } else {
                this.cancel(creep);
            }

@@ -34,7 +34,6 @@ export class HaulerOperation extends RoomOperation{
         this.validateCreeps();
         if( r != null && r.storage != null){
             if(Game.time % 5 === 0){
-
                 // Find Containers
                 const sources = r.find(FIND_SOURCES);
 

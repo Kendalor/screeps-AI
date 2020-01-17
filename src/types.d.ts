@@ -20,6 +20,7 @@ interface EmpireMemory {
   operations: { [name: string]: OperationMemory };
   data: {[name: string]: any};
   myRooms: { [name: string]: string };
+  hostileRooms?: {[name: string]: any};
 }
 
 interface SpawnEntryMemory {

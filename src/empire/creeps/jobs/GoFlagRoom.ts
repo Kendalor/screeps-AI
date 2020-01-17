@@ -10,7 +10,7 @@ export class GoFlagRoom extends Job {
                 this.cancel(creep);
 
             } else {
-                creep.moveTo(target);
+                creep.travelTo(target);
             }
         } else {
             this.cancel(creep);

@@ -46,7 +46,7 @@ export class GoToTargetRoom extends Job {
     
     
                         if(target != null){
-                            const r =creep.moveTo(target, {reusePath: 50});
+                            const r =creep.travelTo(target);
                         }
                         if(creep.room.name === creep.memory.route[0].room){
                             creep.memory.route.shift();

@@ -18,7 +18,7 @@ export class Harvest extends Job{
                         creep.harvest(source);
                     }
                 }else{
-                    creep.moveTo(source);
+                    creep.travelTo(source);
                 }
             } else {
                 this.cancel(creep);

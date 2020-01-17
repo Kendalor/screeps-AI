@@ -13,7 +13,7 @@ export class PickupTower extends Job {
                     this.cancel(creep);
                 }
             }else{
-                creep.moveTo(container, {ignoreCreeps: false});
+                creep.travelTo(container, {ignoreCreeps: false});
             }
         // CANCEL CONDITION
         } else {

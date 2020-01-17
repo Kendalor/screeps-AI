@@ -12,7 +12,7 @@ export class Salvage extends Job{
                 if(creep.pos.inRangeTo(salvage,1)){
                     creep.pickup(salvage);
                 }else{
-                    creep.moveTo(salvage);
+                    creep.travelTo(salvage);
                 }
             }
             else{

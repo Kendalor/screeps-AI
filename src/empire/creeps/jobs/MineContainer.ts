@@ -9,7 +9,7 @@ export class MineContainer extends MineOverflow {
                 if(creep.pos.inRangeTo(container,0)) {
                     super.run(creep);
                 }else{
-                    creep.moveTo(container);
+                    creep.travelTo(container);
                 }  
             } else {
                 this.cancel(creep);

@@ -13,7 +13,7 @@ export class PickupStorage extends Job {
                     this.cancel(creep);
                 }
             }else{
-                creep.moveTo(container);
+                creep.travelTo(container);
             }
         // CANCEL CONDITION
         } else {

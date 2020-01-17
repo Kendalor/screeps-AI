@@ -14,7 +14,7 @@ export class Claim extends Job {
                 }
                 
             } else {
-                creep.moveTo(target);
+                creep.travelTo(target);
             }
         } else {
             this.cancel(creep);

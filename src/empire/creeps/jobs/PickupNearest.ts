@@ -22,7 +22,7 @@ export class PickupNearest extends Job {
                                 this.cancel(creep);
                             }
                         }else{
-                            creep.moveTo(container);
+                            creep.travelTo(container);
                         }
                     } else {
                         this.cancel(creep);

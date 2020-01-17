@@ -10,7 +10,7 @@ export class PickupTombstone extends Job {
                 if (creep.pos.inRangeTo(tombstone,1)){
                     creep.withdraw(tombstone,RESOURCE_ENERGY);
                 }else{
-                    creep.moveTo(tombstone);
+                    creep.travelTo(tombstone);
                 }
             } else {
                 this.cancel(creep);

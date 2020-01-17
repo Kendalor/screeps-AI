@@ -62,7 +62,7 @@ export class OperationScoutingManager extends Operation{
 
     private setNumScouts(): void {
         if(this.data.todo.length > 0){
-            this.data.numScouts = this.manager.empire.getMyRooms().length;
+            this.data.numScouts = Math.min(this.manager.empire.getMyRooms().length, Math.ceil(this.data.todo.length / 10));
         } else {
             this.data.numScouts =0;
         }

@@ -9,7 +9,7 @@ export class PickupDropped extends Job {
             if (creep.pos.inRangeTo(res,1)){
                 creep.pickup(res);
             }else{
-                creep.moveTo(res);
+                creep.travelTo(res);
             }
         // CANCEL CONDITION
         } else {

@@ -20,9 +20,8 @@ export class Upgrade extends Job{
                 if(rangeTo <= 3){
                     creep.upgradeController(target);
                 } else {
-                    creep.moveTo(target);
+                    creep.travelTo(target);
                 }
-
             } else {
                 this.cancel(creep);
             } 

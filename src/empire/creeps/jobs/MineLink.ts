@@ -13,7 +13,7 @@ export class MineLink extends MineOverflow {
                             creep.transfer(link,RESOURCE_ENERGY);
                         }
                     } else {
-                        creep.moveTo(link);
+                        creep.travelTo(link);
                     } 
                 } else {
                     this.cancel(creep);

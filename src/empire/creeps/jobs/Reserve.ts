@@ -9,7 +9,7 @@ export class Reserve extends Job {
             if(creep.pos.inRangeTo(target,1)){
                 creep.reserveController(target);
             } else {
-                creep.moveTo(target);
+                creep.travelTo(target);
             }
         } else {
             this.cancel(creep);

@@ -15,7 +15,7 @@ export class MineLinkMulti extends MineLink {
                         if(otherSource.energy){
                             this.cancel(creep);
                         } else {
-                            creep.moveTo(otherSource);
+                            creep.travelTo(otherSource);
                         }
                     }
                 }

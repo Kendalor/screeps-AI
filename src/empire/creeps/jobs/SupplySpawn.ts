@@ -13,7 +13,7 @@ export class SupplySpawn extends Job {
                 if ( creep.pos.inRangeTo(target,1)){
                     creep.transfer(target, RESOURCE_ENERGY);
                 }else{
-                    creep.moveTo(target);
+                    creep.travelTo(target);
                 }
             } else {
                 this.cancel(creep);

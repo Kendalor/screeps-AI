@@ -9,7 +9,7 @@ export class PlaceMiningContainer extends Job {
                 creep.pos.createConstructionSite(STRUCTURE_CONTAINER);
                 this.cancel(creep);
             }else{
-                creep.moveTo(source, {ignoreCreeps: false, range: 1});
+                creep.travelTo(source, {ignoreCreeps: false, range: 1});
             }
         } else {
             this.cancel(creep);

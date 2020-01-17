@@ -22,7 +22,7 @@ export class Build extends Job {
                         console.log("Builder Creep: " + creep.name + " err: " + err);
                     }
                 }else{
-                    const err = creep.moveTo(target, {range: 3});
+                    const err = creep.travelTo(target, {range: 3});
                 }
             } else {
                 this.cancel(creep);

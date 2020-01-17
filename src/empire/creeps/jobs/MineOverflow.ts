@@ -11,7 +11,7 @@ export class MineOverflow extends Job {
                     creep.harvest(source);
                 }
             }else{
-                creep.moveTo(source, {ignoreCreeps: false, range: 1});
+                creep.travelTo(source, {ignoreCreeps: false, range: 1});
             }
         }
     }

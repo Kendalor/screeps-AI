@@ -11,7 +11,7 @@ export class PickupTerminal extends Job {
                     creep.withdraw(container,RESOURCE_ENERGY);
                 }
             }else{
-                creep.moveTo(container);
+                creep.travelTo(container);
             }
         // CANCEL CONDITION
         } else {

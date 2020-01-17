@@ -13,7 +13,7 @@ export class SupplyStorage extends Job {
                 if ( creep.pos.inRangeTo(target,1)){
                     creep.transfer(target, RESOURCE_ENERGY);
                 }else{
-                    creep.moveTo(target, {ignoreCreeps: false});
+                    creep.travelTo(target, {ignoreCreeps: false});
                 }
             } else {
                 this.cancel(creep);

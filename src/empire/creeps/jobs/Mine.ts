@@ -14,7 +14,7 @@ export class Mine extends Job {
                         creep.harvest(source);
                     }
                 }else{
-                    creep.moveTo(source, {ignoreCreeps: true});
+                    creep.travelTo(source, {ignoreCreeps: true});
                 }
             } else {
                 this.cancel(creep);
