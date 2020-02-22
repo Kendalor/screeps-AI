@@ -1,6 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { InitialRoomOperation } from "./InitialBuildUpPhase/InitRoomOperation";
-import { OperationMemory } from "./OperationMemory";
 import { RoomOperation } from "./RoomOperation";
 import { RoomPlannerOperation } from "./roomPlanner/RoomPlannerOperation";
 
@@ -9,7 +9,7 @@ export class UpgradeOperation extends RoomOperation{
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "UpgradeOperation";
+        this.type = OPERATION.UPGRADE;
     }
 
     public run() {

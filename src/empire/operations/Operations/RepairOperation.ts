@@ -1,5 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OperationMemory } from "./OperationMemory";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomOperation } from "./RoomOperation";
 
 
@@ -12,7 +12,7 @@ export default class RepairOperation extends RoomOperation{
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "RepairOperation";
+        this.type =OPERATION.REPAIR;
     }
 /**
  * Adds Creeps for this Phase to the spawnManager

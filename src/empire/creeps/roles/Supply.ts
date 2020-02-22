@@ -1,6 +1,7 @@
 import { DoNotBlockStuff } from "../jobs/DoNotBlockStuff";
 import { KillSelf } from "../jobs/KillSelf";
 import { PickupContainer } from "../jobs/PickupContainer";
+import { PickupDropped } from "../jobs/PickupDropped";
 import { PickupStorage } from "../jobs/PickupStorage";
 import { SupplyExtension } from "../jobs/SupplyExtension";
 import { SupplySpawn } from "../jobs/SupplySpawn";
@@ -15,6 +16,7 @@ export class Supply extends CreepRole {
 		"PickupStorage": PickupStorage,
 		"SupplyTower": SupplyTower,
 		"PickupContainer": PickupContainer,
+		"PickUpDropped": PickupDropped,
 		"KillSelf": KillSelf,
 		"DoNotBlockStuff": DoNotBlockStuff};
 	

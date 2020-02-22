@@ -1,5 +1,8 @@
 import { CreepManager } from "empire/CreepManager";
+import { EmpireMemory, OPERATION } from "utils/constants";
+import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { EmpireStats } from "./EmpireStats";
+import { ColonizeOperation } from "./operations/Operations/ColonizeOperation";
 import { InitialRoomOperation } from "./operations/Operations/InitialBuildUpPhase/InitRoomOperation";
 import { OperationsManager } from "./OperationsManager";
 import { SpawnManager } from "./SpawnManager";
@@ -13,26 +16,69 @@ export class EmpireManager  {
     public data: any;
     public memory: EmpireMemory;
     private baseOps: InitialRoomOperation[] | undefined;
+    public memoryVersion: number = 2;
+    private colonizeRomms: {[name: string]: string | undefined} | undefined;
+
 
 
     constructor(){
         if(Memory.empire == null){
-            Memory.empire= {toSpawnList: {}, operations: {}, data: {}, myRooms: {}} ;
-        }
-        if(Memory.empire.data == null){
-            Memory.empire.data ={};
+            Memory.empire= {toSpawnList: {}, operations: {}, data: {}, myRooms: {}, memoryVersion: this.memoryVersion} ;
         }
         this.stats = new EmpireStats(this);
        this.opMgr = new OperationsManager(this);
        this.creepMgr = new CreepManager(this);
        this.spawnMgr = new SpawnManager(this);
-       this.data=Memory.empire.data;
-       if(Memory.empire == null){
-           Memory.empire = {} as EmpireMemory;
+       if(Memory.empire.memoryVersion != null){
+           if(Memory.empire.memoryVersion !== this.memoryVersion){
+            Memory.empire= {toSpawnList: {}, operations: {}, data: {}, myRooms: {}, memoryVersion: this.memoryVersion};
+           }
+       } else {
+        Memory.empire.memoryVersion = this.memoryVersion;
        }
+       this.data=Memory.empire.data;
        this.memory=Memory.empire;
 
     }
+
+
+
+    public run(): void{
+        this.spawnMgr.run();
+        this.creepMgr.run();
+        this.opMgr.run();
+        this.stats.run();
+        console.log("Colonizeable Rooms: " + JSON.stringify(this.getColonizeAbleRooms()));
+    }
+    
+
+    public getColonizeAbleRooms(): {[name: string]: string | undefined} {
+        if(this.colonizeRomms != null){
+            return this.colonizeRomms;
+        } else {
+            const rooms = RoomMemoryUtil.getColonizableRooms();
+            if(this.colonizeRomms == null){
+                this.colonizeRomms = {};
+            }
+            for(const e of rooms){
+                this.colonizeRomms[e] = undefined;
+            }
+            return this.colonizeRomms;
+        }
+    }
+
+    private canColonize(): boolean {
+        if(this.getBaseOps().length < Game.gcl.level && this.getBaseOps().length *2 + this.getColonizeOps.length *3 < Game.cpu.limit){
+            return true;
+        }
+        return false;
+    }
+
+    public getColonizeOps(): ColonizeOperation[] {
+        return this.opMgr.getOperationsOfType<ColonizeOperation>(OPERATION.COLONIZE);
+    }
+
+
     public getBaseOps(): InitialRoomOperation[] {
         let out = new Array<InitialRoomOperation>();
         if(this.baseOps != null){
@@ -86,6 +132,9 @@ export class EmpireManager  {
     public getMyRooms(): string[] {
         const out = new Array<string>();
         const baseOps = this.getBaseOps();
+        if(baseOps.length === 0 ){
+            this.createInitialRoomOperations();
+        }
         for(const op of baseOps){
             out.push(op.room.name);
         }
@@ -109,7 +158,7 @@ export class EmpireManager  {
         }
         for(const e of myRooms){
             if(e.storage != null){
-                const opName = this.opMgr.enque({type: "InitialRoomOperation", data: {roomName: e.name}, priority: 100,pause: 1});
+                const opName = this.opMgr.enque({type: OPERATION.BASE, data: {roomName: e.name},pause: 1});
                 this.memory.myRooms[e.name] = opName;
             }
         }
@@ -131,10 +180,11 @@ export class EmpireManager  {
         }
         this.checkFlagListenerOperation();
         this.checkScoutingManagerOperation();
+        this.checkTradingOperation();
     }
 
     private createFlaglistenerOperation(): void {
-        this.data.flaglistener = this.opMgr.enque({type: "FlagListener", data: {}, priority: 90,pause: 1});
+        this.data.flaglistener = this.opMgr.enque({type: OPERATION.FLAGLISTENER, data: {},pause: 1});
     }
 
     private checkScoutingManagerOperation(): void {
@@ -148,34 +198,31 @@ export class EmpireManager  {
 }
 
     private createScoutingManagerOperation(): void {
-        this.data.scoutingManager = this.opMgr.enque({type: "OperationScoutingManager", data: {}, priority: 30,pause: 1});
+        this.data.scoutingManager = this.opMgr.enque({type: OPERATION.SCOUTINGMANAGER, data: {},pause: 1});
+    }
+
+    private checkTradingOperation(): void {
+        if(this.data.tradingOperation == null){
+            this.createTradingOperation();
+        } else {
+            if( !this.opMgr.entryExists(this.data.tradingOperation)){
+                this.data.tradingOperation = null;
+            }
+        }
+    }
+
+    private createTradingOperation(): void {
+        this.data.tradingOperation = this.opMgr.enque({type: OPERATION.TRADING, data: {},pause: 1});
     }
     
-    public run(): void{
-        console.log("Empire Manager doing Stuff ");
-        let time = Game.cpu.getUsed();
-        this.spawnMgr.run();
-        // console.log(" ----------------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
-        time = Game.cpu.getUsed();
-        this.creepMgr.run();
-        // console.log(" ----------------- CREEPMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
-        time = Game.cpu.getUsed();
-        this.opMgr.run();
-        // console.log(" ----------------- OP   MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
-        this.stats.run();
-        
-    }
+    
+
 
 
     public init(): void {
         this.stats.init();
-        let time = Game.cpu.getUsed();
         this.spawnMgr.init();
-        global.logger.info(" INIT ----------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
-        time = Game.cpu.getUsed();
         this.opMgr.init();
-        global.logger.info(" INIT ----------- OP  MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
-        time = Game.cpu.getUsed();
         this.checkGlobalOperations();
         if(Math.random() < 0.1){
             this.validateMyRooms();
@@ -184,13 +231,8 @@ export class EmpireManager  {
     }
 
     public destroy(): void {
-        let time = Game.cpu.getUsed();
         this.spawnMgr.destroy();
-        global.logger.info(" DESTROY ------- SPAWNMANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
-        time = Game.cpu.getUsed();
         this.opMgr.destroy();
-        global.logger.info(" DESTORY  ------ OP   MANAGER CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
-        time = Game.cpu.getUsed();
         this.stats.destroy();
     }
 }

@@ -1,5 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OperationMemory } from "./OperationMemory";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomOperation } from "./RoomOperation";
 
 
@@ -17,7 +17,7 @@ export class HaulerOperation extends RoomOperation{
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "HaulerOperation";
+        this.type =  OPERATION.HAUL;
     }
 
     public run() {
@@ -58,7 +58,6 @@ export class HaulerOperation extends RoomOperation{
                 }
                 const res = _.sum(r.find(FIND_DROPPED_RESOURCES).filter ( resource => resource.resourceType === RESOURCE_ENERGY).map( resource => resource.amount));
                 if(res > 2000){
-                    console.log("Haulers finding dropped resources");
                     this.data.numHaulers = this.data.numHaulers +1;
                 } else {
                     this.data.numHaulers =0;
@@ -77,7 +76,6 @@ export class HaulerOperation extends RoomOperation{
                     this.data.creeps.push(name);
                 }
             }
-            console.log("Max Haulers: " + this.data.numHaulers);
         }
     }
 

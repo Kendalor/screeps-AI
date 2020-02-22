@@ -14,7 +14,7 @@ export class Repair extends Job{
                         if(creep.pos.inRangeTo(target,3)){
                             creep.repair(target);
                         }else{
-                            creep.travelTo(target,{range:3, ignoreCreeps:false }); // ignoreRoads:true
+                            creep.travelTo(target,{range:3 }); // ignoreRoads:true
                         }
                 } else {
                     this.cancel(creep);

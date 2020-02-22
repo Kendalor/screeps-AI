@@ -1,12 +1,12 @@
 import { OperationsManager } from "empire/OperationsManager";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { Operation } from "../Operation";
-import { OperationMemory } from "./OperationMemory";
 
 export class FlagListener extends Operation {
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "FlagListener";
+        this.type = OPERATION.FLAGLISTENER;
         
     }
     public run() {
@@ -27,7 +27,7 @@ export class FlagListener extends Operation {
             switch(flag.secondaryColor){
                 // COLONIZE
                 case COLOR_RED:
-                        flag.memory.op = this.manager.enque({type: "ColonizeOperation", data: {flag: flag.name}, priority: 50,pause: 1});
+                        flag.memory.op = this.manager.enque({type: OPERATION.COLONIZE, data: {flag: flag.name},pause: 1});
                         break;
                         
             }
@@ -35,7 +35,7 @@ export class FlagListener extends Operation {
             switch(flag.secondaryColor){
                 // Remote POLITICS
                 case COLOR_BLUE:
-                        flag.memory.op = this.manager.enque({type: "ClaimOperation", data: {flag: flag.name}, priority: 51,pause: 1});
+                        flag.memory.op = this.manager.enque({type: OPERATION.CLAIM, data: {flag: flag.name},pause: 1});
                         break;
                         
             }

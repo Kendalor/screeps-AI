@@ -1,7 +1,8 @@
 import { OperationsManager } from "empire/OperationsManager";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Operation } from "../Operation";
-import { OperationMemory } from "./OperationMemory";
+
 
 
 
@@ -17,9 +18,13 @@ export class OperationScoutingManager extends Operation{
     private DEFAULT_PAUSE = 500;
     private DEFAULT_VALIDATION_INTERVALL = 1;
 
+
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "OperationScoutingManager";
+        this.type = OPERATION.SCOUTINGMANAGER;
+        if(this.data.todo == null){
+            this.data.todo = [];
+        }
     }
 
 

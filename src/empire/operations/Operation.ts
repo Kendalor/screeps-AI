@@ -1,8 +1,9 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OperationMemory } from "./Operations/OperationMemory";
+import { OPERATION,  OperationData, OperationMemory } from "utils/constants";
+
 
 export class Operation implements OperationMemory{
-    public data: any;
+    public data: OperationData;
     public type: OPERATION;
     public priority: number;
     public manager: OperationsManager;
@@ -15,7 +16,7 @@ export class Operation implements OperationMemory{
             this.manager = manager;
             this.data=entry.data;
             this.type=entry.type;
-            this.priority= entry.priority;
+            this.priority= 0;
             this.pause = entry.pause;
             this.didRun = false;
             this.name = name;

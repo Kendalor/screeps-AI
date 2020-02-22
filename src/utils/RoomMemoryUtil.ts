@@ -99,7 +99,6 @@ export class RoomMemoryUtil {
                 out = r;
             }
         }
-
         return out;
     }
 

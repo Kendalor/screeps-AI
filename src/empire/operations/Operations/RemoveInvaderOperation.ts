@@ -1,7 +1,7 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { Operation } from "../Operation";
-import { OperationMemory } from "./OperationMemory";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
+import { Operation } from "../Operation";
 
 
 
@@ -18,7 +18,7 @@ export class RemoveInvaderOperation extends Operation{
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "RemoveInvaderOperation";
+        this.type = OPERATION.REMOVEINVADER;
     }
 
 

@@ -1,3 +1,4 @@
+import { OPERATION } from "utils/constants";
 import { EmpireManager } from "./EmpireManager";
 
 export class EmpireStats {
@@ -58,7 +59,7 @@ export class EmpireStats {
 
     }
 
-    public addOp(cpu: number, op: string) {
+    public addOp(cpu: number, op: OPERATION) {
         if(this.ops[op] == null){
             this.ops[op] = [];
         }

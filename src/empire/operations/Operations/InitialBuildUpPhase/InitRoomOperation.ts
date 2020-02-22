@@ -1,16 +1,16 @@
 import { OperationsManager } from "empire/OperationsManager";
+import { OPERATION, OperationMemory } from "utils/constants";
+import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { BuildOperation } from "../BuildOperation";
 import { DefenseOperation } from "../DefenseOperation";
 import { HaulerOperation } from "../HaulerOperation";
 import { MinerOperation } from "../MinerOperation";
-import { OperationMemory } from "../OperationMemory";
 import RepairOperation from "../RepairOperation";
 import { RoomLogisticsOperation } from "../RoomLogisticsOperation";
 import { RoomOperation } from "../RoomOperation";
 import { RoomPlannerOperation } from "../roomPlanner/RoomPlannerOperation";
 import SupplyOperation from "../SupplyOperation";
 import { UpgradeOperation } from "../UpgradeOperation";
-import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 
 
 
@@ -27,11 +27,8 @@ export class InitialRoomOperation extends RoomOperation{
 
     constructor(name: string,manager: OperationsManager, entry: OperationMemory) {
         super(name,manager,entry);
-        this.type = "InitialRoomOperation";
-        
-
-
-
+        this.type = OPERATION.BASE;
+        this.priority = 99;
     }
 
 
@@ -162,11 +159,9 @@ export class InitialRoomOperation extends RoomOperation{
 
     private canColonize(): boolean {
         if(this.room.energyCapacityAvailable >= 650){
-            if(this.manager.getBaseOperations().length < Game.gcl.level && this.manager.getBaseOperations().length *3 < Game.cpu.limit){
-                this.checkColonizeOperation();
-                if(this.data.colonize == null){
-                    return true;
-                }
+            this.checkColonizeOperation();
+            if(this.data.colonize == null){
+                return true;
             }
         }
         return false;
@@ -186,7 +181,7 @@ export class InitialRoomOperation extends RoomOperation{
                 this.data.colonize = null;
             }
         } else {
-            this.data.colonize = this.manager.enque({type: "ColonizeOperation", data: {room: roomName, parent: this.name, spawnRoom: this.room.name}, priority: 50,pause: 1});
+            this.data.colonize = this.manager.enque({type: OPERATION.COLONIZE, data: {room: roomName, parent: this.name, spawnRoom: this.room.name},pause: 1});
         }
         
     }
@@ -201,7 +196,7 @@ export class InitialRoomOperation extends RoomOperation{
             this.data.emergencyCounter = 0;
         }
         if(this.data.emergencyCounter > 1000){
-            this.data.creepsMax = 5;
+            this.data.creepsMax = 10;
             this.validateCreeps();
             if(this.data.creepsMax > this.data.creeps.length){
                 for(let j=0; j< this.data.creepsMax - (this.data.creeps.length); j++){
@@ -243,7 +238,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private createNewRoomPlanner(): void {
-        this.data.roomPlanner = this.manager.enque({type: "RoomPlannerOperation", data: {roomName: this.data.roomName, parent: this.name}, priority: 20, pause: 1});
+        this.data.roomPlanner = this.manager.enque({type: OPERATION.ROOMPLANNER, data: {roomName: this.data.roomName, parent: this.name}, pause: 1});
     }
 
     public getMiningOperation(): MinerOperation {
@@ -269,7 +264,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private createMiningOperation(): void {
-        this.data.mine = this.manager.enque({type: "MinerOperation", data: {roomName: this.room.name, parent: this.name}, priority: 90,pause: 1});
+        this.data.mine = this.manager.enque({type: OPERATION.HAUL, data: {roomName: this.room.name, parent: this.name},pause: 1});
     }
 
     public getSupplyOperation(): SupplyOperation {
@@ -285,7 +280,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private createSupplyOperation(): void {
-        this.data.supply = this.manager.enque({type: "SupplyOperation", data: {roomName: this.room.name, parent: this.name}, priority: 80,pause: 1});
+        this.data.supply = this.manager.enque({type: OPERATION.SUPPLY, data: {roomName: this.room.name, parent: this.name},pause: 1});
     }
 
 
@@ -302,7 +297,7 @@ export class InitialRoomOperation extends RoomOperation{
 
 
     private createRepairOperation(): void {
-        this.data.repair = this.manager.enque({type: "RepairOperation", data: {roomName: this.room.name, parent: this.name}, priority: 65,pause: 1}); 
+        this.data.repair = this.manager.enque({type: OPERATION.REPAIR, data: {roomName: this.room.name, parent: this.name},pause: 1}); 
 
     }
 
@@ -318,7 +313,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private createDefenseOperation(): void {
-        this.data.defense = this.manager.enque({ type: "DefenseOperation", data: {roomName: this.room.name, parent: this.name}, priority: 91,pause: 1});
+        this.data.defense = this.manager.enque({ type: OPERATION.DEFEND, data: {roomName: this.room.name, parent: this.name},pause: 1});
 
     }
 
@@ -334,7 +329,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private createHaulOperation(): void {
-        this.data.haul = this.manager.enque({type: "HaulerOperation", data: {roomName: this.room.name, parent: this.name}, priority: 89,pause: 1});
+        this.data.haul = this.manager.enque({type: OPERATION.HAUL, data: {roomName: this.room.name, parent: this.name},pause: 1});
     }
 
     public getRoomLogisticsOperation(): RoomLogisticsOperation {
@@ -349,7 +344,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private createRoomLogisticsOperation(): void {
-        this.data.logistic = this.manager.enque({type: "RoomLogisticsOperation", data: {roomName: this.room.name, parent: this.name}, priority: 70,pause: 1});
+        this.data.logistic = this.manager.enque({type: OPERATION.ROOMLOGISTICS, data: {roomName: this.room.name, parent: this.name},pause: 1});
 
     }
 
@@ -365,7 +360,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private createBuildOperation(): void {
-        this.data.build = this.manager.enque({type: "BuildOperation", data: {roomName: this.room.name, parent: this.name}, priority: 60,pause: 1});
+        this.data.build = this.manager.enque({type: OPERATION.BUILD, data: {roomName: this.room.name, parent: this.name},pause: 1});
     }
 
     public getUpgradeOperation(): UpgradeOperation {
@@ -380,7 +375,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private createUpgradeOperation(): void {
-        this.data.upgrade = this.manager.enque({type: "UpgradeOperation", data: {roomName: this.room.name, parent: this.name}, priority: 70,pause: 1});
+        this.data.upgrade = this.manager.enque({type: OPERATION.UPGRADE, data: {roomName: this.room.name, parent: this.name},pause: 1});
     }
 
 }

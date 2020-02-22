@@ -1,5 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OperationMemory } from "./OperationMemory";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomOperation } from "./RoomOperation";
 
 
@@ -27,7 +27,7 @@ export class RoomLogisticsOperation extends RoomOperation{
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "RoomLogisticsOperation";
+        this.type = OPERATION.ROOMLOGISTICS;
     }
 
     public run() {
@@ -282,7 +282,7 @@ export class RoomLogisticsOperation extends RoomOperation{
                             body: body,
                             memory: {role: "Logistic", op: this.name},
                             pause: 0,
-                            priority: 100,
+                            priority: 95,
                             rebuild: false});
                     }
         

@@ -1,7 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
+import { OperationMemory } from "utils/constants";
 import { Operation } from "../Operation";
-import { OperationMemory } from "./OperationMemory";
-
 
 export class RoomOperation extends Operation {
     public room: Room;

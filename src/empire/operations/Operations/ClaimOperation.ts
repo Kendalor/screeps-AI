@@ -1,7 +1,7 @@
 import { OperationsManager } from "empire/OperationsManager";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Operation } from "../Operation";
-import { OperationMemory } from "./OperationMemory";
 
 
 
@@ -18,7 +18,8 @@ export class ClaimOperation extends Operation{
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "ClaimOperation";
+        this.type = OPERATION.CLAIM;
+        this.priority=29;
     }
 
 
@@ -79,7 +80,7 @@ export class ClaimOperation extends Operation{
         }
     }
     private createKillInvaderOperation(): void {
-        this.data.killInvader = this.manager.enque({type: "RemoveInvaderOperation", data: {room: this.data.room, spawnRoom: this.data.spawnRoom, parent: this.name}, priority: 41,pause: 1});
+        this.data.killInvader = this.manager.enque({type: OPERATION.REMOVEINVADER, data: {room: this.data.room, spawnRoom: this.data.spawnRoom, parent: this.name},pause: 1});
     }
 
     public enqueueCreeps(): void {

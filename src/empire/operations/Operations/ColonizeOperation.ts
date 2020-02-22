@@ -1,9 +1,7 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { Operation } from "../Operation";
-import { FlagOperation } from "./FlagOperation";
-import { OperationMemory } from "./OperationMemory";
-import { RoomOperation } from "./RoomOperation";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
+import { OPERATION, OperationMemory } from "utils/constants";
 
 
 
@@ -20,7 +18,8 @@ export class ColonizeOperation extends Operation{
 
     constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
         super(name, manager,entry);
-        this.type = "ColonizeOperation";
+        this.type = OPERATION.COLONIZE;
+        this.priority=28;
     }
 
 
@@ -51,7 +50,7 @@ export class ColonizeOperation extends Operation{
                         if(r.controller.my ){
                             this.initialCleanup();
                             if(this.data.roomPlanner == null){
-                                this.data.roomPlanner = this.manager.enque({type: "RoomPlannerOperation", data: {roomName: r.name, parent: this.name}, priority: 20, pause: 1});
+                                this.data.roomPlanner = this.manager.enque({type: OPERATION.ROOMPLANNER, data: {roomName: r.name, parent: this.name}, pause: 1});
                             }
                         }
                     }
@@ -78,7 +77,7 @@ export class ColonizeOperation extends Operation{
 
     private wrapUp(r: Room): void {
         if(r.storage != null && r.storage.my){
-            this.manager.enque({type: "InitialRoomOperation", data: {roomName: r.name}, priority: 100,pause: 1});
+            this.manager.enque({type: OPERATION.BASE, data: {roomName: r.name},pause: 1});
             for(const creep of this.data.creeps){
                 if(Game.creeps[creep] != null){
                     Game.creeps[creep].memory.role = "Maintenance";
@@ -155,7 +154,7 @@ export class ColonizeOperation extends Operation{
     }
     private createClaimOperation(): void {
         console.log("Create ClaimOperation");
-        this.data.claim = this.manager.enque({type: "ClaimOperation", data: {room: this.data.room, spawnRoom: this.data.spawnRoom, parent: this.name}, priority: 51,pause: 1});
+        this.data.claim = this.manager.enque({type: OPERATION.CLAIM, data: {room: this.data.room, spawnRoom: this.data.spawnRoom, parent: this.name},pause: 1});
     }
 
     private enqueueCreeps(): void {

@@ -1,0 +1,42 @@
+import { BuildOperation } from "empire/operations/Operations/BuildOperation";
+import { ClaimOperation } from "empire/operations/Operations/ClaimOperation";
+import { ColonizeOperation } from "empire/operations/Operations/ColonizeOperation";
+import { DefenseOperation } from "empire/operations/Operations/DefenseOperation";
+import { FlagListener } from "empire/operations/Operations/FlagListener";
+import { HaulerOperation } from "empire/operations/Operations/HaulerOperation";
+import { InitialRoomOperation } from "empire/operations/Operations/InitialBuildUpPhase/InitRoomOperation";
+import { InitOperation } from "empire/operations/Operations/InitOperation";
+import { MinerOperation } from "empire/operations/Operations/MinerOperation";
+import { OperationScoutingManager } from "empire/operations/Operations/OperationScoutingManager";
+import { RemoteMiningOperation } from "empire/operations/Operations/RemoteMiningOperation";
+import { RemoveInvaderOperation } from "empire/operations/Operations/RemoveInvaderOperation";
+import RepairOperation from "empire/operations/Operations/RepairOperation";
+import { RoomLogisticsOperation } from "empire/operations/Operations/RoomLogisticsOperation";
+import { RoomPlannerOperation } from "empire/operations/Operations/roomPlanner/RoomPlannerOperation";
+import SupplyOperation from "empire/operations/Operations/SupplyOperation";
+import { TradingOperation } from "empire/operations/Operations/TradingOperation";
+import { UpgradeOperation } from "empire/operations/Operations/UpgradeOperation";
+import { OPERATION, OperationConstructor } from "./constants";
+
+export function operationFactory(type: OPERATION): OperationConstructor | undefined {
+    const operationStorage: Map<OPERATION, OperationConstructor> = new Map<OPERATION, OperationConstructor>();
+    operationStorage.set(OPERATION.BASE, InitialRoomOperation);
+    operationStorage.set(OPERATION.TRADING, TradingOperation);
+    operationStorage.set(OPERATION.UPGRADE, UpgradeOperation);
+    operationStorage.set(OPERATION.DEFEND, DefenseOperation);
+    operationStorage.set(OPERATION.MINING, MinerOperation);
+    operationStorage.set(OPERATION.CLAIM, ClaimOperation);
+    operationStorage.set(OPERATION.COLONIZE, ColonizeOperation);
+    operationStorage.set(OPERATION.INIT, InitOperation);
+    operationStorage.set(OPERATION.SUPPLY, SupplyOperation);
+    operationStorage.set(OPERATION.REPAIR, RepairOperation);
+    operationStorage.set(OPERATION.BUILD, BuildOperation);
+    operationStorage.set(OPERATION.FLAGLISTENER, FlagListener);
+    operationStorage.set(OPERATION.ROOMLOGISTICS, RoomLogisticsOperation);
+    operationStorage.set(OPERATION.ROOMPLANNER, RoomPlannerOperation);
+    operationStorage.set(OPERATION.REMOTEMINING, RemoteMiningOperation);
+    operationStorage.set(OPERATION.SCOUTINGMANAGER, OperationScoutingManager);
+    operationStorage.set(OPERATION.REMOVEINVADER, RemoveInvaderOperation);
+    operationStorage.set(OPERATION.HAUL, HaulerOperation);
+    return operationStorage.get(type);
+}

@@ -1,7 +1,7 @@
 import { OperationsManager } from "empire/OperationsManager";
+import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { InitialRoomOperation } from "../InitialBuildUpPhase/InitRoomOperation";
-import { OperationMemory } from "../OperationMemory";
 import { RoomOperation } from "../RoomOperation";
 import { Base } from "./layouts/Base";
 
@@ -24,7 +24,8 @@ export class RoomPlannerOperation extends RoomOperation {
     constructor(name: string, manager: OperationsManager, entry: OperationMemory){
         super(name, manager, entry);
         this.initMemory();
-        this.type = "RoomPlannerOperation";
+        this.type = OPERATION.ROOMPLANNER;
+        this.priority=50;
 
         if(this.data.leftToBuild != null){
             if(this.data.leftToBuild.length > 0){
@@ -112,7 +113,7 @@ export class RoomPlannerOperation extends RoomOperation {
         if(this.parent != null){
             const base =this.manager.getEntryByName<InitialRoomOperation>(this.parent);
             
-            if(base != null && base.type === 'InitialRoomOperation'){
+            if(base != null && base.type === OPERATION.BASE){
                 const baseList = base.getBuildingList();
                 for(const i of baseList){
                     if(!out.has(i)){

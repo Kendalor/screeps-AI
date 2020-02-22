@@ -1,8 +1,8 @@
+import { OPERATION, OperationMemory } from "utils/constants";
+import { operationFactory } from "utils/operationFactory";
 import { EmpireManager } from "./EmpireManager";
 import { Operation } from "./operations/Operation";
 import { InitialRoomOperation } from "./operations/Operations/InitialBuildUpPhase/InitRoomOperation";
-import { OperationMemory } from "./operations/Operations/OperationMemory";
-import { OP_STORAGE } from "./operations/OperationStorage";
 
 
 
@@ -53,14 +53,18 @@ export class OperationsManager {
 		this.saveOperationList();
 	}
 
-	public getBaseOperations(): InitialRoomOperation[] {
-		const out = new Array<InitialRoomOperation>();
+	public getOperationsOfType<T extends Operation>(type: OPERATION): T[]{
+		const out = new Array<T>();
 		for(const op of Object.keys(this.operations)){
-			if(this.operations[op].type === "InitialRoomOperation"){
-				out.push(this.operations[op] as InitialRoomOperation);
+			if(this.operations[op].type === type){
+				out.push(this.operations[op] as T);
 			}
 		}
 		return out;
+	}
+
+	public getBaseOperations(): InitialRoomOperation[] {
+		return this.getOperationsOfType<InitialRoomOperation>(OPERATION.BASE);
 	}
 
 
@@ -110,13 +114,13 @@ export class OperationsManager {
 			Memory.empire.operations = {};
 		}
         for(const i of Object.keys(Memory.empire.operations)) {
-			if(OP_STORAGE[Memory.empire.operations[i].type] != null){
+			const op = operationFactory(Memory.empire.operations[i].type);
+			if(op !== undefined){
 				try {
-					this.operations[i]= new OP_STORAGE[Memory.empire.operations[i].type](i, this, Memory.empire.operations[i] as OperationMemory);
+					this.operations[i]= new op(i, this, Memory.empire.operations[i] as OperationMemory);
 				} catch (error) {
 					console.log("Error for Operation: " + i + "of type: " + this.operations[i].type + " with Error: " +error);
 				}
-				
 			} else {
 				console.log("INVALID OPERATION WITH TYPE: " +Memory.empire.operations[i].type + " DELETED" );
 				delete Memory.empire.operations[i];
@@ -152,9 +156,10 @@ export class OperationsManager {
      */
     public enque(entry: OperationMemory){
 		const name = this.generateName();
-		this.operations[name]=new OP_STORAGE[entry.type](name, this, entry as OperationMemory);
-		global.logger.debug(" ADDED Operation: " + name + " of Type: " + entry.type + " data: " + entry.data);
-
+		const op = operationFactory(entry.type);
+		if( op !== undefined){
+			this.operations[name]=new op(name, this, entry as OperationMemory);
+			global.logger.debug(" ADDED Operation: " + name + " of Type: " + entry.type + " data: " + entry.data);		}
 		return name;
 	}
 	
