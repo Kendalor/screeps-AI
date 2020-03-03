@@ -4,17 +4,21 @@ import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
 import { Claimer } from "./creeps/roles/Claimer";
 import { Colonize } from "./creeps/roles/Colonize";
+import { HaulDeposit} from "./creeps/roles/HaulDeposit";
 import { Hauler } from "./creeps/roles/Hauler";
 import { Logistic } from "./creeps/roles/Logistic";
 import { Maintenance } from "./creeps/roles/Maintenance";
+import { MineDeposit } from "./creeps/roles/MineDeposit";
 import { Miner } from "./creeps/roles/Miner";
+import { MineralMiner } from "./creeps/roles/MineralMiner";
 import { RemoveInvader } from "./creeps/roles/RemoveInvader";
 import { Repairer } from "./creeps/roles/Repairer";
 import { Scout } from "./creeps/roles/Scout";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
+import { Healer } from "./creeps/roles/Healer";
 
-export const ROLE_STORE: any = {Logistic, Maintenance, Miner, Hauler, Upgrader, Supply, Repairer, Builder, Claimer, Colonize, Attacker, Scout,RemoveInvader};
+export const ROLE_STORE: any = {Logistic, Maintenance, Miner, Hauler, Upgrader, Supply, Repairer, Builder, Claimer, Colonize, Attacker, Scout,RemoveInvader, MineralMiner, HaulDeposit, MineDeposit, Healer};
 
 export class CreepManager {
 
@@ -40,6 +44,7 @@ export class CreepManager {
 
                 } else {
                     console.log("Creep: " + c + "Has no Role !");
+                    this.checkInterShardMemory(Game.creeps[c]);
                 }
             } catch (e) {
                 if(e instanceof Error){
@@ -49,5 +54,23 @@ export class CreepManager {
             }
 
         }
+    }
+
+    public checkInterShardMemory(creep: Creep): void {
+        const shards = ["shard0", "shard1", "shard2", "shard3"];
+        for(const s of shards){
+            if(s !== Game.shard.name){
+                const mem = JSON.parse(InterShardMemory.getRemote(s) || "{}");
+                console.log("Fetched InterShardMem for Shard " + s + " : " + JSON.stringify(mem));
+                if(mem.creeps != null){
+                    if(mem.creeps[creep.name] != null){
+                        Memory.creeps[creep.name] = mem.creeps[creep.name];
+                        console.log("Memory for Creep: " + creep.name +" found in intershardMem");
+                    }
+                }
+            }
+
+        }
+
     }
 }

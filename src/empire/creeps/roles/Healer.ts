@@ -1,13 +1,12 @@
-import { Attack } from "../jobs/Attack";
 import { GoToTargetRoom } from "../jobs/GoToTargetRoom";
+import { Heal } from "../jobs/Heal";
 import { CreepRole } from "./CreepRole";
 
-export class Attacker extends CreepRole {
+export class Healer extends CreepRole {
 
-    public jobs: {[name: string]: any} = {
-      "GoToTargetRoom": GoToTargetRoom,
-        "Attack": Attack};
-      
+	public jobs: {[name: string]: any} = {
+		"GoToTargetRoom": GoToTargetRoom,
+		  "Heal": Heal};
     constructor(creep: Creep) {
         super(creep);
     }
@@ -17,7 +16,6 @@ export class Attacker extends CreepRole {
     }
 	
 	public static getBody(spawn: StructureSpawn): BodyPartConstant[] {
-		return [];
-		
+        return [];
 	}
 }

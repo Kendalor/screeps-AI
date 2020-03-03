@@ -6,13 +6,16 @@ export class GoToTargetRoom extends Job {
 
     public static run(creep: Creep): void {
         super.run(creep);
-
+        const targetPos = new RoomPosition(25,25,creep.memory.targetRoom);
         if(creep.memory.targetRoom != null){
             if(creep.room.name !== creep.memory.targetRoom){
-                this.travel2(creep);
+                creep.travelTo(targetPos, {range:20});
             }else {
-                this.leaveBorder(creep);
-                this.cancel(creep);
+                if(targetPos.inRangeTo(creep,23)){
+                    this.cancel(creep);
+                } else {
+                    creep.travelTo(targetPos, {range:20});
+                }
             }
         } 
         

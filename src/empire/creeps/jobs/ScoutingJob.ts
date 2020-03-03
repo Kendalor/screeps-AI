@@ -12,7 +12,46 @@ export class ScoutingJob extends Job {
         if(op != null){
             if(creep.memory.targetRoom != null){ // RoomName
                 if(creep.room.name !== creep.memory.targetRoom){
-                    creep.travelTo(new RoomPosition( 25,25,creep.memory.targetRoom), {range: 20});
+                    const t = Game.cpu.getUsed();
+                    if(Game.time % 20 === 0){
+                        if(RoomMemoryUtil.checkIfRoomNeedsScouting(creep.room.name)){
+                            RoomMemoryUtil.setRoomMemory(creep.room);
+                            op.setChanged(true);
+                        }
+                    }
+                    
+                    const code =creep.travelTo(new RoomPosition( 25,25,creep.memory.targetRoom), {range: 15});
+                    if(creep.memory.antistuck == null){
+                        creep.memory.antistuck = { target: "", counter: 0};
+                    } else {
+                        if(creep.memory.antistuck.target === creep.memory.targetRoom){
+                            creep.memory.antistuck.counter = creep.memory.antistuck.counter+1;
+                            if(creep.memory.antistuck.counter > 1000){
+                                RoomMemoryUtil.skipRoom(creep.memory.targetRoom);
+                                op.setChanged(true);
+                                creep.memory.targetRoom = null;
+                                creep.memory.path = null;
+                            }
+                        } else {
+                            creep.memory.antistuck.counter = 0;
+                            creep.memory.antistuck.target = creep.memory.targetRoom;
+                        }
+                    }
+                    
+
+                    // TODO:  Temporary NewbieRoom Fix, would like a more elegant Solution for this
+                    // if(creep.memory._trav != null){
+                    //     if(creep.memory._trav.state != null){
+                    //         if(creep.memory._trav.state[3] > 2000){
+                    //             console.log("Scout: " + creep.name + " skipped Room: " + creep.memory.targetRoom);
+                    //             RoomMemoryUtil.skipRoom(creep.memory.targetRoom);
+                    //             op.setChanged(true);
+                    //             creep.memory.targetRoom = null;
+                    //             creep.memory.path = null;
+
+                    //         }
+                    //     }
+                    // }
                 } else {
                     this.leaveBorder(creep);
                     if(RoomMemoryUtil.checkIfRoomNeedsScouting(creep.memory.targetRoom)){
@@ -21,14 +60,13 @@ export class ScoutingJob extends Job {
                     } else {
                         creep.memory.targetRoom = null;
                         creep.memory.path = null;
-                        
                     }
                 }
             } else {
                 creep.memory.targetRoom = op.getNearestTodo(creep.room.name);
+                console.log("Scout: " + creep.name + " got new Target with Distance: " + Game.map.getRoomLinearDistance(creep.room.name, creep.memory.targetRoom));
             }
         }
-
     }
 
 

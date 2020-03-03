@@ -2,14 +2,14 @@ import { OperationsManager } from "empire/OperationsManager";
 import { InitialRoomOperation } from "./InitialBuildUpPhase/InitRoomOperation";
 
 import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "./RoomOperation";
 
 
 
 export class MinerOperation extends RoomOperation{
     
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.type = OPERATION.MINING;
     }
@@ -50,7 +50,7 @@ export class MinerOperation extends RoomOperation{
                         room: this.room.name,
                         memory: {role: "Miner", sourceId: [s.id], op: this.name},
                         pause: 0,
-                        priority: 90,
+                        priority: 95,
                         rebuild: false});
                     this.data.creeps.push(name);
                 }
@@ -69,7 +69,7 @@ export class MinerOperation extends RoomOperation{
                     room: this.room.name,
                     memory: {role: "Miner", sourceId: ids, op: this.name},
                     pause: 0,
-                    priority: 90,
+                    priority: 95,
                     rebuild: false});
                 this.data.creeps.push(name);
     
@@ -110,7 +110,7 @@ export class MinerOperation extends RoomOperation{
     public getBuildingList(): BuildEntry[] {
         const out = super.getBuildingList();
         if(this.room.controller != null){
-            if(this.room.controller.my != null){
+            if(this.room.controller.my){
                 if(this.room.storage != null){
                     const sources = this.room.find(FIND_SOURCES);
                     const baseOp = this.manager.getEntryByName<InitialRoomOperation>(this.data.parent);

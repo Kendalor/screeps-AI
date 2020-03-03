@@ -1,6 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "./RoomOperation";
 
 
 
@@ -14,7 +14,7 @@ import { RoomOperation } from "./RoomOperation";
 export default class SupplyOperation extends RoomOperation{
     
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.type = OPERATION.SUPPLY;
     }
@@ -27,8 +27,8 @@ export default class SupplyOperation extends RoomOperation{
         const r: Room = this.room;
         if(r != null){
             this.validateCreeps();
-    
-            if(this.data.creeps.length === 0){
+            this.defineMaxSupply();
+            if(this.data.creeps.length < this.data.maxSupply ){
                 const name = this.manager.empire.spawnMgr.enque({
                     room: r.name,
                     memory: {role: "Supply", op: this.name},
@@ -40,6 +40,16 @@ export default class SupplyOperation extends RoomOperation{
         }
 
 
+    }
+
+    public defineMaxSupply(): void {
+        if(this.room.controller!.level < 3){
+            this.data.maxSupply = 0;
+        } else if(this.room.controller!.level <8){
+            this.data.maxSupply = 1;
+        } else {
+            this.data.maxSupply =2;
+        }
     }
 
 

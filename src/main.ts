@@ -29,7 +29,12 @@ export const loop = ErrorMapper.wrapLoop(() => {
   global.empire.init();
   // console.log(" ----------------- INIT CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
   time = Game.cpu.getUsed();
-  global.empire.run();
+  try {
+    global.empire.run();
+  } catch (error) {
+    console.log("ERROR on run");
+  }
+  
   // console.log(" ----------------- RUN CPU USED ----------------- " + (Game.cpu.getUsed() - time) + " ----------------- ");
   time = Game.cpu.getUsed();
   global.empire.destroy();
@@ -43,5 +48,5 @@ export const loop = ErrorMapper.wrapLoop(() => {
       delete Memory.creeps[name];
     }
   }
-  console.log(`Current game tick is ${Game.time}` +" CPU Used This Tick: " + Game.cpu.getUsed());
+  console.log(Game.shard.name +`: Current game tick is ${Game.time}` +" CPU Used This Tick: " + Game.cpu.getUsed());
 });

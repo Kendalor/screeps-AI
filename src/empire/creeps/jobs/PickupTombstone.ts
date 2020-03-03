@@ -5,10 +5,15 @@ export class PickupTombstone extends Job {
         super.run(creep);
         // RUN CODE
         const tombstone: Tombstone | null = Game.getObjectById(creep.memory.targetId);
-        if(tombstone !== null && creep.carry.energy < creep.carryCapacity){
-            if(tombstone.store.energy > 0){
+        if(tombstone != null && creep.store.getFreeCapacity() >0){
+            if(tombstone.store.getUsedCapacity() > 0){
                 if (creep.pos.inRangeTo(tombstone,1)){
-                    creep.withdraw(tombstone,RESOURCE_ENERGY);
+                    for(const type in tombstone.store){
+                        if(tombstone.store.getUsedCapacity(type as ResourceConstant) > 0){
+                            console.log("Withdraw: " + type);
+                            creep.withdraw(tombstone,type as ResourceConstant);
+                        }
+                    }
                 }else{
                     creep.travelTo(tombstone);
                 }
@@ -22,12 +27,12 @@ export class PickupTombstone extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy <= creep.carryCapacity;
+        return creep.store.getFreeCapacity() > 0;
     }
 
     public static getTargetId(creep: Creep): string | null {
         const resources = creep.room.find(FIND_TOMBSTONES).filter(
-            (res) => res.store.energy >= 100 && res.pos.findPathTo(creep).length < res.store.energy/4
+            (res) => res.store.getUsedCapacity() >= 100 && res.pos.findPathTo(creep).length < res.store.getUsedCapacity()/4
         );
         if (resources.length !== 0){
             const resource = creep.pos.findClosestByPath(resources);

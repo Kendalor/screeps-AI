@@ -1,13 +1,13 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
 import { InitialRoomOperation } from "./InitialBuildUpPhase/InitRoomOperation";
-import { RoomOperation } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "./RoomOperation";
 import { RoomPlannerOperation } from "./roomPlanner/RoomPlannerOperation";
 
 
 export class UpgradeOperation extends RoomOperation{
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.type = OPERATION.UPGRADE;
     }
@@ -96,7 +96,11 @@ export class UpgradeOperation extends RoomOperation{
         if(r.controller != null){
             if(r.controller.my != null){
                 if(r.controller.level === 8){
-                    return 1;
+                    if(r.storage != null && r.storage!.store.energy > 250000){
+                        return 1;
+                    } else {
+                        return 0;
+                    }
                 } else {
                     if(r.storage != null){
                         if(r.controller.ticksToDowngrade <= 5000){

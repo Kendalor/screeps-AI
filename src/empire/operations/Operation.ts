@@ -1,6 +1,13 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION,  OperationData, OperationMemory } from "utils/constants";
 
+export interface OperationProto extends OperationMemory {
+    data: OperationData;
+}
+
+export interface BaseData {
+    [id: string]: any;
+}
 
 export class Operation implements OperationMemory{
     public data: OperationData;
@@ -12,7 +19,7 @@ export class Operation implements OperationMemory{
     public name: string;
     public parent?: string;
 
-        constructor(name: string, manager: OperationsManager, entry: OperationMemory){
+        constructor(name: string, manager: OperationsManager, entry: OperationProto){
             this.manager = manager;
             this.data=entry.data;
             this.type=entry.type;
@@ -34,14 +41,13 @@ export class Operation implements OperationMemory{
     }
 
     public validateCreeps(): void {
-        global.logger.debug("Validate Crepps: ");
         if(this.data.creeps != null){
             if(this.data.creeps.length > 0 ){
                 for(const name of this.data.creeps){
-                    global.logger.debug("Validate Crepps: "+ name);
+                    // console.log("Validate Crepps: "+ name);
                     if( Game.creeps[name] == null){
                         if(!this.manager.empire.spawnMgr.containsEntry(name)) {
-                            global.logger.debug("Validate Crepps: "+ name + " removed");
+                            console.log("Validate Crepps: "+ name + " removed");
                             _.remove(this.data.creeps, (e) => e === name);
                         }
                     }

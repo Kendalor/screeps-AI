@@ -1,23 +1,23 @@
+import { DeliverToHomeRoom } from "../jobs/DeliverToHomeRoom";
 import { DoNotBlockStuff } from "../jobs/DoNotBlockStuff";
+import { GoToTargetRoom } from "../jobs/GoToTargetRoom";
 import { PickupContainer } from "../jobs/PickupContainer";
 import { PickupDropped } from "../jobs/PickupDropped";
 import { PickupTombstone } from "../jobs/PickupTombstone";
-import { SupplyStorage } from "../jobs/SupplyStorage";
-import { SupplyTerminal } from "../jobs/SupplyTerminal";
 import { CreepRole } from "./CreepRole";
 
 
 
-export class Hauler extends CreepRole {
+export class HaulDeposit extends CreepRole {
 
     
 	// ORDER OF ENTRIES  === PRIORITY
 	public jobs: {[name: string]: any} = {
+		"GoToTargetRoom": GoToTargetRoom,
+		"DeliverToHomeRoom": DeliverToHomeRoom,
 		"PickupDropped": PickupDropped,
 		"PickupTombstone": PickupTombstone,
 		"PickupContainer": PickupContainer,
-		"SupplyTerminal": SupplyTerminal,
-		"SupplyStorage": SupplyStorage,
 		"DoNotBlockStuff": DoNotBlockStuff};
 	
     constructor(creep: Creep) {
@@ -28,16 +28,5 @@ export class Hauler extends CreepRole {
 		super.run();
     }
 	
-	public static getBody(spawn: StructureSpawn): BodyPartConstant[] {
-		const energyCap = Math.min(Math.max(300,spawn.room.energyCapacityAvailable),1200);
-		let partArray: BodyPartConstant[] = [];
-		const fullSets = Math.max(1, Math.floor(energyCap/150));
-		for (let i = 0; i < fullSets; i++){
-			partArray = partArray.concat([CARRY,CARRY,MOVE]);
-		}
-		return partArray;
-		
-	}
-
 
 }

@@ -22,7 +22,7 @@ export class SupplyExtension extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        if(creep.carry.energy > 0 ){
+        if(creep.store.getUsedCapacity(RESOURCE_ENERGY)> 0 ){
             return true;
         }
         return false;

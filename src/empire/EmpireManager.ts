@@ -16,7 +16,7 @@ export class EmpireManager  {
     public data: any;
     public memory: EmpireMemory;
     private baseOps: InitialRoomOperation[] | undefined;
-    public memoryVersion: number = 2;
+    public memoryVersion: number = 4;
     private colonizeRomms: {[name: string]: string | undefined} | undefined;
 
 
@@ -37,6 +37,9 @@ export class EmpireManager  {
         Memory.empire.memoryVersion = this.memoryVersion;
        }
        this.data=Memory.empire.data;
+       if(this.data == null){
+           this.data = {};
+       }
        this.memory=Memory.empire;
 
     }
@@ -48,7 +51,6 @@ export class EmpireManager  {
         this.creepMgr.run();
         this.opMgr.run();
         this.stats.run();
-        console.log("Colonizeable Rooms: " + JSON.stringify(this.getColonizeAbleRooms()));
     }
     
 
@@ -132,9 +134,6 @@ export class EmpireManager  {
     public getMyRooms(): string[] {
         const out = new Array<string>();
         const baseOps = this.getBaseOps();
-        if(baseOps.length === 0 ){
-            this.createInitialRoomOperations();
-        }
         for(const op of baseOps){
             out.push(op.room.name);
         }
@@ -149,7 +148,6 @@ export class EmpireManager  {
             if(room.controller != null){
                 if(room.controller.my){
                     myRooms.push(room);
-
                 }
             }
         }
@@ -157,10 +155,9 @@ export class EmpireManager  {
             this.memory.myRooms = {};
         }
         for(const e of myRooms){
-            if(e.storage != null){
-                const opName = this.opMgr.enque({type: OPERATION.BASE, data: {roomName: e.name},pause: 1});
-                this.memory.myRooms[e.name] = opName;
-            }
+            // TODO: Check if ROom has Colonize Operation
+            const opName = this.opMgr.enque({type: OPERATION.BASE, data: {roomName: e.name},pause: 1});
+            this.memory.myRooms[e.name] = opName;
         }
     }
 
@@ -175,8 +172,8 @@ export class EmpireManager  {
     }
 
     private checkGlobalOperations(): void {
-        if(this.memory.data == null){
-            this.memory.data ={};
+        if(this.data == null){
+            this.data ={};
         }
         this.checkFlagListenerOperation();
         this.checkScoutingManagerOperation();
@@ -184,7 +181,20 @@ export class EmpireManager  {
     }
 
     private createFlaglistenerOperation(): void {
-        this.data.flaglistener = this.opMgr.enque({type: OPERATION.FLAGLISTENER, data: {},pause: 1});
+        const ops = this.opMgr.getOperationsOfType(OPERATION.FLAGLISTENER);
+        if(ops.length > 0 ){
+            if(ops.length === 1){
+                this.data.flaglistener = ops[0].name;
+            } else {
+                for(const o of ops){
+                    this.opMgr.dequeue(o.name);
+                }
+                this.data.flaglistener = this.opMgr.enque({type: OPERATION.FLAGLISTENER, data: {},pause: 1});
+            }
+        } else {
+            this.data.flaglistener = this.opMgr.enque({type: OPERATION.FLAGLISTENER, data: {},pause: 1});
+        }
+        
     }
 
     private checkScoutingManagerOperation(): void {
@@ -198,7 +208,19 @@ export class EmpireManager  {
 }
 
     private createScoutingManagerOperation(): void {
-        this.data.scoutingManager = this.opMgr.enque({type: OPERATION.SCOUTINGMANAGER, data: {},pause: 1});
+        const ops = this.opMgr.getOperationsOfType(OPERATION.SCOUTINGMANAGER);
+        if(ops.length > 0 ){
+            if(ops.length === 1){
+                this.data.scoutingManager = ops[0].name;
+            } else {
+                for(const o of ops){
+                    this.opMgr.dequeue(o.name);
+                }
+                this.data.scoutingManager = this.opMgr.enque({type: OPERATION.SCOUTINGMANAGER, data: {},pause: 1});
+            }
+        } else {
+            this.data.scoutingManager = this.opMgr.enque({type: OPERATION.SCOUTINGMANAGER, data: {},pause: 1});
+        }
     }
 
     private checkTradingOperation(): void {

@@ -1,10 +1,20 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OperationMemory } from "utils/constants";
-import { Operation } from "../Operation";
+import { RemoteOperation, RemoteOperationData, RemoteOperationProto } from "./RemoteOperation";
 
-export class FlagOperation extends Operation {
+export interface FlagOperationProto extends RemoteOperationProto {
+    data: FlagOperationData;
+}
+
+export interface FlagOperationData extends RemoteOperationData {
+    [id: string]: any;
+    flag: string;
+}
+
+
+export class FlagOperation extends RemoteOperation {
     public flag: Flag;
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: FlagOperationProto) {
         super(name,manager,entry);
         this.flag = Game.flags[entry.data.flag];
     }
@@ -20,6 +30,7 @@ export class FlagOperation extends Operation {
 
     public removeSelf(): void {
         super.removeSelf();
+        console.log("Removed FlagOperation: " + this.name + " in Room: " + this.data.targetRoom + " with base: " + this.data.roomName);
         if(this.flag != null){
             this.flag.remove();
         }

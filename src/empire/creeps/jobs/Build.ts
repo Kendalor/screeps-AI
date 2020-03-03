@@ -43,7 +43,7 @@ export class Build extends Job {
     public static getTargetId(creep: Creep): string | null {
         let constructions: ConstructionSite[] = [];
         if(constructions.length === 0 && creep.room.controller!.level > 1) {
-            constructions = creep.room.find(FIND_CONSTRUCTION_SITES);
+            constructions = creep.room.find(FIND_MY_CONSTRUCTION_SITES);
         }
         // TAREGTS FOUND ?
         if(constructions.length > 0){

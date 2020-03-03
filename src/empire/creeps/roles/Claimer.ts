@@ -9,6 +9,7 @@ export class Claimer extends CreepRole {
     
 	// ORDER OF ENTRIES  === PRIORITY
 	public jobs: {[name: string]: any} = {
+      "GoFlagRoom": GoFlagRoom,
       "GoToTargetRoom": GoToTargetRoom,
         "Claim": Claim};
 	

@@ -26,6 +26,10 @@ export enum OPERATION {
     SCOUTINGMANAGER=16,
     REMOVEINVADER=17,
     HAUL=18,
+    MINE_MINERALS=19,
+    MINE_POWER=20,
+    MINE_DEPOSIT=21,
+    COLONIZE_PORTAL=22
 }
 
 export enum ROLE {
@@ -54,6 +58,7 @@ export interface OperationMemory {
     pause: number;
     parent?: string;
 }
+
 
 export interface EmpireMemory {
     toSpawnList: { [name: string]: SpawnEntryMemory };

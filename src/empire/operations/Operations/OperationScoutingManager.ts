@@ -5,14 +5,6 @@ import { Operation } from "../Operation";
 
 
 
-
-
-
-
-
-
-
-
 export class OperationScoutingManager extends Operation{
     private MAX_RANGE = 6;
     private DEFAULT_PAUSE = 500;
@@ -46,7 +38,7 @@ export class OperationScoutingManager extends Operation{
         }
 
         // this.sleep();
-        console.log("ScoutingManager: Radius: "+ this.getScoutingRadius() + " Todos: " + this.data.todo.length + " Creeps: (" + this.data.creeps.length + "/" + this.data.numScouts + ")");
+        console.log(Game.shard.name + ": ScoutingManager: Radius: "+ this.getScoutingRadius() + " Todos: " + this.data.todo.length + " Creeps: (" + this.data.creeps.length + "/" + this.data.numScouts + ")");
     }
 
     public wakeup(): void {
@@ -54,6 +46,7 @@ export class OperationScoutingManager extends Operation{
     }
 
     public setChanged(a: boolean):void {
+        console.log("Setting Changed to : " + a);
         this.data.changed = a;
     }
 
@@ -121,20 +114,12 @@ export class OperationScoutingManager extends Operation{
     }
 
     private checkAllRooms(rooms: string[]): string[]{
-        let t = Game.cpu.getUsed();
         const newTodo = new Array<string>();
-        let k = Game.cpu.getUsed();
-        console.log("CPU: for Array "+ (k-t));
         for(const e of this.data.todo){
             if(Game.map.isRoomAvailable(e)){
-                console.log("CheckAllRooms: "+ e);
-                t = Game.cpu.getUsed();
                 if(RoomMemoryUtil.checkIfRoomNeedsScouting(e)){
                     newTodo.push(e);
                 }
-                k = Game.cpu.getUsed();
-                console.log("CPU: for "+e+  " "+ (k-t));
-
             }
         }
         return newTodo;

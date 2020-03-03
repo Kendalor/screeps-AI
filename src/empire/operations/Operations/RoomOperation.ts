@@ -1,11 +1,21 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OperationMemory } from "utils/constants";
-import { Operation } from "../Operation";
+import { OperationData, OperationMemory } from "utils/constants";
+import { Operation, OperationProto } from "../Operation";
+
+export interface RoomOperationProto extends OperationProto {
+    data: RoomOperationData;
+}
+
+export interface RoomOperationData extends OperationData {
+    [id: string]: any;
+    roomName: string;
+}
+
 
 export class RoomOperation extends Operation {
     public room: Room;
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.room=Game.rooms[entry.data.roomName];
     }
@@ -25,5 +35,9 @@ export class RoomOperation extends Operation {
 
     public getBuildingList(): BuildEntry[] {
         return [];
+    }
+
+    public static getDataTemplate(roomName: string, nparent: string): OperationData {
+        return {room: roomName, parent: nparent};
     }
 }

@@ -1,8 +1,12 @@
 import { RoomPlannerUtils } from "empire/operations/Operations/roomPlanner/RoomPlannerUtils";
 import { MapRoom } from "./MapRoom";
 
+
 export class RoomMemoryUtil {
-    public static  SCOUTING_INTERVALL = 50000;
+    public static SCOUTING_INTERVALL = 100000;
+    public static SCOUTING_INTERVALL_HIGHWAY = 3000;
+    public static SCOUTING_INTERVALL_KEEPER = 200000;
+    public static SCOUTING_INTERVALL_SKIP = 200000;
 
     public static checkIfRoomNeedsScouting(roomName: string){
         if(!this.isRoomTypeSet(roomName)){
@@ -10,7 +14,7 @@ export class RoomMemoryUtil {
         }
         switch(Memory.rooms[roomName].roomType) {
             case 'NormalRoom':
-                if(!this.isRoomUpToDate(roomName)){
+                if(!this.isRoomUpToDate(roomName, RoomMemoryUtil.SCOUTING_INTERVALL)){
                     return true;
                 } else {
                     if(!this.isBaseSet(roomName)){
@@ -20,21 +24,19 @@ export class RoomMemoryUtil {
                         return true;
                     }
                 }
-
                 break;
             case 'HighwayRoom':
-                if(!this.isRoomUpToDate(roomName)){
+                if(!this.isRoomUpToDate(roomName, RoomMemoryUtil.SCOUTING_INTERVALL_HIGHWAY)){
                     return true;
                 }
                 break;
             case 'Intersection':
-                if(!this.isRoomUpToDate(roomName)){
-                    console.log("Room: " + roomName + " is not upToDate");
+                if(!this.isRoomUpToDate(roomName, RoomMemoryUtil.SCOUTING_INTERVALL_HIGHWAY)){
                     return true;
                 }
                 break;
             case 'KeeperRoom':
-                if(!this.isRoomUpToDate(roomName)){
+                if(!this.isRoomUpToDate(roomName, RoomMemoryUtil.SCOUTING_INTERVALL_KEEPER)){
                     return true;
                 } else {
                     if(!this.isResourcesSet(roomName)){
@@ -44,6 +46,17 @@ export class RoomMemoryUtil {
                 break;
         }
         return false;
+    }
+    public static skipRoom(roomName: string): void {
+        Game.notify("Scouting: Skipped Room: " + roomName + " at Time: " + Game.time );
+        const mem = Memory.rooms[roomName];
+        if(mem != null){
+            if(mem.scouting == null){
+                mem.scouting = {};
+            }
+            mem.scouting.lastSeen = Game.time;
+        }
+
     }
 
     public static isRoomFriendly(roomName: string): boolean {
@@ -144,6 +157,30 @@ export class RoomMemoryUtil {
         }
     }
 
+    public static getRoomReservation(roomName: string): ReservationDefinition | undefined {
+        const mem = Memory.rooms[roomName];
+        if(mem != null){
+            if(mem.reservation != null){
+                return mem.reservation;
+            }
+        }
+        return undefined;
+    }
+
+    public static setRoomReservation(room: Room): void {
+        if(this.isRoomTypeSet(room.name)){
+            if(Memory.rooms[room.name].roomType === 'NormalRoom'){
+                if(room.controller != null){
+                    if(room.controller.reservation != null){
+                        room.memory.reservation = room.controller.reservation;
+                    } else {
+                        delete room.memory.reservation;
+                    }
+                }
+            }
+        }
+    }
+
     public static getRoute(from: string, to: string): Array<{exit: ExitConstant, room: string}> | ERR_NO_PATH {
         const route =Game.map.findRoute(from,to, {
             routeCallback: this.routeCallBack
@@ -177,15 +214,45 @@ export class RoomMemoryUtil {
     }
 
 
+    public static setRareResources(room: Room){
+        const mem = room.memory;
+        
+        if(this.isRoomTypeSet(room.name)){
+            const structures = room.find(FIND_STRUCTURES).filter(str => str.structureType === STRUCTURE_POWER_BANK);
+            const powerBank = structures.pop() as StructurePowerBank | undefined;
+            const deposit = room.find(FIND_DEPOSITS).pop() as Deposit | undefined;
+            if(powerBank != null){
+
+                if(powerBank != null){
+                    Game.notify("Found Powerbank" + room.name);
+                    if(mem.rareResources == null){
+                        mem.rareResources = {};
+                    }
+                    mem.rareResources.power = {amount: powerBank.power, validUntil: powerBank.ticksToDecay+Game.time};
+                    Game.notify("Wrote Powerbank to Memory: " + JSON.stringify(mem));
+                }else {
+                    delete mem.rareResources.deposit;
+                } 
+            }
+            if(deposit != null){
+                if(mem.rareResources == null){
+                    mem.rareResources = {};
+                }
+                mem.rareResources.deposit = {tyoe: deposit.depositType, validUntil: deposit.ticksToDecay+Game.time}; 
+            }
+            if(deposit == null && powerBank == null){
+                delete mem.rareResources;
+            }
+        }
+    }
+
     public static setRoomMemory(room: Room): void {
             if(!this.isRoomTypeSet(room.name)){
                 this.setRoomType(room.name);
             }
-            console.log("Setting RoomMemory for: " + room.name);
             switch(room.memory.roomType) {
                 case 'NormalRoom':
-                    console.log("Case NormalRoom");
-                    if(!this.isRoomUpToDate(room.name)){
+                    if(!this.isRoomUpToDate(room.name, RoomMemoryUtil.SCOUTING_INTERVALL)){
                         this.setLastSeen(room);
                     }
                     if(!this.isBaseSet(room.name)){
@@ -195,24 +262,22 @@ export class RoomMemoryUtil {
                         this.setRessources(room);
                     }
                     this.setOwner(room);
+                    this.setRoomReservation(room);
                     break;
                 case 'HighwayRoom':
-                    console.log("Case HighwayRoom");
-                    if(!this.isRoomUpToDate(room.name)){
+                    if(!this.isRoomUpToDate(room.name, RoomMemoryUtil.SCOUTING_INTERVALL_HIGHWAY)){
                         this.setLastSeen(room);
+                        this.setRareResources(room);
                     }
                     break;
                 case 'Intersection':
-                    console.log("Case Intersection");
-                    console.log("Checking Update: ")
-                    if(!this.isRoomUpToDate(room.name)){
-                        console.log("Room is not UpToDate");
+                    if(!this.isRoomUpToDate(room.name, RoomMemoryUtil.SCOUTING_INTERVALL_HIGHWAY)){
                         this.setLastSeen(room);
+                        this.setRareResources(room);
                     }
                     break;
                 case 'KeeperRoom':
-                    console.log("Case KeeperRoom");
-                    if(!this.isRoomUpToDate(room.name)){
+                    if(!this.isRoomUpToDate(room.name, RoomMemoryUtil.SCOUTING_INTERVALL_KEEPER)){
                         this.setLastSeen(room);
                     }
                     if(!this.isResourcesSet(room.name)){
@@ -223,12 +288,13 @@ export class RoomMemoryUtil {
             }
     }
 
-    public static isRoomUpToDate(roomName: string): boolean {
+    public static isRoomUpToDate(roomName: string, interval: number): boolean {
         const roomMemory = Memory.rooms[roomName];
         if(roomMemory != null){
             if(roomMemory.scouting != null){
                 if(roomMemory.scouting.lastSeen != null){
-                    if(roomMemory.scouting.lastSeen + this.SCOUTING_INTERVALL > Game.time){
+                    if(Math.abs(Game.time - roomMemory.scouting.lastSeen) < interval){
+                        // console.log("Room: "+ roomName + " last Seen: " + roomMemory.scouting.lastSeen + " is less than " + interval + " Gameticks past:  (seen-tick) " + (Math.abs(Game.time - roomMemory.scouting.lastSeen)) + "<" + interval );
                         return true;
                     }
                 }
@@ -284,8 +350,6 @@ export class RoomMemoryUtil {
                 if(room.controller != null){
                     if(room.controller.owner != null){
                         room.memory.owner = room.controller.owner.username;
-                    } else if(room.controller.reservation != null) {
-                        room.memory.owner = room.controller.reservation.username;
                     } else {
                         delete room.memory.owner;
                     }
@@ -331,9 +395,7 @@ export class RoomMemoryUtil {
     }
 
     public static setLastSeen(room: Room): void {
-        console.log("SetLastSeen");
         if(room != null){
-            console.log("Room != null");
             if(room.memory.scouting == null){
                 room.memory.scouting = {};
             }

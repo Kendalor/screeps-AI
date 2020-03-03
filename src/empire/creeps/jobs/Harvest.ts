@@ -33,7 +33,7 @@ export class Harvest extends Job{
     }
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy < creep.carryCapacity;
+        return creep.store.getFreeCapacity() > 0;
     }
 
     public static getTargetId(creep: Creep): string | null {

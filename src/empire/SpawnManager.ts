@@ -3,16 +3,19 @@ import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
 import { Claimer } from "./creeps/roles/Claimer";
 import { Colonize } from "./creeps/roles/Colonize";
+import { HaulDeposit} from "./creeps/roles/HaulDeposit";
 import { Hauler } from "./creeps/roles/Hauler";
+import { Healer } from "./creeps/roles/Healer";
 import { Logistic } from "./creeps/roles/Logistic";
 import {Maintenance} from "./creeps/roles/Maintenance";
+import { MineDeposit } from "./creeps/roles/MineDeposit";
 import { Miner } from "./creeps/roles/Miner";
+import { MineralMiner } from "./creeps/roles/MineralMiner";
 import { RemoveInvader } from "./creeps/roles/RemoveInvader";
 import { Repairer } from "./creeps/roles/Repairer";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
 import { SpawnEntry} from "./spawn/SpawnEntry";
-
 /**
  * Manages Spawning. Has a List of Creeps to Spawn which is kept in Memory and loaded on Initializations.
  * If spawns are available, it goes through its toSpawnList, filters spawnable creeps and spawns the one with the highest priority. 
@@ -27,7 +30,7 @@ export class SpawnManager {
     public availableSpawns: StructureSpawn[] = [];
     public empire: EmpireManager;
     public toSpawnList: {[name: string]: SpawnEntry} = {};
-    public roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize, Hauler,RemoveInvader };
+    public roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize, Hauler,RemoveInvader, MineralMiner, HaulDeposit,MineDeposit, Healer };
 
 
     constructor(empire: EmpireManager) {
@@ -39,7 +42,6 @@ export class SpawnManager {
     }
 
     public init(): void {
-        this.loadSpawnList();
         this.availableSpawns = [];
         for(const j of Object.keys(Game.spawns)){
             if(Game.spawns[j].spawning === null && Game.spawns[j].isActive()){
@@ -53,7 +55,7 @@ export class SpawnManager {
     }
 
     public destroy(): void {
-        this.saveSpawnList();
+        this.refreshSpawnList();
     }
 
     /**
@@ -61,20 +63,24 @@ export class SpawnManager {
      */
     public run(){
         const toSpawn = Object.entries(this.toSpawnList).filter( a => a[1].pause === 0).sort( (a,b) => a[1].priority - b[1].priority);
+        // console.log("ToSpawn Lenght: " + toSpawn.length);
         for(const spawn of this.availableSpawns){
             const roomEntries = toSpawn.filter( entry => entry[1].room === spawn.room.name);
+            // console.log("Room Entries: " + roomEntries.length);
             if(roomEntries != null && roomEntries.length >0 ){
+                
                 const entry = roomEntries.pop();
+                // console.log("Spawn RoomEntry: " + JSON.stringify(entry));
                 if(entry != null){
                     if(entry[1].op != null && this.empire.opMgr.entryExists(entry[1].op)){
                         try {
                             const body: BodyPartConstant[] = (entry[1].body != null) ? entry[1].body : this.roles[entry[1].memory.role].getBody(spawn);
                             let direction: DirectionConstant | null = null;
-                            console.log("Trying to Spawn: " + JSON.stringify(entry[1]));
+                            // console.log("Trying to Spawn: " + JSON.stringify(entry[1]));
 
                             const mem = JSON.parse(JSON.stringify(entry[1].memory)); // DEEP Copy 
                             const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: true});
-                            console.log("Return Code: " +err );
+                            // console.log("Return Code: " +err );
                             if(err === OK ){
                                 if( entry[1].toPos != null ){
                                     const pos = entry[1].toPos as RoomPosition;
@@ -109,9 +115,9 @@ export class SpawnManager {
                                 this.dequeueByName(entry[0]);
                             }
                             else if(err === ERR_NOT_ENOUGH_ENERGY){
-                                console.log("Not enough energy to spawn:" + spawn.room.name);
+                                // console.log("Not enough energy to spawn:" + spawn.room.name);
                                 if(spawn.room.energyAvailable === spawn.room.energyCapacityAvailable){
-                                    console.log("Room at Max energy:" + spawn.room.name);
+                                    // console.log("Room at Max energy:" + spawn.room.name);
                                     this.dequeueByName(entry[0]);
                                 }
                                 
@@ -119,19 +125,18 @@ export class SpawnManager {
                                 console.log ("Returned " + err);
                             }
                         } catch (error) {
-                            console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");
-                            console.log(JSON.stringify(entry));
-                            console.log(JSON.stringify(error));
+                            // console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");
+                            // console.log(JSON.stringify(entry));
+                            // console.log(JSON.stringify(error));
                             this.dequeueByName(entry[0]);
                         }
                     } else {
                         this.dequeueByName(entry[0]);
+                        // console.log("DequeuedByName because of missing op: " + entry[0]);
                     }
 
 
                 }
-
-
             }
         }  
     }
@@ -185,33 +190,14 @@ export class SpawnManager {
         return cost;
     }
 
-    public loadSpawnList(){
-        this.toSpawnList={};
-        if(Memory.empire.toSpawnList != null){
-            global.logger.debug("Loading Spawnlist of Length: " + Object.keys(Memory.empire.toSpawnList));
-            for(const i of Object.keys(Memory.empire.toSpawnList)) {
-                this.toSpawnList[i] = new SpawnEntry(Memory.empire.toSpawnList[i] as SpawnEntryMemory);
-            }
-            global.logger.debug("Loaded Spawnlist of Length: " + Object.keys(this.toSpawnList));
-        } else {
-            Memory.empire.toSpawnList = {};
-        }
-
-    }
-
     /**
      *  save toSpawnList to Memory
      */
-    public saveSpawnList(){
-        Memory.empire.toSpawnList = {};
-        global.logger.debug("Saving Spawnlist of Length: " + Object.keys(this.toSpawnList).length);
+    public refreshSpawnList(){
         for(const entry of Object.keys( this.toSpawnList)) {
             if(this.toSpawnList[entry].pause > 0){
                 this.toSpawnList[entry].pause--;
             }
-            Memory.empire.toSpawnList[entry]=this.toSpawnList[entry].toMemory() as SpawnEntryMemory;
         }
-        global.logger.debug("Saved Spawnlist of Length: " + Object.keys(Memory.empire.toSpawnList).length);
-
     }
 }

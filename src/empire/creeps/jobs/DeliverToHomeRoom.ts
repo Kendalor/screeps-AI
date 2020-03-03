@@ -1,6 +1,6 @@
 import { Job } from "./Job";
 
-export class SupplyStorage extends Job {
+export class DeliverToHomeRoom extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         const target: StructureStorage | null = Game.getObjectById(creep.memory.targetId);
@@ -21,7 +21,7 @@ export class SupplyStorage extends Job {
                         this.cancel(creep);
                     }
                 }else{
-                    creep.travelTo(target, {ignoreCreeps: false});
+                    creep.travelTo(target);
                 }
             } else {
                 this.cancel(creep);
@@ -30,8 +30,27 @@ export class SupplyStorage extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        if(creep.store.getUsedCapacity() >  0 ){
+        if(creep.store.getFreeCapacity() ===  0 ){
             return true;
+        } else if(creep.ticksToLive != null && creep.ticksToLive <120){
+            return true;
+        }else if(creep.store.getUsedCapacity() > 0){
+            if(creep.memory.usedCap == null){
+                creep.memory.usedCap = creep.store.getUsedCapacity();
+            } else {
+                if(creep.memory.usedCap === creep.store.getUsedCapacity()){
+                    if(creep.memory.usedCapCounter == null){
+                        creep.memory.usedCapCounter = 1;
+                    } else {
+                        creep.memory.usedCapCounter = creep.memory.usedCapCounter +1;
+                    }
+                } else {
+                    creep.memory.usedCapCounter = 1;
+                }
+            }
+            if(creep.memory.usedCapCounter > 100){
+                return true;
+            }
         }
         return false;
     }
@@ -40,9 +59,11 @@ export class SupplyStorage extends Job {
         if(creep.memory.storageId){
             return creep.memory.storageId;
         } else {
-            const storage: StructureStorage | undefined = creep.room.storage;
-            if (storage !== undefined ) {
-                return storage.id;
+            const homeRoom = Game.rooms[creep.memory.homeRoom];
+            if(homeRoom != null){
+                if(homeRoom.storage != null){
+                    return homeRoom.storage.id;
+                }
             }
         }
         return null;

@@ -7,6 +7,7 @@ import { SupplyExtension } from "../jobs/SupplyExtension";
 import { SupplySpawn } from "../jobs/SupplySpawn";
 import { SupplyTower } from "../jobs/SupplyTower";
 import { CreepRole } from "./CreepRole";
+import { SupplyTerminal } from "../jobs/SupplyTerminal";
 
 export class Supply extends CreepRole {
     	// ORDER OF ENTRIES  === PRIORITY
@@ -18,6 +19,7 @@ export class Supply extends CreepRole {
 		"PickupContainer": PickupContainer,
 		"PickUpDropped": PickupDropped,
 		"KillSelf": KillSelf,
+		"SupplyTerminal": SupplyTerminal,
 		"DoNotBlockStuff": DoNotBlockStuff};
 	
     constructor(creep: Creep) {

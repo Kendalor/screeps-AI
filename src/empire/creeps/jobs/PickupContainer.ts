@@ -5,10 +5,15 @@ export class PickupContainer extends Job {
         super.run(creep);
         // RUN CODE
         const container: StructureContainer | null = Game.getObjectById(creep.memory.targetId);
-        if(container !== null && creep.carry.energy < creep.carryCapacity){
+        if(container !== null && creep.store.getFreeCapacity() > 0){
             if (creep.pos.inRangeTo(container,1)){
-                if(container.store.energy >= creep.carryCapacity-creep.carry.energy ){
-                    creep.withdraw(container,RESOURCE_ENERGY);
+                // Grab Everything
+                if(container.store.getUsedCapacity() > 0) {
+                    for(const type in container.store){
+                        if(container.store.getUsedCapacity(type as ResourceConstant) > 0){
+                            creep.withdraw(container,type as ResourceConstant);
+                        }
+                    }
                 } else {
                     this.cancel(creep);
                 }
@@ -22,24 +27,21 @@ export class PickupContainer extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy <= creep.carryCapacity;
+        return creep.store.getFreeCapacity() > 0;
     }
 
     public static getTargetId(creep: Creep): string | null {
-        if(creep.memory.containerId){
-            return creep.memory.containerId;
-        } else {
-            const containers: StructureContainer[] = creep.room.find(FIND_STRUCTURES).filter(
-                (str) => str.structureType === STRUCTURE_CONTAINER && 
-                str.store.energy > creep.carryCapacity
-            ) as StructureContainer[];
-            if ( containers.length > 0 && containers !== null ){
-                const container = containers.sort((str1: StructureContainer, str2: StructureContainer) => str1.store.energy - str2.store.energy).pop();
-                if(container !== null && container !== undefined ){
-                    return container.id;
-                }
+        const containers: StructureContainer[] = creep.room.find(FIND_STRUCTURES).filter(
+            (str) => str.structureType === STRUCTURE_CONTAINER && 
+            str.store.getUsedCapacity() > 0
+        ) as StructureContainer[];
+        if ( containers.length > 0 && containers != null ){
+            const container = containers.sort((str1: StructureContainer, str2: StructureContainer) => str1.store.getUsedCapacity() - str2.store.getUsedCapacity()).pop();
+            if(container != null ){
+                return container.id;
             }
         }
+
         return null;
     }
 }

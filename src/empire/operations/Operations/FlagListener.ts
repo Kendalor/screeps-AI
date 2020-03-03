@@ -1,6 +1,7 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
 import { Operation } from "../Operation";
+import { InitialRoomOperation } from "./InitialBuildUpPhase/InitRoomOperation";
 
 export class FlagListener extends Operation {
 
@@ -27,16 +28,22 @@ export class FlagListener extends Operation {
             switch(flag.secondaryColor){
                 // COLONIZE
                 case COLOR_RED:
-                        flag.memory.op = this.manager.enque({type: OPERATION.COLONIZE, data: {flag: flag.name},pause: 1});
-                        break;
-                        
+                    this.enqueOp(OPERATION.COLONIZE_PORTAL,flag,5,3500);
+                    break;
+                case COLOR_GREEN:
+                    this.enqueOp(OPERATION.MINE_POWER,flag,5,7500);
+                    break;
+                case COLOR_BLUE:
+                    this.enqueOp(OPERATION.MINE_DEPOSIT,flag,4,5000);
+                    break;
+
             }
         } else if (flag.color === COLOR_BLUE ){
             switch(flag.secondaryColor){
                 // Remote POLITICS
                 case COLOR_BLUE:
-                        flag.memory.op = this.manager.enque({type: OPERATION.CLAIM, data: {flag: flag.name},pause: 1});
-                        break;
+                    this.enqueOp(OPERATION.CLAIM,flag,7,750);
+                    break;
                         
             }
         }
@@ -45,12 +52,36 @@ export class FlagListener extends Operation {
     }
 
     public cleanFlagMemory(){
+        if(Memory.flags == null){
+            Memory.flags = {};
+        }
         for(const key of Object.keys(Memory.flags)){
             if(Game.flags[key] == null){
                 delete Memory.flags[key];
+            } else {
+                const op = Memory.flags[key].op;
+                if(!this.manager.entryExists(op)){
+                    delete Memory.flags[key];
+                }
             }
         }
     }
 
+    public enqueOp(t: OPERATION, flag: Flag, maxDistance?: number, minEnergyAvailable?: number){
+        const nearestOp= this.findnearestBaseOp(flag,maxDistance,minEnergyAvailable);
+        if(nearestOp != null){
+            flag.memory.op = nearestOp.enqueRemoteOp(t,flag.pos.roomName,flag);
+        } else {
+            console.log("Could not find Fitting Room for Operation: " + t);
+            flag.remove();
+        }
+    }
+
+    public findnearestBaseOp(flag: Flag, maxDistance = 5, minEnergyAvailable=0 ): InitialRoomOperation | undefined{
+        const baseOps = this.manager.getBaseOperations().filter(op => op.room.energyCapacityAvailable >= minEnergyAvailable && Game.map.getRoomLinearDistance(op.room.name, flag.pos.roomName) <= maxDistance).sort( (a,b) => Game.map.getRoomLinearDistance(a.room.name,flag.pos.roomName) - Game.map.getRoomLinearDistance(b.room.name,flag.pos.roomName));
+        console.log("Find nearest Room for Flag: " + flag.name);
+        console.log("In Order: " + JSON.stringify(baseOps.map(op => op.room.name)));
+        return baseOps.shift();
+    }
 
 }

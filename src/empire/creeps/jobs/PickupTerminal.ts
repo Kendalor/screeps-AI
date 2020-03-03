@@ -20,7 +20,7 @@ export class PickupTerminal extends Job {
     }
 
     public static runCondition(creep: Creep): boolean {
-        return creep.carry.energy <= creep.carryCapacity;
+        return creep.carry.energy < creep.carryCapacity;
     }
 
     public static getTargetId(creep: Creep): string | null {

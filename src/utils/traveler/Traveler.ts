@@ -1,3 +1,5 @@
+import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
+
 /**
  * To start using Traveler, require it in main.js:
  * Example: var Traveler = require('Traveler.js');

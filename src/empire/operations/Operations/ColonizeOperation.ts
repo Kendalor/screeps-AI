@@ -1,7 +1,9 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { Operation } from "../Operation";
-import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { OPERATION, OperationMemory } from "utils/constants";
+import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
+import { Operation } from "../Operation";
+import { FlagOperation, FlagOperationProto } from "./FlagOperation";
+import { RemoteOperationProto, RemoteOperation, RemoteOperationData } from "./RemoteOperation";
 
 
 
@@ -13,10 +15,10 @@ import { OPERATION, OperationMemory } from "utils/constants";
  * This Phase is Active preStorage after the first Spawn,
  * it should also activate if room is in decline and needs recovery. 
  */
-export class ColonizeOperation extends Operation{
+export class ColonizeOperation extends RemoteOperation{
     public numCreeps: number = 6;
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RemoteOperationProto) {
         super(name, manager,entry);
         this.type = OPERATION.COLONIZE;
         this.priority=28;
@@ -165,7 +167,7 @@ export class ColonizeOperation extends Operation{
                     const name = this.manager.empire.spawnMgr.enque({
                         room: roomName,
                         body: undefined,
-                        memory: {role: "Colonize",targetRoom: this.data.room, op: this.name},
+                        memory: {role: "Colonize",targetRoom: this.data.flag == null ? this.data.remoteRoom : undefined, homeRoom: this.room.name, op: this.name,flag: this.data.flag},
                         pause: 0,
                         priority: 20,
                         rebuild: false});

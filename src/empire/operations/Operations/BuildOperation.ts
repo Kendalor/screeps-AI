@@ -1,6 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "./RoomOperation";
 
 
 
@@ -10,8 +10,7 @@ import { RoomOperation } from "./RoomOperation";
  */
 export class BuildOperation extends RoomOperation{
     
-
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.type = OPERATION.BUILD;
         this.priority= 30;
@@ -28,19 +27,24 @@ export class BuildOperation extends RoomOperation{
             this.validateCreeps();
             const currentBuilders = this.data.creeps.length;
             if(constrSites.length > 0) {
-                const numToSpawn: number = Math.max(0, Math.ceil(constrSites.length/5));
-                if(numToSpawn > currentBuilders){
-                    for(let j=0; j< numToSpawn - (currentBuilders); j++){
-                        const name=this.manager.empire.spawnMgr.enque({
-                            room: this.data.roomName,
-                            memory: {role: "Builder", op: this.name},
-                            pause: 0,
-                            body: undefined,
-                            priority: 50,
-                            rebuild: false});
-                        this.data.creeps.push(name);
+                if(r.storage != null){
+                    if(r.storage.store.energy > 150000){
+                        const numToSpawn: number = Math.max(0, Math.ceil(constrSites.length/5));
+                        if(numToSpawn > currentBuilders){
+                            for(let j=0; j< numToSpawn - (currentBuilders); j++){
+                                const name=this.manager.empire.spawnMgr.enque({
+                                    room: this.data.roomName,
+                                    memory: {role: "Builder", op: this.name},
+                                    pause: 0,
+                                    body: undefined,
+                                    priority: 50,
+                                    rebuild: false});
+                                this.data.creeps.push(name);
+                            }
+                        }
                     }
                 }
+
             }
         }
         

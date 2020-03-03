@@ -1,6 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "./RoomOperation";
 
 
 
@@ -15,17 +15,32 @@ import { RoomOperation } from "./RoomOperation";
 export class HaulerOperation extends RoomOperation{
     
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.type =  OPERATION.HAUL;
     }
 
     public run() {
         super.run();
+        const t = Game.cpu.getUsed();
+        // this.generateTodos();
+        this.spawnMinerHaulers();
+
+        
+    }
+
+
+    public generateTodos(): void {
+
+        const containers = this.room.find(FIND_STRUCTURES).filter(str => str.structureType === STRUCTURE_CONTAINER) as StructureContainer[];
+        const dropped = this.room.find(FIND_DROPPED_RESOURCES);
+;
+
+        // TODO
+    }
+
+    public spawnMinerHaulers(): void {
         const r: Room = this.room;
-
-
-
         if(this.data.numHaulers == null){
             this.data.numHaulers = 0;
         }
@@ -33,34 +48,37 @@ export class HaulerOperation extends RoomOperation{
         // Validate creeps:
         this.validateCreeps();
         if( r != null && r.storage != null){
-            if(Game.time % 5 === 0){
-                // Find Containers
-                const sources = r.find(FIND_SOURCES);
-
+            if(Game.time % 1500 === 0){
+                // Find Containers  
                 const containers = r.find(FIND_STRUCTURES).filter(
                     str => str.structureType === STRUCTURE_CONTAINER
                 ) as StructureContainer[];
-
-                if(containers.length > 0){
-                    const c1 = containers.filter( c => c.pos.isNearTo(sources[0])).pop() as StructureContainer;
-                    const c2 = containers.filter( c => c.pos.isNearTo(sources[1])).pop() as StructureContainer;
-    
-                    // Calculate Required Carry/Move parts
-                    const dist: number = r.storage.pos.findPathTo(c1, {ignoreCreeps: true}).length + r.storage.pos.findPathTo(c2, {ignoreCreeps: true}).length+5;
+                const cFiltered = containers.filter(con => con.store.getUsedCapacity() > 0);
+                if(cFiltered.length > 0){
+                    let dist: number = 5;
+                    for(const c of cFiltered){
+                        dist = dist+r.storage.pos.findPathTo(c, {ignoreCreeps: true}).length;
+                    }
                     const numCarryParts: number = Math.ceil(2*dist*10/50)+4;
                     const moveParts: number = Math.ceil(numCarryParts/2)+2;
-                    const numHaulers = ((numCarryParts + moveParts)  * 50 <= r.energyCapacityAvailable) ? 1: 2;
+                    let numHaulers=0;
+                    if(dist > 5){
+                        numHaulers = ((numCarryParts + moveParts)  * 50 <= r.energyCapacityAvailable) ? 1: 2;
+                    }
                     this.data.numHaulers = numHaulers;
                     this.data.body = Array(Math.floor(numCarryParts/numHaulers)).fill(CARRY).concat(Array(Math.floor(moveParts/numHaulers)).fill(MOVE));
-
                 } else {
                     this.data.numHaulers=0;
                 }
-                const res = _.sum(r.find(FIND_DROPPED_RESOURCES).filter ( resource => resource.resourceType === RESOURCE_ENERGY).map( resource => resource.amount));
-                if(res > 2000){
-                    this.data.numHaulers = this.data.numHaulers +1;
-                } else {
-                    this.data.numHaulers =0;
+                const res = r.find(FIND_DROPPED_RESOURCES);
+                const amount = _.sum(r.find(FIND_DROPPED_RESOURCES).map( resource => resource.amount));
+                const minerals = res.filter( s => s.resourceType !== RESOURCE_ENERGY);
+                if(amount > 2000 || minerals.length > 0){
+                    if(this.data.numHaulers === 0){
+                        this.data.numHaulers =1;
+                    } else {
+                        this.data.numHaulers = Math.max(3,this.data.numHaulers +1);
+                    }                   
                 }
             }
 
@@ -78,6 +96,5 @@ export class HaulerOperation extends RoomOperation{
             }
         }
     }
-
 
 }

@@ -1,6 +1,8 @@
 import { Build } from "../jobs/Build";
 import { BuildSpawn } from "../jobs/BuildSpawn";
+import { DismantleHostileStructures } from "../jobs/DismantleHostileStructures";
 import { EmergencyUpgrade } from "../jobs/EmergencyUpgrade";
+import { GoFlagRoom } from "../jobs/GoFlagRoom";
 import { GoToTargetRoom } from "../jobs/GoToTargetRoom";
 import { Harvest } from "../jobs/Harvest";
 import { PickupContainer } from "../jobs/PickupContainer";
@@ -21,8 +23,9 @@ export class Colonize extends CreepRole {
     
 	// ORDER OF ENTRIES  === PRIORITY
 	public jobs: {[name: string]: any} = {
+		"GoFlagRoom": GoFlagRoom,
         "GoToTargetRoom": GoToTargetRoom,
-        "Renew": Renew,
+		"Renew": Renew,
         "BuildSpawn": BuildSpawn,
 		"EmergencyUpgrade": EmergencyUpgrade,
 		"SupplyTower": SupplyTower,
@@ -35,7 +38,8 @@ export class Colonize extends CreepRole {
 		"PickupTomstone": PickupTombstone,
 		"PickupStorage": PickupStorage,
 		"PickupContainer": PickupContainer,
-		"Harvest": Harvest};
+		"Harvest": Harvest,
+		"DismantleHostileStructures": DismantleHostileStructures};
 	
     constructor(creep: Creep) {
         super(creep);

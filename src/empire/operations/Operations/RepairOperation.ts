@@ -1,6 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "./RoomOperation";
 
 
 /**
@@ -10,7 +10,7 @@ import { RoomOperation } from "./RoomOperation";
 export default class RepairOperation extends RoomOperation{
     
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.type =OPERATION.REPAIR;
     }

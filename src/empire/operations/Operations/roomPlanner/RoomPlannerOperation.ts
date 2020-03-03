@@ -2,7 +2,7 @@ import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { InitialRoomOperation } from "../InitialBuildUpPhase/InitRoomOperation";
-import { RoomOperation } from "../RoomOperation";
+import { RoomOperation, RoomOperationProto } from "../RoomOperation";
 import { Base } from "./layouts/Base";
 
 
@@ -17,11 +17,11 @@ export class RoomPlannerOperation extends RoomOperation {
     public blocking: BuildEntry[] = new Array<BuildEntry>();
     private MAX_CONSTRUCTION_SITES = 1;
     private BUNKER_RADIUS = 6;
-    private DEFAULT_PAUSE_TIME = 5000;
+    private DEFAULT_PAUSE_TIME = 50000;
     private buildingCostMatrix: null | CostMatrix = null;
 
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory){
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto){
         super(name, manager, entry);
         this.initMemory();
         this.type = OPERATION.ROOMPLANNER;
@@ -49,7 +49,7 @@ export class RoomPlannerOperation extends RoomOperation {
     }
     private initMemory():void {
         if(!RoomMemoryUtil.isBaseSet(this.room.name)){
-            RoomMemoryUtil.setBase(this.room);
+            RoomMemoryUtil.setRoomMemory(this.room);
         }
     }
 
@@ -61,6 +61,8 @@ export class RoomPlannerOperation extends RoomOperation {
     public run(): void {
         super.run();
         if(Game.cpu.bucket >= 3000){
+            console.log("Shard: " + Game.shard.name + " Room: " + this.room.name + " RoomPlanner");
+            if(Memory.rooms[this.data.roomName] == null || Memory.rooms[this.data.roomName]. base) {
             if(Memory.rooms[this.data.roomName].base!.bunker !== false){
                 if(this.anchor != null) {
                     this.validateInProgressList();
@@ -88,6 +90,7 @@ export class RoomPlannerOperation extends RoomOperation {
                 }
             } else {
                 this.pause = this.DEFAULT_PAUSE_TIME;
+            }
             }
         } else {
              // console.log("Skipped "+ this.name + " of type " + this.type + " for room: " + this.room.name + " becuase of current bucket");

@@ -1,5 +1,5 @@
 import { OPERATION, OperationMemory } from "utils/constants";
-import { operationFactory } from "utils/operationFactory";
+import { opFactory } from "utils/operationFactory";
 import { EmpireManager } from "./EmpireManager";
 import { Operation } from "./operations/Operation";
 import { InitialRoomOperation } from "./operations/Operations/InitialBuildUpPhase/InitRoomOperation";
@@ -19,7 +19,6 @@ export class OperationsManager {
 		if(Memory.empire.operations== null){
 			Memory.empire.operations = {};
 		}
-
 	}
 	/**
 	 * Start of Tick Method
@@ -114,17 +113,19 @@ export class OperationsManager {
 			Memory.empire.operations = {};
 		}
         for(const i of Object.keys(Memory.empire.operations)) {
-			const op = operationFactory(Memory.empire.operations[i].type);
-			if(op !== undefined){
-				try {
-					this.operations[i]= new op(i, this, Memory.empire.operations[i] as OperationMemory);
-				} catch (error) {
-					console.log("Error for Operation: " + i + "of type: " + this.operations[i].type + " with Error: " +error);
+			try {
+				const op = opFactory(i, this, Memory.empire.operations[i] as OperationMemory);
+				if(op != null){
+					this.operations[i]= op;
+				} else {
+					console.log("INVALID OPERATION WITH TYPE: " +Memory.empire.operations[i].type + " DELETED" );
+					delete Memory.empire.operations[i];
 				}
-			} else {
-				console.log("INVALID OPERATION WITH TYPE: " +Memory.empire.operations[i].type + " DELETED" );
-				delete Memory.empire.operations[i];
+			} catch (error) {
+				console.log("Error for Operation: " + i + "of type:  with Error: " +error);
 			}
+			
+
             
 		}
 
@@ -156,10 +157,10 @@ export class OperationsManager {
      */
     public enque(entry: OperationMemory){
 		const name = this.generateName();
-		const op = operationFactory(entry.type);
+		const op = opFactory(name, this, entry as OperationMemory);
 		if( op !== undefined){
-			this.operations[name]=new op(name, this, entry as OperationMemory);
-			global.logger.debug(" ADDED Operation: " + name + " of Type: " + entry.type + " data: " + entry.data);		}
+			this.operations[name]=op;
+		}
 		return name;
 	}
 	

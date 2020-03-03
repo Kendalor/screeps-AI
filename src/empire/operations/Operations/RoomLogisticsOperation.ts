@@ -1,6 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "./RoomOperation";
 
 
 interface LogisticTask {
@@ -25,7 +25,7 @@ export class RoomLogisticsOperation extends RoomOperation{
     private tasks: LogisticTask[] = new Array<LogisticTask>();
 
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.type = OPERATION.ROOMLOGISTICS;
     }

@@ -2,6 +2,7 @@ import { OperationsManager } from "empire/OperationsManager";
 import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Operation } from "../Operation";
+import { FlagOperation, FlagOperationProto } from "./FlagOperation";
 
 
 
@@ -13,10 +14,10 @@ import { Operation } from "../Operation";
  * This Phase is Active preStorage after the first Spawn,
  * it should also activate if room is in decline and needs recovery. 
  */
-export class ClaimOperation extends Operation{
+export class ClaimOperation extends FlagOperation{
     public numCreeps: number = 1;
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: FlagOperationProto) {
         super(name, manager,entry);
         this.type = OPERATION.CLAIM;
         this.priority=29;
@@ -24,15 +25,17 @@ export class ClaimOperation extends Operation{
 
 
     public run() {
-        
-        this.validateCreeps();
-        const r = Game.rooms[this.data.room];
-        if(r != null){
-            this.cancelOp();
-            this.enqueueCreeps();
-            this.removeInvader();
-        }
         super.run();
+        if(this.flag != null && this.room != null){
+            this.validateCreeps();
+            const r = Game.rooms[this.data.room];
+            this.enqueueCreeps();
+            if(r != null){
+                this.cancelOp();
+                this.enqueueCreeps();
+                this.removeInvader();
+            }
+        }
     }
 
     public cancelOp(): void {
@@ -85,13 +88,13 @@ export class ClaimOperation extends Operation{
 
     public enqueueCreeps(): void {
         if(this.data.creeps.length < this.numCreeps){
-            const roomName = this.data.spawnRoom;
+            const roomName = this.room.name;
             if(roomName != null){
                 for( let i=this.data.creeps.length; i< this.numCreeps; i++){
                     const name = this.manager.empire.spawnMgr.enque({
                         room: roomName,
-                        body: undefined,
-                        memory: {role: "Claimer",targetRoom: this.data.room, op: this.name},
+                        body: [CLAIM,MOVE,MOVE,MOVE,MOVE,MOVE],
+                        memory: {role: "Claimer",targetRoom: this.data.flag == null ? this.data.remoteRoom : undefined, homeRoom: this.room.name, op: this.name,flag: this.data.flag},
                         pause: 0,
                         priority: 71,
                         rebuild: false});
@@ -100,7 +103,7 @@ export class ClaimOperation extends Operation{
             } else {
                 this.removeSelf();
             }
-        }
+        } 
     }
 
 
