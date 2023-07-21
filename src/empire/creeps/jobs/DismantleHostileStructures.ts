@@ -5,7 +5,7 @@ export class DismantleHostileStructures extends Attack {
     public static run(creep: Creep): void {
         super.run(creep);
         // RUN LOGIC 
-        const target: Structure | null= Game.getObjectById(creep.memory.targetId);
+        const target: Structure | null= <Structure> Game.getObjectById(creep.memory.targetId);
         // RUN CONDITIONS + HAS TARGET
         // JOB CANCEL CONDITIONS
         if((target == null)){

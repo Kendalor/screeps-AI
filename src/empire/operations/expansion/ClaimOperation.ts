@@ -1,8 +1,7 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Operation } from "../Operation";
-import { FlagOperation, FlagOperationProto } from "./FlagOperation";
+import { FlagOperation, FlagOperationProto } from "../Operations/FlagOperation";
 
 
 
@@ -30,7 +29,7 @@ export class ClaimOperation extends FlagOperation{
             this.validateCreeps();
             const r = Game.rooms[this.data.room];
             this.enqueueCreeps();
-            if(r != null){
+            if(this.remoteRoom){
                 this.cancelOp();
                 this.enqueueCreeps();
                 this.removeInvader();
@@ -39,9 +38,8 @@ export class ClaimOperation extends FlagOperation{
     }
 
     public cancelOp(): void {
-        const r = Game.rooms[this.data.room];
-        if( r != null && r.controller != null && r.controller.my) {
-            RoomMemoryUtil.setOwner(r);
+        if( this.remoteRoom && this.remoteRoom.controller != null && this.remoteRoom.controller.my) {
+            RoomMemoryUtil.setOwner(this.remoteRoom);
             this.removeSelf();
         }
         if(this.data.parent != null){
@@ -60,11 +58,10 @@ export class ClaimOperation extends FlagOperation{
     }
 
     public removeInvader(): void {
-        const r = Game.rooms[this.data.room];
-        if(r != null){
-            if(r.controller != null){
-                if(r.controller.reservation != null){
-                    if(r.controller.reservation.username !== 'Kendalor'){
+        if(this.remoteRoom){
+            if(this.remoteRoom.controller != null){
+                if(this.remoteRoom.controller.reservation != null){
+                    if(this.remoteRoom.controller.reservation.username !== 'Kendalor'){
                         this.checkKillInvaderOperation();
                     } 
                 }
@@ -94,7 +91,7 @@ export class ClaimOperation extends FlagOperation{
                     const name = this.manager.empire.spawnMgr.enque({
                         room: roomName,
                         body: [CLAIM,MOVE,MOVE,MOVE,MOVE,MOVE],
-                        memory: {role: "Claimer",targetRoom: this.data.flag == null ? this.data.remoteRoom : undefined, homeRoom: this.room.name, op: this.name,flag: this.data.flag},
+                        memory: {role: "Claimer",targetRoom: this.remoteRoomName, homeRoom: this.room.name, op: this.name,flag: this.data.flag},
                         pause: 0,
                         priority: 71,
                         rebuild: false});

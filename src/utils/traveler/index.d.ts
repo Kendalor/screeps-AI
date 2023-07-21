@@ -40,7 +40,7 @@ interface TravelToOptions {
 
 interface TravelData {
     state: any[];
-    path: string;
+    path?: string;
 }
 
 interface TravelState {

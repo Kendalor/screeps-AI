@@ -4,7 +4,7 @@ export class SupplyContainer extends Job {
 
     public static run(creep: Creep): void {
         super.run(creep);
-        const target: StructureContainer | null = Game.getObjectById(creep.memory.targetId);
+        const target: StructureContainer | null = Game.getObjectById<StructureContainer>(creep.memory.targetId);
         // CANCEL CONDITION
         if(creep.carry.energy === 0 || target === null ) {
             this.cancel(creep);

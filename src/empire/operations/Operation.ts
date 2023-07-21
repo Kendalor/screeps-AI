@@ -1,7 +1,5 @@
-import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION,  OperationData, OperationMemory } from "utils/constants";
 
-export interface OperationProto extends OperationMemory {
+export interface OperationProto extends IOperationMemory {
     data: OperationData;
 }
 
@@ -9,17 +7,17 @@ export interface BaseData {
     [id: string]: any;
 }
 
-export class Operation implements OperationMemory{
+export class Operation implements IOperationMemory, IOperation{
     public data: OperationData;
     public type: OPERATION;
     public priority: number;
-    public manager: OperationsManager;
+    public manager: IOperationsManager;
     public pause: number;
     public didRun: boolean;
     public name: string;
     public parent?: string;
 
-        constructor(name: string, manager: OperationsManager, entry: OperationProto){
+        constructor(name: string, manager: IOperationsManager, entry: OperationProto){
             this.manager = manager;
             this.data=entry.data;
             this.type=entry.type;
@@ -31,8 +29,16 @@ export class Operation implements OperationMemory{
                 this.parent = this.data.parent;
             }
         }
-    public toMemory(): OperationMemory {
-        return {type: this.type, priority:this.priority, pause: this.pause, data: this.data, parent: this.parent} as OperationMemory;
+    public toMemory(): IOperationMemory {
+        return {type: this.type, priority:this.priority, pause: this.pause, data: this.data, parent: this.parent} as IOperationMemory;
+    }
+
+    public init(): void {
+        return;
+    }
+
+    public destroy(): void {
+        return;
     }
 
     public run(): void {
@@ -40,28 +46,29 @@ export class Operation implements OperationMemory{
         this.didRun=true;
     }
 
-    public validateCreeps(): void {
-        if(this.data.creeps != null){
-            if(this.data.creeps.length > 0 ){
-                for(const name of this.data.creeps){
-                    // console.log("Validate Crepps: "+ name);
-                    if( Game.creeps[name] == null){
-                        if(!this.manager.empire.spawnMgr.containsEntry(name)) {
-                            console.log("Validate Crepps: "+ name + " removed");
-                            _.remove(this.data.creeps, (e) => e === name);
-                        }
-                    }
-                }
-            }
-        } else {
+    protected validateCreeps(): void {
+        if(!this.data.creeps){
             this.data.creeps = [];
         }
+        for(const name of this.data.creeps){
+            //console.log("Validate Crepps: "+ name);
+            if(!Game.creeps[name]){
+                //console.log("Creep: " + Game.creeps[name]);
+                if(!this.manager.empire.spawnMgr.containsEntry(name)) {
+                    //console.log("Validate Crepps: "+ name + " removed");
+                    _.remove(this.data.creeps, (e) => e === name);
+                }
+            }
+        }
+
+        
+            
     }
-    public removeSelf(): void {
+    protected removeSelf(): void {
         this.manager.dequeue(this.name);
     }
 
-    public checkParent(): void {
+    protected checkParent(): void {
         if(this.parent != null){
             if(!this.manager.entryExists(this.parent)){
                 console.log("Removed " + this.name + " with Type: " + this.type + " because missing Parent: " + this.parent);

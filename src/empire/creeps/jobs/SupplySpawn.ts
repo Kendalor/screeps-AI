@@ -3,7 +3,7 @@ import { Job } from "./Job";
 export class SupplySpawn extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
-        const target: StructureSpawn | null = Game.getObjectById(creep.memory.targetId);
+        const target: StructureSpawn | null = <StructureSpawn> Game.getObjectById(creep.memory.targetId);
         // CANCEL CONDITION
         if(creep.carry.energy === 0 || target === null || target === undefined ) {
             this.cancel(creep);

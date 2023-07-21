@@ -1,6 +1,6 @@
 
 
-export class SpawnEntry implements SpawnEntryMemory{
+export class SpawnEntry implements ISpawnEntryMemory{
     public memory: any;
     public rebuild: boolean;
     public room: string;
@@ -10,7 +10,7 @@ export class SpawnEntry implements SpawnEntryMemory{
     public toPos?: RoomPosition;
     public op: string;
     
-    constructor(data: SpawnEntryMemory){
+    constructor(data: ISpawnEntryMemory){
         this.memory = data.memory;
         this.rebuild = data.rebuild;
         this.room = data.room;
@@ -37,7 +37,7 @@ export class SpawnEntry implements SpawnEntryMemory{
             }
     }
 
-    public toMemory(): SpawnEntryMemory {
+    public toMemory(): ISpawnEntryMemory {
         return {memory: this.memory, rebuild: this.rebuild,room: this.room, pause: this.pause, priority: this.priority, body: this.body, toPos: this.toPos};
     }
 }

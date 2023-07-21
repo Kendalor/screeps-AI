@@ -1,23 +1,21 @@
 import { CreepManager } from "empire/CreepManager";
-import { EmpireMemory, OPERATION } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { EmpireStats } from "./EmpireStats";
-import { ColonizeOperation } from "./operations/Operations/ColonizeOperation";
+import { ColonizeOperation } from "./operations/expansion/ColonizeOperation";
 import { InitialRoomOperation } from "./operations/Operations/InitialBuildUpPhase/InitRoomOperation";
 import { OperationsManager } from "./OperationsManager";
 import { SpawnManager } from "./SpawnManager";
 
 
-export class EmpireManager  {
-    public opMgr: OperationsManager;
-    public creepMgr: CreepManager;
-    public spawnMgr: SpawnManager;
+export class EmpireManager implements IEmpireManager {
+    public opMgr: IOperationsManager;
+    public creepMgr: ICreepManager;
+    public spawnMgr: ISpawnManager;
     public stats: EmpireStats;
-    public data: any;
-    public memory: EmpireMemory;
+    private data: any;
+    private memory: IEmpireMemory;
     private baseOps: InitialRoomOperation[] | undefined;
     public memoryVersion: number = 4;
-    private colonizeRomms: {[name: string]: string | undefined} | undefined;
 
 
 
@@ -44,7 +42,9 @@ export class EmpireManager  {
 
     }
 
-
+    public build(): void {
+        // TODO
+    }
 
     public run(): void{
         this.spawnMgr.run();
@@ -52,25 +52,9 @@ export class EmpireManager  {
         this.opMgr.run();
         this.stats.run();
     }
-    
 
-    public getColonizeAbleRooms(): {[name: string]: string | undefined} {
-        if(this.colonizeRomms != null){
-            return this.colonizeRomms;
-        } else {
-            const rooms = RoomMemoryUtil.getColonizableRooms();
-            if(this.colonizeRomms == null){
-                this.colonizeRomms = {};
-            }
-            for(const e of rooms){
-                this.colonizeRomms[e] = undefined;
-            }
-            return this.colonizeRomms;
-        }
-    }
-
-    private canColonize(): boolean {
-        if(this.getBaseOps().length < Game.gcl.level && this.getBaseOps().length *2 + this.getColonizeOps.length *3 < Game.cpu.limit){
+    public canColonize(): boolean {
+        if(this.getBaseOps().length + this.getColonizeOps().length < Game.gcl.level && this.getBaseOps().length *2 + this.getColonizeOps.length *3 < Game.cpu.limit){
             return true;
         }
         return false;
@@ -81,8 +65,8 @@ export class EmpireManager  {
     }
 
 
-    public getBaseOps(): InitialRoomOperation[] {
-        let out = new Array<InitialRoomOperation>();
+    public getBaseOps(): IInitialRoomOperation[] {
+        let out = new Array<IInitialRoomOperation>();
         if(this.baseOps != null){
             return this.baseOps;
         } else {
@@ -111,7 +95,6 @@ export class EmpireManager  {
                 }
             }
         } else {
-            delete this.memory.myRooms;
             console.log("WTF, No BaseOperations Found in Memory, but myRooms is Initalized");
         }
         return out;

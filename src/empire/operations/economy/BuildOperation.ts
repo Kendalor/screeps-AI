@@ -1,6 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation, RoomOperationProto } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "../Operations/RoomOperation";
 
 
 
@@ -26,9 +25,10 @@ export class BuildOperation extends RoomOperation{
             const constrSites = r.find(FIND_CONSTRUCTION_SITES);
             this.validateCreeps();
             const currentBuilders = this.data.creeps.length;
+            const reqEn = _.sum(constrSites.map( c => c.progressTotal/10))
             if(constrSites.length > 0) {
                 if(r.storage != null){
-                    if(r.storage.store.energy > 150000){
+                    if(r.storage.store.energy > 50000+reqEn){
                         const numToSpawn: number = Math.max(0, Math.ceil(constrSites.length/5));
                         if(numToSpawn > currentBuilders){
                             for(let j=0; j< numToSpawn - (currentBuilders); j++){

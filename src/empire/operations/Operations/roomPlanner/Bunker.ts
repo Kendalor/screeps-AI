@@ -111,6 +111,21 @@ export class Bunker {
         return out;
     }
 
+    static walkablePixelsForRoom(roomName: string) {
+        const array = new Uint8Array(2500);
+        for (let x = 0; x < 50; ++x) {
+            for (let y = 0; y < 50; ++y) {
+                if (Game.map.getTerrainAt(x, y, roomName) !== 'wall') {
+                    array[x * 50 + y] = 1;
+                }
+                else {
+                    array[x * 50 + y] = 0;
+                }
+            }
+        }
+        return array;
+    }
+
     public testRoom(room: Room): boolean {
         if(room.controller != null){
             const numSources = room.find(FIND_SOURCES).length;

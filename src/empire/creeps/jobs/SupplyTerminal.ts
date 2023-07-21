@@ -3,7 +3,7 @@ import { Job } from "./Job";
 export class SupplyTerminal extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
-        const target: StructureTerminal | null = Game.getObjectById(creep.memory.targetId);
+        const target: StructureTerminal | null =  <StructureTerminal> Game.getObjectById(creep.memory.targetId);
         // CANCEL CONDITION
         if(creep.store.getUsedCapacity() === 0 || target == null) {
             this.cancel(creep);

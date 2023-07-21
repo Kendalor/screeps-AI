@@ -1,24 +1,26 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
 import { Operation } from "../Operation";
-import { InitialRoomOperation } from "./InitialBuildUpPhase/InitRoomOperation";
+import { InitialRoomOperation } from "../Operations/InitialBuildUpPhase/InitRoomOperation";
 
 export class FlagListener extends Operation {
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+
+
+    constructor(name: string, manager: OperationsManager, entry: IOperationMemory) {
         super(name, manager,entry);
         this.type = OPERATION.FLAGLISTENER;
         
     }
+
     public run() {
         super.run();
-        this.cleanFlagMemory();
         for(const key of Object.keys(Game.flags)) {
             const flag: Flag = Game.flags[key];
             if(flag.memory.op == null) {
                 this.spawnOp(flag);
             }
         }
+        this.cleanFlagMemory();
         this.removeSelf();
     }
 
@@ -71,15 +73,16 @@ export class FlagListener extends Operation {
         const nearestOp= this.findnearestBaseOp(flag,maxDistance,minEnergyAvailable);
         if(nearestOp != null){
             flag.memory.op = nearestOp.enqueRemoteOp(t,flag.pos.roomName,flag);
+            flag.memory.parent=nearestOp.name;
         } else {
             console.log("Could not find Fitting Room for Operation: " + t);
             flag.remove();
         }
     }
 
-    public findnearestBaseOp(flag: Flag, maxDistance = 5, minEnergyAvailable=0 ): InitialRoomOperation | undefined{
+    public findnearestBaseOp(flag: Flag, maxDistance = 5, minEnergyAvailable=0 ): IInitialRoomOperation | undefined{
         const baseOps = this.manager.getBaseOperations().filter(op => op.room.energyCapacityAvailable >= minEnergyAvailable && Game.map.getRoomLinearDistance(op.room.name, flag.pos.roomName) <= maxDistance).sort( (a,b) => Game.map.getRoomLinearDistance(a.room.name,flag.pos.roomName) - Game.map.getRoomLinearDistance(b.room.name,flag.pos.roomName));
-        console.log("Find nearest Room for Flag: " + flag.name);
+        console.log("Find nearest Room for Flag: " + flag.name + " In Room: " + flag.pos.roomName);
         console.log("In Order: " + JSON.stringify(baseOps.map(op => op.room.name)));
         return baseOps.shift();
     }

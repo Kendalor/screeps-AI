@@ -4,7 +4,7 @@ export class PickupContainer extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         // RUN CODE
-        const container: StructureContainer | null = Game.getObjectById(creep.memory.targetId);
+        const container: StructureContainer | null =  <StructureContainer> Game.getObjectById(creep.memory.targetId);
         if(container !== null && creep.store.getFreeCapacity() > 0){
             if (creep.pos.inRangeTo(container,1)){
                 // Grab Everything

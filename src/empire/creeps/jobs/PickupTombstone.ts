@@ -4,7 +4,7 @@ export class PickupTombstone extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         // RUN CODE
-        const tombstone: Tombstone | null = Game.getObjectById(creep.memory.targetId);
+        const tombstone: Tombstone | null =  <Tombstone> Game.getObjectById(creep.memory.targetId);
         if(tombstone != null && creep.store.getFreeCapacity() >0){
             if(tombstone.store.getUsedCapacity() > 0){
                 if (creep.pos.inRangeTo(tombstone,1)){

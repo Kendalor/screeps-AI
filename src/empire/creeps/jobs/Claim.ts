@@ -26,11 +26,10 @@ export class Claim extends Job {
     }
 
     public static getTargetId(creep: Creep): string | null {
+        console.log("GET TARGET CLAIM: " + creep.room.name);
         if(creep.room.controller != null){
-            if(creep.room.controller.my === false){
-                if(creep.room.controller.level === 0){
-                    return creep.room.controller.id;
-                }
+            if(!creep.room.controller.owner){
+                return creep.room.controller.id;
             }
         }
         return null;

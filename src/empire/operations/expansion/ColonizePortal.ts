@@ -1,9 +1,8 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Operation } from "../Operation";
-import { FlagOperation, FlagOperationProto } from "./FlagOperation";
-import { RemoteOperationProto } from "./RemoteOperation";
+import { FlagOperation, FlagOperationProto } from "../Operations/FlagOperation";
+import { RemoteOperationProto } from "../Operations/RemoteOperation";
 
 
 

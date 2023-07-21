@@ -1,6 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation, RoomOperationProto } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "../Operations/RoomOperation";
 
 
 /**

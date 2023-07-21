@@ -6,7 +6,7 @@ export class Build extends Job {
         super.run(creep);
         
         // RUN LOGIC 
-        const target: ConstructionSite | null = Game.getObjectById(creep.memory.targetId);
+        const target: ConstructionSite | null = <ConstructionSite> Game.getObjectById(creep.memory.targetId);
         // RUN CONDITIONS + HAS TARGET
         // JOB CANCEL CONDITIONS
 		if((target == null || creep.carry.energy === 0)){

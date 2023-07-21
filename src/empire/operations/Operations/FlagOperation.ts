@@ -1,5 +1,4 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OperationMemory } from "utils/constants";
 import { RemoteOperation, RemoteOperationData, RemoteOperationProto } from "./RemoteOperation";
 
 export interface FlagOperationProto extends RemoteOperationProto {
@@ -14,18 +13,49 @@ export interface FlagOperationData extends RemoteOperationData {
 
 export class FlagOperation extends RemoteOperation {
     public flag: Flag;
+    public targetRoomName: string;
     constructor(name: string, manager: OperationsManager, entry: FlagOperationProto) {
         super(name,manager,entry);
         this.flag = Game.flags[entry.data.flag];
+        this.targetRoomName = this.needsMoving() ? this.flag.memory. moveTo.roomName : this.flag.pos.roomName;
+        
+    }
+
+    private needsMoving(): boolean {
+        if(this.flag.memory.moveTo){
+            if(this.flag.memory.moveTo.roomName === this.flag.pos.roomName){
+                false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private moveFlag(): void {
+        if(Game.rooms[this.targetRoomName]){
+            if(this.flag.setPosition(new RoomPosition(this.flag.memory.moveTo.x, this.flag.memory.moveTo.y, this.targetRoomName)) == OK){
+                delete this.flag.memory.moveTo;
+            }
+        }
     }
 
     public run() {
-        if(this.flag == null){
+        if(!this.flag || !this.parentExists()){
             this.removeSelf();
+        }
+        console.log("This needs moving: " + this.needsMoving());
+        if(this.needsMoving()){
+            this.moveFlag();
         }
         super.run();
 
 
+    }
+    public parentExists(): boolean {
+        if(this.flag.memory.parent){
+            return this.manager.entryExists(this.flag.memory.parent);
+        }
+        return false;
     }
 
     public removeSelf(): void {

@@ -4,7 +4,7 @@ export class PickupTerminal extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         // RUN CODE
-        const container: StructureTerminal | null = Game.getObjectById(creep.memory.targetId);
+        const container: StructureTerminal | null = Game.getObjectById<StructureTerminal>(creep.memory.targetId);
         if(container !== null && creep.carry.energy < creep.carryCapacity){
             if (creep.pos.inRangeTo(container,1)){
                 if(container.store.energy >= creep.carryCapacity-creep.carry.energy ){

@@ -4,7 +4,7 @@ export class PickupDropped extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         // RUN CODE
-        const res: Resource | null = Game.getObjectById(creep.memory.targetId);
+        const res: Resource | null = <Resource>Game.getObjectById(creep.memory.targetId);
         if(res != null && creep.store.getFreeCapacity() > 0){
             if (creep.pos.inRangeTo(res,1)){
                 creep.pickup(res);

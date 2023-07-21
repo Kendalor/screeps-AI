@@ -1,11 +1,15 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { InitialRoomOperation } from "../InitialBuildUpPhase/InitRoomOperation";
 import { RoomOperation, RoomOperationProto } from "../RoomOperation";
 import { Base } from "./layouts/Base";
 
-
+const BUILDING_PRIORITY: { [key: string]: number} = {
+    "spawn": 100,
+    "tower": 90,
+    "extension": 80,
+    "road": -1
+};
 
 
 export class RoomPlannerOperation extends RoomOperation {
@@ -17,7 +21,7 @@ export class RoomPlannerOperation extends RoomOperation {
     public blocking: BuildEntry[] = new Array<BuildEntry>();
     private MAX_CONSTRUCTION_SITES = 1;
     private BUNKER_RADIUS = 6;
-    private DEFAULT_PAUSE_TIME = 50000;
+    private DEFAULT_PAUSE_TIME = 50;
     private buildingCostMatrix: null | CostMatrix = null;
 
 
@@ -43,10 +47,8 @@ export class RoomPlannerOperation extends RoomOperation {
         } else {
             this.anchor = null;
         }
-
-        
-
     }
+
     private initMemory():void {
         if(!RoomMemoryUtil.isBaseSet(this.room.name)){
             RoomMemoryUtil.setRoomMemory(this.room);
@@ -60,41 +62,46 @@ export class RoomPlannerOperation extends RoomOperation {
 
     public run(): void {
         super.run();
-        if(Game.cpu.bucket >= 3000){
-            console.log("Shard: " + Game.shard.name + " Room: " + this.room.name + " RoomPlanner");
-            if(Memory.rooms[this.data.roomName] == null || Memory.rooms[this.data.roomName]. base) {
-            if(Memory.rooms[this.data.roomName].base!.bunker !== false){
-                if(this.anchor != null) {
-                    this.validateInProgressList();
-    
-                    if(this.inProgress.length === 0) {
-                        console.log(this.leftToBuild.length);
-                        if(this.leftToBuild.length > 0){ 
-                            if(Game.time % 3000 === 0){
-                                this.updateProgress(this.generateCompleteList());
-                            }
-                            this.processLeftToBuild();
-                        } else {
-                            this.razeEverythingNotOnList();
-                            this.updateProgress(this.generateCompleteList());
-                            if(this.leftToBuild.length > 0){
-                                this.processLeftToBuild();
-                            } else if(this.blocking.length > 0) {
-                                this.removeBlocking();
-                            } else {
-                                this.pause = this.DEFAULT_PAUSE_TIME;
-                            }
-                        }
-                    }
-                    this.drawBase();
-                }
+        if(Game.cpu.bucket < 3000){
+            return;
+        }
+        //console.log("Shard: " + Game.shard.name + " Room: " + this.room.name + " RoomPlanner");
+        if( !Memory.rooms[this.data.roomName] || !Memory.rooms[this.data.roomName].base) {
+            return;
+        }
+        if( Memory.rooms[this.data.roomName].base!.bunker === false){
+            return
+        }
+        if(this.anchor === null) {
+            return;
+        }
+
+        this.validateInProgressList();
+
+        if(this.inProgress.length !== 0) {
+            this.pause = this.DEFAULT_PAUSE_TIME;
+            //console.log("This in Progress has size: " + this.inProgress.length);
+            return;
+        }
+        if(this.leftToBuild.length > 0){ 
+            if(Game.time % 3000 === 0){
+                this.updateProgress(this.generateCompleteList());
+            }
+            this.processLeftToBuild();
+        } else {
+            this.razeEverythingNotOnList();
+            this.updateProgress(this.generateCompleteList());
+            if(this.leftToBuild.length > 0){
+                this.processLeftToBuild();
+            } else if(this.blocking.length > 0) {
+                this.removeBlocking();
             } else {
                 this.pause = this.DEFAULT_PAUSE_TIME;
             }
-            }
-        } else {
-             // console.log("Skipped "+ this.name + " of type " + this.type + " for room: " + this.room.name + " becuase of current bucket");
         }
+        // TODO FIX
+        //this.drawBase();
+
 
         this.writeToMemory();
     }
@@ -141,18 +148,23 @@ export class RoomPlannerOperation extends RoomOperation {
             } 
         }
     }
+    private getBuildingPriority(type: string): number {
+        return BUILDING_PRIORITY[type] ? BUILDING_PRIORITY[type] : 0;
+    }
 
     private processLeftToBuild(): void {
         let counter =0;
         const tempList = new Array<BuildEntry>();
+        this.leftToBuild.sort( (a,b) => this.getBuildingPriority(a.type) - this.getBuildingPriority(b.type) ).reverse();
         for(const entry of this.leftToBuild){
+            console.log(this.name)
             if(this.inProgress.length < this.MAX_CONSTRUCTION_SITES){
-                if(this.room != null){
-                    const code = this.room.createConstructionSite(entry.x,entry.y,entry.type);
-                    if(code === OK){
-                        counter += 1;
-                        this.inProgress.push(entry);
-                    }
+                //console.log("CReating COnstructionSite Because: " + this.inProgress.length + " < " + this.MAX_CONSTRUCTION_SITES + " Counter: " + counter);
+                const code = this.room.createConstructionSite(entry.x,entry.y,entry.type);
+                //console.log("CODE: "+ code);
+                if(code == OK){
+                    counter += 1;
+                    this.inProgress.push(entry);
                 }
             } else {
                 tempList.push(entry);
@@ -291,100 +303,82 @@ export class RoomPlannerOperation extends RoomOperation {
 
 
     private updateProgress(completeList: Array<{x: number, y: number, type: BuildableStructureConstant}> ): void{
-        // console.log("Buildig List Test total length: " + completeList.length);
+        //console.log("Buildig List Test total length: " + completeList.length);
         this.alreadyBuild = new Array<BuildEntry>();
         this.leftToBuild = new Array<BuildEntry>();
         this.blocking = new Array<BuildEntry>();
-        if(this.room != null){
-            const room: Room = this.room;
-            if(room.controller != null){
-                const lvl: number = room.controller.level;
-                const structures: Structure[] = room.find(FIND_STRUCTURES);
-                for( const type  of Object.keys(CONTROLLER_STRUCTURES)){
-                    // console.log("Type: " + type);
-                    const leftToBuild = new Array<BuildEntry>();
-                    const alreadyBuild: BuildEntry[]= new Array<BuildEntry>();
-                    // Buildings Blocking the Construction of a Bunker Structure
-                    const blocking: BuildEntry[] = new Array<BuildEntry>();
-                    const maxAllowed = CONTROLLER_STRUCTURES[type as BuildableStructureConstant][lvl];
-                    const buildStructures = structures.filter( str => str.structureType === type);
-                    const temp = completeList.filter( entry => entry.type === type).slice(0,maxAllowed);
-                    // There Buildings To build for this Type and RCL allows to
-                    if( maxAllowed > 0 && temp.length > 0){
-                        // Go through  MAX number of Entries for the given type
-                        for( const entry of temp.slice(0,maxAllowed)){
-                            const lookResult = room.lookForAt(LOOK_STRUCTURES, entry.x,entry.y);
-                            if(this.isBuildEntryBuild(entry)){
-                                alreadyBuild.push(entry); // If a structure of the type at the pos is found => entry is already built
-                            }else if(this.isBuildEntryBlocked(entry)){
-                                const blocker = this.getBlockingForBuildEntry(entry);
-                                if(blocking !== undefined){
-                                    blocking.push({x: blocker!.pos.x, y: blocker!.pos.y, type: blocker!.structureType as BuildableStructureConstant} );
-                                }
-                            } else {
-                                // Found no Structures at the given Postion => Free to add entry to LeftToBuild
-                                if(leftToBuild.length < maxAllowed-buildStructures.length){
-                                    leftToBuild.push(entry);
-                                }
-                            }
-                        }
-                    }
-/*                         // Not all Structures are Currenty Build
-                        if(alreadyBuild.length !== temp.length ){
-                            // onsole.log("Already Build does not Equal the desired Amount");
-                            // Found buildings of the given type are not all in the correct Postion
-                            if( buildStructures.length !== alreadyBuild.length){
-                                // console.log("Found Structures  are not euqal to correcty Placed");
-                                if((temp.length - alreadyBuild.length) > (max - buildStructures.length) ){
-                                    // console.log("Number of not corretly placed buildings is larger than number of not placed Buildings");
-                                    // All Buildings Are in Wrong Position
-                                    if(alreadyBuild.length === 0){
-                                        // console.log("Correctly placed is equal to zero => therefore all found buildings are wrongly placed");
-                                        for( const building of buildStructures){
-                                            wrongPosition.push({x: building.pos.x, y: building.pos.y, type: building.structureType as BuildableStructureConstant});
-                                        }
-                                    } else {
-                                        // Expensive Filtering Define which BUildings are in Wrong Positions
-                                        // console.log("Finding wrongly placed Structures");
-                                        for( const building of buildStructures){
-                                            const bPos = {x: building.pos.x, y: building.pos.y, type: building.structureType as BuildableStructureConstant};
-                                            // console.log(" is Structure at x: " + bPos.x +" y: "+ bPos.y + " correctly Placed ?");
-                                            let found = false;
-                                            for( const alreadyBuildEntry of alreadyBuild){
-                                                if(!found && alreadyBuildEntry.x === bPos.x && alreadyBuildEntry.y === bPos.y && alreadyBuildEntry.type === bPos.type){
-                                                    found = true;
-                                                }
-                                            }
-                                            if(!found){
-                                                // console.log("No, added to wrongPositionlist");
-                                                wrongPosition.push(bPos);
-                                            }
-                                        }
-                                    }
-                                } 
-                            } 
-                        }
-                    } */
-                    this.alreadyBuild = this.alreadyBuild.concat(alreadyBuild);
-                    this.leftToBuild = this.leftToBuild.concat(leftToBuild);
-                    this.blocking = this.blocking.concat(blocking);
-                }
-
-            }
-
+        if(!this.room){
+            return;
         }
-        console.log("Updating RoomPlanner Status: " + this.room.name);
-        console.log( " already Build Length: " + this.alreadyBuild.length);
-       console.log(" left2Build length: " + this.leftToBuild.length);
-        console.log(" Blocking length: : " + this.blocking.length);
-        console.log("Sum Check: " + completeList.length +  " VS " + (this.alreadyBuild.length + this.leftToBuild.length  + this.blocking.length ))
+        const room: Room = this.room;
+        if(!room.controller){
+            return;
+        }
+        if(!room.controller.level){
+            return;
+        }
+        const lvl: number = room.controller.level;
+        const structures: Structure[] = room.find(FIND_STRUCTURES);
+
+        for( const type  of Object.keys(CONTROLLER_STRUCTURES)){
+            //console.log("Type: " + type);
+            const leftToBuild = new Array<BuildEntry>();
+            const alreadyBuild: BuildEntry[]= new Array<BuildEntry>();
+            // Buildings Blocking the Construction of a Bunker Structure
+            const blocking: BuildEntry[] = new Array<BuildEntry>();
+            const maxAllowed = CONTROLLER_STRUCTURES[type as BuildableStructureConstant][lvl];
+            const buildStructures = structures.filter( str => str.structureType === type);
+            const temp = completeList.filter( entry => entry.type === type).slice(0,maxAllowed);
+            // Are There Buildings To build for this Type and RCL allows to
+            if( !(maxAllowed > 0 && temp.length > 0)){
+                continue;
+            }
+            // Go through  MAX number of Entries for the given type
+            for( const entry of temp.slice(0,maxAllowed)){
+                const lookResult = room.lookForAt(LOOK_STRUCTURES, entry.x,entry.y);
+                if(this.isBuildEntryBuild(entry)){
+                    alreadyBuild.push(entry); // If a structure of the type at the pos is found => entry is already built
+                }else if(this.isBuildEntryBlocked(entry)){
+                    const blocker = this.getBlockingForBuildEntry(entry);
+                    if(blocking !== undefined){
+                        blocking.push({x: blocker!.pos.x, y: blocker!.pos.y, type: blocker!.structureType as BuildableStructureConstant} );
+                    }
+                } else {
+                    // Found no Structures at the given Postion => Free to add entry to LeftToBuild
+                    if(leftToBuild.length < maxAllowed-buildStructures.length){
+                        leftToBuild.push(entry);
+                    }
+                }
+            }
+            
+
+            this.alreadyBuild = this.alreadyBuild.concat(alreadyBuild);
+            this.leftToBuild = this.leftToBuild.concat(leftToBuild);
+            this.blocking = this.blocking.concat(blocking);
+        }
+
+                
+
+            
+
+        
+        //console.log("Updating RoomPlanner Status: " + this.room.name);
+        //console.log( " already Build Length: " + this.alreadyBuild.length);
+        //console.log("In Progress: " + this.inProgress);
+        //console.log(" left2Build length: " + this.leftToBuild.length);
+        //console.log(" Blocking length: : " + this.blocking.length);
+        //console.log("Sum Check: " + completeList.length +  " VS " + (this.alreadyBuild.length + this.leftToBuild.length  + this.blocking.length ))
 
     }
 
     private razeEverythingNotOnList(): void {
         const out: BuildEntry[] = new Array<BuildEntry>();
         const entries = this.generateCompleteList();
-        const buildings = this.room.find(FIND_STRUCTURES);
+        let buildings = this.room.find(FIND_STRUCTURES);
+        // Start criteria: Only 1 spawn manually placed remove it from to raze buildings
+        if(buildings.filter( build => build.structureType === STRUCTURE_SPAWN).length === 1){
+            buildings = buildings.filter( build => build.structureType !== STRUCTURE_SPAWN);
+        }
         for(const b of buildings){
             if(!(entries.filter( e => e.x === b.pos.x && e.y === b.pos.y && e.type === b.structureType).length > 0)){
                 b.destroy();

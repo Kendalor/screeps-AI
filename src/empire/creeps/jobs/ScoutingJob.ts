@@ -1,4 +1,4 @@
-import { OperationScoutingManager } from "empire/operations/Operations/OperationScoutingManager";
+import { OperationScoutingManager } from "empire/operations/static/OperationScoutingManager";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Job } from "./Job";
 
@@ -8,7 +8,7 @@ export class ScoutingJob extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
 
-        const op =global.empire.opMgr.getEntryByName<OperationScoutingManager>(creep.memory.op);
+        const op =Empire.opMgr.getEntryByName<OperationScoutingManager>(creep.memory.op);
         if(op != null){
             if(creep.memory.targetRoom != null){ // RoomName
                 if(creep.room.name !== creep.memory.targetRoom){
@@ -20,7 +20,7 @@ export class ScoutingJob extends Job {
                         }
                     }
                     
-                    const code =creep.travelTo(new RoomPosition( 25,25,creep.memory.targetRoom), {range: 15});
+                    const code =creep.travelTo(new RoomPosition( 25,25,creep.memory.targetRoom), {range: 15, useFindRoute: true});
                     if(creep.memory.antistuck == null){
                         creep.memory.antistuck = { target: "", counter: 0};
                     } else {
@@ -64,7 +64,7 @@ export class ScoutingJob extends Job {
                 }
             } else {
                 creep.memory.targetRoom = op.getNearestTodo(creep.room.name);
-                console.log("Scout: " + creep.name + " got new Target with Distance: " + Game.map.getRoomLinearDistance(creep.room.name, creep.memory.targetRoom));
+                //console.log("Scout: " + creep.name + " got new Target "+ creep.memory.targetRoom +" with Distance: " + Game.map.getRoomLinearDistance(creep.room.name, creep.memory.targetRoom));
             }
         }
     }

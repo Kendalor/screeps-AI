@@ -4,7 +4,7 @@ export class PickupExtension extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         // RUN CODE
-        const container: StructureExtension | null = Game.getObjectById(creep.memory.targetId);
+        const container: StructureExtension | null = Game.getObjectById<StructureExtension>(creep.memory.targetId);
         if(container !== null && creep.carry.energy < creep.carryCapacity){
             if (creep.pos.inRangeTo(container,1)){
                 if(container.energy === container.energyCapacity ){

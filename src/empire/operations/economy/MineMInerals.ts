@@ -1,8 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { InitialRoomOperation } from "./InitialBuildUpPhase/InitRoomOperation";
-
-import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation, RoomOperationProto } from "./RoomOperation";
+import { InitialRoomOperation } from "../Operations/InitialBuildUpPhase/InitRoomOperation";
+import { RoomOperation, RoomOperationProto } from "../Operations/RoomOperation";
 
 
 
@@ -17,6 +15,9 @@ export class OperationMineMinerals extends RoomOperation{
 
     public run() {
         super.run()
+        if(this.pauseBecauseToMuchMinerals()){
+           return;
+        }
         this.enqueueCreeps();
 
     }
@@ -25,29 +26,67 @@ export class OperationMineMinerals extends RoomOperation{
         return this.room.find(FIND_MINERALS).filter( m => m.mineralAmount > 0);
     }
 
+    private pauseBecauseToMuchMinerals(): boolean{
+        const structs =  this.room.find(FIND_MY_STRUCTURES)
+        .filter( s => s.structureType === STRUCTURE_STORAGE || s.structureType === STRUCTURE_TERMINAL)
+        .map( s => {
+            if( s.structureType === STRUCTURE_STORAGE){
+                return s.store.getFreeCapacity()/STORAGE_CAPACITY;
+            } 
+            if(s.structureType === STRUCTURE_TERMINAL){
+                return s.store.getFreeCapacity()/TERMINAL_CAPACITY;
+            }
+            return 0;
+        });
+        for(const a of structs){
+            if(a < 0.5 ){
+                console.log("Free Cap Room: "+ this.room.name + ": "+ a);
+                return false;
+            }
+        }
+
+        if(structs.length  == 0){
+            return true;
+        }
+
+        return true;
+    }
+
     private setCreepsLength(): void {
         this.data.maxCreeps=0;
-        if(this.room.controller != null){
-            if(this.room.controller.level >= 6){
-                const minerals = this.getActiveMinerals();
-                if(minerals.length > 0){
-                    const extractor = this.room.find(FIND_STRUCTURES).filter( str => str.structureType === STRUCTURE_EXTRACTOR).pop();
-                    if(extractor != null){
-                        const container =  extractor.pos.findInRange(FIND_STRUCTURES,1).filter(str => str.structureType === STRUCTURE_CONTAINER).pop();
-                        if(container != null){
-                            this.data.maxCreeps = 1;
-                        }
-                    }
-                } else {
-                    const min = this.room.find(FIND_MINERALS).pop();
-                    if (min != null){
-                        if(min.ticksToRegeneration > 0){
-                            this.pause = min.ticksToRegeneration;
-                        }
-                    }
+        if(!this.room.controller){
+            return;
+        }
+        if( this.room.controller.level <6 ){
+            return;
+        }
+        if(!this.room.storage){
+            return;
+        }
+        if(!this.room.storage){
+            return;
+        }
+
+
+        const minerals = this.getActiveMinerals();
+        if(minerals.length > 0){
+            const extractor = this.room.find(FIND_STRUCTURES).filter( str => str.structureType === STRUCTURE_EXTRACTOR).pop();
+            if(extractor != null){
+                const container =  extractor.pos.findInRange(FIND_STRUCTURES,1).filter(str => str.structureType === STRUCTURE_CONTAINER).pop();
+                if(container != null){
+                    this.data.maxCreeps = 1;
+                }
+            }
+        } else {
+            const min = this.room.find(FIND_MINERALS).pop();
+            if (min != null && min != undefined){
+                if(min.ticksToRegeneration && min.ticksToRegeneration > 0){
+                    this.pause = min.ticksToRegeneration;
                 }
             }
         }
+
+
 
     }
 

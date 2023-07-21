@@ -1,6 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
-import { FlagOperation, FlagOperationProto } from "./FlagOperation";
+import { FlagOperation, FlagOperationProto } from "../Operations/FlagOperation";
 
 
 export class RemoteMiningOperation extends FlagOperation {

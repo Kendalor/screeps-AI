@@ -1,3 +1,4 @@
+import { DoNotBlockStuff } from "../jobs/DoNotBlockStuff";
 import { LogisticJob } from "../jobs/LogisticJob";
 import { CreepRole } from "./CreepRole";
 
@@ -8,7 +9,8 @@ export class Logistic extends CreepRole {
     
 	// ORDER OF ENTRIES  === PRIORITY
 	public jobs: {[name: string]: any} = {
-        "LogisticJob": LogisticJob};
+        "LogisticJob": LogisticJob,
+        "DoNotBlockStuff": DoNotBlockStuff};
 	
     constructor(creep: Creep) {
         super(creep);

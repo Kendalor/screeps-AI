@@ -1,18 +1,16 @@
-import { OPERATION, OperationMemory } from "utils/constants";
 import { opFactory } from "utils/operationFactory";
 import { EmpireManager } from "./EmpireManager";
-import { Operation } from "./operations/Operation";
 import { InitialRoomOperation } from "./operations/Operations/InitialBuildUpPhase/InitRoomOperation";
 
 
 
 
 
-export class OperationsManager {
+export class OperationsManager implements IOperationsManager {
 
 	public empire: EmpireManager;
-	public operations: {[id: string]: Operation} = {};
-	public operationsTodo: Array<[string, Operation]> = new Array<[string, Operation]>();
+	private operations: {[id: string]: IOperation} = {};
+	private operationsTodo: Array<[string, IOperation]> = new Array<[string, IOperation]>();
 
     constructor(emp: EmpireManager) {
 		this.empire=emp;
@@ -34,10 +32,8 @@ export class OperationsManager {
 
 
 		let counter =0;
-		
 		while( this.hasNextOperation()) {
 				this.runNextOperation();
-
 			counter = counter +1;
 		}
 
@@ -52,7 +48,7 @@ export class OperationsManager {
 		this.saveOperationList();
 	}
 
-	public getOperationsOfType<T extends Operation>(type: OPERATION): T[]{
+	public getOperationsOfType<T extends IOperation>(type: OPERATION): T[]{
 		const out = new Array<T>();
 		for(const op of Object.keys(this.operations)){
 			if(this.operations[op].type === type){
@@ -71,13 +67,20 @@ export class OperationsManager {
 	/**
 	 * Run the next runable RoomOperation in the operations List with the highest Priority
 	 */
-    public runNextOperation(): void {
+    private runNextOperation(): void {
 		const op = this.getNextOperation();
 		if( op !== undefined ) {
 			if(Game.cpu.getUsed() < Game.cpu.tickLimit *0.8) {
 				const time = Game.cpu.getUsed();
-				op.run();
-				this.empire.stats.addOp( Game.cpu.getUsed() - time, op.type);
+				try{
+					op.run();
+					this.empire.stats.addOp( Game.cpu.getUsed() - time, op.type);
+				} catch(error){
+					op.didRun=true;
+					console.log("Failed to Run Op: " + op.name + " with parse: " + JSON.stringify(op.data));
+					console.log(JSON.stringify(error));
+				}
+
 			} else {
 				console.log("Skipped OP because empty Bucket");
 			}
@@ -87,7 +90,12 @@ export class OperationsManager {
 		}
 	}
 
-	public getNextOperation(): Operation | undefined {
+
+	public getOpCount(): number {
+		return Object.keys(this.operations).length;
+	}
+
+	private getNextOperation(): IOperation | undefined {
 		if(this.hasNextOperation()){
 			const temp = this.operationsTodo.pop();
 			if( temp != null ){
@@ -99,14 +107,14 @@ export class OperationsManager {
 			return undefined;
 		}
 	}
-	public hasNextOperation(): boolean {
+	private hasNextOperation(): boolean {
 		return this.operationsTodo.length > 0;
 	}
 
 	/**
  	* Load Operations from Memory
 	 */
-    public loadOperationList(): void {
+    private loadOperationList(): void {
 		
 		this.operations = {};
 		if(Memory.empire.operations == null){
@@ -114,7 +122,7 @@ export class OperationsManager {
 		}
         for(const i of Object.keys(Memory.empire.operations)) {
 			try {
-				const op = opFactory(i, this, Memory.empire.operations[i] as OperationMemory);
+				const op = opFactory(i, this, Memory.empire.operations[i] as IOperationMemory);
 				if(op != null){
 					this.operations[i]= op;
 				} else {
@@ -134,19 +142,19 @@ export class OperationsManager {
     /**
      * Save Operations to Memory
      */
-    public saveOperationList(): void {
+    private saveOperationList(): void {
 		Memory.empire.operations = {};
 		global.logger.debug("Saving Operations List of Lengh: " + Object.keys(this.operations).length);
         for(const key of Object.keys(this.operations)) {
 			if(this.operations[key].pause > 0){
 				this.operations[key].pause = this.operations[key].pause -1;
 			}
-			Memory.empire.operations[key] = this.operations[key].toMemory() as OperationMemory;
+			Memory.empire.operations[key] = this.operations[key].toMemory() as IOperationMemory;
 		}
 		global.logger.debug("Saved Operations: " + Object.keys(Memory.empire.operations).length);
 	}
 
-	public generateName(): string {
+	private generateName(): string {
         return Math.random().toString(36).substr(8);
     }
 
@@ -155,9 +163,9 @@ export class OperationsManager {
      * push a new RoomOperation into the operations List of the RoomManager
      * @param entry RoomOperation
      */
-    public enque(entry: OperationMemory){
+    public enque(entry: IOperationMemory){
 		const name = this.generateName();
-		const op = opFactory(name, this, entry as OperationMemory);
+		const op = opFactory(name, this, entry as IOperationMemory);
 		if( op !== undefined){
 			this.operations[name]=op;
 		}
@@ -169,11 +177,11 @@ export class OperationsManager {
      * @param entry RoomOperationMemoryInterface
      */
 
-	public entryExists(name: string ){
+	public entryExists(name: string ): boolean{
 		return this.operations[name] != null;
 	}
 
-	public getEntryByName<T extends Operation>(name: string): T | null {
+	public getEntryByName<T extends IOperation>(name: string): T | null {
 		if(this.entryExists(name)){
 			return this.operations[name] as T;
 		} else {

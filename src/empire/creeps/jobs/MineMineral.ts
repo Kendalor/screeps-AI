@@ -4,7 +4,7 @@ export class MineMineral extends Job {
 
     public static run(creep: Creep): void {
         if(creep.memory.containerId != null ){
-            const container: StructureContainer | null = Game.getObjectById(creep.memory.containerId);
+            const container: StructureContainer | null = Game.getObjectById<StructureContainer>(creep.memory.containerId);
             if(container != null ){
                 if(creep.pos.inRangeTo(container,0)) {
                     const extractor = Game.getObjectById<StructureExtractor>(creep.memory.extractorId);
@@ -33,7 +33,7 @@ export class MineMineral extends Job {
 
     public static runCondition(creep: Creep): boolean {
         if(creep.memory.containerId != null){
-            const container: StructureContainer | null = Game.getObjectById(creep.memory.containerId);
+            const container: StructureContainer | null = Game.getObjectById<StructureContainer>(creep.memory.containerId);
             if(container != null){
                 return true;
             } 

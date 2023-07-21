@@ -4,6 +4,7 @@
     "lib": ["esnext"],
     "target": "es2017",
     "moduleResolution": "Node",
+    "esModuleInterop": true,
     "outDir": "dist",
     "baseUrl": "src/",
     "sourceMap": true,
@@ -11,9 +12,10 @@
     "experimentalDecorators": true,
     "noImplicitReturns": true,
     "allowSyntheticDefaultImports": true,
-    "allowUnreachableCode": false,
+    "allowUnreachableCode": true,
     "allowJs": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "allowUmdGlobalAccess": true
   },
   "exclude": [
     "node_modules",

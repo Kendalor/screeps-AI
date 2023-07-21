@@ -3,7 +3,7 @@ import { Job } from "./Job";
 export class SupplyExtension extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
-        const target: StructureExtension | null = Game.getObjectById(creep.memory.targetId);
+        const target: StructureExtension | null =  <StructureExtension> Game.getObjectById(creep.memory.targetId);
         // CANCEL CONDITION
         if(creep.carry.energy === 0 || target === null || target === undefined ) {
             this.cancel(creep);

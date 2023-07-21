@@ -1,6 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation, RoomOperationProto } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "../Operations/RoomOperation";
 
 
 interface LogisticTask {
@@ -33,6 +32,9 @@ export class RoomLogisticsOperation extends RoomOperation{
     public run() {
         super.run();
         const r: Room = this.room;
+        if(r.controller!.level < 5){
+            return;
+        }
         this.manageCreeps();
         this.processLinks();
 
@@ -42,38 +44,44 @@ export class RoomLogisticsOperation extends RoomOperation{
         let storageLink;
         let controllerLink;
         let sourceLinks;
-        if(this.room.storage != null){
-            if(this.room.controller != null){
-                if(this.room.controller.level >= 4){
-                    storageLink = this.getStorageLink();
-                    controllerLink = this.getControllerLink();
-                    if(this.room.controller.level >= 7){
-                        sourceLinks = this.getSourceLinks();
-                    }
-                    const providerLinks = new Array<StructureLink>();
-                    const consumerLinks = new Array<StructureLink>();
-                    if(storageLink != null){
-                        providerLinks.push(storageLink);
-                        consumerLinks.push(storageLink);
-                    }
-                    if(controllerLink != null){
-                        consumerLinks.push(controllerLink);
-                    }
-                    if(sourceLinks != null && sourceLinks.length > 0){
-                        for(const s of sourceLinks){
-                            providerLinks.push(s);
-                        }
-                    }
-                    const transferFrom = this.getLinksThatsNeedsTransferFrom(providerLinks);
-                    if(transferFrom != null){
-                        const transferTo = this.getLinksThatsCanTransferTo(consumerLinks);
-                        if(transferTo != null){
-                            transferFrom.transferEnergy(transferTo);
-                        }
-                    }
-                }
+        if(this.room.storage == null){
+            return;
+        }
+        if(this.room.controller == null){
+            return;
+        }
+        if(this.room.controller.level < 5){
+            return;
+        }
+        storageLink = this.getStorageLink();
+        controllerLink = this.getControllerLink();
+        if(this.room.controller.level >= 7){
+            sourceLinks = this.getSourceLinks();
+        }
+        const providerLinks = new Array<StructureLink>();
+        const consumerLinks = new Array<StructureLink>();
+        if(storageLink != null){
+            providerLinks.push(storageLink);
+            consumerLinks.push(storageLink);
+        }
+        if(controllerLink != null){
+            consumerLinks.push(controllerLink);
+        }
+        if(sourceLinks != null && sourceLinks.length > 0){
+            for(const s of sourceLinks){
+                providerLinks.push(s);
             }
         }
+        const transferFrom = this.getLinksThatsNeedsTransferFrom(providerLinks);
+        if(transferFrom != null){
+            const transferTo = this.getLinksThatsCanTransferTo(consumerLinks);
+            if(transferTo != null){
+                transferFrom.transferEnergy(transferTo);
+            }
+        }
+        
+        
+        
     }
 
 
@@ -84,7 +92,7 @@ export class RoomLogisticsOperation extends RoomOperation{
         const allLinks = new Array<StructureLink>();
         if(this.room.storage != null){
             if(this.room.controller != null){
-                if(this.room.controller.level >= 4){
+                if(this.room.controller.level >= 5){
                     storageLink = this.getStorageLink();
                     controllerLink = this.getControllerLink();
                     if(this.room.controller.level >= 7){
@@ -292,7 +300,7 @@ export class RoomLogisticsOperation extends RoomOperation{
 
     }
 
-    private enqueCreep(entry: SpawnEntryMemory): void {
+    private enqueCreep(entry: ISpawnEntryMemory): void {
         const body = [CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE] as BodyPartConstant[];
         const name = this.manager.empire.spawnMgr.enque(entry);
             this.data.creeps.push(name);

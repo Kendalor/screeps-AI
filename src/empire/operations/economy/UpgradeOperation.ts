@@ -1,8 +1,7 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
-import { InitialRoomOperation } from "./InitialBuildUpPhase/InitRoomOperation";
-import { RoomOperation, RoomOperationProto } from "./RoomOperation";
-import { RoomPlannerOperation } from "./roomPlanner/RoomPlannerOperation";
+import { InitialRoomOperation } from "../Operations/InitialBuildUpPhase/InitRoomOperation";
+import { RoomOperation, RoomOperationProto } from "../Operations/RoomOperation";
+import { RoomPlannerOperation } from "../Operations/roomPlanner/RoomPlannerOperation";
 
 
 export class UpgradeOperation extends RoomOperation{
@@ -22,31 +21,33 @@ export class UpgradeOperation extends RoomOperation{
 
 
         const r: Room = this.room;
-        if(r != null){
-            if( r.storage != null ){
-
-                this.validateCreeps();
-                const currentUpgraders = this.data.creeps.length;
-
-
-
-                const numToSpawn = this.getMaxUpgraders(r);
-
-                if(numToSpawn > currentUpgraders){
-                    for(let j=currentUpgraders; j< numToSpawn ; j++){
-                        const name = this.manager.empire.spawnMgr.enque({
-                            room: r.name,
-                            memory: {role: "Upgrader", op: this.name},
-                            pause: 0,
-                            body: undefined,
-                            priority: 50,
-                            rebuild: false});
-                        this.data.creeps.push(name);
-                    }
-                }
-            }
+        if(r == null){
+            return;
+        }
+        if( r.storage == null ){
+            return;
         }
 
+        this.validateCreeps();
+        const currentUpgraders = this.data.creeps.length;
+
+
+
+        const numToSpawn = this.getMaxUpgraders(r);
+        //console.log("Upgrader: NumtoSpawn " + numToSpawn);
+        //console.log("CUrrent Upgraders: " + currentUpgraders);
+        if(numToSpawn > currentUpgraders){
+            for(let j=currentUpgraders; j< numToSpawn ; j++){
+                const name = this.manager.empire.spawnMgr.enque({
+                    room: r.name,
+                    memory: {role: "Upgrader", op: this.name},
+                    pause: 0,
+                    body: undefined,
+                    priority: 50,
+                    rebuild: false});
+                this.data.creeps.push(name);
+            }
+        }
 
     }
 
@@ -93,28 +94,33 @@ export class UpgradeOperation extends RoomOperation{
 
 
     public getMaxUpgraders(r: Room): number {
-        if(r.controller != null){
-            if(r.controller.my != null){
-                if(r.controller.level === 8){
-                    if(r.storage != null && r.storage!.store.energy > 250000){
-                        return 1;
-                    } else {
-                        return 0;
-                    }
-                } else {
-                    if(r.storage != null){
-                        if(r.controller.ticksToDowngrade <= 5000){
-                            return 1;
-                        } else {
-                            if(r.controller.ticksToDowngrade <= 5000){
-                                return 1;
-                            }
-                        }
-                        return Math.min(4, Math.max(0, Math.floor((r.storage.store.energy - 100000)/40000)));
-                    }
-                }
+        if(!r.controller){
+            return 0;
+        }
+
+        if(!r.controller.my){
+            return 0;
+        }
+        if(r.controller.level === 8){
+            if(r.storage != null && r.storage!.store.energy > 250000){
+                return 1;
+            } else {
+                return 0;
             }
         }
+        if(r.storage != null){
+            if(r.controller.ticksToDowngrade <= 5000){
+                return 1;
+            } else {
+                if(r.controller.ticksToDowngrade <= 5000){
+                    return 1;
+                }
+            }
+            return Math.min(4, Math.max(0, Math.floor((r.storage.store.energy - 100000)/40000)));
+        }
+        
+            
+        
         return 0;
     }
 }

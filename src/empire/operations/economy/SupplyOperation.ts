@@ -1,6 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation, RoomOperationProto } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "../Operations/RoomOperation";
 
 
 
@@ -28,6 +27,7 @@ export default class SupplyOperation extends RoomOperation{
         if(r != null){
             this.validateCreeps();
             this.defineMaxSupply();
+            //console.log(" Supp op : " + this.data.creeps.length + " " + this.data.maxSupply);
             if(this.data.creeps.length < this.data.maxSupply ){
                 const name = this.manager.empire.spawnMgr.enque({
                     room: r.name,

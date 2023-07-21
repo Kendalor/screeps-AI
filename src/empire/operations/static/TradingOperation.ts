@@ -1,5 +1,4 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
 import { Operation } from "../Operation";
 
 
@@ -14,7 +13,7 @@ import { Operation } from "../Operation";
 export class TradingOperation extends Operation{
 
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: IOperationMemory) {
         super(name, manager,entry);
         this.type = OPERATION.TRADING;
         if(this.data.todo == null){

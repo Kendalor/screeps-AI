@@ -10,7 +10,7 @@ export class PickupNearest extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         // RUN CODE
-        const container: PickupStructure | null = Game.getObjectById(creep.memory.targetId);
+        const container: PickupStructure | null =  <PickupStructure> Game.getObjectById(creep.memory.targetId);
         if( container != null){
             if( creep.carry.energy < creep.carryCapacity){
                 if(container.store != null){
@@ -43,7 +43,6 @@ export class PickupNearest extends Job {
 
     private static allowedStructure(str: Structure): boolean {
         if( str.structureType === STRUCTURE_CONTAINER  ||
-            str.structureType === STRUCTURE_EXTENSION ||
             str.structureType === STRUCTURE_LINK ||
             str.structureType === STRUCTURE_STORAGE ||
             str.structureType === STRUCTURE_TERMINAL ||

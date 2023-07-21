@@ -5,7 +5,7 @@ export class GoFlagRoom extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         const target = Game.flags[creep.memory.targetId];
-        console.log(" Creep: " + creep.name + " in Room: "+ creep.room.name);
+        //console.log(" Creep: " + creep.name + " in Room: "+ creep.room.name);
         if(target != null){
             const targetPos = Game.flags[creep.memory.targetId].pos;
             const room = target.room;
@@ -30,10 +30,10 @@ export class GoFlagRoom extends Job {
                     }
                 }
             }
-            if(creep.pos.inRangeTo(targetPos,0)){
+            if(creep.pos.inRangeTo(targetPos,15)){
                 this.cancel(creep);
             } else {
-                creep.travelTo(targetPos);
+                creep.travelTo(targetPos,{range: 15, useFindRoute: true});
             }
         } else {
             this.cancel(creep);
@@ -45,7 +45,8 @@ export class GoFlagRoom extends Job {
     public static runCondition(creep: Creep): boolean {
         if(creep.memory.flag != null){
             const flag = Game.flags[creep.memory.flag];
-            if(flag != null){
+            //console.log("Creep Runcondition");
+            if(flag != null && creep.pos.roomName !== flag.pos.roomName){
                 return true;
             }
         }

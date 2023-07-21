@@ -10,8 +10,8 @@
   "dev": {
     "token": "",
     "protocol": "https",
-    "hostname": "screeps.com",
-    "port": 443,
+    "hostname": "kelwar.de",
+    "port": 21025,
     "path": "/",
     "branch": "dev"
   },

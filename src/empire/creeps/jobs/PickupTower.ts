@@ -4,7 +4,7 @@ export class PickupTower extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
         // RUN CODE
-        const container: StructureTower | null = Game.getObjectById(creep.memory.targetId);
+        const container: StructureTower | null = Game.getObjectById<StructureTower>(creep.memory.targetId);
         if(container !== null && creep.carry.energy < creep.carryCapacity){
             if (creep.pos.inRangeTo(container,1)){
                 if(container.energy >= 200 ){

@@ -26,11 +26,11 @@ import { SpawnEntry} from "./spawn/SpawnEntry";
  * 
  */
 
-export class SpawnManager {
-    public availableSpawns: StructureSpawn[] = [];
+export class SpawnManager implements ISpawnManager{
+    private availableSpawns: StructureSpawn[] = [];
     public empire: EmpireManager;
-    public toSpawnList: {[name: string]: SpawnEntry} = {};
-    public roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize, Hauler,RemoveInvader, MineralMiner, HaulDeposit,MineDeposit, Healer };
+    private toSpawnList: {[name: string]: SpawnEntry} = {};
+    private roles: any = {Logistic, Maintenance, Miner, Upgrader, Supply, Builder, Repairer, Attacker, Claimer, Colonize, Hauler,RemoveInvader, MineralMiner, HaulDeposit,MineDeposit, Healer };
 
 
     constructor(empire: EmpireManager) {
@@ -63,24 +63,24 @@ export class SpawnManager {
      */
     public run(){
         const toSpawn = Object.entries(this.toSpawnList).filter( a => a[1].pause === 0).sort( (a,b) => a[1].priority - b[1].priority);
-        // console.log("ToSpawn Lenght: " + toSpawn.length);
+        //console.log("ToSpawn Lenght: " + toSpawn.length);
         for(const spawn of this.availableSpawns){
             const roomEntries = toSpawn.filter( entry => entry[1].room === spawn.room.name);
-            // console.log("Room Entries: " + roomEntries.length);
+            //console.log("Room Entries: " + roomEntries.length);
             if(roomEntries != null && roomEntries.length >0 ){
                 
                 const entry = roomEntries.pop();
-                // console.log("Spawn RoomEntry: " + JSON.stringify(entry));
+                //console.log("Spawn RoomEntry: " + JSON.stringify(entry));
                 if(entry != null){
                     if(entry[1].op != null && this.empire.opMgr.entryExists(entry[1].op)){
                         try {
                             const body: BodyPartConstant[] = (entry[1].body != null) ? entry[1].body : this.roles[entry[1].memory.role].getBody(spawn);
                             let direction: DirectionConstant | null = null;
-                            // console.log("Trying to Spawn: " + JSON.stringify(entry[1]));
+                            //console.log("Trying to Spawn: " + JSON.stringify(entry[1]));
 
                             const mem = JSON.parse(JSON.stringify(entry[1].memory)); // DEEP Copy 
                             const err: ScreepsReturnCode = spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: true});
-                            // console.log("Return Code: " +err );
+                            //console.log("Return Code: " +err );
                             if(err === OK ){
                                 if( entry[1].toPos != null ){
                                     const pos = entry[1].toPos as RoomPosition;
@@ -102,6 +102,7 @@ export class SpawnManager {
                                     spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: false});
                                 } else {
                                     spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: false, directions: [direction]});
+                                    //spawn.spawnCreep(body, entry[0], {memory: mem, dryRun: false});
                                 }
                                 
                                 if(entry[1].rebuild === true) {
@@ -115,7 +116,7 @@ export class SpawnManager {
                                 this.dequeueByName(entry[0]);
                             }
                             else if(err === ERR_NOT_ENOUGH_ENERGY){
-                                // console.log("Not enough energy to spawn:" + spawn.room.name);
+                                console.log("Not enough energy to spawn:" + spawn.room.name);
                                 if(spawn.room.energyAvailable === spawn.room.energyCapacityAvailable){
                                     // console.log("Room at Max energy:" + spawn.room.name);
                                     this.dequeueByName(entry[0]);
@@ -125,14 +126,14 @@ export class SpawnManager {
                                 console.log ("Returned " + err);
                             }
                         } catch (error) {
-                            // console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");
-                            // console.log(JSON.stringify(entry));
-                            // console.log(JSON.stringify(error));
+                            console.log("ERROR: for " + entry[1].memory.role + " ERR: " + error + " DELETING ENTRY: ");
+                            console.log(JSON.stringify(entry));
+                            console.log(JSON.stringify(error));
                             this.dequeueByName(entry[0]);
                         }
                     } else {
                         this.dequeueByName(entry[0]);
-                        // console.log("DequeuedByName because of missing op: " + entry[0]);
+                        console.log("DequeuedByName because of missing op: " + entry[0]);
                     }
 
 
@@ -145,21 +146,21 @@ export class SpawnManager {
         return this.toSpawnList[name] != null;
     }
 
-    public generateName(): string {
+    private generateName(): string {
         return Math.random().toString(36).substr(4);
     }
     /**
      * push a new SpawnEntry into the toSpawnList of the SpawnManager
      * @param entry SpawnEntryMemory
      */
-    public enque(entry: SpawnEntryMemory): string {
+    public enque(entry: ISpawnEntryMemory): string {
         const name = this.generateName();
         global.logger.debug("Enque Creep: " + name);
         this.toSpawnList[name]=new SpawnEntry(entry);
         return name;
     }
 
-    public spawnAvailable(): boolean {
+    private spawnAvailable(): boolean {
         return this.availableSpawns.length > 0;
     }
     /**
@@ -174,7 +175,7 @@ export class SpawnManager {
      * remove a new SpawnEntry from the toSpawnList of the SpawnManager
      * @param entry SpawnEntryMemory
      */
-    public dequeueByEntry(entry: SpawnEntry){
+    private dequeueByEntry(entry: SpawnEntry){
         for(const e of Object.keys(this.toSpawnList)){
             if(this.toSpawnList[e].equals(entry)){
                 delete this.toSpawnList[e];
@@ -182,7 +183,7 @@ export class SpawnManager {
         }
     }
 
-    public getCost(body: BodyPartConstant[]): number {
+    private getCost(body: BodyPartConstant[]): number {
         let cost: number = 0;
         for(const part of body){
             cost=cost + BODYPART_COST[part];
@@ -193,7 +194,7 @@ export class SpawnManager {
     /**
      *  save toSpawnList to Memory
      */
-    public refreshSpawnList(){
+    private refreshSpawnList(){
         for(const entry of Object.keys( this.toSpawnList)) {
             if(this.toSpawnList[entry].pause > 0){
                 this.toSpawnList[entry].pause--;

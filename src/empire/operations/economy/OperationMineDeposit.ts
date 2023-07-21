@@ -1,6 +1,6 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, ROLE} from "utils/constants";
-import { FlagOperation, FlagOperationData, FlagOperationProto } from "./FlagOperation";
+import { FlagOperation, FlagOperationData, FlagOperationProto } from "../Operations/FlagOperation";
+
 
 
 export interface OperationMineDepositProto extends FlagOperationProto {

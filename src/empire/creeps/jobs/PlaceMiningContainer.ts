@@ -3,7 +3,7 @@ import { Job } from "./Job";
 export class PlaceMiningContainer extends Job {
     public static run(creep: Creep): void {
         super.run(creep);
-        const source: Source | null = Game.getObjectById(creep.memory.targetId);
+        const source: Source | null = Game.getObjectById<Source>(creep.memory.targetId);
         if( source !== null ){       
             if(creep.pos.inRangeTo(source,1)) {
                 creep.pos.createConstructionSite(STRUCTURE_CONTAINER);

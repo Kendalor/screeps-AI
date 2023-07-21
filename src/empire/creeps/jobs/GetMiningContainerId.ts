@@ -5,7 +5,7 @@ export class GetMiningContainerId extends Job {
     public static run(creep: Creep): void {
         if(creep.memory.containerId == null ){
             if(creep.memory.sourceId != null){
-                const source: Source | null = Game.getObjectById(creep.memory.sourceId);
+                const source: Source | null = Game.getObjectById<Source>(creep.memory.sourceId);
                 if(source != null){
                     const newContainer = creep.room.find(FIND_STRUCTURES).filter(str => str.structureType === STRUCTURE_CONTAINER).filter( str => str.pos.inRangeTo(source.pos.x, source.pos.y, 1));
                     if(newContainer.length === 1){
@@ -47,7 +47,7 @@ export class GetMiningContainerId extends Job {
 
     public static runCondition(creep: Creep): boolean {
         if(creep.memory.sourceId != null && creep.memory.containerId == null){
-            const source: Source | null = Game.getObjectById(creep.memory.sourceId);
+            const source: Source | null = Game.getObjectById<Source>(creep.memory.sourceId);
             if(source != null){
                 return true;
             } 

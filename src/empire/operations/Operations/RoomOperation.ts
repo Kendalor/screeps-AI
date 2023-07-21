@@ -1,5 +1,4 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OperationData, OperationMemory } from "utils/constants";
 import { Operation, OperationProto } from "../Operation";
 
 export interface RoomOperationProto extends OperationProto {

@@ -7,7 +7,7 @@ export class Salvage extends Job{
         super.run(creep);
         // RUN PART
         if(creep.memory.job === 'Salvage' && creep.memory.targetId){
-            const salvage : Resource | null = Game.getObjectById(creep.memory.targetId);
+            const salvage : Resource | null = Game.getObjectById<Resource>(creep.memory.targetId);
             if (salvage != null){
                 if(creep.pos.inRangeTo(salvage,1)){
                     creep.pickup(salvage);

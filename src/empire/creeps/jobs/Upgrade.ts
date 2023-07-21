@@ -14,7 +14,7 @@ export class Upgrade extends Job{
     public static run(creep: Creep): void {
         super.run(creep);
         if(this.runCondition(creep)){
-            const target: StructureController | null = Game.getObjectById(creep.memory.targetId);
+            const target: StructureController | null = <StructureController> Game.getObjectById(creep.memory.targetId);
             if(target !== null) {
                 const rangeTo = creep.pos.getRangeTo(target);
                 if(rangeTo <= 3){

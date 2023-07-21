@@ -85,6 +85,7 @@ export class Traveler {
         // delete path cache if destination is different
         if (!this.samePos(state.destination, destination)) {
             if (options.movingTarget && state.destination.isNearTo(destination)) {
+                if(travelData.path)
                 travelData.path += state.destination.getDirectionTo(destination);
                 state.destination = destination;
             } else {
@@ -497,7 +498,7 @@ export class Traveler {
     public static addStructuresToMatrix(room: Room, matrix: CostMatrix, roadCost: number): CostMatrix {
 
         const impassibleStructures: Structure[] = [];
-        for (const structure of room.find<Structure>(FIND_STRUCTURES)) {
+        for (const structure of room.find<AnyStructure>(FIND_STRUCTURES)) {
             if (structure instanceof StructureRampart) {
                 if (!structure.my && !structure.isPublic) {
                     impassibleStructures.push(structure);
@@ -511,7 +512,7 @@ export class Traveler {
             }
         }
 
-        for (const site of room.find<FIND_MY_CONSTRUCTION_SITES>(FIND_MY_CONSTRUCTION_SITES)) {
+        for (const site of room.find(FIND_CONSTRUCTION_SITES)) {
             if (site.structureType === STRUCTURE_CONTAINER || site.structureType === STRUCTURE_ROAD
                 || site.structureType === STRUCTURE_RAMPART) { continue; }
             matrix.set(site.pos.x, site.pos.y, 0xff);

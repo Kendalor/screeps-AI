@@ -1,26 +1,25 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationData, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
-import { BuildOperation } from "../BuildOperation";
-import { OperationMineMinerals } from "../MineMInerals";
-import { MinerOperation } from "../MinerOperation";
-import { RoomLogisticsOperation } from "../RoomLogisticsOperation";
+import { BuildOperation } from "../../economy/BuildOperation";
+import { OperationMineMinerals } from "../../economy/MineMInerals";
+import { MinerOperation } from "../../economy/MinerOperation";
+import { RoomLogisticsOperation } from "../../economy/RoomLogisticsOperation";
 import { RoomOperation, RoomOperationData, RoomOperationProto } from "../RoomOperation";
 import { RoomPlannerOperation } from "../roomPlanner/RoomPlannerOperation";
-import SupplyOperation from "../SupplyOperation";
-import { UpgradeOperation } from "../UpgradeOperation";
+import SupplyOperation from "../../economy/SupplyOperation";
+import { UpgradeOperation } from "../../economy/UpgradeOperation";
 
 export interface BaseProto extends RoomOperationProto {
     data: BaseData;
 }
 
 export interface BaseData extends RoomOperationData {
-    [id: string]: any;
     children: Partial<Record<OPERATION,string>>;
+
 }
 
 
-export class InitialRoomOperation extends RoomOperation{
+export class InitialRoomOperation extends RoomOperation implements IInitialRoomOperation {
     private opList = [OPERATION.ROOMPLANNER, OPERATION.SUPPLY, OPERATION.BUILD, OPERATION.REPAIR,OPERATION.HAUL,OPERATION.UPGRADE,OPERATION.ROOMLOGISTICS, OPERATION.MINING, OPERATION.DEFEND, OPERATION.MINE_MINERALS];
 
     constructor(name: string,manager: OperationsManager, entry: BaseProto) {
@@ -36,7 +35,6 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private enqueOps(): void {
-        // Add Missing RoomOps
         for(const i of this.opList){
             this.enqueRoomOp(i);
         }
@@ -94,6 +92,28 @@ export class InitialRoomOperation extends RoomOperation{
         }
     }
 
+    private isRoomMy(){
+        if(this.room.controller != null){
+            if(this.room.controller.my === false){
+                this.removeSelf();
+            }
+        }
+    }
+
+    private checkForControllerLevelChange(){
+        if(this.room.controller != null){
+            if(this.data.controllerLvl == null){
+                this.data.controllerLvl = this.room.controller.level;
+                this.unpauseOps();
+            } else {
+                if(!(this.data.controllerLvl === this.room.controller.level) ){
+                    this.data.controllerLvl = this.room.controller.level;
+                    this.unpauseOps();
+                }
+            }
+        }
+    }
+
     public run() {
         super.run();
         this.cleanUpOps();
@@ -101,67 +121,55 @@ export class InitialRoomOperation extends RoomOperation{
         this.checkForEmergency();
         // Validate Op
 
-
-        if(r != null){
-            if(this.room.controller != null){
-                if(this.room.controller.my === false){
-                    this.removeSelf();
-                }
-            }
-           this.enqueOps();
-
-            // Validate creeps:
-            this.validateCreeps();
-            // this.colonize();
-            if(this.room.controller != null){
-                if(this.data.controllerLvl == null){
-                    this.data.controllerLvl = this.room.controller.level;
-                    this.unpauseOps();
-                } else {
-                    if(!(this.data.controllerLvl === this.room.controller.level) ){
-                        this.data.controllerLvl = this.room.controller.level;
-                        this.unpauseOps();
-                    }
-                }
-            }
+        this.isRoomMy();
 
 
+        this.enqueOps();
 
-            if(r.storage == null) {
-                // console.log("Storage Null");
-                // Calc Body and Number
-                const energyCap = Math.min(Math.max(300,this.room.energyCapacityAvailable),2400);
-                let body: BodyPartConstant[] = [];
-                const fullSets = Math.min(Math.max(1, Math.floor(energyCap/250)), 4);
-                for (let i = 0; i < fullSets; i++){
-                    body = body.concat([WORK,CARRY,MOVE,MOVE]);
-                }
-                const numCreeps = Math.ceil(10/fullSets)*3;
-                console.log("NumCreeps: " + numCreeps);
+        // Validate creeps:
+        this.validateCreeps();
+        //this.colonize();
+            
+        this.checkForControllerLevelChange();
 
-                if(this.data.creeps.length < numCreeps){
-                        const name = this.manager.empire.spawnMgr.enque({
-                            body: body,
-                            room: r.name,
-                            memory: {role: "Maintenance", op: this.name},
-                            pause: 0,
-                            priority: 100,
-                            rebuild: false});
-                        console.log("Maintenance Enqueued Creep: " + name);
-                        this.data.creeps.push(name);
-                }
-            }
-        } else {
-            this.removeSelf();
-        }
-        
+        this.exeCutePreStorageLogic();
 
     }
 
+    private exeCutePreStorageLogic(){
+        if(this.room.storage == null) {
+            // console.log("Storage Null");
+            // Calc Body and Number
+            const energyCap = Math.min(Math.max(300,this.room.energyCapacityAvailable),2400);
+            let body: BodyPartConstant[] = [];
+            const fullSets = Math.min(Math.max(1, Math.floor(energyCap/250)), 4);
+            for (let i = 0; i < fullSets; i++){
+                body = body.concat([WORK,CARRY,MOVE,MOVE]);
+            }
+            const numCreeps = Math.ceil(10/fullSets)*2;
+            console.log("NumCreeps: " + numCreeps);
+
+            if(this.data.creeps.length < numCreeps){
+                    const name = this.manager.empire.spawnMgr.enque({
+                        body: body,
+                        room: this.room.name,
+                        memory: {role: "Maintenance", op: this.name},
+                        pause: 0,
+                        priority: 100,
+                        rebuild: false});
+                    console.log("Maintenance Enqueued Creep: " + name);
+                    this.data.creeps.push(name);
+            }
+        }
+    }
+
     private colonize(): void {
-        if(Math.random() <= 0.001){
+        //console.log("Should Colonize ?");
+        if(Math.random() < 0.01){
+            //console.log("Can Colonzie?");
             if(this.canColonize()){
                 const room = RoomMemoryUtil.getNearestColonizeAbleRoom(this.room.name);
+                console.log("Want to colonize Room: " + room);
                 if( room != null){
                     this.createColonizeOperation(room);
                     RoomMemoryUtil.reserveRoom(room);
@@ -171,7 +179,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     private canColonize(): boolean {
-        if(this.room.energyCapacityAvailable >= 650 && Math.floor(Game.cpu.limit/3) > this.manager.empire.getBaseOps().length){
+        if(this.room.energyCapacityAvailable >= 650 && this.manager.empire.canColonize()){
             this.checkColonizeOperation();
             if(this.data.children[OPERATION.COLONIZE]== null){
                 return true;
@@ -188,13 +196,15 @@ export class InitialRoomOperation extends RoomOperation{
         }
     }
     
-    private createColonizeOperation(roomName: string): void {
+    private createColonizeOperation(targetRoom: string): void {
+        console.log("Create colonize op:");
         if(this.data.children[OPERATION.COLONIZE] != null){
             if( !this.manager.entryExists(this.data.children[OPERATION.COLONIZE])){
+                console.log("Deleting old op");
                 delete this.data.children[OPERATION.COLONIZE];
             }
         } else {
-            this.data.children[OPERATION.COLONIZE] = this.manager.enque({type: OPERATION.COLONIZE, data: {room: roomName, parent: this.name, spawnRoom: this.room.name},pause: 1});
+            this.data.children[OPERATION.COLONIZE] = this.manager.enque({type: OPERATION.COLONIZE, data: {roomName: this.room.name, parent: this.name, spawnRoom: this.room.name, remoteRoom: targetRoom},pause: 1});
         }
         
     }
@@ -251,7 +261,7 @@ export class InitialRoomOperation extends RoomOperation{
     }
 
     public getBuildingList(): BuildEntry[] {
-        console.log("Get Complete BuildingsList for room: " + this.room.name);
+        //onsole.log("Get Complete BuildingsList for room: " + this.room.name);
         const out = super.getBuildingList();
         this.getRoomPlannerOperation().updateBuildingCostMatrix(out);
         const miningOp = this.getMiningOperation().getBuildingList();

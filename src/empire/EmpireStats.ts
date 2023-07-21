@@ -1,11 +1,10 @@
-import { OPERATION } from "utils/constants";
 import { EmpireManager } from "./EmpireManager";
 
 export class EmpireStats {
     public empire: EmpireManager;
-    public memory: any;
-    public roles: any = {};
-    public ops: any = {};
+    private memory: any;
+    private roles: any = {};
+    private ops: any = {};
 
     constructor(empire: EmpireManager){
         this.empire=empire;
@@ -26,11 +25,11 @@ export class EmpireStats {
         // TODO
     }
 
-    public updateCpuUsed(): void {
+    private updateCpuUsed(): void {
         this.memory.cpuUsed=Game.cpu.getUsed();
     }
 
-    public cpuStats(): void {
+    private cpuStats(): void {
         if(this.memory.cpu == null){
             this.memory.cpu = {}; 
         }
@@ -39,7 +38,7 @@ export class EmpireStats {
         this.memory.cpu.bucket = Game.cpu.bucket;
     }
 
-    public gclStats(): void {
+    private gclStats(): void {
         this.memory.gcl = Game.gcl;
         this.memory.gpl = Game.gpl;
     }
@@ -67,7 +66,7 @@ export class EmpireStats {
     }
 
     public countOps(){
-        this.memory.numOps = Object.keys(this.empire.opMgr.operations).length;
+        this.memory.numOps =this.empire.opMgr.getOpCount();
     }
 
     public countCreeps(){

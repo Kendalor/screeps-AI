@@ -1,7 +1,6 @@
 
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation, RoomOperationProto } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "../Operations/RoomOperation";
 
 
 
@@ -28,15 +27,33 @@ export class DefenseOperation extends RoomOperation{
 
         const r: Room = this.room;
 
-        if(r != null){
-            const enemies: Creep[] = r.find(FIND_HOSTILE_CREEPS);
-            if(enemies.length > 0) {
+        if(!r){
+            return;
+        }
+        const enemies: Creep[] = r.find(FIND_HOSTILE_CREEPS);
+        if(enemies.length > 0) {
+            const towers: StructureTower[] = r.find(FIND_MY_STRUCTURES).filter( str => str.structureType === STRUCTURE_TOWER) as StructureTower[];
+            if (towers.length > 0 ){
+                for( const t of towers){
+                    const a: Creep | null = t.pos.findClosestByRange(enemies);
+                    if( a!= null){
+                        t.attack(a); 
+                    }
+                } 
+            } else {
+                if( r.controller != null ) {
+                    r.controller.activateSafeMode();
+                }
+            }
+        } else {
+            const myCreeps = r.find(FIND_MY_CREEPS).filter(creep => creep.hits < creep.hitsMax);
+            if(myCreeps.length > 0) {
                 const towers: StructureTower[] = r.find(FIND_MY_STRUCTURES).filter( str => str.structureType === STRUCTURE_TOWER) as StructureTower[];
                 if (towers.length > 0 ){
                     for( const t of towers){
-                        const a: Creep | null = t.pos.findClosestByRange(enemies);
+                        const a: Creep | null = t.pos.findClosestByRange(myCreeps);
                         if( a!= null){
-                            t.attack(a); 
+                            t.heal(a); 
                         }
                     } 
                 } else {
@@ -45,32 +62,16 @@ export class DefenseOperation extends RoomOperation{
                     }
                 }
             } else {
-                const myCreeps = r.find(FIND_MY_CREEPS).filter(creep => creep.hits < creep.hitsMax);
-                if(myCreeps.length > 0) {
-                    const towers: StructureTower[] = r.find(FIND_MY_STRUCTURES).filter( str => str.structureType === STRUCTURE_TOWER) as StructureTower[];
-                    if (towers.length > 0 ){
-                        for( const t of towers){
-                            const a: Creep | null = t.pos.findClosestByRange(myCreeps);
-                            if( a!= null){
-                                t.heal(a); 
-                            }
-                        } 
-                    } else {
-                        if( r.controller != null ) {
-                            r.controller.activateSafeMode();
-                        }
-                    }
-                } else {
-                    if(this.data.repair == null){
-                        this.data.repair =[];
-                    }
-                    if(this.data.repair.length > 0){
-                        const targets = this.idsToObjects(this.data.repair);
+                if(this.data.repair == null){
+                    this.data.repair =[];
+                }
+                if(this.data.repair.length > 0){
+                    const targets = this.idsToObjects(this.data.repair);
 
-                    }
                 }
             }
         }
+        
         
     }
     private idsToObjects(ids: string[]): Structure[] {

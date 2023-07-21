@@ -1,5 +1,4 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Operation } from "../Operation";
 
@@ -16,7 +15,7 @@ import { Operation } from "../Operation";
 export class RemoveInvaderOperation extends Operation{
     public numCreeps: number = 1;
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: IOperationMemory) {
         super(name, manager,entry);
         this.type = OPERATION.REMOVEINVADER;
     }

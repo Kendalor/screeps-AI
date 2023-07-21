@@ -19,7 +19,7 @@ export class BuildMiningContainer extends BuildContainer {
 
     public static getTargetId(creep: Creep): string | null {
         if(creep.memory.sourceId != null){
-            const source: Source | null = Game.getObjectById(creep.memory.sourceId);
+            const source: Source | null = Game.getObjectById<Source>(creep.memory.sourceId);
             if(source != null) {
                 const sites = source.pos.findInRange(FIND_CONSTRUCTION_SITES,1).filter( c => c.structureType === STRUCTURE_CONTAINER);
                 if(sites.length > 0){

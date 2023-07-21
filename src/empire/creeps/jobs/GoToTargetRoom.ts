@@ -9,7 +9,7 @@ export class GoToTargetRoom extends Job {
         const targetPos = new RoomPosition(25,25,creep.memory.targetRoom);
         if(creep.memory.targetRoom != null){
             if(creep.room.name !== creep.memory.targetRoom){
-                creep.travelTo(targetPos, {range:20});
+                creep.travelTo(targetPos, {range:20, useFindRoute: true});
             }else {
                 if(targetPos.inRangeTo(creep,23)){
                     this.cancel(creep);

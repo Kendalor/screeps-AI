@@ -1,22 +1,27 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { InitialRoomOperation } from "./InitialBuildUpPhase/InitRoomOperation";
+import { InitialRoomOperation } from "../Operations/InitialBuildUpPhase/InitRoomOperation";
 
-import { OPERATION, OperationMemory } from "utils/constants";
-import { RoomOperation, RoomOperationProto } from "./RoomOperation";
+import { RoomOperation, RoomOperationProto } from "../Operations/RoomOperation";
 
 
 
 export class MinerOperation extends RoomOperation{
+    private baseOp: IInitialRoomOperation;
+
     
 
     constructor(name: string, manager: OperationsManager, entry: RoomOperationProto) {
         super(name, manager,entry);
         this.type = OPERATION.MINING;
+        let baseOp = Empire.getBaseOps().filter( op => op.name == this.parent).shift();
+        if(!baseOp){
+            throw Error("NO BASE OP FOUND FOR: " +this.name + " at Room: " + this.room.name);
+        }
+        this.baseOp = baseOp;
     }
 
     public run() {
         super.run()
-
         this.enqueueCreeps();
 
     }

@@ -1,5 +1,4 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION, OperationMemory } from "utils/constants";
 import { RoomMemoryUtil } from "utils/RoomMemoryUtil";
 import { Operation } from "../Operation";
 
@@ -11,7 +10,7 @@ export class OperationScoutingManager extends Operation{
     private DEFAULT_VALIDATION_INTERVALL = 1;
 
 
-    constructor(name: string, manager: OperationsManager, entry: OperationMemory) {
+    constructor(name: string, manager: OperationsManager, entry: IOperationMemory) {
         super(name, manager,entry);
         this.type = OPERATION.SCOUTINGMANAGER;
         if(this.data.todo == null){
@@ -38,7 +37,7 @@ export class OperationScoutingManager extends Operation{
         }
 
         // this.sleep();
-        console.log(Game.shard.name + ": ScoutingManager: Radius: "+ this.getScoutingRadius() + " Todos: " + this.data.todo.length + " Creeps: (" + this.data.creeps.length + "/" + this.data.numScouts + ")");
+        //console.log(Game.shard.name + ": ScoutingManager: Radius: "+ this.getScoutingRadius() + " Todos: " + this.data.todo.length + " Creeps: (" + this.data.creeps.length + "/" + this.data.numScouts + ")");
     }
 
     public wakeup(): void {
@@ -46,7 +45,7 @@ export class OperationScoutingManager extends Operation{
     }
 
     public setChanged(a: boolean):void {
-        console.log("Setting Changed to : " + a);
+        //console.log("Setting Changed to : " + a);
         this.data.changed = a;
     }
 
@@ -116,7 +115,7 @@ export class OperationScoutingManager extends Operation{
     private checkAllRooms(rooms: string[]): string[]{
         const newTodo = new Array<string>();
         for(const e of this.data.todo){
-            if(Game.map.isRoomAvailable(e)){
+            if(Game.map.getRoomStatus(e).status == "normal"){
                 if(RoomMemoryUtil.checkIfRoomNeedsScouting(e)){
                     newTodo.push(e);
                 }
@@ -146,8 +145,11 @@ export class OperationScoutingManager extends Operation{
 
     public getNearestTodo(roomName: string): string | undefined{
         if(this.data.todo.length > 0){
-            const todos: string[] = this.data.todo;
-            return todos.sort( (a,b) => Game.map.getRoomLinearDistance(roomName,a) - Game.map.getRoomLinearDistance(roomName,b)).shift();
+            let todos: string[] = this.data.todo;
+            todos = todos.sort( (a,b) => Game.map.getRoomLinearDistance(roomName,a) - Game.map.getRoomLinearDistance(roomName,b));
+            //console.log("TODOS for Roomane:" + roomName);
+            //console.log("Ascending Order: "+ todos);
+            return todos.shift();
         }
         return undefined;
     }
@@ -200,21 +202,6 @@ export class OperationScoutingManager extends Operation{
         return out;
     }
 
-    /*
-    private getRoomsInRange(roomName: string[], range: number): string[]{
-        if(range === 0){
-            return roomName;
-        } else {
-            let out: string[] = [];
-            if(roomName.length > 0){
-                for(const n of roomName){
-                    out=out.concat(this.getAdjacentRooms(n).filter(r => Game.map.isRoomAvailable(r)));
-                }
-            }
-            return Array.from(new Set(out.concat(this.getRoomsInRange(out,range-1))));
-        }
-    }
-    */
 
     private getRoomsInRange(roomName: string[], range: number): string[]{
         const out = new Set<string>();
@@ -225,12 +212,12 @@ export class OperationScoutingManager extends Operation{
             iterList = new Set<string>();
             for(const r of toCheck){
                 if(!checked.has(r)){
-                    if(Game.map.isRoomAvailable(r)){
+                    if((Game.map.getRoomStatus(r).status == "normal")){
                         checked.add(r);
                     }
                     const adjacent = this.getAdjacentRooms(r);
                     for(const a of adjacent){
-                        if(Game.map.isRoomAvailable(a)){
+                        if((Game.map.getRoomStatus(r).status == "normal")){
                             if(!iterList.has(a)){
                                 iterList.add(a);
                             }

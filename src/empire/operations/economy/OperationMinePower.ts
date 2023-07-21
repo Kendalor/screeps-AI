@@ -1,8 +1,5 @@
 import { OperationsManager } from "empire/OperationsManager";
-import { OPERATION} from "utils/constants";
-import { FlagOperation, FlagOperationData, FlagOperationProto } from "./FlagOperation";
-import { RemoteOperation, RemoteOperationData } from "./RemoteOperation";
-import { CreepRole } from "empire/creeps/roles/CreepRole";
+import { FlagOperation, FlagOperationData, FlagOperationProto } from "../Operations/FlagOperation";
 
 export interface OperationMinePowerProto extends FlagOperationProto {
     data: OperationMinePowerData;

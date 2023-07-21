@@ -5,7 +5,7 @@ export class Repair extends Job{
     public static run(creep: Creep): void {
         super.run(creep);
 
-        const target: Structure | null = Game.getObjectById(creep.memory.targetId);
+        const target: Structure | null = <Structure> Game.getObjectById(creep.memory.targetId);
         // JOB CONDITION energy, target set, and needs repair.
         if(creep.carry.energy > 0 ){
             if(target != null){

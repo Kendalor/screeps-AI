@@ -7,6 +7,7 @@ export class RoomMemoryUtil {
     public static SCOUTING_INTERVALL_HIGHWAY = 3000;
     public static SCOUTING_INTERVALL_KEEPER = 200000;
     public static SCOUTING_INTERVALL_SKIP = 200000;
+    public static MAX_COLONIZE_DISTANCE = 8;
 
     public static checkIfRoomNeedsScouting(roomName: string){
         if(!this.isRoomTypeSet(roomName)){
@@ -77,7 +78,7 @@ export class RoomMemoryUtil {
 
     public static routeCallBack(roomName: string): number {
         const r = new MapRoom(roomName);
-        if(!Game.map.isRoomAvailable(roomName)){
+        if(!(Game.map.getRoomStatus(roomName).status == "normal")){
             return 254;
         }else if(r.isHighway() || r.isIntersection()){
             return 1;
@@ -107,7 +108,7 @@ export class RoomMemoryUtil {
         let out ;
         for( const r of rooms){
             const d = this.getDistance(roomName,r);
-            if(dist > d  && d <= 8){
+            if(dist > d  && d <= this.MAX_COLONIZE_DISTANCE){
                 dist = d;
                 out = r;
             }
@@ -139,6 +140,7 @@ export class RoomMemoryUtil {
 
     public static reserveRoom(roomName: string): void {
         const mem = Memory.rooms[roomName];
+        console.log("RESERVE ROOM: " + roomName);
         if(mem != null){
             if(mem.roomType === 'NormalRoom'){
                 if(mem.owner == null){

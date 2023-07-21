@@ -1,5 +1,4 @@
 import { EmpireManager } from "empire/EmpireManager";
-import { ErrorMapper } from "utils/ErrorMapper";
 import { Attacker } from "./creeps/roles/Attacker";
 import { Builder } from "./creeps/roles/Builder";
 import { Claimer } from "./creeps/roles/Claimer";
@@ -17,10 +16,11 @@ import { Scout } from "./creeps/roles/Scout";
 import { Supply } from "./creeps/roles/Supply";
 import { Upgrader } from "./creeps/roles/Upgrader";
 import { Healer } from "./creeps/roles/Healer";
+import { defaults, isArray, round } from "lodash";
 
 export const ROLE_STORE: any = {Logistic, Maintenance, Miner, Hauler, Upgrader, Supply, Repairer, Builder, Claimer, Colonize, Attacker, Scout,RemoveInvader, MineralMiner, HaulDeposit, MineDeposit, Healer};
 
-export class CreepManager {
+export class CreepManager implements ICreepManager {
 
     public empire: EmpireManager;
     
@@ -48,7 +48,7 @@ export class CreepManager {
                 }
             } catch (e) {
                 if(e instanceof Error){
-                    console.log("ERROR for Creep: " +c + "with Role: " + Game.creeps[c].memory.role + " ERROR MSG: " + `<span style='color:red'>${_.escape(ErrorMapper.sourceMappedStackTrace(e))}</span>`);
+                    console.log("ERROR for Creep: " +c + "with Role: " + Game.creeps[c].memory.role + " ERROR MSG: " + e);
                 }
                 
             }
