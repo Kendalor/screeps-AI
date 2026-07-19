@@ -11,8 +11,8 @@ export class MemoryUtil {
 
     static load() {
 		if (lastTick && lastMemory && Game.time == lastTick + 1) {
-			delete global.Memory;
-			global.Memory = lastMemory;
+			delete (global as any).Memory;
+			(global as any).Memory = lastMemory;
 			RawMemory._parsed = lastMemory;
 		} else {
 			// noinspection BadExpressionStatementJS

@@ -26,7 +26,7 @@ function main(): void {
   MemoryUtil.load();
 
   if(!global.Empire) {
-    delete global.Empire;
+    delete (global as any).Empire;
     global.Empire = new EmpireManager();
 
   } else {

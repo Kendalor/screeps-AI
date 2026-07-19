@@ -175,6 +175,9 @@ export class OperationScoutingManager extends Operation{
     private getAdjacentRooms(roomName: string): string[] {
         const out = new Array<string>();
         const exits=Game.map.describeExits(roomName);
+        if(exits == null){
+            return out;
+        }
         if(exits["1"] != null){
             const temp = exits["1"];
             if(temp !== undefined){

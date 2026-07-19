@@ -311,7 +311,7 @@ export class RoomMemoryUtil {
         if(this.isCostMatrixSet(roomName)){
             return mem.costMatrix;
         } else {
-            return PathFinder.CostMatrix;
+            return new PathFinder.CostMatrix();
         }
     }
 

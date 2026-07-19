@@ -3,15 +3,8 @@ interface RoomVisual {
 }
 
 declare var Empire: IEmpireManager;
-
-declare namespace NodeJS {
-    interface Global {
-      [x: string]: any;
-      Empire: IEmpireManager | undefined;
-      logger: any;
-      memoryVersion: number;
-    }
-  }
+declare var logger: any;
+declare var memoryVersion: number;
 
 interface IOperationMemory {
     data: OperationData;
