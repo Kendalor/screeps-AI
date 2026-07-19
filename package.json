@@ -8,6 +8,8 @@
     "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "bundle": "rollup -c",
     "build": "rollup -c --verbose --environment LOCAL:true",
     "push-main": "rollup -c --environment DEST:main",
     "push-dev": "rollup -c --environment DEST:dev",
