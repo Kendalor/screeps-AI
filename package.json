@@ -6,6 +6,8 @@
   "//": "If you add or change the names of destinations in screeps.json, make sure you update these scripts to reflect the changes",
   "scripts": {
     "lint": "eslint \"src/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build": "rollup -c --verbose --environment LOCAL:true",
     "push-main": "rollup -c --environment DEST:main",
     "push-dev": "rollup -c --environment DEST:dev",
@@ -35,7 +37,8 @@
     "rollup-plugin-screeps": "^1.0.1",
     "tslib": "^2.8.1",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.64.0"
+    "typescript-eslint": "^8.64.0",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "node": "^26.5.0",

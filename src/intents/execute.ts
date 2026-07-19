@@ -1,0 +1,63 @@
+// The actuator: the one switch that calls the game API and checks return
+// codes. Every non-OK result is logged with the intent that caused it —
+// failed actions are visible, never silent (docs/rewrite-skeleton.md §4).
+
+import { log } from "../lib/log";
+import type { Intent } from "./types";
+
+export function execute(intents: Intent[]): void {
+  for (const intent of intents) {
+    const result = act(intent);
+    if (result !== OK) {
+      log.warn(`intent failed (${result}): ${JSON.stringify(intent)}`);
+    }
+  }
+}
+
+function act(intent: Intent): ScreepsReturnCode {
+  switch (intent.kind) {
+    case "towerAttack": {
+      const tower = Game.getObjectById(intent.tower);
+      const target = Game.getObjectById(intent.target);
+      if (!tower || !target) return ERR_NOT_FOUND;
+      return tower.attack(target);
+    }
+    case "towerHeal": {
+      const tower = Game.getObjectById(intent.tower);
+      const target = Game.getObjectById(intent.target);
+      if (!tower || !target) return ERR_NOT_FOUND;
+      return tower.heal(target);
+    }
+    case "safeMode": {
+      const controller = Game.rooms[intent.room]?.controller;
+      if (!controller) return ERR_NOT_FOUND;
+      return controller.activateSafeMode();
+    }
+    case "spawn": {
+      const spawn = Game.getObjectById(intent.spawn);
+      if (!spawn) return ERR_NOT_FOUND;
+      // Deterministic name — no random-name collisions, no orphaned bookkeeping.
+      const name = `${intent.role}_${intent.memory.home}_${Game.time}`;
+      // Dry run first (ported from SpawnManager.run) so failures never leave a
+      // half-spawned state and the real call can carry a spawn direction.
+      const dry = spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: true });
+      if (dry !== OK) return dry;
+      const dir = intent.dir ?? directionToAdjacentRoad(spawn);
+      return dir !== undefined
+        ? spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: false, directions: [dir] })
+        : spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: false });
+    }
+    default:
+      log.error(`no actuator for intent kind "${intent.kind}" yet`);
+      return OK; // already logged; don't double-report as a failed action
+  }
+}
+
+// Ported from SpawnManager.run: spawn toward an adjacent road so the newborn
+// creep steps onto the bunker's road network instead of blocking the spawn.
+function directionToAdjacentRoad(spawn: StructureSpawn): DirectionConstant | undefined {
+  const road = spawn.pos
+    .findInRange(FIND_STRUCTURES, 1)
+    .find(str => str.structureType === STRUCTURE_ROAD);
+  return road ? spawn.pos.getDirectionTo(road) : undefined;
+}
