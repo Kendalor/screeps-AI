@@ -4,7 +4,7 @@ import prettier from "eslint-config-prettier";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "reference/**", "src/utils/traveler/**", "src/utils/prototypes/**", "*.js", "*.mjs"]
+    ignores: ["dist/**", "reference/**", "legacy/**", "*.js", "*.mjs"]
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
