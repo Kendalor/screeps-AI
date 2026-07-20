@@ -2,7 +2,7 @@
 // Adding a role is adding a row here — not five files and two registries.
 
 import type { RoleName } from "../memory/schema";
-import type { RoleDef } from "./types";
+import type { BodyContext, RoleDef } from "./types";
 
 // Ported from Allrounder.getBody: 200-energy [WORK,CARRY,MOVE] sets, clamped
 // to [300, 1200] energy and at most 4 sets; a spare >100 energy buys a
@@ -33,6 +33,45 @@ function upgraderBody(energy: number): BodyPartConstant[] {
   return parts;
 }
 
+const SOURCE_SATURATING_WORK = 5; // 5 WORK * 2 energy/tick == a source's 10/tick
+
+// A miner's shape follows where it puts the energy, not just the spend cap.
+// No container yet (early game): it must carry to the spawn, so it needs a
+// CARRY. On a container: harvest overflow drops straight in, so CARRY is dead
+// weight and every point goes to WORK. Feeding a link: CARRY comes back.
+function minerBody(energy: number, ctx: BodyContext): BodyPartConstant[] {
+  // Pre-container compromise: 2 WORK is the least that justifies a dedicated
+  // miner, and it still has to walk its energy to the spawn itself.
+  if (!ctx.hasContainer) return [WORK, WORK, CARRY, MOVE];
+
+  // A source yields 10 energy/tick and one WORK harvests 2, so 5 WORK drains
+  // it completely — anything past that is parts the room paid for and wastes.
+  // A parked miner barely moves, so MOVE is bought last, out of whatever the
+  // WORK parts leave behind — up to the usual 1 MOVE per 2 WORK, never zero.
+  const carry = ctx.hasLink ? 1 : 0; // a link must be transferred into
+  const budget = energy - carry * 50;
+  const work = Math.min(SOURCE_SATURATING_WORK, Math.max(1, Math.floor((budget - 50) / 100)));
+  const move = Math.max(1, Math.min(Math.ceil(work / 2), Math.floor((budget - work * 100) / 50)));
+
+  return [
+    ...(new Array<BodyPartConstant>(work).fill(WORK)),
+    ...(new Array<BodyPartConstant>(carry).fill(CARRY)),
+    ...(new Array<BodyPartConstant>(move).fill(MOVE))
+  ];
+}
+
+// Ported from HaulerOperation's carry-parts math: CARRY,CARRY,MOVE sets
+// (2:1, enough MOVE to stay at speed on roads) repeated up to the energy
+// cap, never fewer than one set.
+function haulerBody(energy: number): BodyPartConstant[] {
+  const sets = Math.min(16, Math.max(1, Math.floor(energy / 150))); // 16 sets = 48 parts
+  let parts: BodyPartConstant[] = [];
+  for (let i = 0; i < sets; i++) {
+    parts = parts.concat([CARRY, CARRY, MOVE]);
+  }
+  return parts;
+}
+
 export const ROLES = {
   // Old Allrounder priority order, recast as a wrap-around step loop: steps
   // with no valid target are skipped, so this covers supply, build and upgrade.
@@ -56,6 +95,27 @@ export const ROLES = {
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
       { do: "upgrade" }
+    ]
+  },
+  // Ported from Miner/MineContainer: sit on the source and fill whatever sink
+  // exists. With a container underneath, the transfer steps mostly no-op —
+  // harvest overflow already lands in it.
+  miner: {
+    body: minerBody,
+    steps: [
+      { do: "harvest", from: { find: "source" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_LINK, where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_CONTAINER, where: "notFull" } }
+    ]
+  },
+  // Ported from Hauler's pickup/deliver loop: drain mining containers into
+  // storage; before storage exists, the spawn is the only sink worth filling.
+  hauler: {
+    body: haulerBody,
+    steps: [
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } }
     ]
   }
 } satisfies Partial<Record<RoleName, RoleDef>>;

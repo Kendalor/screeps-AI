@@ -30,6 +30,12 @@ export interface SnapStructure extends XY {
   type: BuildableStructureConstant;
 }
 
+export interface SnapContainer extends XY {
+  id: Id<StructureContainer>;
+  storeEnergy: number;
+  storeCapacity: number;
+}
+
 export interface ColonySnapshot {
   name: string;
   towers: SnapTower[];
@@ -45,6 +51,10 @@ export interface ColonySnapshot {
   controllerLevel: number;
   controllerProgress: number;
   storageEnergy: number; // 0 when no storage built yet
+  // logistics inputs (systems/logistics.ts) — the miner -> container -> hauler
+  // -> storage chain. containers is empty until mining containers are built.
+  containers: SnapContainer[];
+  storageId?: Id<StructureStorage>; // absent until storage is built
   // building inputs (systems/building.ts) — anchor is resolved/cached against
   // ColonyMemory.anchor by snapshot/colony.ts, the only impure boundary.
   anchor: XY | null; // null until a bunker-fitting anchor is found in this room

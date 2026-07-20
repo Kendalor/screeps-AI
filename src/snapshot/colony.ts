@@ -47,6 +47,18 @@ function buildColonySnapshot(room: Room, census: Census): ColonySnapshot {
     controllerLevel: controller.level,
     controllerProgress: controller.progress,
     storageEnergy: room.storage?.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0,
+    storageId: room.storage?.id,
+    containers: room
+      .find<StructureContainer>(FIND_STRUCTURES, {
+        filter: s => s.structureType === STRUCTURE_CONTAINER
+      })
+      .map(c => ({
+        id: c.id,
+        x: c.pos.x,
+        y: c.pos.y,
+        storeEnergy: c.store.getUsedCapacity(RESOURCE_ENERGY),
+        storeCapacity: c.store.getCapacity()
+      })),
     anchor: resolveAnchor(room),
     structures: room
       .find(FIND_STRUCTURES)
