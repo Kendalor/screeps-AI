@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "watch:integration": "vitest run --config vitest.watch.config.ts",
     "bundle": "rollup -c",
     "build": "rollup -c --verbose --environment LOCAL:true",
     "push-main": "rollup -c --environment DEST:main",
