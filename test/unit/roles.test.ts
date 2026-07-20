@@ -133,6 +133,29 @@ describe("hauler role", () => {
   });
 });
 
+// Supply is the inverse of hauler: hauler moves energy from mining containers
+// INTO storage, supply moves it back OUT to the things that must be kept full
+// for spawning to work. Old SupplyExtension/SupplySpawn collapse into this one
+// row (docs/rewrite-skeleton.md §5).
+describe("supply role", () => {
+  it("withdraws from storage, then fills extensions before the spawn", () => {
+    expect(roleDef("supply")).toEqual({
+      body: ROLES.supply.body,
+      steps: [
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } }
+      ]
+    });
+  });
+
+  it("shares the hauler carry-parts body — it is the same job in reverse", () => {
+    expect(ROLES.supply.body(150)).toEqual([CARRY, CARRY, MOVE]);
+    expect(ROLES.supply.body(450)).toEqual(ROLES.hauler.body(450));
+  });
+});
+
 describe("upgrader role", () => {
   it("resolves via roleDef and withdraws from link/storage before upgrading", () => {
     expect(roleDef("upgrader")).toEqual({

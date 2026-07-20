@@ -165,6 +165,94 @@ describe("spawning planner", () => {
     expect(intent).toMatchObject({ role: "upgrader" });
   });
 
+  it("recovers a wiped colony with a supply creep when storage still holds energy", () => {
+    // An established room that lost every creep still has stored energy, but
+    // nothing alive to move it: energyAvailable only ever climbs to the spawn's
+    // own regen. Supply is the role that withdraws from storage and refills the
+    // extensions — a hauler would be useless here, it only moves energy the
+    // other way (container -> storage) and would strand the colony.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 300,
+        sources: 2,
+        storageEnergy: 50_000
+      })
+    );
+
+    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "supply" }]);
+  });
+
+  it("recovers a wiped colony with a bootstrap when there is no stored energy", () => {
+    // Nothing to haul from, so recovery falls back to the one role that needs
+    // no infrastructure at all: harvest a source, carry it to the spawn.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 300,
+        sources: 1,
+        storageEnergy: 0
+      })
+    );
+
+    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "bootstrap" }]);
+  });
+
+  it("treats a colony with any live creep as healthy, not wiped", () => {
+    // Recovery must fire only on a true wipe. One live creep of any role means
+    // something is still working the room, so the normal quota diff decides —
+    // otherwise a single surviving creep would be joined by a supply creep the
+    // colony never asked for, off the storage branch.
+    const snap = empire(
+      colony({
+        census: { miner: 1 },
+        spawns: [spawn()],
+        energyAvailable: 300,
+        sources: 1,
+        storageEnergy: 50_000
+      })
+    );
+
+    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "bootstrap" }]);
+  });
+
+  it("never emits a body the colony cannot pay for", () => {
+    // Body calculators clamp their energy argument UP to a floor, so below that
+    // floor they hand back a body costing more than the room has: bootstrapBody
+    // returns [WORK,CARRY,MOVE] (200) however little energy it is given.
+    // Without this guard the spawn dry run rejects it every tick forever.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 150,
+        sources: 1
+      })
+    );
+
+    expect(planSpawning(snap)).toEqual([]);
+  });
+
+  it("still spawns a cheap role the colony can afford below the bootstrap floor", () => {
+    // The affordability floor is per-role, not a flat 300: a hauler's cheapest
+    // body is one CARRY,CARRY,MOVE set at 150, and desiredHaulerCount's own
+    // MIN_HAULER_ENERGY documents 150 as sufficient. A blanket 300 floor would
+    // strand a colony that can afford the hauler it actually needs.
+    const snap = empire(
+      colony({
+        census: { bootstrap: 2, miner: 1 },
+        spawns: [spawn()],
+        energyAvailable: 200,
+        sources: 1,
+        containers: [containerAt(10, 10, 500)]
+      })
+    );
+
+    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "hauler" }]);
+  });
+
   it("scales the bootstrap body to available energy", () => {
     const snap = empire(
       colony({

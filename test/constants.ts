@@ -49,6 +49,19 @@ Object.assign(globalThis, {
 
   MAX_CONSTRUCTION_SITES: 100,
 
+  // Spawn cost per body part, from screeps/common constants — spawning prices
+  // the body it built against the room's energy before emitting the intent.
+  BODYPART_COST: {
+    move: 50,
+    work: 100,
+    attack: 80,
+    carry: 50,
+    heal: 250,
+    ranged_attack: 150,
+    tough: 10,
+    claim: 600
+  },
+
   WORK: "work",
   CARRY: "carry",
   MOVE: "move",
