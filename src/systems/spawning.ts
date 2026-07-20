@@ -7,6 +7,7 @@ import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import type { RoleName } from "../memory/schema";
 import type { Census, ColonySnapshot, EmpireSnapshot } from "../snapshot/types";
+import { desiredBuilderCount } from "./building";
 import { desiredUpgraderCount } from "./upgrading";
 
 // Priority order — earlier roles are filled first when a colony is under CPU or
@@ -37,12 +38,13 @@ export function planSpawning(snap: EmpireSnapshot): Intent[] {
   return out;
 }
 
-// P0 bootstrap quota plus the P1 upgrader quota. Miner/hauler/etc. quotas
-// arrive with their own ports (MinerOperation, HaulerOperation, ...).
+// P0 bootstrap quota plus the P1 upgrader and builder quotas. Miner/hauler
+// quotas arrive with their own ports (MinerOperation, HaulerOperation, ...).
 function desiredCensus(colony: ColonySnapshot): Census {
   return {
     bootstrap: colony.sources * 2,
-    upgrader: desiredUpgraderCount(colony)
+    upgrader: desiredUpgraderCount(colony),
+    builder: desiredBuilderCount(colony)
   };
 }
 

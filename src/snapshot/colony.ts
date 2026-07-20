@@ -52,7 +52,10 @@ function buildColonySnapshot(room: Room, census: Census): ColonySnapshot {
       .find(FIND_STRUCTURES)
       .filter((s): s is AnyStructure & { structureType: BuildableStructureConstant } => s.structureType !== STRUCTURE_CONTROLLER)
       .map(snapStructure),
-    sites: room.find(FIND_MY_CONSTRUCTION_SITES).map(snapStructure)
+    sites: room.find(FIND_MY_CONSTRUCTION_SITES).map(snapStructure),
+    constructionProgress: room
+      .find(FIND_CONSTRUCTION_SITES)
+      .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0)
   };
 }
 

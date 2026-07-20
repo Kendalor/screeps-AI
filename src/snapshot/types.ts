@@ -50,6 +50,7 @@ export interface ColonySnapshot {
   anchor: XY | null; // null until a bunker-fitting anchor is found in this room
   structures: SnapStructure[]; // built structures already in the room
   sites: SnapStructure[]; // construction sites already placed
+  constructionProgress: number; // total work remaining across all sites in the room
 }
 
 export interface EmpireSnapshot {

@@ -34,6 +34,25 @@ describe("upgrader body (ported Upgrader.getBody)", () => {
   });
 });
 
+describe("builder role", () => {
+  it("resolves via roleDef and gathers from storage/container, falling back to harvest, before building", () => {
+    expect(roleDef("builder")).toEqual({
+      body: ROLES.builder.body,
+      steps: [
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+        { do: "harvest", from: { find: "source" } },
+        { do: "build" }
+      ]
+    });
+  });
+
+  it("shares the bootstrap body formula (ported Builder.getBody — same WORK/CARRY/MOVE sets)", () => {
+    expect(ROLES.builder.body(300)).toEqual([WORK, CARRY, MOVE]);
+    expect(ROLES.builder.body(550)).toEqual(ROLES.bootstrap.body(550));
+  });
+});
+
 describe("upgrader role", () => {
   it("resolves via roleDef and withdraws from link/storage before upgrading", () => {
     expect(roleDef("upgrader")).toEqual({

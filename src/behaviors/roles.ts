@@ -47,6 +47,20 @@ export const ROLES = {
       { do: "upgrade" }
     ]
   },
+  // Ported from Builder's job priority (the Build* jobs, then PickupNearest),
+  // recast forward: refill from storage, then a container, then fall back to
+  // harvesting a source directly, and spend it on whatever site is nearest.
+  // Body is Allrounder's formula — legacy Builder.getBody is the same
+  // WORK/CARRY/MOVE set calculation, so bootstrapBody covers both.
+  builder: {
+    body: bootstrapBody,
+    steps: [
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "harvest", from: { find: "source" } },
+      { do: "build" }
+    ]
+  },
   // Ported from Upgrader's job priority (Upgrade > PickupControllerLink >
   // PickupStorage), recast forward: refill from the controller link, then
   // storage, then spend it upgrading.

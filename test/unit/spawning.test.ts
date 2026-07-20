@@ -70,6 +70,47 @@ describe("spawning planner", () => {
     ]);
   });
 
+  it("spawns a builder once a construction backlog exists and higher-priority quotas are met", () => {
+    const snap = empire(
+      colony({
+        census: { bootstrap: 2, upgrader: 4 }, // everything above builder satisfied
+        spawns: [spawn()],
+        energyAvailable: 300,
+        controllerLevel: 4,
+        sources: 1,
+        storageEnergy: 200_000,
+        constructionProgress: 4_000
+      })
+    );
+
+    expect(planSpawning(snap)).toEqual([
+      {
+        kind: "spawn",
+        spawn: "spawn1",
+        role: "builder",
+        body: [WORK, CARRY, MOVE],
+        memory: { home: "W1N1", role: "builder" }
+      }
+    ]);
+  });
+
+  it("fills the upgrader deficit before the builder one — builder is lowest priority", () => {
+    const snap = empire(
+      colony({
+        census: { bootstrap: 2 }, // upgrader AND builder both under quota
+        spawns: [spawn()],
+        energyAvailable: 300,
+        controllerLevel: 4,
+        sources: 1,
+        storageEnergy: 200_000,
+        constructionProgress: 4_000
+      })
+    );
+
+    const [intent] = planSpawning(snap);
+    expect(intent).toMatchObject({ role: "upgrader" });
+  });
+
   it("scales the bootstrap body to available energy", () => {
     const snap = empire(
       colony({

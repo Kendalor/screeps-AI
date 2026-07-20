@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
-import { planBuilding } from "../../src/systems/building";
+import { desiredBuilderCount, planBuilding } from "../../src/systems/building";
 import type { SnapStructure } from "../../src/snapshot/types";
 import { colony, empire } from "../fixtures";
 
@@ -118,5 +118,31 @@ describe("building planner", () => {
 
     const removals = planBuilding(snap).filter(i => i.kind === "removeStructure");
     expect(removals).toEqual([]);
+  });
+});
+
+describe("desiredBuilderCount (ported BuildOperation builder quota)", () => {
+  it("returns 0 when there is nothing left to build", () => {
+    expect(desiredBuilderCount(colony({ constructionProgress: 0, storageEnergy: 200_000 }))).toBe(0);
+  });
+
+  it("scales one builder per 5k of remaining work when storage can bankroll them", () => {
+    expect(desiredBuilderCount(colony({ constructionProgress: 3_000, storageEnergy: 200_000 }))).toBe(1);
+    expect(desiredBuilderCount(colony({ constructionProgress: 8_000, storageEnergy: 200_000 }))).toBe(2);
+  });
+
+  it("caps the quota so a full bunker rollout cannot swallow all spawn capacity", () => {
+    expect(desiredBuilderCount(colony({ constructionProgress: 500_000, storageEnergy: 2_000_000 }))).toBe(4);
+  });
+
+  it("holds the storage reserve back: no builders when storage cannot cover the reserve plus the build cost", () => {
+    // Reserve is 50k (ported from BuildOperation); a 10k backlog costs 10k energy
+    // to finish, so storage must clear 60k before a builder is affordable.
+    expect(desiredBuilderCount(colony({ constructionProgress: 10_000, storageEnergy: 55_000 }))).toBe(0);
+    expect(desiredBuilderCount(colony({ constructionProgress: 10_000, storageEnergy: 65_000 }))).toBe(2);
+  });
+
+  it("asks for no dedicated builders before storage exists — bootstrap's build step covers construction that early", () => {
+    expect(desiredBuilderCount(colony({ constructionProgress: 20_000, storageEnergy: 0, controllerLevel: 3 }))).toBe(0);
   });
 });

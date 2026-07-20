@@ -24,6 +24,7 @@ export function colony(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     anchor: null,
     structures: [],
     sites: [],
+    constructionProgress: 0,
     ...over
   };
 }
