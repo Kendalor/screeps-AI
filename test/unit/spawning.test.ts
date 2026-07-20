@@ -259,6 +259,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [spawn()],
         energyAvailable: 550,
+        energyCapacity: 550,
         sources: 1
       })
     );
@@ -266,5 +267,46 @@ describe("spawning planner", () => {
     const [intent] = planSpawning(snap);
     expect(intent).toMatchObject({ kind: "spawn", role: "bootstrap" });
     expect(intent.kind === "spawn" && intent.body.filter(p => p === WORK)).toHaveLength(2);
+  });
+
+  it("sizes normal-path bodies from capacity, so the same room always yields the same body", () => {
+    // The defect (issue #21): sizing from energyAvailable made body size depend
+    // on WHICH TICK the planner happened to run. A spawn firing just after the
+    // room spent energy locked in a runt that then lived ~1500 ticks. Capacity
+    // is the room's persistent, timing-independent budget.
+    // 800 capacity sizes a 4-WORK body costing exactly 800. Sized from
+    // availability, a full room would instead yield only what that tick's
+    // energy bought — the two are visibly different creeps.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 800,
+        energyCapacity: 800,
+        sources: 1
+      })
+    );
+
+    const [intent] = planSpawning(snap);
+    expect(intent.kind === "spawn" && intent.body.filter(p => p === WORK)).toHaveLength(4);
+  });
+
+  it("waits for a refill rather than spawning a runt sized to a drained room", () => {
+    // The other half of issue #21: with sizing moved to capacity, a drained
+    // room can no longer afford the body it wants, and the existing
+    // affordability guard becomes the "wait until the room can pay" mechanism
+    // for free. Previously this room would have locked in a 2-WORK runt that
+    // then lived ~1500 ticks.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 400, // would have bought a 2-WORK bootstrap
+        energyCapacity: 800, // wants the 4-WORK, 800-cost one
+        sources: 1
+      })
+    );
+
+    expect(planSpawning(snap)).toEqual([]);
   });
 });
