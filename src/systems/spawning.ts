@@ -16,28 +16,63 @@ import { desiredUpgraderCount } from "./upgrading";
 // energy pressure. Bootstrap keeps the colony alive before anything specialised.
 const PRIORITY: RoleName[] = ["bootstrap", "miner", "hauler", "upgrader", "builder"];
 
+// The cheapest body any role can produce. Body calculators clamp their energy
+// argument up to this floor, so below it they return a body the room cannot
+// pay for — the spawn dry run then rejects it every tick.
+const MIN_SPAWN_ENERGY = 300;
+
 export function planSpawning(snap: EmpireSnapshot): Intent[] {
   const out: Intent[] = [];
   for (const colony of snap.colonies) {
     const spawn = colony.spawns.find(s => !s.busy);
     if (!spawn) continue;
+    if (colony.energyAvailable < MIN_SPAWN_ENERGY) continue;
 
-    const desired = desiredCensus(colony);
-    const deficit = firstDeficit(desired, colony.census);
-    if (!deficit) continue;
+    const role = isWipedOut(colony)
+      ? recoveryRole(colony)
+      : firstDeficit(desiredCensus(colony), colony.census);
+    if (!role) continue;
 
-    const def = roleDef(deficit);
+    const def = roleDef(role);
     if (!def) continue;
 
     out.push({
       kind: "spawn",
       spawn: spawn.id,
-      role: deficit,
+      role,
       body: def.body(colony.energyAvailable, bodyContext(colony)),
-      memory: { home: colony.name, role: deficit }
+      memory: { home: colony.name, role }
     });
   }
   return out;
+}
+
+// Total creep loss with an idle spawn — the one state a colony cannot leave on
+// its own. Nothing is alive to refill the extensions, so energyAvailable only
+// ever climbs to the spawn's own 300 regen, and every normal quota is free to
+// evaluate to zero and leave the room dead forever.
+//
+// The legacy port (InitRoomOperation.checkForEmergency) needed ~1000 persisted
+// ticks of pinned energy to call this, because it watched energy level alone —
+// a healthy room sits at 300 constantly, so only duration separated a drained
+// room from a deadlocked one. Watching the census instead makes duration
+// irrelevant: zero creeps with an idle spawn is terminal the tick it is true,
+// and waiting 1000 ticks to confirm it only wastes 1000 ticks.
+//
+// Callers check `!spawn.busy` before this, which covers the one transient case
+// (a recovery creep already mid-build). When colonize operations land, a colony
+// awaiting a claim is the other legitimate empty-census state and belongs here.
+function isWipedOut(colony: ColonySnapshot): boolean {
+  return Object.values(colony.census).every(n => !n);
+}
+
+// Recovery spends the room's one affordable body on refilling the spawn. A
+// hauler drains existing storage into it, which is far faster than harvesting,
+// so it wins wherever storage still holds energy. Otherwise bootstrap harvests
+// a source and transfers to the extensions and spawn directly — the only role
+// that needs no infrastructure to function.
+function recoveryRole(colony: ColonySnapshot): RoleName {
+  return colony.storageEnergy > 0 ? "hauler" : "bootstrap";
 }
 
 // P0 bootstrap quota plus the P1 miner/hauler/upgrader/builder quotas. Miners
