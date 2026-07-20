@@ -14,7 +14,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { ScreepsServer } from "screeps-server-mockup";
+import { ScreepsServer, TerrainMatrix } from "screeps-server-mockup";
 
 const REPO_ROOT = process.cwd();
 
@@ -77,6 +77,52 @@ export interface BootOptions {
   username?: string;
   /** Storage port. Default 21077 to dodge the standard 21025 private server. */
   port?: number;
+  /**
+   * Replace the stub room's terrain before the first tick. Required by any
+   * scenario that exercises the bunker layout — see `bunkerTerrain()`.
+   */
+  terrain?: TerrainMatrix;
+}
+
+// ---------------------------------------------------------------------------
+// Terrain
+// ---------------------------------------------------------------------------
+
+/**
+ * A room the bunker can actually be anchored in.
+ *
+ * `stubWorld()`'s rooms are rugged mazes whose maximum distance-to-wall
+ * clearance is 4, but `BUNKER_RADIUS` is 6 — the layout needs a 13x13 open
+ * pocket. In a stub room `pickAnchor` therefore (correctly) returns null,
+ * no anchor is ever cached, and `planBuilding` skips the colony entirely, so
+ * nothing downstream of layout placement can be exercised at all.
+ *
+ * This lays down an open room with a wall border and two interior wall bands
+ * well clear of the centre. The bands matter: on a wholly blank grid every
+ * interior tile qualifies and the anchor search would be a formality. Here it
+ * has to discriminate, while the centre still offers clearance well above 6.
+ */
+export function bunkerTerrain(): TerrainMatrix {
+  const terrain = new TerrainMatrix();
+  // Room border — the engine treats edge tiles as unbuildable anyway, and a
+  // solid rim keeps the distance transform's edge handling honest.
+  for (let i = 0; i < 50; i++) {
+    terrain.set(i, 0, "wall");
+    terrain.set(i, 49, "wall");
+    terrain.set(0, i, "wall");
+    terrain.set(49, i, "wall");
+  }
+  // Interior obstacles, kept >6 tiles from the centre so they shape the search
+  // without shrinking the bunker pocket below its required radius.
+  for (let y = 3; y < 16; y++) {
+    terrain.set(6, y, "wall");
+    terrain.set(7, y, "wall");
+  }
+  for (let x = 34; x < 46; x++) {
+    terrain.set(x, 40, "wall");
+    terrain.set(x, 41, "wall");
+  }
+  return terrain;
 }
 
 export class BootedColony {
@@ -90,6 +136,9 @@ export class BootedColony {
     const room = opts.room ?? "W0N1";
     const server = new ScreepsServer({ port: opts.port ?? 21077 });
     await server.world.stubWorld();
+    // Before addBot: the spawn is placed into the room as it then stands, so
+    // reshaping terrain afterwards could bury it in rock.
+    if (opts.terrain) await server.world.setTerrain(room, opts.terrain);
     const bot = await server.world.addBot({
       username: opts.username ?? "kendalor",
       room,
@@ -130,6 +179,32 @@ export class BootedColony {
    */
   async addStructure(type: string, x: number, y: number, attrs: Record<string, unknown> = {}): Promise<void> {
     await this.server.world.addRoomObject(this.room, type, x, y, attrs);
+  }
+
+  /**
+   * Construction sites the bot has placed itself. Distinct from `structures()`
+   * — a site is intent, a structure is a finished build.
+   */
+  async sites(): Promise<RoomObject[]> {
+    const id = this.bot.id;
+    return (await this.roomObjects()).filter(o => o.type === "constructionSite" && o.user === id);
+  }
+
+  /** Finished structures of `type` owned by the room (walls/controller excluded). */
+  async structures(type: string): Promise<RoomObject[]> {
+    return (await this.roomObjects()).filter(o => o.type === type);
+  }
+
+  /**
+   * The bunker anchor the bot computed and cached in Memory, or null before it
+   * has run its layout planning. Read from Memory rather than inferred from
+   * placements — this is the planner's own recorded decision.
+   */
+  async anchor(): Promise<{ x: number; y: number } | null> {
+    const mem = (await this.memory()) as {
+      colonies?: Record<string, { anchor?: { x: number; y: number } }>;
+    };
+    return mem.colonies?.[this.room]?.anchor ?? null;
   }
 
   /** Living creeps owned by the bot (includes still-spawning ones). */
