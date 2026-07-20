@@ -4,10 +4,12 @@
 // deficit at an available spawn. No persisted spawn list, no name bookkeeping.
 
 import { roleDef } from "../behaviors/roles";
+import type { BodyContext } from "../behaviors/types";
 import type { Intent } from "../intents/types";
 import type { RoleName } from "../memory/schema";
 import type { Census, ColonySnapshot, EmpireSnapshot } from "../snapshot/types";
 import { desiredBuilderCount } from "./building";
+import { desiredHaulerCount, desiredMinerCount } from "./logistics";
 import { desiredUpgraderCount } from "./upgrading";
 
 // Priority order — earlier roles are filled first when a colony is under CPU or
@@ -31,20 +33,30 @@ export function planSpawning(snap: EmpireSnapshot): Intent[] {
       kind: "spawn",
       spawn: spawn.id,
       role: deficit,
-      body: def.body(colony.energyAvailable),
+      body: def.body(colony.energyAvailable, bodyContext(colony)),
       memory: { home: colony.name, role: deficit }
     });
   }
   return out;
 }
 
-// P0 bootstrap quota plus the P1 upgrader and builder quotas. Miner/hauler
-// quotas arrive with their own ports (MinerOperation, HaulerOperation, ...).
+// P0 bootstrap quota plus the P1 miner/hauler/upgrader/builder quotas. Miners
+// are one per container-backed source; haulers follow from what they fill.
 function desiredCensus(colony: ColonySnapshot): Census {
   return {
     bootstrap: colony.sources * 2,
+    miner: desiredMinerCount(colony),
+    hauler: desiredHaulerCount(colony),
     upgrader: desiredUpgraderCount(colony),
     builder: desiredBuilderCount(colony)
+  };
+}
+
+// Structures that change what a body should look like — see BodyContext.
+function bodyContext(colony: ColonySnapshot): BodyContext {
+  return {
+    hasContainer: colony.containers.length > 0,
+    hasLink: colony.structures.some(s => s.type === STRUCTURE_LINK)
   };
 }
 

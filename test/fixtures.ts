@@ -1,6 +1,13 @@
 // Snapshot fixtures for planner tests — plain objects, no game engine.
 
-import type { ColonySnapshot, EmpireSnapshot, SnapSpawn, SnapTower, SnapUnit } from "../src/snapshot/types";
+import type {
+  ColonySnapshot,
+  EmpireSnapshot,
+  SnapContainer,
+  SnapSpawn,
+  SnapTower,
+  SnapUnit
+} from "../src/snapshot/types";
 
 export function empire(...colonies: ColonySnapshot[]): EmpireSnapshot {
   return { tick: 0, colonies };
@@ -21,6 +28,7 @@ export function colony(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     controllerLevel: 1,
     controllerProgress: 0,
     storageEnergy: 0,
+    containers: [],
     anchor: null,
     structures: [],
     sites: [],
@@ -39,6 +47,15 @@ export function woundedAt(x: number, y: number, id = `wounded_${x}_${y}`): SnapU
 
 export function towerAt(x: number, y: number, id = `tower_${x}_${y}`): SnapTower {
   return { id: id as Id<StructureTower>, x, y };
+}
+
+export function containerAt(
+  x: number,
+  y: number,
+  storeEnergy = 0,
+  id = `container_${x}_${y}`
+): SnapContainer {
+  return { id: id as Id<StructureContainer>, x, y, storeEnergy, storeCapacity: 2000 };
 }
 
 export function spawn(id = "spawn1", busy = false): SnapSpawn {

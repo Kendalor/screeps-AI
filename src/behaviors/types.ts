@@ -25,7 +25,16 @@ export interface TaskState {
   target?: Id<_HasId>; // locked target for the current step
 }
 
+// What a body calculator may know about the colony beyond its energy budget.
+// Only roles whose shape genuinely depends on built structures read it: a
+// miner standing on a container needs no CARRY, but with no container (early)
+// or with a link to feed (late) it must hold energy to hand off.
+export interface BodyContext {
+  hasContainer: boolean;
+  hasLink: boolean;
+}
+
 export interface RoleDef {
-  body: (energy: number) => BodyPartConstant[];
+  body: (energy: number, ctx: BodyContext) => BodyPartConstant[];
   steps: Step[];
 }
