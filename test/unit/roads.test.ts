@@ -1,0 +1,103 @@
+import { describe, expect, it } from "vitest";
+import { buildCostMatrix, controllerRoadPath, sourceRoadPath } from "../../src/layouts/roads";
+import type { XY } from "../../src/lib/geometry";
+
+function openTerrain(): Uint8Array {
+  return new Uint8Array(2500).fill(1); // all walkable
+}
+
+// A path is connected if consecutive tiles are adjacent (Chebyshev range 1).
+function isConnected(path: XY[]): boolean {
+  for (let i = 1; i < path.length; i++) {
+    const dx = Math.abs(path[i].x - path[i - 1].x);
+    const dy = Math.abs(path[i].y - path[i - 1].y);
+    if (Math.max(dx, dy) !== 1) return false;
+  }
+  return true;
+}
+
+describe("buildCostMatrix", () => {
+  it("marks wall tiles impassable", () => {
+    const terrain = openTerrain();
+    terrain[10 * 50 + 10] = 0; // wall
+
+    const cm = buildCostMatrix({ terrain, structures: [] });
+
+    expect(cm.get(10, 10)).toBe(255);
+  });
+
+  it("marks existing road tiles cheap", () => {
+    const terrain = openTerrain();
+
+    const cm = buildCostMatrix({ terrain, structures: [{ x: 12, y: 12, type: "road" }] });
+
+    expect(cm.get(12, 12)).toBe(1);
+  });
+});
+
+describe("sourceRoadPath", () => {
+  it("returns a connected path from anchor to a tile adjacent to the source", () => {
+    const cm = buildCostMatrix({ terrain: openTerrain(), structures: [] });
+    const anchor: XY = { x: 10, y: 10 };
+    const source: XY = { x: 20, y: 10 };
+
+    const { path } = sourceRoadPath(anchor, source, cm);
+
+    expect(path[0]).toEqual(anchor);
+    expect(isConnected(path)).toBe(true);
+    const last = path[path.length - 1];
+    expect(Math.max(Math.abs(last.x - source.x), Math.abs(last.y - source.y))).toBe(1);
+  });
+
+  it("places the container/link spot adjacent to the source, not on top of it", () => {
+    const cm = buildCostMatrix({ terrain: openTerrain(), structures: [] });
+    const anchor: XY = { x: 10, y: 10 };
+    const source: XY = { x: 20, y: 10 };
+
+    const { structurePos } = sourceRoadPath(anchor, source, cm);
+
+    expect(structurePos).not.toEqual(source);
+    const dist = Math.max(Math.abs(structurePos.x - source.x), Math.abs(structurePos.y - source.y));
+    expect(dist).toBe(1);
+  });
+});
+
+describe("controllerRoadPath", () => {
+  it("returns a connected path from anchor to a tile within upgrade range of the controller", () => {
+    const cm = buildCostMatrix({ terrain: openTerrain(), structures: [] });
+    const anchor: XY = { x: 10, y: 10 };
+    const controller: XY = { x: 10, y: 25 };
+
+    const { path } = controllerRoadPath(anchor, controller, cm);
+
+    expect(path[0]).toEqual(anchor);
+    expect(isConnected(path)).toBe(true);
+    const last = path[path.length - 1];
+    const dist = Math.max(Math.abs(last.x - controller.x), Math.abs(last.y - controller.y));
+    expect(dist).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("obstacle routing", () => {
+  it("routes around a wall obstacle rather than through it", () => {
+    const terrain = openTerrain();
+    // A wall wedge that fully blocks the direct line between anchor and source,
+    // narrow enough to route around within the room.
+    for (let y = 5; y <= 15; y++) {
+      terrain[15 * 50 + y] = 0;
+    }
+    const cm = buildCostMatrix({ terrain, structures: [] });
+    const anchor: XY = { x: 10, y: 10 };
+    const source: XY = { x: 20, y: 10 };
+
+    const { path } = sourceRoadPath(anchor, source, cm);
+
+    expect(isConnected(path)).toBe(true);
+    for (const p of path) {
+      expect(cm.get(p.x, p.y)).toBeLessThan(255);
+    }
+    // The path must detour around the wall band (y 5..15 at x=15) rather than
+    // crossing it, so some tile has to leave that y-range while at x=15.
+    expect(path.some(p => p.x === 15 && (p.y < 5 || p.y > 15))).toBe(true);
+  });
+});
