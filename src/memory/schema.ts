@@ -34,6 +34,7 @@ export type RoleName =
   | "bootstrap"
   | "miner"
   | "hauler"
+  | "supply"
   | "upgrader"
   | "builder"
   | "sitter"

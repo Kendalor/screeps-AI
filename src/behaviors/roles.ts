@@ -122,6 +122,21 @@ export const ROLES = {
       { do: "transfer", to: { find: "structure", type: STRUCTURE_CONTAINER, where: "notFull" } }
     ]
   },
+  // The inverse of hauler: hauler moves energy from mining containers INTO
+  // storage, supply moves it back OUT to the structures that must be kept full
+  // for spawning to work. Old SupplyExtension/SupplySpawn collapse into this
+  // one row (docs/rewrite-skeleton.md §5). Storage is the intended source; the
+  // container fallback covers a room whose storage is empty or not yet built,
+  // so supply still functions as the extension filler before storage exists.
+  supply: {
+    body: haulerBody,
+    steps: [
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } }
+    ]
+  },
   // Ported from Hauler's pickup/deliver loop: drain mining containers into
   // storage; before storage exists, the spawn is the only sink worth filling.
   hauler: {
