@@ -244,7 +244,12 @@ describe("spawning planner", () => {
       colony({
         census: { bootstrap: 2, miner: 1 },
         spawns: [spawn()],
+        // Capacity, not availability, is what sizes the body (issue #21) — a
+        // 150-capacity room wants exactly one CARRY,CARRY,MOVE set, which it
+        // can pay for. The point is that the floor is per-role: a blanket 300
+        // would strand this colony from the hauler it actually needs.
         energyAvailable: 200,
+        energyCapacity: 150,
         sources: 1,
         containers: [containerAt(10, 10, 500)]
       })
@@ -299,14 +304,39 @@ describe("spawning planner", () => {
     // then lived ~1500 ticks.
     const snap = empire(
       colony({
-        census: {},
+        // One live creep, so this is a healthy colony on the normal quota path
+        // and not a wipe — recovery deliberately still sizes from availability.
+        census: { bootstrap: 1 },
         spawns: [spawn()],
-        energyAvailable: 400, // would have bought a 2-WORK bootstrap
-        energyCapacity: 800, // wants the 4-WORK, 800-cost one
+        energyAvailable: 400, // would have bought a 2-WORK runt
+        energyCapacity: 800, // wants the 4-WORK, 800-cost body
         sources: 1
       })
     );
 
     expect(planSpawning(snap)).toEqual([]);
+  });
+
+  it("sizes a recovery creep from available energy, not the capacity it cannot fill", () => {
+    // The deliberate exception to capacity sizing (issue #21). A wiped colony
+    // has nothing alive to fill its extensions, so energyAvailable only ever
+    // climbs to the spawn's own ~300 regen. Sizing recovery from this room's
+    // 1300 capacity would emit a body it can never pay for, the affordability
+    // guard would reject it every tick, and the colony would stay dead forever.
+    const snap = empire(
+      colony({
+        census: {}, // wiped — recovery path
+        spawns: [spawn()],
+        energyAvailable: 300,
+        energyCapacity: 1300,
+        sources: 1,
+        storageEnergy: 0 // no stored energy -> recovery falls back to bootstrap
+      })
+    );
+
+    const [intent] = planSpawning(snap);
+    expect(intent).toMatchObject({ role: "bootstrap" });
+    // The 300-regen body, not the 1300-capacity one the room cannot afford.
+    expect(intent.kind === "spawn" && intent.body).toEqual([WORK, CARRY, MOVE]);
   });
 });
