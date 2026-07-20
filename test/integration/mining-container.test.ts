@@ -49,11 +49,7 @@ test(
     // `desiredMinerCount = min(sources, containers.length)`, which was pinned
     // at 0. Give the spawn room to react — the container finishing and the
     // miner appearing are several hundred ticks apart at this income.
-    const minerAtTick = await colony.runUntil(async () => {
-      const mem = await colony.memory();
-      const creeps = (mem.creeps as Record<string, { role?: string }> | undefined) ?? {};
-      return Object.values(creeps).some(c => c.role === "miner");
-    }, 1500);
+    const minerAtTick = await colony.runUntil(() => colony.hasRole("miner"), 1500);
 
     expect(minerAtTick, "container was built but no miner ever followed").not.toBeNull();
   },

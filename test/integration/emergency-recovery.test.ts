@@ -48,8 +48,7 @@ test(
 
     // The recovery branch is what chose this role; the normal quota path would
     // have produced a bootstrap or a miner here.
-    const mem = (await colony.memory()) as { creeps?: Record<string, { role?: string }> };
-    const roles = Object.values(mem.creeps ?? {}).map(c => c.role);
+    const roles = await colony.rolesAlive();
     expect(roles, `recovery should spawn a supply creep, got ${JSON.stringify(roles)}`).toContain(
       "supply"
     );

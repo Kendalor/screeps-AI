@@ -213,6 +213,30 @@ export class BootedColony {
     return (await this.roomObjects()).filter(o => o.type === "creep" && o.user === id).length;
   }
 
+  /**
+   * Roles of the creeps the bot currently has in Memory. Read from Memory
+   * rather than the world because role is the bot's own labelling — the engine
+   * only knows "creep". Use `hasRole` for the common membership check.
+   */
+  async rolesAlive(): Promise<string[]> {
+    const mem = (await this.memory()) as { creeps?: Record<string, { role?: string }> };
+    return Object.values(mem.creeps ?? {})
+      .map(c => c.role)
+      .filter((r): r is string => r !== undefined);
+  }
+
+  async hasRole(role: string): Promise<boolean> {
+    return (await this.rolesAlive()).includes(role);
+  }
+
+  /** Total energy sitting in structures of `type` (containers, storage, ...). */
+  async energyIn(type: string): Promise<number> {
+    return (await this.structures(type)).reduce(
+      (sum, s) => sum + ((s.store?.energy as number | undefined) ?? 0),
+      0
+    );
+  }
+
   /** Parsed bot Memory (or {} before the first tick writes it). */
   async memory(): Promise<Record<string, unknown>> {
     const raw = await this.bot.memory;
