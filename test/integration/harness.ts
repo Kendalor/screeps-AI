@@ -217,6 +217,9 @@ export class BootedColony {
    * Roles of the creeps the bot currently has in Memory. Read from Memory
    * rather than the world because role is the bot's own labelling — the engine
    * only knows "creep". Use `hasRole` for the common membership check.
+   *
+   * Genuinely "alive" since the tick loop reaps dead creeps' Memory (#24);
+   * before that fix this over-reported as "every role ever spawned".
    */
   async rolesAlive(): Promise<string[]> {
     const mem = (await this.memory()) as { creeps?: Record<string, { role?: string }> };

@@ -25,4 +25,5 @@ export function stubGame(opts: GameStubOptions = {}): void {
     creeps: {},
     getObjectById: (id: string) => objects[id] ?? null
   };
+  (globalThis as Record<string, unknown>).Memory = { creeps: {} };
 }

@@ -12,6 +12,7 @@ import { runCreepBehaviors } from "../systems/creeps";
 import { planDefense } from "../systems/defense";
 import { planMining } from "../systems/mining";
 import { planSpawning } from "../systems/spawning";
+import { cleanCreepMemory } from "./creepMemory";
 import { stats } from "./stats";
 
 export interface System {
@@ -35,6 +36,8 @@ export const SYSTEMS: System[] = [
 ];
 
 export function tick(systems: System[] = SYSTEMS): void {
+  // Before the snapshot, so no system observes a half-cleaned Memory.
+  cleanCreepMemory();
   const snap = buildEmpireSnapshot();
   for (const sys of systems) {
     if (sys.interval && Game.time % sys.interval !== 0) continue;
