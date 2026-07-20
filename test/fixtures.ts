@@ -18,6 +18,9 @@ export function colony(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     energyAvailable: 300,
     energyCapacity: 300,
     sources: 1,
+    controllerLevel: 1,
+    controllerProgress: 0,
+    storageEnergy: 0,
     ...over
   };
 }

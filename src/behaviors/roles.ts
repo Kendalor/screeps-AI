@@ -20,6 +20,19 @@ function bootstrapBody(energy: number): BodyPartConstant[] {
   return parts;
 }
 
+// Ported from Upgrader.getBody: a WORK/CARRY/MOVE base, clamped to a
+// 300-energy floor, plus WORK,WORK,MOVE sets (heavy WORK, standard 2:1
+// move ratio) up to 15 sets (the 50-body-part cap).
+function upgraderBody(energy: number): BodyPartConstant[] {
+  const energyCap = Math.min(Math.max(300, energy), 4050);
+  const fullSets = Math.min(15, Math.max(0, Math.floor((energyCap - 300) / 250)));
+  let parts: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE];
+  for (let i = 0; i < fullSets; i++) {
+    parts = parts.concat([WORK, WORK, MOVE]);
+  }
+  return parts;
+}
+
 export const ROLES = {
   // Old Allrounder priority order, recast as a wrap-around step loop: steps
   // with no valid target are skipped, so this covers supply, build and upgrade.
@@ -31,6 +44,17 @@ export const ROLES = {
       { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
       { do: "build" },
+      { do: "upgrade" }
+    ]
+  },
+  // Ported from Upgrader's job priority (Upgrade > PickupControllerLink >
+  // PickupStorage), recast forward: refill from the controller link, then
+  // storage, then spend it upgrading.
+  upgrader: {
+    body: upgraderBody,
+    steps: [
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
       { do: "upgrade" }
     ]
   }

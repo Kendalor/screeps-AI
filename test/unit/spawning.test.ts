@@ -48,6 +48,28 @@ describe("spawning planner", () => {
     expect(planSpawning(snap)).toEqual([]);
   });
 
+  it("spawns an upgrader once the bootstrap quota is met", () => {
+    const snap = empire(
+      colony({
+        census: { bootstrap: 2 }, // 1 source -> bootstrap quota met
+        spawns: [spawn()],
+        energyAvailable: 300,
+        controllerLevel: 3,
+        sources: 1
+      })
+    );
+
+    expect(planSpawning(snap)).toEqual([
+      {
+        kind: "spawn",
+        spawn: "spawn1",
+        role: "upgrader",
+        body: [WORK, CARRY, CARRY, MOVE, MOVE],
+        memory: { home: "W1N1", role: "upgrader" }
+      }
+    ]);
+  });
+
   it("scales the bootstrap body to available energy", () => {
     const snap = empire(
       colony({

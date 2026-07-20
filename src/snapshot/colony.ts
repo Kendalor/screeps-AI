@@ -41,7 +41,10 @@ function buildColonySnapshot(room: Room, census: Census): ColonySnapshot {
       .map(s => ({ id: s.id as Id<StructureSpawn>, busy: (s as StructureSpawn).spawning !== null })),
     energyAvailable: room.energyAvailable,
     energyCapacity: room.energyCapacityAvailable,
-    sources: room.find(FIND_SOURCES).length
+    sources: room.find(FIND_SOURCES).length,
+    controllerLevel: controller.level,
+    controllerProgress: controller.progress,
+    storageEnergy: room.storage?.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0
   };
 }
 

@@ -37,6 +37,9 @@ export interface ColonySnapshot {
   energyAvailable: number;
   energyCapacity: number;
   sources: number; // source count in the room
+  controllerLevel: number;
+  controllerProgress: number;
+  storageEnergy: number; // 0 when no storage built yet
 }
 
 export interface EmpireSnapshot {
