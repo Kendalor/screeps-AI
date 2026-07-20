@@ -21,6 +21,9 @@ export function colony(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     controllerLevel: 1,
     controllerProgress: 0,
     storageEnergy: 0,
+    anchor: null,
+    structures: [],
+    sites: [],
     ...over
   };
 }

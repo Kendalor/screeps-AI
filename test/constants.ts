@@ -47,6 +47,8 @@ Object.assign(globalThis, {
   STRUCTURE_CONTROLLER: "controller",
   STRUCTURE_TERMINAL: "terminal",
 
+  MAX_CONSTRUCTION_SITES: 100,
+
   WORK: "work",
   CARRY: "carry",
   MOVE: "move",

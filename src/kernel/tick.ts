@@ -7,6 +7,7 @@ import type { Intent } from "../intents/types";
 import { log } from "../lib/log";
 import { buildEmpireSnapshot } from "../snapshot/colony";
 import type { EmpireSnapshot } from "../snapshot/types";
+import { planBuilding } from "../systems/building";
 import { runCreepBehaviors } from "../systems/creeps";
 import { planDefense } from "../systems/defense";
 import { planSpawning } from "../systems/spawning";
@@ -25,8 +26,9 @@ export const SYSTEMS: System[] = [
   // tier 1 — must run, every tick, even at 0 bucket
   { name: "defense", tier: 1, run: planDefense },
   { name: "spawning", tier: 1, run: planSpawning },
-  { name: "creeps", tier: 1, run: runCreepBehaviors } // interpreter dispatch
-  // links (tier 1) and tiers 2/3 land with their ports
+  { name: "creeps", tier: 1, run: runCreepBehaviors }, // interpreter dispatch
+  // links (tier 1) and tier 2 land with their ports
+  { name: "building", tier: 3, interval: 100, run: planBuilding }
 ];
 
 export function tick(systems: System[] = SYSTEMS): void {

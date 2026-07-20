@@ -1,8 +1,10 @@
 // Builds snapshots from Game state — the only place planners' input touches
 // the live API (docs/rewrite-skeleton.md §1).
 
+import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
+import type { XY } from "../lib/geometry";
 import { censusByColony, type CensusCreep } from "./census";
-import type { Census, ColonySnapshot, EmpireSnapshot, SnapUnit } from "./types";
+import type { Census, ColonySnapshot, EmpireSnapshot, SnapStructure, SnapUnit } from "./types";
 
 export function buildEmpireSnapshot(): EmpireSnapshot {
   // One pass over all creeps -> census keyed by home colony (skeleton §4).
@@ -44,8 +46,38 @@ function buildColonySnapshot(room: Room, census: Census): ColonySnapshot {
     sources: room.find(FIND_SOURCES).length,
     controllerLevel: controller.level,
     controllerProgress: controller.progress,
-    storageEnergy: room.storage?.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0
+    storageEnergy: room.storage?.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0,
+    anchor: resolveAnchor(room),
+    structures: room
+      .find(FIND_STRUCTURES)
+      .filter((s): s is AnyStructure & { structureType: BuildableStructureConstant } => s.structureType !== STRUCTURE_CONTROLLER)
+      .map(snapStructure),
+    sites: room.find(FIND_MY_CONSTRUCTION_SITES).map(snapStructure)
   };
+}
+
+// Bunker anchor: computed once per colony and cached in ColonyMemory.anchor
+// (building.ts, issue #16) — never recomputed once found. Only building.ts's
+// planner logic needs to be unit-testable/fixture-only; this terrain lookup
+// is the one place that's allowed to touch Game.map.
+function resolveAnchor(room: Room): XY | null {
+  const mem = (Memory.colonies[room.name] ??= { sources: {}, remotes: [], danger: 0 });
+  if (mem.anchor) return mem.anchor;
+
+  const controller = room.controller!;
+  const candidates = findAnchorCandidates(walkablePixelsForRoom(room.name));
+  const anchor = pickAnchor(candidates, {
+    controller: { x: controller.pos.x, y: controller.pos.y },
+    sources: room.find(FIND_SOURCES).map(s => ({ x: s.pos.x, y: s.pos.y }))
+  });
+  if (!anchor) return null;
+
+  mem.anchor = anchor;
+  return anchor;
+}
+
+function snapStructure(s: { pos: RoomPosition; structureType: BuildableStructureConstant }): SnapStructure {
+  return { x: s.pos.x, y: s.pos.y, type: s.structureType };
 }
 
 function snapUnit(c: Creep): SnapUnit {

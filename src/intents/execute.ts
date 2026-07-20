@@ -47,6 +47,26 @@ function act(intent: Intent): ScreepsReturnCode {
         ? spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: false, directions: [dir] })
         : spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: false });
     }
+    case "placeSite": {
+      const room = Game.rooms[intent.room];
+      if (!room) return ERR_NOT_FOUND;
+      return room.createConstructionSite(intent.x, intent.y, intent.type);
+    }
+    case "removeStructure": {
+      // Defense in depth: planBuilding never emits this for a spawn, but the
+      // actuator is the last line of defense — losing the only spawn mid-migration
+      // is colony-fatal, so a spawn is never destroyed here regardless of intent.
+      if (intent.type === "spawn") {
+        log.error(`refusing removeStructure for a spawn: ${JSON.stringify(intent)}`);
+        return OK;
+      }
+      const room = Game.rooms[intent.room];
+      const structure = room
+        ?.lookForAt(LOOK_STRUCTURES, intent.x, intent.y)
+        .find(s => s.structureType === intent.type);
+      if (!structure) return ERR_NOT_FOUND;
+      return structure.destroy();
+    }
     default:
       log.error(`no actuator for intent kind "${intent.kind}" yet`);
       return OK; // already logged; don't double-report as a failed action

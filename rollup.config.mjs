@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import clear from "rollup-plugin-clear";
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
+import json from "@rollup/plugin-json";
 import typescript from "@rollup/plugin-typescript";
 import screeps from "rollup-plugin-screeps";
 import copy from "rollup-plugin-copy";
@@ -29,6 +30,7 @@ export default {
     clear({ targets: ["dist"] }),
     resolve(),
     commonjs(),
+    json(),
     typescript({ tsconfig: "./tsconfig.json" }),
     screeps({ config: cfg, dryRun: cfg == null }),
     ...(local

@@ -16,6 +16,7 @@ export interface SnapTower {
   y: number;
 }
 
+import type { XY } from "../lib/geometry";
 import type { RoleName } from "../memory/schema";
 
 export interface SnapSpawn {
@@ -24,6 +25,10 @@ export interface SnapSpawn {
 }
 
 export type Census = Partial<Record<RoleName, number>>;
+
+export interface SnapStructure extends XY {
+  type: BuildableStructureConstant;
+}
 
 export interface ColonySnapshot {
   name: string;
@@ -40,6 +45,11 @@ export interface ColonySnapshot {
   controllerLevel: number;
   controllerProgress: number;
   storageEnergy: number; // 0 when no storage built yet
+  // building inputs (systems/building.ts) — anchor is resolved/cached against
+  // ColonyMemory.anchor by snapshot/colony.ts, the only impure boundary.
+  anchor: XY | null; // null until a bunker-fitting anchor is found in this room
+  structures: SnapStructure[]; // built structures already in the room
+  sites: SnapStructure[]; // construction sites already placed
 }
 
 export interface EmpireSnapshot {
