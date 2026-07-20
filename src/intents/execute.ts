@@ -1,6 +1,10 @@
 // The actuator: the one switch that calls the game API and checks return
 // codes. Every non-OK result is logged with the intent that caused it —
 // failed actions are visible, never silent (docs/rewrite-skeleton.md §4).
+//
+// Side effects that are not game-API calls land here too (recordSourceSpot
+// writes Memory), for the same reason: planners stay pure, and everything that
+// mutates the world is in one place.
 
 import { log } from "../lib/log";
 import type { Intent } from "./types";
@@ -66,6 +70,19 @@ function act(intent: Intent): ScreepsReturnCode {
         .find(s => s.structureType === intent.type);
       if (!structure) return ERR_NOT_FOUND;
       return structure.destroy();
+    }
+    case "recordSourceSpot": {
+      // The one intent that writes Memory rather than calling the game API:
+      // mining's planner stays pure, so persistence lands here with the rest
+      // of the side effects.
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const source = (mem.sources[intent.source] ??= {});
+      source.spot = intent.spot;
+      // Only ever add an id — a tick that resolved none (no vision, mid-rebuild)
+      // must not wipe the handle roles are already using.
+      if (intent.container) source.containerId = intent.container;
+      if (intent.link) source.linkId = intent.link;
+      return OK;
     }
     default:
       log.error(`no actuator for intent kind "${intent.kind}" yet`);

@@ -91,14 +91,14 @@ function recoveryRole(colony: ColonySnapshot): RoleName | undefined {
   // Otherwise harvest from scratch. Bootstrap is the only role that needs no
   // infrastructure, but it still needs a source to harvest — with none there
   // is nothing any body could do, so let the normal quota path decide.
-  return colony.sources > 0 ? "bootstrap" : undefined;
+  return colony.sources.length > 0 ? "bootstrap" : undefined;
 }
 
 // P0 bootstrap quota plus the P1 miner/hauler/upgrader/builder quotas. Miners
 // are one per container-backed source; haulers follow from what they fill.
 function desiredCensus(colony: ColonySnapshot): Census {
   return {
-    bootstrap: colony.sources * 2,
+    bootstrap: colony.sources.length * 2,
     miner: desiredMinerCount(colony),
     hauler: desiredHaulerCount(colony),
     upgrader: desiredUpgraderCount(colony),

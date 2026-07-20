@@ -36,6 +36,10 @@ export interface SnapContainer extends XY {
   storeCapacity: number;
 }
 
+export interface SnapSource extends XY {
+  id: Id<Source>;
+}
+
 export interface ColonySnapshot {
   name: string;
   towers: SnapTower[];
@@ -47,7 +51,8 @@ export interface ColonySnapshot {
   spawns: SnapSpawn[];
   energyAvailable: number;
   energyCapacity: number;
-  sources: number; // source count in the room
+  sources: SnapSource[]; // sources in the room, with positions (mining pathing)
+  terrain: Uint8Array; // 1 = walkable, 0 = wall, indexed [x*50+y] — road cost matrix input
   controllerLevel: number;
   controllerProgress: number;
   storageEnergy: number; // 0 when no storage built yet

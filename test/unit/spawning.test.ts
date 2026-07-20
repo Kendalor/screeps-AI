@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planSpawning } from "../../src/systems/spawning";
-import { colony, containerAt, empire, spawn } from "../fixtures";
+import { colony, containerAt, empire, sourceAt, spawn } from "../fixtures";
 
 describe("spawning planner", () => {
   it("spawns a bootstrap when the colony is below quota", () => {
@@ -9,7 +9,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [{ id: "spawn1" as Id<StructureSpawn>, busy: false }],
         energyAvailable: 300,
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -31,7 +31,7 @@ describe("spawning planner", () => {
         // RCL1 wants no upgraders. Every quota met.
         census: { bootstrap: 2 },
         spawns: [spawn()],
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -43,7 +43,7 @@ describe("spawning planner", () => {
       colony({
         census: {},
         spawns: [spawn("spawn1", true)],
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -57,7 +57,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 3,
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -80,7 +80,7 @@ describe("spawning planner", () => {
         census: { bootstrap: 4 },
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 2,
+        sources: [sourceAt(20, 10), sourceAt(30, 40)],
         containers: []
       })
     );
@@ -94,7 +94,7 @@ describe("spawning planner", () => {
         census: { bootstrap: 4 }, // 2 sources -> bootstrap quota met
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 2,
+        sources: [sourceAt(20, 10), sourceAt(30, 40)],
         containers: [containerAt(10, 10), containerAt(40, 40)]
       })
     );
@@ -116,7 +116,7 @@ describe("spawning planner", () => {
         census: { bootstrap: 2, miner: 1 },
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         containers: [containerAt(10, 10, 500)]
       })
     );
@@ -131,7 +131,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 200_000,
         constructionProgress: 4_000
       })
@@ -155,7 +155,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 200_000,
         constructionProgress: 4_000
       })
@@ -176,7 +176,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 2,
+        sources: [sourceAt(20, 10), sourceAt(30, 40)],
         storageEnergy: 50_000
       })
     );
@@ -192,7 +192,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 0
       })
     );
@@ -210,7 +210,7 @@ describe("spawning planner", () => {
         census: { miner: 1 },
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 50_000
       })
     );
@@ -228,7 +228,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [spawn()],
         energyAvailable: 150,
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -250,7 +250,7 @@ describe("spawning planner", () => {
         // would strand this colony from the hauler it actually needs.
         energyAvailable: 200,
         energyCapacity: 150,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         containers: [containerAt(10, 10, 500)]
       })
     );
@@ -265,7 +265,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 550,
         energyCapacity: 550,
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -288,7 +288,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 800,
         energyCapacity: 800,
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -310,7 +310,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 400, // would have bought a 2-WORK runt
         energyCapacity: 800, // wants the 4-WORK, 800-cost body
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -329,7 +329,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 300,
         energyCapacity: 1300,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 0 // no stored energy -> recovery falls back to bootstrap
       })
     );

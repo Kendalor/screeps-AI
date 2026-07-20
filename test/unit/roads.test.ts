@@ -33,6 +33,26 @@ describe("buildCostMatrix", () => {
 
     expect(cm.get(12, 12)).toBe(1);
   });
+
+  it("leaves container tiles walkable — creeps stand on them, they are not obstacles", () => {
+    const cm = buildCostMatrix({
+      terrain: openTerrain(),
+      structures: [{ x: 12, y: 12, type: "container" }]
+    });
+
+    // A miner is expected to stand *on* its container while working, so a
+    // container must never cost more than plain terrain.
+    expect(cm.get(12, 12)).toBeLessThan(255);
+  });
+
+  it("marks blocking structures impassable", () => {
+    const cm = buildCostMatrix({
+      terrain: openTerrain(),
+      structures: [{ x: 12, y: 12, type: "extension" }]
+    });
+
+    expect(cm.get(12, 12)).toBe(255);
+  });
 });
 
 describe("sourceRoadPath", () => {

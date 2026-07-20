@@ -10,6 +10,7 @@ import type { EmpireSnapshot } from "../snapshot/types";
 import { planBuilding } from "../systems/building";
 import { runCreepBehaviors } from "../systems/creeps";
 import { planDefense } from "../systems/defense";
+import { planMining } from "../systems/mining";
 import { planSpawning } from "../systems/spawning";
 import { stats } from "./stats";
 
@@ -27,7 +28,9 @@ export const SYSTEMS: System[] = [
   { name: "defense", tier: 1, run: planDefense },
   { name: "spawning", tier: 1, run: planSpawning },
   { name: "creeps", tier: 1, run: runCreepBehaviors }, // interpreter dispatch
-  // links (tier 1) and tier 2 land with their ports
+  // tier 2 — economy planning, skipped under CPU pressure
+  { name: "mining", tier: 2, interval: 50, run: planMining },
+  // links (tier 1) and the rest of tier 2 land with their ports
   { name: "building", tier: 3, interval: 100, run: planBuilding }
 ];
 

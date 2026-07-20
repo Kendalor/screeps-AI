@@ -9,6 +9,12 @@ import type { PlacedStructure } from "./stamp";
 const IMPASSABLE = 255;
 const ROAD_COST = 1;
 
+// Structures creeps can walk onto. Containers are the one that matters for
+// mining: a miner is expected to stand *on* its container while working, so
+// treating one as an obstacle both misprices paths and makes a path re-route
+// around a container the moment it gets built. Own ramparts are walkable too.
+const WALKABLE_STRUCTURES = new Set<BuildableStructureConstant>(["road", "container", "rampart"]);
+
 // Minimal own CostMatrix — mirrors the real PathFinder.CostMatrix's get/set
 // shape without depending on the game runtime, so pathing stays fixture-only.
 export class RoadCostMatrix {
@@ -141,7 +147,13 @@ export function buildCostMatrix(room: RoomFixture): RoadCostMatrix {
     }
   }
   for (const s of room.structures) {
-    cm.set(s.x, s.y, s.type === "road" ? ROAD_COST : IMPASSABLE);
+    if (s.type === "road") {
+      cm.set(s.x, s.y, ROAD_COST);
+    } else if (!WALKABLE_STRUCTURES.has(s.type)) {
+      cm.set(s.x, s.y, IMPASSABLE);
+    }
+    // Walkable non-road structures keep the underlying terrain cost: creeps
+    // move through them freely, so they must not deflect a path.
   }
   return cm;
 }

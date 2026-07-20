@@ -4,10 +4,21 @@ import type {
   ColonySnapshot,
   EmpireSnapshot,
   SnapContainer,
+  SnapSource,
   SnapSpawn,
   SnapTower,
   SnapUnit
 } from "../src/snapshot/types";
+
+// All-walkable terrain — the default for planner fixtures that don't care
+// about walls. Tests exercising pathing around obstacles carve their own.
+export function openTerrain(): Uint8Array {
+  return new Uint8Array(2500).fill(1);
+}
+
+export function sourceAt(x: number, y: number, id = `source_${x}_${y}`): SnapSource {
+  return { id: id as Id<Source>, x, y };
+}
 
 export function empire(...colonies: ColonySnapshot[]): EmpireSnapshot {
   return { tick: 0, colonies };
@@ -24,7 +35,8 @@ export function colony(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     spawns: [],
     energyAvailable: 300,
     energyCapacity: 300,
-    sources: 1,
+    sources: [sourceAt(20, 10)],
+    terrain: openTerrain(),
     controllerLevel: 1,
     controllerProgress: 0,
     storageEnergy: 0,

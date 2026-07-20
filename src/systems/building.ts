@@ -1,7 +1,10 @@
 // Construction: what to build, and who builds it.
 //
-//   - `planBuilding` — site placement from the bunker goal layout, tier 3
-//     (docs/rewrite-skeleton.md §9 P2, issue #16).
+//   - `planBuilding` — site placement from the bunker goal layout *plus* the
+//     per-operation structures other systems declare (mining's source
+//     containers, issue #22), tier 3 (docs/rewrite-skeleton.md §9 P2, #16).
+//     One system owns construction: collecting declarations here is what lets
+//     road gating see structures that aren't built yet.
 //   - `desiredBuilderCount` — the builder quota consumed by systems/spawning.ts
 //     (issue #18, ported from BuildOperation).
 //
@@ -17,6 +20,7 @@ import { stampLayout } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
 import type { ColonySnapshot, EmpireSnapshot, SnapStructure } from "../snapshot/types";
+import { minedStructures } from "./mining";
 
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
@@ -54,10 +58,19 @@ export function planBuilding(snap: EmpireSnapshot): Intent[] {
 
 function planColony(colony: ColonySnapshot): Intent[] {
   const anchor = colony.anchor!;
+  // Per-operation structures: the bunker stamp is not the whole story. Mining
+  // declares a container/link beside each source (issue #22) — Base_2.json has
+  // none by design. Collected here because one system owns site placement, and
+  // because road gating below needs to see these tiles as structures worth
+  // serving before the roads to them are planned.
+  const operational = minedStructures(colony);
   // Full RCL8 goal (not just this RCL's buildable subset): a structure from a
   // higher tier that's already built (e.g. after a downgrade) is not stale.
-  const goalAtAnchor = stampLayout(GOAL.placements, anchor);
-  const buildable = gateRoads(stampLayout(buildableAtRcl(GOAL, colony.controllerLevel), anchor), colony);
+  const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...operational];
+  const buildable = gateRoads(
+    [...stampLayout(buildableAtRcl(GOAL, colony.controllerLevel), anchor), ...operational],
+    colony
+  );
 
   let budget = MAX_CONSTRUCTION_SITES - colony.sites.length;
   const out: Intent[] = [];
