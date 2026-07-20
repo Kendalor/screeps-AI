@@ -111,6 +111,27 @@ export class BootedColony {
     return { level: c?.level ?? 0, progress: c?.progress ?? 0 };
   }
 
+  /**
+   * Inject a controller level (and optional progress) directly into the
+   * mockup DB, skipping the natural upgrade grind. Call between `boot()` and
+   * the first `runTicks`/`runUntil` to start a scenario at a given RCL.
+   */
+  async setControllerLevel(level: number, progress = 0): Promise<void> {
+    const { db } = await this.server.world.load();
+    await db["rooms.objects"].update({ room: this.room, type: "controller" }, { $set: { level, progress } });
+  }
+
+  /**
+   * Inject a structure (or construction site) directly into the mockup DB,
+   * skipping the natural build grind. Call between `boot()` and the first
+   * `runTicks`/`runUntil` to place structures the bot would otherwise build
+   * itself, e.g. `addStructure("container", 22, 30, { store: { energy: 0 },
+   * storeCapacity: 2000 })`.
+   */
+  async addStructure(type: string, x: number, y: number, attrs: Record<string, unknown> = {}): Promise<void> {
+    await this.server.world.addRoomObject(this.room, type, x, y, attrs);
+  }
+
   /** Living creeps owned by the bot (includes still-spawning ones). */
   async creepCount(): Promise<number> {
     const id = this.bot.id;
