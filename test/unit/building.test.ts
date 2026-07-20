@@ -2,9 +2,75 @@ import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
 import { desiredBuilderCount, planBuilding } from "../../src/systems/building";
 import type { SnapStructure } from "../../src/snapshot/types";
-import { colony, empire } from "../fixtures";
+import { colony, empire, sourceAt } from "../fixtures";
+import { minedStructures } from "../../src/systems/mining";
 
 describe("building planner", () => {
+  // The whole point of issue #22: Base_2.json has no containers, so unless
+  // building.ts collects mining's per-source declarations the colony can never
+  // build a container, and miner/hauler quotas stay pinned at 0 forever.
+  it("places the source containers that mining declares", () => {
+    const snap = empire(
+      colony({
+        anchor: { x: 25, y: 25 },
+        controllerLevel: 3,
+        sources: [sourceAt(20, 10)],
+        structures: [],
+        sites: []
+      })
+    );
+
+    const intents = planBuilding(snap);
+
+    const [container] = minedStructures(snap.colonies[0]);
+    expect(intents).toContainEqual({
+      kind: "placeSite",
+      room: "W1N1",
+      x: container.x,
+      y: container.y,
+      type: "container"
+    });
+  });
+
+  it("does not re-place a source container that already exists", () => {
+    const base = colony({
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      sources: [sourceAt(20, 10)],
+      structures: [],
+      sites: []
+    });
+    const [container] = minedStructures(base);
+    const snap = empire({ ...base, structures: [container] });
+
+    const intents = planBuilding(snap);
+
+    expect(intents).not.toContainEqual(
+      expect.objectContaining({ kind: "placeSite", x: container.x, y: container.y })
+    );
+  });
+
+  it("does not tear down a source container as a stale structure", () => {
+    const base = colony({
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      sources: [sourceAt(20, 10)],
+      structures: [],
+      sites: []
+    });
+    const [container] = minedStructures(base);
+    const snap = empire({ ...base, structures: [container] });
+
+    const intents = planBuilding(snap);
+
+    // Containers are absent from the bunker stamp by design — the teardown
+    // pass must consult mining's declarations too, or it demolishes the very
+    // container it just placed, every planning cycle.
+    expect(intents).not.toContainEqual(
+      expect.objectContaining({ kind: "removeStructure", x: container.x, y: container.y })
+    );
+  });
+
   it("emits placeSite intents for the RCL2 buildable subset (spawn + 5 extensions), not RCL3+ structures", () => {
     const snap = empire(
       colony({
@@ -22,9 +88,13 @@ describe("building planner", () => {
     expect(byType("spawn")).toHaveLength(1);
     expect(byType("extension")).toHaveLength(5);
     // Everything placed is spawn/extension/road (roads gated to only those
-    // adjacent to the placed cluster) — no RCL3+ structure type (link, storage, ...) leaks in.
+    // adjacent to the placed cluster), plus the source containers mining
+    // declares from RCL2 (issue #22) — no RCL3+ stamp type (link, storage, ...)
+    // leaks in.
     const types = new Set(intents.map(i => i.kind === "placeSite" && i.type));
-    expect([...types].every(t => t === "spawn" || t === "extension" || t === "road")).toBe(true);
+    expect(
+      [...types].every(t => t === "spawn" || t === "extension" || t === "road" || t === "container")
+    ).toBe(true);
   });
 
   it("road gating: does not request a bunker road far from anything placed at this RCL", () => {

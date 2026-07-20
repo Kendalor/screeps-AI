@@ -10,7 +10,7 @@ const MIN_HAULER_ENERGY = 150; // one CARRY,CARRY,MOVE set — the cheapest body
 // harvest — before that it fills its lone CARRY and stalls, and bootstrap
 // creeps are the ones keeping the colony moving.
 export function desiredMinerCount(colony: ColonySnapshot): number {
-  return Math.min(colony.sources, colony.containers.length);
+  return Math.min(colony.sources.length, colony.containers.length);
 }
 
 export function desiredHaulerCount(colony: ColonySnapshot): number {

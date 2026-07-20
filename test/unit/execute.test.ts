@@ -65,4 +65,39 @@ describe("actuator", () => {
 
     expect(spawnCreep.mock.calls[1][2]).toMatchObject({ dryRun: false, directions: [3] });
   });
+
+  it("persists a source's mining spot and container into colony memory", () => {
+    stubGame();
+    (globalThis as Record<string, unknown>).Memory = { colonies: {} };
+
+    execute([
+      {
+        kind: "recordSourceSpot",
+        room: "W1N1",
+        source: "src1" as Id<Source>,
+        spot: { x: 19, y: 11 },
+        container: "cont1" as Id<StructureContainer>
+      }
+    ]);
+
+    const mem = (globalThis as { Memory: { colonies: Record<string, { sources: Record<string, unknown> }> } })
+      .Memory.colonies.W1N1;
+    expect(mem.sources.src1).toEqual({ spot: { x: 19, y: 11 }, containerId: "cont1" });
+  });
+
+  it("keeps a previously recorded container id when this tick resolved none", () => {
+    stubGame();
+    (globalThis as Record<string, unknown>).Memory = {
+      colonies: { W1N1: { sources: { src1: { spot: { x: 19, y: 11 }, containerId: "cont1" } }, remotes: [], danger: 0 } }
+    };
+
+    // A container that momentarily isn't in the snapshot (out of vision, or a
+    // tick where it was destroyed and is being rebuilt) must not wipe the id —
+    // roles reading SourceMemory would lose their handle for no good reason.
+    execute([{ kind: "recordSourceSpot", room: "W1N1", source: "src1" as Id<Source>, spot: { x: 19, y: 11 } }]);
+
+    const mem = (globalThis as { Memory: { colonies: Record<string, { sources: Record<string, { containerId?: string }> }> } })
+      .Memory.colonies.W1N1;
+    expect(mem.sources.src1.containerId).toBe("cont1");
+  });
 });

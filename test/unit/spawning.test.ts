@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planSpawning } from "../../src/systems/spawning";
-import { colony, containerAt, empire, spawn } from "../fixtures";
+import { colony, containerAt, empire, sourceAt, spawn } from "../fixtures";
 
 describe("spawning planner", () => {
   it("spawns a bootstrap when the colony is below quota", () => {
@@ -9,7 +9,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [{ id: "spawn1" as Id<StructureSpawn>, busy: false }],
         energyAvailable: 300,
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -31,7 +31,7 @@ describe("spawning planner", () => {
         // RCL1 wants no upgraders. Every quota met.
         census: { bootstrap: 2 },
         spawns: [spawn()],
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -43,7 +43,7 @@ describe("spawning planner", () => {
       colony({
         census: {},
         spawns: [spawn("spawn1", true)],
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -57,7 +57,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 3,
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -80,7 +80,7 @@ describe("spawning planner", () => {
         census: { bootstrap: 4 },
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 2,
+        sources: [sourceAt(20, 10), sourceAt(30, 40)],
         containers: []
       })
     );
@@ -94,7 +94,7 @@ describe("spawning planner", () => {
         census: { bootstrap: 4 }, // 2 sources -> bootstrap quota met
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 2,
+        sources: [sourceAt(20, 10), sourceAt(30, 40)],
         containers: [containerAt(10, 10), containerAt(40, 40)]
       })
     );
@@ -116,7 +116,7 @@ describe("spawning planner", () => {
         census: { bootstrap: 2, miner: 1 },
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         containers: [containerAt(10, 10, 500)]
       })
     );
@@ -131,7 +131,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 200_000,
         constructionProgress: 4_000
       })
@@ -155,7 +155,7 @@ describe("spawning planner", () => {
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 200_000,
         constructionProgress: 4_000
       })
@@ -176,7 +176,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 2,
+        sources: [sourceAt(20, 10), sourceAt(30, 40)],
         storageEnergy: 50_000
       })
     );
@@ -192,7 +192,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 0
       })
     );
@@ -210,7 +210,7 @@ describe("spawning planner", () => {
         census: { miner: 1 },
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: 1,
+        sources: [sourceAt(20, 10)],
         storageEnergy: 50_000
       })
     );
@@ -228,7 +228,7 @@ describe("spawning planner", () => {
         census: {},
         spawns: [spawn()],
         energyAvailable: 150,
-        sources: 1
+        sources: [sourceAt(20, 10)]
       })
     );
 
@@ -244,8 +244,13 @@ describe("spawning planner", () => {
       colony({
         census: { bootstrap: 2, miner: 1 },
         spawns: [spawn()],
+        // Capacity, not availability, is what sizes the body (issue #21) — a
+        // 150-capacity room wants exactly one CARRY,CARRY,MOVE set, which it
+        // can pay for. The point is that the floor is per-role: a blanket 300
+        // would strand this colony from the hauler it actually needs.
         energyAvailable: 200,
-        sources: 1,
+        energyCapacity: 150,
+        sources: [sourceAt(20, 10)],
         containers: [containerAt(10, 10, 500)]
       })
     );
@@ -259,12 +264,79 @@ describe("spawning planner", () => {
         census: {},
         spawns: [spawn()],
         energyAvailable: 550,
-        sources: 1
+        energyCapacity: 550,
+        sources: [sourceAt(20, 10)]
       })
     );
 
     const [intent] = planSpawning(snap);
     expect(intent).toMatchObject({ kind: "spawn", role: "bootstrap" });
     expect(intent.kind === "spawn" && intent.body.filter(p => p === WORK)).toHaveLength(2);
+  });
+
+  it("sizes normal-path bodies from capacity, so the same room always yields the same body", () => {
+    // The defect (issue #21): sizing from energyAvailable made body size depend
+    // on WHICH TICK the planner happened to run. A spawn firing just after the
+    // room spent energy locked in a runt that then lived ~1500 ticks. Capacity
+    // is the room's persistent, timing-independent budget.
+    // 800 capacity sizes a 4-WORK body costing exactly 800. Sized from
+    // availability, a full room would instead yield only what that tick's
+    // energy bought — the two are visibly different creeps.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 800,
+        energyCapacity: 800,
+        sources: [sourceAt(20, 10)]
+      })
+    );
+
+    const [intent] = planSpawning(snap);
+    expect(intent.kind === "spawn" && intent.body.filter(p => p === WORK)).toHaveLength(4);
+  });
+
+  it("waits for a refill rather than spawning a runt sized to a drained room", () => {
+    // The other half of issue #21: with sizing moved to capacity, a drained
+    // room can no longer afford the body it wants, and the existing
+    // affordability guard becomes the "wait until the room can pay" mechanism
+    // for free. Previously this room would have locked in a 2-WORK runt that
+    // then lived ~1500 ticks.
+    const snap = empire(
+      colony({
+        // One live creep, so this is a healthy colony on the normal quota path
+        // and not a wipe — recovery deliberately still sizes from availability.
+        census: { bootstrap: 1 },
+        spawns: [spawn()],
+        energyAvailable: 400, // would have bought a 2-WORK runt
+        energyCapacity: 800, // wants the 4-WORK, 800-cost body
+        sources: [sourceAt(20, 10)]
+      })
+    );
+
+    expect(planSpawning(snap)).toEqual([]);
+  });
+
+  it("sizes a recovery creep from available energy, not the capacity it cannot fill", () => {
+    // The deliberate exception to capacity sizing (issue #21). A wiped colony
+    // has nothing alive to fill its extensions, so energyAvailable only ever
+    // climbs to the spawn's own ~300 regen. Sizing recovery from this room's
+    // 1300 capacity would emit a body it can never pay for, the affordability
+    // guard would reject it every tick, and the colony would stay dead forever.
+    const snap = empire(
+      colony({
+        census: {}, // wiped — recovery path
+        spawns: [spawn()],
+        energyAvailable: 300,
+        energyCapacity: 1300,
+        sources: [sourceAt(20, 10)],
+        storageEnergy: 0 // no stored energy -> recovery falls back to bootstrap
+      })
+    );
+
+    const [intent] = planSpawning(snap);
+    expect(intent).toMatchObject({ role: "bootstrap" });
+    // The 300-regen body, not the 1300-capacity one the room cannot afford.
+    expect(intent.kind === "spawn" && intent.body).toEqual([WORK, CARRY, MOVE]);
   });
 });

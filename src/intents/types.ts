@@ -18,5 +18,13 @@ export type Intent =
   | { kind: "linkSend"; from: Id<StructureLink>; to: Id<StructureLink> }
   | { kind: "placeSite"; room: string; x: number; y: number; type: BuildableStructureConstant }
   | { kind: "removeStructure"; room: string; x: number; y: number; type: BuildableStructureConstant }
+  | {
+      kind: "recordSourceSpot";
+      room: string;
+      source: Id<Source>;
+      spot: { x: number; y: number };
+      container?: Id<StructureContainer>;
+      link?: Id<StructureLink>;
+    }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number };

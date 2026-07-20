@@ -22,13 +22,25 @@ export function planSpawning(snap: EmpireSnapshot): Intent[] {
     const spawn = colony.spawns.find(s => !s.busy);
     if (!spawn) continue;
 
-    const deficit = recoveryRole(colony) ?? firstDeficit(desiredCensus(colony), colony.census);
+    const recovery = recoveryRole(colony);
+    const recovering = recovery !== undefined;
+    const deficit = recovery ?? firstDeficit(desiredCensus(colony), colony.census);
     if (!deficit) continue;
 
     const def = roleDef(deficit);
     if (!def) continue;
 
-    const body = def.body(colony.energyAvailable, bodyContext(colony));
+    // Normal spawns size from capacity, recovery from what is actually there
+    // (issue #21). Capacity is the room's persistent budget, so the same room
+    // yields the same creep whenever the planner happens to run — sizing from
+    // energyAvailable made body size depend on the tick, and a spawn firing
+    // just after the room spent energy locked in a runt for its whole ~1500
+    // tick life. In recovery capacity is a promise nothing can fulfil: no
+    // creep is alive to fill the extensions, so a capacity-sized body would be
+    // rejected by the affordability guard every tick and the colony would stay
+    // dead forever. The spawn's own regen is the honest budget there.
+    const budget = recovering ? colony.energyAvailable : colony.energyCapacity;
+    const body = def.body(budget, bodyContext(colony));
     // Body calculators clamp their energy argument up to a per-role floor, so
     // below it they return a body the room cannot pay for. Pricing the body the
     // role actually produced keeps this honest when body formulas change —
@@ -79,14 +91,14 @@ function recoveryRole(colony: ColonySnapshot): RoleName | undefined {
   // Otherwise harvest from scratch. Bootstrap is the only role that needs no
   // infrastructure, but it still needs a source to harvest — with none there
   // is nothing any body could do, so let the normal quota path decide.
-  return colony.sources > 0 ? "bootstrap" : undefined;
+  return colony.sources.length > 0 ? "bootstrap" : undefined;
 }
 
 // P0 bootstrap quota plus the P1 miner/hauler/upgrader/builder quotas. Miners
 // are one per container-backed source; haulers follow from what they fill.
 function desiredCensus(colony: ColonySnapshot): Census {
   return {
-    bootstrap: colony.sources * 2,
+    bootstrap: colony.sources.length * 2,
     miner: desiredMinerCount(colony),
     hauler: desiredHaulerCount(colony),
     upgrader: desiredUpgraderCount(colony),
