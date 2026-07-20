@@ -165,6 +165,59 @@ describe("spawning planner", () => {
     expect(intent).toMatchObject({ role: "upgrader" });
   });
 
+  it("recovers a wiped colony even when every normal quota evaluates to zero", () => {
+    // Terminal state: no creeps alive, spawn idle, so nothing will ever refill
+    // the extensions. The normal path relies on `bootstrap: sources * 2`, which
+    // is zero in a room whose sources aren't visible in the snapshot — then no
+    // deficit is found and the colony stays dead forever. Recovery must not be
+    // gated behind any quota that can evaluate to zero.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 300,
+        sources: 0
+      })
+    );
+
+    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "bootstrap" }]);
+  });
+
+  it("recovers a wiped colony with a hauler when storage still holds energy", () => {
+    // An established room that lost every creep still has stored energy.
+    // Draining storage into the spawn refills it far faster than harvesting a
+    // source from scratch, so recovery prefers a hauler where one would have
+    // something to carry.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 300,
+        sources: 2,
+        storageEnergy: 50_000
+      })
+    );
+
+    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "hauler" }]);
+  });
+
+  it("emits nothing when a wiped colony cannot afford the cheapest body", () => {
+    // A wiped colony regenerates spawn energy toward 300. Below that the
+    // cheapest body is unaffordable — bootstrapBody clamps energy up to a 300
+    // floor, so without this guard the planner emits a body the room cannot pay
+    // for and the spawn dry run rejects it every tick.
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 250,
+        sources: 1
+      })
+    );
+
+    expect(planSpawning(snap)).toEqual([]);
+  });
+
   it("scales the bootstrap body to available energy", () => {
     const snap = empire(
       colony({
