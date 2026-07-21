@@ -99,13 +99,23 @@ function recoveryRole(colony: ColonySnapshot): RoleName | undefined {
 const WORK_PER_SOURCE = 5;
 // Draining the sources is only half the job: the energy still has to be spent
 // on extensions and construction sites, and a creep doing that is not
-// harvesting. This multiplier buys the surplus work-ticks that turn harvested
-// energy into built structures — without it the colony harvests at exactly the
-// regen rate and never gets ahead (gh #23).
-const SPEND_HEADROOM = 2;
-// Bootstrap is a stopgap workforce; miners/haulers replace it. Cap the count so
-// a big room cannot spend its whole spawn throughput on allrounders.
-const MAX_BOOTSTRAP = 12;
+// harvesting. This multiplies the workforce that would just saturate the
+// sources, buying the surplus work-ticks that turn harvested energy into built
+// structures — without it the colony harvests at exactly the regen rate and
+// never gets ahead (gh #23).
+//
+// A source's 10/tick is the *regen* rate, not the rate a creep can pull it out
+// at: the source holds 3000 and a saturating workforce empties it well inside
+// the 300-tick window, so throughput early in each cycle is bounded by WORK
+// parts present, not by regen. The multiplier buys that burst capacity — the
+// room drains both sources fast after each regen and spends the rest of the
+// cycle building, rather than trickling along at the regen rate.
+//
+// Applied to the creep count rather than the WORK target so it scales what the
+// room actually fields. Multiplying the WORK target instead divides it back out
+// by WORK-per-creep, which lets integer rounding at that division swallow the
+// difference: at 3 WORK/creep a target of 20 and 21 both round to 7 creeps.
+const WORKFORCE_MULTIPLIER = 2.5;
 // Before RCL2 there is nothing for a big workforce to do — no extensions to
 // fill, and the fastest path to RCL2 is to put early energy on the controller,
 // not into spawning more harvesters. Stay at the old flat count until then.
@@ -117,15 +127,23 @@ const PRE_RCL2_PER_SOURCE = 2;
  * to drain every source with headroom left to spend what they gather. Bigger
  * bodies carry more WORK each, so the count falls as energyCapacity climbs.
  *
+ * Deliberately uncapped. A fixed ceiling bound hardest exactly where the creeps
+ * are smallest and the room most needs bodies — at a 300-500 cap it clipped the
+ * WORK target rather than the spawn budget — while the WORK-per-creep divisor
+ * already shrinks the count on its own as bodies grow. The affordability guard
+ * in planSpawning is the real limit: the room can only field what it can pay
+ * for, and it spawns one creep per tick per spawn regardless of the quota.
+ *
  * Held lean until RCL2 so the first upgrades are not delayed behind a swollen
  * workforce (gh #23) — the throughput target applies once there are extensions
  * and a construction backlog to justify it.
  */
 export function desiredBootstrapCount(colony: ColonySnapshot): number {
   if (colony.controllerLevel < 2) return colony.sources.length * PRE_RCL2_PER_SOURCE;
-  const workNeeded = colony.sources.length * WORK_PER_SOURCE * SPEND_HEADROOM;
+  const workNeeded = colony.sources.length * WORK_PER_SOURCE;
   const workPerCreep = bootstrapWorkParts(colony.energyCapacity);
-  return Math.min(MAX_BOOTSTRAP, Math.ceil(workNeeded / workPerCreep));
+  const saturating = Math.ceil(workNeeded / workPerCreep);
+  return Math.ceil(saturating * WORKFORCE_MULTIPLIER);
 }
 
 // The WORK parts one bootstrap body actually gets at this budget — asking the
@@ -136,9 +154,18 @@ function bootstrapWorkParts(energyCapacity: number): number {
   return Math.max(1, countPart(body, WORK));
 }
 
-// P0 bootstrap quota plus the P1 miner/hauler/upgrader/builder quotas. Miners
-// are one per container-backed source; haulers follow from what they fill.
-function desiredCensus(colony: ColonySnapshot): Census {
+/**
+ * P0 bootstrap quota plus the P1 miner/hauler/upgrader/builder quotas. Miners
+ * are one per container-backed source; haulers follow from what they fill.
+ *
+ * Exported because "what workforce does this colony want right now" is asked
+ * from outside the tick too: the integration benchmarks seed a colony at a
+ * milestone and need it to start with the workforce it would actually have
+ * there, rather than cold-starting from an empty room and measuring a recovery
+ * that the real colony never performs. Deriving it here means a quota change
+ * moves those scenarios with it.
+ */
+export function desiredCensus(colony: ColonySnapshot): Census {
   return {
     bootstrap: desiredBootstrapCount(colony),
     miner: desiredMinerCount(colony),
@@ -148,8 +175,12 @@ function desiredCensus(colony: ColonySnapshot): Census {
   };
 }
 
-// Structures that change what a body should look like — see BodyContext.
-function bodyContext(colony: ColonySnapshot): BodyContext {
+/**
+ * Structures that change what a body should look like — see BodyContext.
+ * Exported alongside `desiredCensus` so a caller reconstructing this colony's
+ * workforce sizes the bodies exactly as the spawner would.
+ */
+export function bodyContext(colony: ColonySnapshot): BodyContext {
   return {
     hasContainer: colony.containers.length > 0,
     hasLink: colony.structures.some(s => s.type === STRUCTURE_LINK)

@@ -15,6 +15,9 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ScreepsServer, TerrainMatrix } from "screeps-server-mockup";
+import { EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY } from "@screeps/common/lib/constants";
+import type { XY } from "../../src/lib/geometry";
+import type { ColonySnapshot } from "../../src/snapshot/types";
 import { EnergyMetrics, observeTick, type RawObj } from "./energyMetrics";
 
 const REPO_ROOT = process.cwd();
@@ -31,9 +34,21 @@ let cachedBundle: string | undefined;
  * ready to hand to the mockup as the `main` module. Memoised per process so a
  * suite of scenarios only pays the ~1s build once. Runs under the same Node
  * that runs the tests via `process.execPath`.
+ *
+ * `BOT_BUNDLE` short-circuits the build and reads a prebuilt bundle from that
+ * path instead. Concurrent runs need it: rollup writes to a single shared
+ * `dist/main.js`, so several processes building at once race — one truncates
+ * the file another is reading, and that worker dies on boot. The parallel
+ * driver (scripts/bench-parallel.mjs) therefore builds once up front and points
+ * every worker at the result.
  */
 export function bundleBot(): string {
   if (cachedBundle) return cachedBundle;
+  const prebuilt = process.env.BOT_BUNDLE;
+  if (prebuilt) {
+    cachedBundle = readFileSync(prebuilt, "utf8");
+    return cachedBundle;
+  }
   const rollupBin = path.join(REPO_ROOT, "node_modules", "rollup", "dist", "bin", "rollup");
   execFileSync(process.execPath, [rollupBin, "-c"], { cwd: REPO_ROOT, stdio: "ignore" });
   cachedBundle = readFileSync(path.join(REPO_ROOT, "dist", "main.js"), "utf8");
@@ -78,6 +93,14 @@ export interface BootOptions {
   username?: string;
   /** Storage port. Default 21077 to dodge the standard 21025 private server. */
   port?: number;
+  /**
+   * Server working directory — where the mockup copies `db.json` and writes
+   * logs. Defaults to `./server`, which is *shared*, so two servers running at
+   * once would overwrite each other's database and die within seconds of
+   * starting. Any concurrent use must pass a distinct directory per server; see
+   * scripts/bench-parallel.mjs, which gives each worker its own.
+   */
+  serverDir?: string;
   /**
    * Replace the stub room's terrain before the first tick. Required by any
    * scenario that exercises the bunker layout — see `bunkerTerrain()`.
@@ -141,7 +164,11 @@ export class BootedColony {
 
   static async boot(opts: BootOptions): Promise<BootedColony> {
     const room = opts.room ?? "W0N1";
-    const server = new ScreepsServer({ port: opts.port ?? 21077 });
+    const dir = opts.serverDir;
+    const server = new ScreepsServer({
+      port: opts.port ?? 21077,
+      ...(dir ? { path: dir, logdir: path.join(dir, "logs") } : {})
+    });
     await server.world.stubWorld();
     // Before addBot: the spawn is placed into the room as it then stands, so
     // reshaping terrain afterwards could bury it in rock.
@@ -186,6 +213,86 @@ export class BootedColony {
    */
   async addStructure(type: string, x: number, y: number, attrs: Record<string, unknown> = {}): Promise<void> {
     await this.server.world.addRoomObject(this.room, type, x, y, attrs);
+  }
+
+  /**
+   * Inject a living creep directly into the mockup DB, skipping the spawn
+   * queue. `attrs` carries the engine's creep fields (body, store, ageTime,
+   * `spawning: false`, ...) — see test/integration/seed.ts, which builds them
+   * from the bot's own body formulas.
+   *
+   * The creep is owned by the bot but has no CreepMemory: role and home are the
+   * bot's labelling, not the engine's, so pair this with `patchMemory` or the
+   * census will not recognise it. `seedCreeps` does both.
+   */
+  async addCreep(name: string, x: number, y: number, attrs: Record<string, unknown> = {}): Promise<void> {
+    await this.server.world.addRoomObject(this.room, "creep", x, y, {
+      name,
+      user: this.bot.id,
+      notifyWhenAttacked: true,
+      ...attrs
+    });
+  }
+
+  /**
+   * Set the energy in one room object (by db id). Used to stock spawns,
+   * extensions and containers when seeding a mid-game state.
+   */
+  async setStore(id: string, energy: number): Promise<void> {
+    const { db } = await this.server.world.load();
+    await db["rooms.objects"].update({ _id: id }, { $set: { store: { energy } } });
+  }
+
+  /**
+   * The room's spawn+extension energy capacity, as `room.energyCapacityAvailable`
+   * reports it — the budget `planSpawning` sizes non-recovery bodies against.
+   */
+  async energyCapacity(): Promise<number> {
+    const level = (await this.controller()).level;
+    const spawns = (await this.structures("spawn")).length;
+    const extensions = (await this.structures("extension")).length;
+    return spawns * SPAWN_ENERGY_CAPACITY + extensions * (EXTENSION_ENERGY_CAPACITY[level] ?? 0);
+  }
+
+  /**
+   * Read-modify-write the bot's Memory in the server's env store.
+   *
+   * The mockup exposes Memory read-only (`bot.memory`), but seeding a workforce
+   * requires writing CreepMemory the bot will then read as its own. Patching
+   * rather than replacing keeps whatever the bot has already recorded — the
+   * cached anchor above all, which seeding depends on.
+   *
+   * Forces a global reset afterwards, without which the write does not survive
+   * contact with the bot: `memory/cache.ts` reinstates last tick's parsed Memory
+   * object whenever it runs on a consecutive tick (the RawMemory parse-skip
+   * trick), which discards anything written to storage between two ticks. The
+   * seeded entries then reappear as `{}` — the engine's `creep.memory` getter
+   * creating fresh ones for names the stale object lacks — and every seeded
+   * creep sits inert forever with no role. See `resetGlobal`.
+   */
+  async patchMemory(patch: (mem: Record<string, unknown>) => void): Promise<void> {
+    const env = this.server.common.storage.env;
+    const key = env.keys.MEMORY + this.bot.id;
+    const mem = await this.memory();
+    patch(mem);
+    await env.set(key, JSON.stringify(mem));
+    await this.resetGlobal();
+  }
+
+  /**
+   * Force the bot's next tick to run in a fresh isolate — a "global reset", the
+   * same event a real server produces when it rotates a runtime.
+   *
+   * Done by bumping the code row's timestamp: the runtime rebuilds its cached
+   * globals when `userCodeTimestamp` changes. That clears the module-level state
+   * the bot carries across ticks, which is what makes an externally-written
+   * Memory visible: `loadMemory` only re-reads storage when it is *not* running
+   * on a tick consecutive to the last one it saw, and a fresh global has no last
+   * tick to be consecutive to.
+   */
+  async resetGlobal(): Promise<void> {
+    const { db } = await this.server.world.load();
+    await db["users.code"].update({ user: this.bot.id }, { $set: { timestamp: Date.now() } });
   }
 
   /**
@@ -260,6 +367,69 @@ export class BootedColony {
    */
   async sampleEnergy(metrics: EnergyMetrics): Promise<void> {
     metrics.sample(observeTick((await this.roomObjects()) as RawObj[], this.seenCreeps));
+  }
+
+  /**
+   * The room's sources, as the planner sees them.
+   */
+  async sources(): Promise<XY[]> {
+    return (await this.roomObjects()).filter(o => o.type === "source").map(o => ({ x: o.x, y: o.y }));
+  }
+
+  /**
+   * The room's walkability grid in the form `layouts/roads` and `layouts/stamp`
+   * expect: 1 = walkable, 0 = wall, indexed `[x*50+y]`. Read from the mockup's
+   * own terrain string rather than reconstructed from the TerrainMatrix passed
+   * to `boot()`, so it reflects the room the bot is actually planning in.
+   */
+  async terrain(): Promise<Uint8Array> {
+    const matrix = await this.server.world.getTerrain(this.room);
+    const grid = new Uint8Array(2500);
+    for (let x = 0; x < 50; x++) {
+      for (let y = 0; y < 50; y++) grid[x * 50 + y] = matrix.get(x, y) === "wall" ? 0 : 1;
+    }
+    return grid;
+  }
+
+  /**
+   * A snapshot of this room carrying the fields the *layout* planners read:
+   * anchor, sources, terrain, controllerLevel and the built structures. Every
+   * other field is filled with an empty/zero value — this is deliberately not a
+   * full `buildColonySnapshot`, which needs live `Game` objects that do not
+   * exist outside the engine process.
+   *
+   * The point is that a scenario can ask the bot's own `wantedStructures` what
+   * the colony intends to build at a given RCL, instead of restating the layout
+   * in the test. The anchor comes from the bot's cached decision in Memory, so
+   * it must have run at least one tick first — `anchor()` returns null before
+   * then and `wantedStructures` yields nothing.
+   */
+  async layoutSnapshot(): Promise<ColonySnapshot> {
+    const objects = await this.roomObjects();
+    const controller = objects.find(o => o.type === "controller");
+    return {
+      name: this.room,
+      towers: [],
+      hostiles: [],
+      woundedFriendlies: [],
+      safeModeAvailable: false,
+      census: {},
+      spawns: [],
+      energyAvailable: 0,
+      energyCapacity: 0,
+      sources: (await this.sources()).map((s, i) => ({ ...s, id: `source-${i}` as Id<Source> })),
+      terrain: await this.terrain(),
+      controllerLevel: controller?.level ?? 0,
+      controllerProgress: controller?.progress ?? 0,
+      storageEnergy: 0,
+      containers: [],
+      anchor: await this.anchor(),
+      structures: objects
+        .filter(o => o.type !== "controller" && o.type !== "source" && o.type !== "mineral" && o.type !== "creep")
+        .map(o => ({ x: o.x, y: o.y, type: o.type as BuildableStructureConstant })),
+      sites: [],
+      constructionProgress: 0
+    };
   }
 
   /** Parsed bot Memory (or {} before the first tick writes it). */

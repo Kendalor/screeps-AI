@@ -33,13 +33,13 @@ const FOCUS_SITE_CAP = 2;
 // Roads are dead weight while the structural bunker is still going up; hold them
 // until RCL4, by which point extensions/tower/storage give the colony the
 // capacity to afford paving.
-const ROADS_FROM_RCL = 4;
+export const ROADS_FROM_RCL = 4;
 // Containers are for miners, and miners don't spawn until RCL3-with-extensions.
 // A container placed earlier is 5000 energy nobody can use, and it would sit in
 // a scarce focus slot starving the extensions that actually grow the colony —
 // exactly the RCL2 stall observed on the live server. So hold containers until
 // RCL3.
-const CONTAINERS_FROM_RCL = 3;
+export const CONTAINERS_FROM_RCL = 3;
 // Which sites win the scarce slots, most important first: tower (defense), then
 // extensions (capacity growth), then containers, then storage. Containers rank
 // below extensions — even once buildable they wait until extensions have the
@@ -91,19 +91,28 @@ export function planBuilding(snap: EmpireSnapshot): Intent[] {
   return out;
 }
 
-function planColony(colony: ColonySnapshot): Intent[] {
-  const anchor = colony.anchor!;
+/**
+ * Every structure this colony wants standing at its current controller level,
+ * in the order it wants them: the RCL-capped bunker stamp plus the operational
+ * structures other systems declare, with the roads/containers still held back
+ * gated out, ranked by the same priority the site placement below consumes.
+ *
+ * Exported because "what does a finished RCL look like" is a question asked
+ * from outside the tick too — the integration benchmarks seed a colony with the
+ * previous level's structures and measure the climb to this level's set. They
+ * derive both sets from here rather than restating them, so a change to the
+ * layout, the caps, or the gating constants moves the tests with it instead of
+ * silently leaving them measuring a stale target.
+ */
+export function wantedStructures(colony: ColonySnapshot): PlacedStructure[] {
+  const anchor = colony.anchor;
+  if (!anchor) return [];
   // Per-operation structures: the bunker stamp is not the whole story. Mining
   // declares a container/link beside each source (issue #22) — Base_2.json has
   // none by design. Collected here because one system owns site placement, and
   // because road gating below needs to see these tiles as structures worth
   // serving before the roads to them are planned.
   const operational = minedStructures(colony);
-  // Full RCL8 goal (not just this RCL's buildable subset): a structure from a
-  // higher tier that's already built (e.g. after a downgrade) is not stale. The
-  // goal check keeps all operational structures (they are never stale), but the
-  // buildable set below withholds containers until miners exist to use them.
-  const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...operational];
   const buildableOperational =
     colony.controllerLevel >= CONTAINERS_FROM_RCL ? operational : operational.filter(p => p.type !== "container");
   // The baked extension order grows a blob out from storage; which side of that
@@ -122,10 +131,20 @@ function planColony(colony: ColonySnapshot): Intent[] {
   // then containers/storage, everything else, roads last. buildableAtRcl already
   // returns placements in the baked build sequence, so the original index breaks
   // ties within a type and extension growth stays contiguous.
-  const prioritised = buildable
+  return buildable
     .map((p, i) => ({ p, i }))
     .sort((a, b) => typePriority(a.p.type) - typePriority(b.p.type) || a.i - b.i)
     .map(e => e.p);
+}
+
+function planColony(colony: ColonySnapshot): Intent[] {
+  const anchor = colony.anchor!;
+  // Full RCL8 goal (not just this RCL's buildable subset): a structure from a
+  // higher tier that's already built (e.g. after a downgrade) is not stale. The
+  // goal check keeps all operational structures (they are never stale), but the
+  // wanted set withholds containers until miners exist to use them.
+  const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...minedStructures(colony)];
+  const prioritised = wantedStructures(colony);
 
   // Cap open sites low to keep construction focused (FOCUS_SITE_CAP), never
   // exceeding the engine's own room limit.

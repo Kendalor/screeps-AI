@@ -2,7 +2,7 @@
 // Adding a role is adding a row here — not five files and two registries.
 
 import type { RoleName } from "../memory/schema";
-import { affordableSets, bodyCost, countPart, parts } from "./body";
+import { affordableSets, bodyCost, parts } from "./body";
 import type { BodyContext, RoleDef } from "./types";
 
 // [WORK,CARRY,MOVE,MOVE] sets — 250 energy each. The doubled MOVE is the point:
@@ -15,13 +15,25 @@ import type { BodyContext, RoleDef } from "./types";
 // oversized allrounders instead of specialists.
 const BOOTSTRAP_SET: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE];
 const MAX_BOOTSTRAP_SETS = 5;
-// A CARRY+MOVE pair — one weight-part and one MOVE, so it keeps the 1:1 ratio
-// the set is built on.
-const BOOTSTRAP_PAIR: BodyPartConstant[] = [CARRY, MOVE];
-// Carry parts one WORK's harvest can usefully fill on a trip. Past this the
-// creep spends more of its life standing at the source filling up than it saves
-// in trips, so the remainder is better held back for the next whole set.
-const MAX_CARRY_PER_WORK = 3;
+
+// The rungs below a second whole set, stated outright rather than derived.
+//
+// From 500 up the body is just the 250 set repeated, and that repetition is the
+// whole rule — every part it adds is bought in the same fatigue-neutral 1:1
+// proportion, so the shape at any capacity is `floor(energy/250)` sets and
+// nothing else needs saying. Below 500 that rule alone would spawn the same
+// 250 runt at 350 and 450 and throw the remainder away, but there is no
+// arithmetic to generalise there either: it is two capacities, each with one
+// sensible answer. Deriving them from a pair-buying formula (the previous
+// approach) bought no generality and made the shape at any given capacity
+// something you had to run the code to learn — these three lines say it.
+//
+// Each entry is a floor: the highest rung at or below the budget wins.
+const BOOTSTRAP_RUNGS: { at: number; body: BodyPartConstant[] }[] = [
+  { at: 450, body: [WORK, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE] },
+  { at: 350, body: [WORK, CARRY, CARRY, MOVE, MOVE, MOVE] },
+  { at: 250, body: [WORK, CARRY, MOVE, MOVE] }
+];
 
 function wholeSets(energy: number): BodyPartConstant[] {
   const sets = affordableSets(energy, BOOTSTRAP_SET, 1, MAX_BOOTSTRAP_SETS);
@@ -33,41 +45,22 @@ function wholeSets(energy: number): BodyPartConstant[] {
 }
 
 /**
- * Whole [WORK,CARRY,MOVE,MOVE] sets, plus CARRY+MOVE pairs bought out of the
- * leftover energy between sets.
- *
- * Sets alone only step every 250 energy, so a room's first extensions bought
- * nothing: at 350 and 450 capacity it still spawned the 250 runt and threw the
- * rest away. The pairs turn each 100 of that remainder into carry capacity —
- * fatigue-neutral, so the creep still moves at full road speed loaded — and the
- * next whole set takes over as soon as it is affordable, because a second WORK
- * doubles the harvest rate and that is the real bottleneck.
+ * The 250 [WORK,CARRY,MOVE,MOVE] set, repeated as many times as the budget
+ * buys, with the sub-500 capacities read from BOOTSTRAP_RUNGS instead.
  *
  * Rungs: 250 [W C MM] -> 350 [W CC MMM] -> 450 [W CCC MMMM] -> 500 [W C MM]x2
- * -> 600 -> 700 -> 750 [W C MM]x3, and so on.
+ * -> 750 [W C MM]x3 -> 1000 x4 -> 1250 x5, then flat at the set cap.
+ *
+ * Note the remainder above 500 is deliberately unspent: between 500 and 750 the
+ * leftover 100-200 could buy CARRY, but a bootstrap fills at 2 energy/tick per
+ * WORK, so past the set's own 1 CARRY per WORK it stands at the source longer
+ * than the extra load saves it. The next WORK is always the better buy, and
+ * holding the remainder is how it gets there.
  */
 function bootstrapBody(energy: number): BodyPartConstant[] {
-  const base = wholeSets(energy);
-  const work = countPart(base, WORK);
-
-  const spare = Math.max(0, energy - bodyCost(base));
-  const room = work * MAX_CARRY_PER_WORK - countPart(base, CARRY);
-  const pairs = Math.max(0, Math.min(room, Math.floor(spare / bodyCost(BOOTSTRAP_PAIR))));
-  if (pairs === 0) return base;
-
-  // Spread the pairs across the sets rather than appending them, so the CARRY
-  // and its matching MOVE are decided together and the 1:1 ratio is visible in
-  // the shape. The final part order is not decided here — orderBody sorts the
-  // assembled body by survival priority before it is spawned.
-  const carryPerSet = 1 + Math.floor(pairs / work);
-  let extra = pairs % work; // the sets that get one more than the rest
-  let body: BodyPartConstant[] = [];
-  for (let i = 0; i < work; i++) {
-    const carry = carryPerSet + (extra > 0 ? 1 : 0);
-    if (extra > 0) extra--;
-    body = body.concat([WORK, ...parts(CARRY, carry), ...parts(MOVE, carry + 1)]);
-  }
-  return body;
+  const rung = BOOTSTRAP_RUNGS.find(r => energy >= r.at);
+  if (rung && energy < bodyCost(BOOTSTRAP_SET) * 2) return [...rung.body];
+  return wholeSets(energy);
 }
 
 // Ported from Builder.getBody: whole full-speed sets, remainder unspent.

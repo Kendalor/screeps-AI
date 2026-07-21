@@ -1,39 +1,6 @@
 {
   "rcl2": [
     {
-      "at": "2026-07-21T09:33:02.285Z",
-      "commit": "88a2698",
-      "ticks": 507,
-      "energyHarvestedPerTick": 1.8695652173913044,
-      "energyWasteFraction": 0.5901213171577123,
-      "energyDecayed": 0,
-      "sinkUpgrading": 0.16597164303586323,
-      "sinkConstruction": 0,
-      "sinkCreeps": 0.8340283569641368
-    },
-    {
-      "at": "2026-07-21T09:41:17.038Z",
-      "commit": "0985976",
-      "ticks": 509,
-      "energyHarvestedPerTick": 1.8622047244094488,
-      "energyWasteFraction": 0.5911840968020743,
-      "energyDecayed": 0,
-      "sinkUpgrading": 0.16597164303586323,
-      "sinkConstruction": 0,
-      "sinkCreeps": 0.8340283569641368
-    },
-    {
-      "at": "2026-07-21T09:44:17.702Z",
-      "commit": "0985976",
-      "ticks": 512,
-      "energyHarvestedPerTick": 1.8512720156555773,
-      "energyWasteFraction": 0.5901213171577123,
-      "energyDecayed": 0,
-      "sinkUpgrading": 0.16597164303586323,
-      "sinkConstruction": 0,
-      "sinkCreeps": 0.8340283569641368
-    },
-    {
       "at": "2026-07-21T09:51:07.190Z",
       "commit": "0985976",
       "ticks": 506,
@@ -87,42 +54,64 @@
       "sinkUpgrading": 0.16597164303586323,
       "sinkConstruction": 0,
       "sinkCreeps": 0.8340283569641368
+    },
+    {
+      "at": "2026-07-21T11:35:29.447Z",
+      "commit": "74203ef",
+      "ticks": 509,
+      "energyHarvestedPerTick": 1.8622047244094488,
+      "energyWasteFraction": 0.5918895599654875,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.1652754590984975,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8347245409015025
+    },
+    {
+      "at": "2026-07-21T13:07:49.124Z",
+      "commit": "74203ef",
+      "ticks": 511,
+      "energyHarvestedPerTick": 1.8549019607843138,
+      "energyWasteFraction": 0.5908304498269896,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.16597164303586323,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8340283569641368
+    },
+    {
+      "at": "2026-07-21T13:22:51.037Z",
+      "commit": "74203ef",
+      "ticks": 510,
+      "energyHarvestedPerTick": 1.8585461689587426,
+      "energyWasteFraction": 0.5950342465753424,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.1652754590984975,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8347245409015025
+    },
+    {
+      "at": "2026-07-21T13:28:28.551Z",
+      "commit": "74203ef",
+      "ticks": 508,
+      "energyHarvestedPerTick": 1.8658777120315582,
+      "energyWasteFraction": 0.5901213171577123,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.16666666666666666,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8333333333333334
+    },
+    {
+      "at": "2026-07-21T13:29:14.923Z",
+      "commit": "74203ef",
+      "ticks": 510,
+      "energyHarvestedPerTick": 1.8585461689587426,
+      "energyWasteFraction": 0.5911840968020743,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.16597164303586323,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8340283569641368
     }
   ],
   "rcl2-extensions-built": [
-    {
-      "at": "2026-07-21T09:33:52.801Z",
-      "commit": "88a2698",
-      "ticks": 3600,
-      "energyHarvestedPerTick": 5.97832731314254,
-      "energyWasteFraction": 0.6060206548011426,
-      "energyDecayed": 348,
-      "sinkUpgrading": 0.012824594115239438,
-      "sinkConstruction": 0.6802037382327527,
-      "sinkCreeps": 0.30697166765200784
-    },
-    {
-      "at": "2026-07-21T09:42:13.656Z",
-      "commit": "0985976",
-      "ticks": 3621,
-      "energyHarvestedPerTick": 6.041988950276243,
-      "energyWasteFraction": 0.6478959399851895,
-      "energyDecayed": 441,
-      "sinkUpgrading": 0.012711674078066747,
-      "sinkConstruction": 0.6728652921888335,
-      "sinkCreeps": 0.31442303373309977
-    },
-    {
-      "at": "2026-07-21T09:45:10.738Z",
-      "commit": "0985976",
-      "ticks": 3579,
-      "energyHarvestedPerTick": 6.102850754611515,
-      "energyWasteFraction": 0.6228279269008878,
-      "energyDecayed": 347,
-      "sinkUpgrading": 0.01267358770392342,
-      "sinkConstruction": 0.6727338097164173,
-      "sinkCreeps": 0.3145926025796593
-    },
     {
       "at": "2026-07-21T09:52:09.487Z",
       "commit": "0985976",
@@ -177,6 +166,241 @@
       "sinkUpgrading": 0.011585240156668728,
       "sinkConstruction": 0.6173572459286745,
       "sinkCreeps": 0.37105751391465674
+    },
+    {
+      "at": "2026-07-21T11:36:13.618Z",
+      "commit": "74203ef",
+      "ticks": 3407,
+      "energyHarvestedPerTick": 6.993540810334704,
+      "energyWasteFraction": 0.5822811447811448,
+      "energyDecayed": 355,
+      "sinkUpgrading": 0.011758373700989526,
+      "sinkConstruction": 0.6197573800356063,
+      "sinkCreeps": 0.36848424626340415
+    },
+    {
+      "at": "2026-07-21T13:29:02.064Z",
+      "commit": "74203ef",
+      "ticks": 2441,
+      "energyHarvestedPerTick": 9.813934426229508,
+      "energyWasteFraction": 0.38063214525891054,
+      "energyDecayed": 377,
+      "sinkUpgrading": 0.038137193203272496,
+      "sinkConstruction": 0.626221942521502,
+      "sinkCreeps": 0.3356408642752255
+    },
+    {
+      "at": "2026-07-21T13:29:50.110Z",
+      "commit": "74203ef",
+      "ticks": 2505,
+      "energyHarvestedPerTick": 10.485623003194888,
+      "energyWasteFraction": 0.34540014958863124,
+      "energyDecayed": 384,
+      "sinkUpgrading": 0.010621409132143936,
+      "sinkConstruction": 0.5641442394919867,
+      "sinkCreeps": 0.42523435137586935
+    }
+  ],
+  "rcl3": [
+    {
+      "at": "2026-07-21T12:35:39.161Z",
+      "commit": "74203ef",
+      "ticks": 9131,
+      "energyHarvestedPerTick": 8.248109589041096,
+      "energyWasteFraction": 0.42634146341463414,
+      "energyDecayed": 3809,
+      "sinkUpgrading": 0.5678342502397415,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.4321657497602584
+    },
+    {
+      "at": "2026-07-21T12:43:41.910Z",
+      "commit": "74203ef",
+      "ticks": 9221,
+      "energyHarvestedPerTick": 8.12067281606077,
+      "energyWasteFraction": 0.4087978763746682,
+      "energyDecayed": 3158,
+      "sinkUpgrading": 0.5607148197996111,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.4392851802003888
+    },
+    {
+      "at": "2026-07-21T12:43:43.560Z",
+      "commit": "74203ef",
+      "ticks": 9135,
+      "energyHarvestedPerTick": 8.15971081169898,
+      "energyWasteFraction": 0.4332947871336843,
+      "energyDecayed": 3400,
+      "sinkUpgrading": 0.5642414666566348,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.4357585333433652
+    },
+    {
+      "at": "2026-07-21T12:43:43.358Z",
+      "commit": "74203ef",
+      "ticks": 9260,
+      "energyHarvestedPerTick": 8.171601469634753,
+      "energyWasteFraction": 0.3754542451271886,
+      "energyDecayed": 3873,
+      "sinkUpgrading": 0.560742189933831,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.43925781006616904
+    },
+    {
+      "at": "2026-07-21T12:48:55.774Z",
+      "commit": "74203ef",
+      "ticks": 9072,
+      "energyHarvestedPerTick": 8.223472314140746,
+      "energyWasteFraction": 0.4282493328016197,
+      "energyDecayed": 3658,
+      "sinkUpgrading": 0.567856061370748,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.43214393862925204
+    },
+    {
+      "at": "2026-07-21T12:48:55.087Z",
+      "commit": "74203ef",
+      "ticks": 9042,
+      "energyHarvestedPerTick": 8.205843293492697,
+      "energyWasteFraction": 0.40729016786570743,
+      "energyDecayed": 3408,
+      "sinkUpgrading": 0.5678451560804502,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.4321548439195498
+    },
+    {
+      "at": "2026-07-21T12:48:55.818Z",
+      "commit": "74203ef",
+      "ticks": 9262,
+      "energyHarvestedPerTick": 8.174157303370787,
+      "energyWasteFraction": 0.4189297124600639,
+      "energyDecayed": 3973,
+      "sinkUpgrading": 0.564285176919026,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.435714823080974
+    },
+    {
+      "at": "2026-07-21T12:48:54.541Z",
+      "commit": "74203ef",
+      "ticks": 9255,
+      "energyHarvestedPerTick": 8.161530976321764,
+      "energyWasteFraction": 0.4537916063675832,
+      "energyDecayed": 3706,
+      "sinkUpgrading": 0.5607148197996111,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.4392851802003888
+    },
+    {
+      "at": "2026-07-21T13:30:43.526Z",
+      "commit": "74203ef",
+      "ticks": 7376,
+      "energyHarvestedPerTick": 10.328358208955224,
+      "energyWasteFraction": 0.3557669521649345,
+      "energyDecayed": 2950,
+      "sinkUpgrading": 0.54713448586087,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.45286551413913
+    }
+  ],
+  "rcl3-buildings-built": [
+    {
+      "at": "2026-07-21T12:36:46.362Z",
+      "commit": "74203ef",
+      "ticks": 13402,
+      "energyHarvestedPerTick": 9.556136160047776,
+      "energyWasteFraction": 0.3773698699428994,
+      "energyDecayed": 5688,
+      "sinkUpgrading": 0.36413830413544,
+      "sinkConstruction": 0.23807023406049613,
+      "sinkCreeps": 0.39779146180406383
+    },
+    {
+      "at": "2026-07-21T12:44:52.757Z",
+      "commit": "74203ef",
+      "ticks": 13337,
+      "energyHarvestedPerTick": 9.466506638661766,
+      "energyWasteFraction": 0.35700528874079057,
+      "energyDecayed": 5294,
+      "sinkUpgrading": 0.3661810888343735,
+      "sinkConstruction": 0.23907050334417426,
+      "sinkCreeps": 0.39474840782145226
+    },
+    {
+      "at": "2026-07-21T12:44:55.636Z",
+      "commit": "74203ef",
+      "ticks": 13419,
+      "energyHarvestedPerTick": 9.566838142100947,
+      "energyWasteFraction": 0.39509362095299155,
+      "energyDecayed": 5889,
+      "sinkUpgrading": 0.3612757099905095,
+      "sinkConstruction": 0.23876895102441204,
+      "sinkCreeps": 0.39995533898507846
+    },
+    {
+      "at": "2026-07-21T12:45:01.608Z",
+      "commit": "74203ef",
+      "ticks": 13870,
+      "energyHarvestedPerTick": 9.413156376226198,
+      "energyWasteFraction": 0.3312425695896364,
+      "energyDecayed": 6760,
+      "sinkUpgrading": 0.3574731203969911,
+      "sinkConstruction": 0.2356898113504785,
+      "sinkCreeps": 0.4068370682525304
+    },
+    {
+      "at": "2026-07-21T12:50:10.383Z",
+      "commit": "74203ef",
+      "ticks": 13177,
+      "energyHarvestedPerTick": 9.408549085111229,
+      "energyWasteFraction": 0.3687149130403774,
+      "energyDecayed": 5336,
+      "sinkUpgrading": 0.36507589556769887,
+      "sinkConstruction": 0.241886257842542,
+      "sinkCreeps": 0.39303784658975915
+    },
+    {
+      "at": "2026-07-21T12:50:06.254Z",
+      "commit": "74203ef",
+      "ticks": 13062,
+      "energyHarvestedPerTick": 9.423100490196079,
+      "energyWasteFraction": 0.3848907554622269,
+      "energyDecayed": 5352,
+      "sinkUpgrading": 0.369768313958228,
+      "sinkConstruction": 0.24340893157028026,
+      "sinkCreeps": 0.38682275447149167
+    },
+    {
+      "at": "2026-07-21T12:50:09.589Z",
+      "commit": "74203ef",
+      "ticks": 13393,
+      "energyHarvestedPerTick": 9.555688354373647,
+      "energyWasteFraction": 0.3799224430441105,
+      "energyDecayed": 5945,
+      "sinkUpgrading": 0.36417399609981294,
+      "sinkConstruction": 0.23784773351375016,
+      "sinkCreeps": 0.3979782703864369
+    },
+    {
+      "at": "2026-07-21T12:50:08.198Z",
+      "commit": "74203ef",
+      "ticks": 13353,
+      "energyHarvestedPerTick": 9.461152318873156,
+      "energyWasteFraction": 0.4146913500134417,
+      "energyDecayed": 5876,
+      "sinkUpgrading": 0.36467954324781937,
+      "sinkConstruction": 0.23971465025397412,
+      "sinkCreeps": 0.39560580649820654
+    },
+    {
+      "at": "2026-07-21T13:31:42.715Z",
+      "commit": "74203ef",
+      "ticks": 11031,
+      "energyHarvestedPerTick": 11.470113378684808,
+      "energyWasteFraction": 0.33618544687194885,
+      "energyDecayed": 4168,
+      "sinkUpgrading": 0.3506598937675411,
+      "sinkConstruction": 0.23067288288915178,
+      "sinkCreeps": 0.41866722334330714
     }
   ]
 }

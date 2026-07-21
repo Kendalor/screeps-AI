@@ -44,8 +44,18 @@ describe("bootstrap body (ported Allrounder.getBody)", () => {
     // 500 buys the 2-WORK body rather than 1 WORK with 4 CARRY: at the source
     // WORK is the bottleneck, so the second WORK is worth more than the carry.
     expect(body(500).filter(p => p === WORK)).toHaveLength(2);
-    // ...and the pairs then resume on top of the larger base.
-    expect(body(600)).toEqual([WORK, CARRY, CARRY, MOVE, MOVE, MOVE, WORK, CARRY, MOVE, MOVE]);
+  });
+
+  // Above the second set the body is pure repetition of the 250 set and the
+  // remainder is held, not spent: a bootstrap fills at 2 energy/tick per WORK,
+  // so past the set's own 1 CARRY per WORK it would stand at the source longer
+  // than the extra load saves it. Holding the remainder is how it reaches the
+  // next WORK, which is the part that actually raises throughput.
+  it("repeats the whole set above 500, leaving the remainder unspent", () => {
+    const set = [WORK, CARRY, MOVE, MOVE];
+    expect(body(600)).toEqual([...set, ...set]);
+    expect(body(700)).toEqual([...set, ...set]);
+    expect(body(750)).toEqual([...set, ...set, ...set]);
   });
 
   it("never proposes a body the budget cannot pay for", () => {
