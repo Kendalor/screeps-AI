@@ -1,40 +1,23 @@
-// Records what a run costs (vs boot-rcl2.test.ts's fixed pass/fail budget) into benchmarks.json,
-// comparing against the median of prior runs.
+// One milestone file among several in test/benchmark/ (see also milestones-rcl3-from-seed.test.ts).
+// Each records a leg of colony growth into the shared benchmarks.json history, comparing against
+// the median of prior runs, and all share their measurement set and detail printing via
+// checkBenchmark/economyOf (see benchmarks.ts) — only the checkpoint ladder and starting
+// conditions differ between milestones. To add a new one, add a file here following this shape.
 //
 //   rcl2                  — cold boot to controller level 2.
 //   rcl2-extensions-built — RCL2 with all 5 allowed extensions finished; the real "RCL2 done" line
 //                           since the colony only gets a bigger spawn body once they exist.
 //
-// energyWasteFraction is a fraction, not a per-tick rate, because waste accrues in lumps at
-// source regen rather than as a flow. sink{Upgrading,Construction,Creeps} are fractions of spend
-// so a longer run doesn't inflate them.
-//
-// Both run in the harness's default room (bunker terrain, spawn on the layout's own spawn tile):
+// Runs in the harness's default room (bunker terrain, spawn on the layout's own spawn tile):
 // stubWorld()'s stock rooms cap clearance at 4 vs BUNKER_RADIUS=6, so no anchor would be found.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
-import {
-  BenchmarkSpec,
-  formatResult,
-  recordBenchmark,
-  regressions,
-  type BenchResult
-} from "./benchmarks";
-import { EnergyMetrics, type EnergyReport } from "../integration/energyMetrics";
+import { checkBenchmark, ECONOMY_SPEC, economyOf, recordBenchmark } from "./benchmarks";
+import { EnergyMetrics } from "../integration/energyMetrics";
 import { BootedColony, bundleBot, CheckpointLadder } from "../integration/harness";
 
 // CONTROLLER_STRUCTURES.extension[2] — the engine's own cap at RCL2.
 const EXTENSIONS_AT_RCL2 = 5;
-
-const SPEC: BenchmarkSpec = {
-  ticks: { unit: "ticks" },
-  energyHarvestedPerTick: { direction: "higher", unit: "energy/tick" },
-  energyWasteFraction: { unit: "fraction of available income" },
-  energyDecayed: { unit: "energy" },
-  sinkUpgrading: { direction: "higher", unit: "fraction of spend" },
-  sinkConstruction: { unit: "fraction of spend" },
-  sinkCreeps: { unit: "fraction of spend" }
-};
 
 // Overridable so parallel runs (scripts/bench-parallel.mjs) can shard to separate files —
 // recordBenchmark is an unlocked read-modify-write and concurrent runs sharing one file would collide.
@@ -55,28 +38,6 @@ afterAll(() => {
 // One booted colony serves both benchmarks — the extension milestone is downstream of RCL2, so
 // this test's RCL2 run leaves the world exactly where the next one picks up.
 let rcl2Tick: number | null = null;
-
-/** Turn an energy report into this run's economy measurements. */
-function economyOf(report: EnergyReport): Record<string, number | null> {
-  const available = report.harvested + report.wasted;
-  const { upgrading, construction, creeps } = report.sinks;
-  const spent = upgrading + construction + creeps;
-  return {
-    energyHarvestedPerTick: report.perTick.harvested,
-    energyWasteFraction: available ? report.wasted / available : null,
-    energyDecayed: report.decayed,
-    sinkUpgrading: spent ? upgrading / spent : null,
-    sinkConstruction: spent ? construction / spent : null,
-    sinkCreeps: spent ? creeps / spent : null
-  };
-}
-
-/** Print the run (the numbers are the point) and fail on any regression. */
-function check(result: BenchResult): void {
-  console.log(formatResult(result));
-  const bad = regressions(result);
-  expect(bad.map(c => c.measurement), formatResult(result)).toEqual([]);
-}
 
 test(
   "benchmark: cold boot reaches RCL2",
@@ -118,7 +79,7 @@ test(
     // Without this floor a run that harvested nothing would record a 0 baseline and look stable forever.
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
 
-    check(recordBenchmark("rcl2", { ticks: rcl2Tick, ...economyOf(report) }, SPEC, BENCH_OUT));
+    checkBenchmark(recordBenchmark("rcl2", { ticks: rcl2Tick, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT));
   },
   300_000
 );
@@ -145,7 +106,9 @@ test(
     const report = energy.report();
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
 
-    check(recordBenchmark("rcl2-extensions-built", { ticks: builtTick, ...economyOf(report) }, SPEC, BENCH_OUT));
+    checkBenchmark(
+      recordBenchmark("rcl2-extensions-built", { ticks: builtTick, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT)
+    );
   },
   600_000
 );

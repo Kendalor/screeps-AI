@@ -11,6 +11,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { expect } from "vitest";
+import type { EnergyReport } from "../integration/energyMetrics";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const BENCH_FILE = path.join(HERE, "benchmarks.json");
@@ -235,6 +237,43 @@ export function formatResult(result: BenchResult): string {
     }
   }
   return lines.join("\n");
+}
+
+// Shared by every milestone benchmark (rcl2, rcl3, ...) so they all measure and print identically —
+// only their checkpoint ladders and run conditions differ.
+export const ECONOMY_SPEC: BenchmarkSpec = {
+  ticks: { unit: "ticks" },
+  energyHarvestedPerTick: { direction: "higher", unit: "energy/tick" },
+  energyWasteFraction: { unit: "fraction of available income" },
+  energyDecayed: { unit: "energy" },
+  sinkUpgrading: { direction: "higher", unit: "fraction of spend" },
+  sinkConstruction: { unit: "fraction of spend" },
+  sinkCreeps: { unit: "fraction of spend" }
+};
+
+// energyWasteFraction is a fraction, not a per-tick rate, because waste accrues in lumps at source
+// regen rather than as a flow. sink{Upgrading,Construction,Creeps} are fractions of spend so a
+// longer run doesn't inflate them.
+/** Turn an energy report into this run's economy measurements. */
+export function economyOf(report: EnergyReport): Record<string, number | null> {
+  const available = report.harvested + report.wasted;
+  const { upgrading, construction, creeps } = report.sinks;
+  const spent = upgrading + construction + creeps;
+  return {
+    energyHarvestedPerTick: report.perTick.harvested,
+    energyWasteFraction: available ? report.wasted / available : null,
+    energyDecayed: report.decayed,
+    sinkUpgrading: spent ? upgrading / spent : null,
+    sinkConstruction: spent ? construction / spent : null,
+    sinkCreeps: spent ? creeps / spent : null
+  };
+}
+
+/** Print the run in full (the numbers are the point) and fail on any regression. */
+export function checkBenchmark(result: BenchResult): void {
+  console.log(formatResult(result));
+  const bad = regressions(result);
+  expect(bad.map(c => c.measurement), formatResult(result)).toEqual([]);
 }
 
 function shortSha(): string | undefined {

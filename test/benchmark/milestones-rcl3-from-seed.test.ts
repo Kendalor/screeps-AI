@@ -1,38 +1,23 @@
 // Benchmarks the RCL2 -> RCL3 leg, seeded from a finished RCL2 colony (via seedColony) rather than
 // a cold boot: RCL2->3 alone needs 45,000 controller progress against a 2-source room, and seeding
-// only the controller level would start every run with a total-wipe recovery instead.
+// only the controller level would start every run with a total-wipe recovery instead. Shares its
+// measurement set and printing with every other file in test/benchmark/ via checkBenchmark/economyOf
+// (see benchmarks.ts) — only the checkpoint ladder and starting conditions differ between milestones.
 //
 //   rcl3                  — from a finished RCL2 colony to controller level 3.
 //   rcl3-buildings-built  — RCL3 *and* every structure the colony wants at RCL3 standing (the real
 //                           "RCL3 done" line — RCL3 also unlocks the tower, extensions and the
 //                           source containers the miner/hauler economy needs).
 //
-// Same measurement set as milestones.test.ts, accumulated from the seeded RCL2 start.
 // Runs in the harness's default room (bunker terrain, spawn on layout's own spawn tile).
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import type { PlacedStructure } from "../../src/layouts/stamp";
 import { wantedStructures } from "../../src/systems/building";
-import {
-  BenchmarkSpec,
-  formatResult,
-  recordBenchmark,
-  regressions,
-  type BenchResult
-} from "./benchmarks";
-import { EnergyMetrics, type EnergyReport } from "../integration/energyMetrics";
+import { checkBenchmark, ECONOMY_SPEC, economyOf, recordBenchmark } from "./benchmarks";
+import { EnergyMetrics } from "../integration/energyMetrics";
 import { BootedColony, bundleBot, CheckpointLadder } from "../integration/harness";
 import { outstanding, seedColony } from "../integration/seed";
-
-const SPEC: BenchmarkSpec = {
-  ticks: { unit: "ticks" },
-  energyHarvestedPerTick: { direction: "higher", unit: "energy/tick" },
-  energyWasteFraction: { unit: "fraction of available income" },
-  energyDecayed: { unit: "energy" },
-  sinkUpgrading: { direction: "higher", unit: "fraction of spend" },
-  sinkConstruction: { unit: "fraction of spend" },
-  sinkCreeps: { unit: "fraction of spend" }
-};
 
 // Clean slate of progress at the start level — seeding partial progress would shorten the measured leg.
 const SEED_LEVEL = 2;
@@ -85,28 +70,6 @@ afterAll(() => {
   colony?.stop();
 });
 
-/** Turn an energy report into this run's economy measurements. */
-function economyOf(report: EnergyReport): Record<string, number | null> {
-  const available = report.harvested + report.wasted;
-  const { upgrading, construction, creeps } = report.sinks;
-  const spent = upgrading + construction + creeps;
-  return {
-    energyHarvestedPerTick: report.perTick.harvested,
-    energyWasteFraction: available ? report.wasted / available : null,
-    energyDecayed: report.decayed,
-    sinkUpgrading: spent ? upgrading / spent : null,
-    sinkConstruction: spent ? construction / spent : null,
-    sinkCreeps: spent ? creeps / spent : null
-  };
-}
-
-/** Print the run (the numbers are the point) and fail on any regression. */
-function check(result: BenchResult): void {
-  console.log(formatResult(result));
-  const bad = regressions(result);
-  expect(bad.map(c => c.measurement), formatResult(result)).toEqual([]);
-}
-
 /** How many of `targets` are standing in the room right now. */
 async function standing(targets: PlacedStructure[]): Promise<number> {
   const present = new Set((await colony.roomObjects()).map(o => `${o.type}@${o.x},${o.y}`));
@@ -150,7 +113,7 @@ test(
     // otherwise record a 0 baseline and look stable forever.
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
 
-    check(recordBenchmark("rcl3", { ticks: reached, ...economyOf(report) }, SPEC, BENCH_OUT));
+    checkBenchmark(recordBenchmark("rcl3", { ticks: reached, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT));
   },
   900_000
 );
@@ -180,7 +143,9 @@ test(
     const report = energy.report();
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
 
-    check(recordBenchmark("rcl3-buildings-built", { ticks: builtTick, ...economyOf(report) }, SPEC, BENCH_OUT));
+    checkBenchmark(
+      recordBenchmark("rcl3-buildings-built", { ticks: builtTick, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT)
+    );
   },
   900_000
 );

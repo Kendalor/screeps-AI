@@ -5,7 +5,7 @@
 // needs before it means anything.
 //
 //   node scripts/bench-parallel.mjs [runs] [testFile]
-//   node scripts/bench-parallel.mjs 4 test/benchmark/milestones-rcl3.test.ts
+//   node scripts/bench-parallel.mjs 4 test/benchmark/milestones-rcl3-from-seed.test.ts
 //   node scripts/bench-parallel.mjs 4                      # whole suite, 4x
 //
 // See scripts/bench-shared.mjs for why a driver is needed at all: the bundle
