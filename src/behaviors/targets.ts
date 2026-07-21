@@ -1,16 +1,10 @@
-// resolveTarget(spec) — the ONE place that searches for targets
-// (docs/rewrite-skeleton.md §5), replacing ~60 copies of getTargetId.
-//
-// The `where` filter is a pure predicate over the facts a candidate exposes, so
-// it is unit-tested without the game. resolveTarget (live-API candidate fetch)
-// is added next and reuses this predicate.
+// resolveTarget(spec) is the one place that searches for targets.
 
 import type { TargetSpec } from "./types";
 
 export type Where = "notFull" | "hasEnergy" | "damaged";
 
-// The candidate facts the where-predicates read. Live game objects satisfy this
-// shape via their store / hits; tests pass plain objects.
+// Live game objects satisfy this shape via their store/hits; tests pass plain objects.
 export interface TargetCandidate {
   freeCapacity: number;
   usedCapacity: number;
@@ -32,10 +26,7 @@ export function matchesWhere(c: TargetCandidate, where: Where | undefined): bool
 }
 
 // --- locked-target spec fit ---------------------------------------------------
-// The other half of re-validating a lock: matchesWhere asks "is it still in a
-// usable state?", fitsSpec asks "is it still the kind of thing the step wants?".
-// Kept as a pure predicate over a kind descriptor for the same reason — the
-// interesting logic is testable without the game.
+// matchesWhere asks "is it still in a usable state?"; fitsSpec asks "is it still the kind of thing the step wants?".
 
 export type TargetKind =
   | { kind: "structure"; structureType: StructureConstant }
@@ -47,8 +38,7 @@ export type TargetKind =
 
 export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
   switch (spec.find) {
-    // An id-spec names one object outright, so whatever still resolves under
-    // that id is by definition the thing the step asked for.
+    // An id-spec names one object outright — whatever resolves under that id is the thing asked for.
     case "id":
       return true;
     case "structure":
@@ -63,13 +53,9 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
 }
 
 // --- live-API resolution ------------------------------------------------------
-// Fetches candidates for a spec, applies the where-filter (via the tested
-// predicate), and returns the nearest by path. This is the single searcher the
-// interpreter calls; not unit-tested (touches Game) — covered by the
-// integration harness.
+// Fetches candidates for a spec, applies the where-filter, and returns the nearest by path.
 
-// Adapt a live game object to the candidate facts the predicate reads. Objects
-// without a store (source, controller, construction site) never carry a `where`.
+// Objects without a store (source, controller, construction site) never carry a `where`.
 function toCandidate(obj: RoomObject): TargetCandidate {
   const store = (obj as { store?: StoreDefinition }).store;
   const withHits = obj as { hits?: number; hitsMax?: number };
@@ -81,8 +67,7 @@ function toCandidate(obj: RoomObject): TargetCandidate {
   };
 }
 
-// Classify a live object into the kind descriptor fitsSpec reads. Ordered most
-// specific first: a construction site has no structureType, a structure does.
+// Ordered most specific first: a construction site has no structureType, a structure does.
 function toKind(obj: RoomObject): TargetKind | null {
   const o = obj as {
     structureType?: StructureConstant;
@@ -101,9 +86,6 @@ function toKind(obj: RoomObject): TargetKind | null {
   return null;
 }
 
-// A lock is honoured only if the object still resolves, is still the kind the
-// step asked for, and is still in a usable state. Any failure drops the lock
-// and the caller searches fresh.
 function validLock(locked: Id<_HasId>, spec: TargetSpec): RoomObject | null {
   const obj = Game.getObjectById(locked) as RoomObject | null;
   if (!obj) return null;
@@ -130,10 +112,7 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
   const candidates = findCandidates(creep, spec).filter(
     c => spec.find !== "structure" || matchesWhere(toCandidate(c), spec.where)
   );
-  // Prefer candidates still under their share cap so creeps spread out; but if
-  // every valid candidate is already at capacity, fall back to the full set
-  // rather than stranding the creep with no target — a shared slot frees up as
-  // others cycle off, and no target means it does nothing at all.
+  // Fall back to the full set if every candidate is at its share cap — no target means the creep does nothing at all.
   const uncrowded = candidates.filter(c =>
     withinShareCap(creep, (c as unknown as { id: Id<_HasId> }).id, shareCap(spec, c))
   );
@@ -143,15 +122,9 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
 }
 
 // --- targeting cache ----------------------------------------------------------
-// Any target a creep can pick, others may want too. Rather than every role
-// re-solving "is this taken?", one claim map — derived from creeps' task.target
-// locks (a lock IS a claim) — is consulted here. A spec's `share` flag says how
-// many creeps may share one target: "allow"/absent = unlimited, "avoid" = 1,
-// a number = that many. Sources pass their open harvest-tile count so
-// harvesters spread instead of stacking on one source and blocking each other.
+// A claim map derived from creeps' task.target locks (a lock IS a claim), consulted so roles don't stack on one target.
 
-// Claims counted per tick and memoised so a row full of candidates doesn't
-// rescan every creep. Keyed by Game.time so it self-invalidates each tick.
+// Memoised per tick (keyed by Game.time) so a row full of candidates doesn't rescan every creep.
 let claimCache: { tick: number; counts: Record<string, number> } | undefined;
 
 function claimCounts(): Record<string, number> {
@@ -165,8 +138,7 @@ function claimCounts(): Record<string, number> {
   return counts;
 }
 
-// The share cap for this spec against this candidate. Unlimited by default;
-// sources compute their open-tile count so the cap is physical, not arbitrary.
+// Unlimited by default; sources use their open-tile count so the cap is physical, not arbitrary.
 function shareCap(spec: TargetSpec, candidate: RoomObject): number {
   if (spec.find === "source") return openHarvestTiles(candidate as Source);
   const share = (spec as { share?: "allow" | "avoid" | number }).share;
@@ -175,16 +147,14 @@ function shareCap(spec: TargetSpec, candidate: RoomObject): number {
   return share;
 }
 
-// A candidate is available if fewer than `cap` OTHER creeps have claimed it —
-// the creep's own existing lock never counts against it.
+// The creep's own existing lock never counts against its own cap check.
 function withinShareCap(creep: Creep, id: Id<_HasId>, cap: number): boolean {
   if (cap === Infinity) return true;
   const claimedByOthers = (claimCounts()[id] ?? 0) - (creep.memory.task?.target === id ? 1 : 0);
   return claimedByOthers < cap;
 }
 
-// Walkable, non-wall tiles adjacent to the source — how many creeps can harvest
-// it at once, and therefore its share cap.
+// Walkable tiles adjacent to the source, i.e. its share cap.
 function openHarvestTiles(source: Source): number {
   const terrain = source.room.getTerrain();
   let open = 0;

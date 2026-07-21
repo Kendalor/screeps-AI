@@ -32,7 +32,6 @@ describe("interpreter step advancement", () => {
   });
 
   it("wraps from the last step back to the first", () => {
-    // upgrade is a spending step; empty store completes it and loops around
     expect(nextStep(STEPS, state({ step: 2, free: 50, used: 0 }))).toBe(0);
   });
 
@@ -41,43 +40,28 @@ describe("interpreter step advancement", () => {
   });
 });
 
-// --- firstRunnableStep ---------------------------------------------------------
-// Regression coverage: an allrounder that just emptied its store transferring
-// to the spawn would land on "upgrade" (the next step) with nothing to
-// upgrade with, wasting a tick walking to the controller before harvest ever
-// ran. firstRunnableStep lets the dispatch skip that no-op step immediately.
-
+// Lets the dispatch skip a step that's already complete (e.g. landing on "upgrade"
+// with an empty store right after a transfer) instead of wasting a tick on a no-op.
 describe("firstRunnableStep", () => {
   it("stays put when the current step already has something to do", () => {
-    // step 1 (transfer) with energy still in the store
     expect(firstRunnableStep(STEPS, 1, { free: 25, used: 25 })).toBe(1);
   });
 
   it("skips a spend step landed on with an empty store straight to the next gather step", () => {
-    // step 2 (upgrade) with an empty store: complete before it ever acts,
-    // so it should skip past it to step 0 (harvest), which has free capacity.
     expect(firstRunnableStep(STEPS, 2, { free: 50, used: 0 })).toBe(0);
   });
 
   it("skips a full gather step to the following spend step", () => {
-    // step 0 (harvest) with a full store: nothing more to gather, so it
-    // should land on step 1 (transfer), which still has energy to spend.
     expect(firstRunnableStep(STEPS, 0, { free: 0, used: 50 })).toBe(1);
   });
 
   it("returns the starting step when nothing in the loop is runnable", () => {
-    // every step already complete for this store state: gather steps full,
-    // spend steps empty is contradictory for a real creep, but the function
-    // should still terminate rather than loop forever.
     expect(firstRunnableStep(STEPS, 0, { free: 0, used: 0 })).toBe(0);
   });
 });
 
-// --- runStep target reporting -------------------------------------------------
-// runStep returns the id of the target it acted on so the dispatch can store it
-// as the creep's lock for next tick (#23). undefined means "nothing to do" and
-// is what drives CreepState.targetGone.
-
+// runStep returns the id of the target it acted on so the dispatch can store it as
+// the creep's lock for next tick; undefined drives CreepState.targetGone.
 function siteCreep(over: Partial<{ built: object[]; range: boolean }> = {}): Creep {
   const acted: string[] = [];
   const creep = {
@@ -119,7 +103,6 @@ describe("runStep target reporting", () => {
     stubGame({ objects: { near, locked } });
     const creep = siteCreep({ built: [near, locked] });
 
-    // Without the lock findClosestByPath would return `near` (first in list).
     const used = runStep(creep, { do: "build" }, "locked" as Id<_HasId>);
 
     expect(used).toEqual({ acted: true, target: "locked" });

@@ -1,45 +1,14 @@
-// Milestone benchmarks for the RCL2 -> RCL3 leg.
-//
-// milestones.test.ts measures the cold-boot climb: nothing to RCL2, then RCL2
-// with its 5 extensions finished. That run ends where this one begins. Running
-// this leg from a cold boot too would re-measure the RCL2 climb inside every
-// figure and cost tens of thousands of ticks doing it — RCL2->3 alone needs
-// 45,000 controller progress against a 2-source room — so these scenarios seed a
-// *finished, running* RCL2 colony and measure only the leg that follows:
+// Benchmarks the RCL2 -> RCL3 leg, seeded from a finished RCL2 colony (via seedColony) rather than
+// a cold boot: RCL2->3 alone needs 45,000 controller progress against a 2-source room, and seeding
+// only the controller level would start every run with a total-wipe recovery instead.
 //
 //   rcl3                  — from a finished RCL2 colony to controller level 3.
-//   rcl3-buildings-built  — RCL3 *and* every structure the colony wants at RCL3
-//                           standing. The real "RCL3 done" line: RCL3 unlocks
-//                           the tower, 5 more extensions and (via building.ts's
-//                           CONTAINERS_FROM_RCL gate) the source containers that
-//                           unblock the miner/hauler economy, so the level alone
-//                           says little about whether the colony can use it.
+//   rcl3-buildings-built  — RCL3 *and* every structure the colony wants at RCL3 standing (the real
+//                           "RCL3 done" line — RCL3 also unlocks the tower, extensions and the
+//                           source containers the miner/hauler economy needs).
 //
-// "Finished and running" is the point of seeding through `seedColony` (seed.ts)
-// rather than just setting a controller level: the seeded colony starts with
-// RCL2's buildings up, the workforce that RCL2 quota actually calls for at
-// staggered ages, and part-filled extensions. Seeding the level alone would
-// start every run with a total-wipe recovery — runt bodies spawned off the
-// spawn's own 300 energy — and the measurements would be dominated by a cold
-// start the real colony never performs at this milestone.
-//
-// Nothing about either state is listed here. The seeded structures come from
-// `wantedStructures` and the workforce from `desiredCensus`, both the bot's own
-// functions, and the RCL3 target set is the same `wantedStructures` asked at
-// level 3. The bunker layout, the CONTROLLER_STRUCTURES caps, the road/container
-// gates, the source-biased extension order and the spawn quotas therefore all
-// flow through automatically — change any of them and this benchmark moves with
-// it rather than measuring a target the bot no longer aims for.
-//
-// Measurements are the same set milestones.test.ts records, defined exactly as
-// energyMetrics.ts documents them, accumulated from the seeded RCL2 start (not
-// from a cold boot) so both describe this leg alone. See that file's header for
-// what each one means.
-//
-// Runs in the harness's default room for the same reason the other milestones
-// do: bunker terrain (stubWorld() rooms top out at clearance 4 against
-// BUNKER_RADIUS=6, so no anchor is found and nothing downstream of layout
-// planning runs) with the spawn on the layout's own spawn tile.
+// Same measurement set as milestones.test.ts, accumulated from the seeded RCL2 start.
+// Runs in the harness's default room (bunker terrain, spawn on layout's own spawn tile).
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import type { PlacedStructure } from "../../src/layouts/stamp";
@@ -55,8 +24,6 @@ import { EnergyMetrics, type EnergyReport } from "../integration/energyMetrics";
 import { BootedColony, bundleBot, CheckpointLadder } from "../integration/harness";
 import { outstanding, seedColony } from "../integration/seed";
 
-// Same interpretation as milestones.test.ts — these measure the same quantities
-// at a later pair of milestones.
 const SPEC: BenchmarkSpec = {
   ticks: { unit: "ticks" },
   energyHarvestedPerTick: { direction: "higher", unit: "energy/tick" },
@@ -67,42 +34,28 @@ const SPEC: BenchmarkSpec = {
   sinkCreeps: { unit: "fraction of spend" }
 };
 
-// RCL2 with its buildings up is the *start* state, so the controller sits at
-// level 2 with a clean slate of progress — seeding partial progress would
-// silently shorten the leg being measured.
+// Clean slate of progress at the start level — seeding partial progress would shorten the measured leg.
 const SEED_LEVEL = 2;
 const TARGET_LEVEL = 3;
 
-// Ticks run before seeding. The anchor is the bot's own cached decision
-// (Memory.colonies[room].anchor, written by snapshot/colony.ts), so it does not
-// exist until the bot has run; without it there is no frame to stamp the layout
-// onto and `seedColony` throws. A handful of ticks is plenty — the anchor is
-// computed on the first snapshot, and nothing meaningful is built in this window.
+// The anchor (Memory.colonies[room].anchor) doesn't exist until the bot has run at least one tick;
+// without it there's no frame to stamp the layout onto and seedColony throws.
 const TICKS_TO_ANCHOR = 5;
 
-// History file is overridable so several runs of this benchmark can be executed
-// concurrently to build up history faster (scripts/bench-parallel.mjs).
-// `recordBenchmark` is an unlocked read-modify-write of one JSON file, so
-// concurrent runs sharing it would collide — one silently dropping the other's
-// entry. The driver script gives each worker its own shard file, then merges
-// the shards into the committed history sequentially. (The storage port and
-// server dir need no such override: `BootedColony.boot` self-allocates both.)
+// Overridable so parallel runs (scripts/bench-parallel.mjs) can shard to separate files —
+// recordBenchmark is an unlocked read-modify-write and concurrent runs sharing one file would collide.
 const BENCH_OUT = process.env.BENCH_FILE;
 
 let colony: BootedColony;
 
-// The RCL3 target set, derived once the colony is seeded and standing at RCL2.
-// Captured in beforeAll so both tests judge against one set.
+// Derived once the colony is seeded at RCL2, so both tests judge against the same target set.
 let rcl3Targets: PlacedStructure[] = [];
 
 const energy = new EnergyMetrics();
 
 beforeAll(async () => {
-  // Default room and spawn placement (harness.ts): bunker terrain, spawn on the
-  // layout's own spawn tile. A hand-placed spawn is not wrong so much as
-  // *off-layout* — the bunker's geometry (filler round trips, the spawn's place
-  // in the extension blob) is all measured from the anchor, so a spawn parked
-  // elsewhere quietly benchmarks a room the layout was never designed for.
+  // Default room and spawn placement (harness.ts) — an off-layout spawn would quietly
+  // benchmark a room the layout was never designed for.
   colony = await BootedColony.boot({ botCode: bundleBot() });
 
   await colony.runTicks(TICKS_TO_ANCHOR);
@@ -116,15 +69,9 @@ beforeAll(async () => {
   expect(seeded.creeps.length, "no RCL2 workforce was derived — the colony would cold-start instead").toBeGreaterThan(0);
   expect(seeded.energy, "the seeded colony started with no energy — it would recover rather than run").toBeGreaterThan(0);
 
-  // The RCL3 target, from the same planner asked as if the colony were already
-  // there: this is the set it will aim for once it arrives. Reduced by
-  // `outstanding` to what the room does not already satisfy, which is what makes
-  // it a *reachable* target: a wanted placement is also satisfied when the room
-  // already holds as many of that type as the RCL permits, and a raw target set
-  // would then wait forever on a structure the colony is not allowed to build.
-  // The spawn is the standing example — one slot until RCL7, already filled —
-  // though `spawnOnLayout` now puts that spawn on the tile the layout asks for,
-  // so it drops out on the tile check rather than the cap.
+  // Reduced by `outstanding` to what the room doesn't already satisfy (e.g. the spawn slot,
+  // already filled), so the target is reachable rather than waiting forever on a structure
+  // the colony is not allowed to build.
   const snapshotAtRcl3 = { ...(await colony.layoutSnapshot()), controllerLevel: TARGET_LEVEL };
   rcl3Targets = outstanding(
     wantedStructures(snapshotAtRcl3),
@@ -170,11 +117,7 @@ test(
   "benchmark: a finished RCL2 colony reaches RCL3",
   async () => {
     const ladder = new CheckpointLadder([
-      // The seeded workforce is alive before this test runs — the rung exists to
-      // catch a seeding failure (a colony that starts empty and cold-recovers)
-      // rather than to time a bootstrap, so the budget only has to be far below
-      // what spawning a workforce from scratch would cost. The first sample lands
-      // a few ticks in because `runUntil` ticks before it observes.
+      // Catches a seeding failure (empty colony cold-recovering) rather than timing a bootstrap.
       { name: "workforce alive", by: 50 },
       { name: "RCL3", by: 30_000 }
     ]);
@@ -220,10 +163,8 @@ test(
       "RCL3 was never reached — the building milestone cannot be measured"
     ).toBeGreaterThanOrEqual(TARGET_LEVEL);
 
-    // Continues the same world; the tick recorded is absolute (ticks since the
-    // seeded RCL2 start), so the measurement answers "how long from a finished
-    // RCL2 to a finished RCL3" and stays comparable even if the level-up leg
-    // itself gets faster or slower.
+    // Tick recorded is absolute (since the seeded RCL2 start), so it stays comparable
+    // even if the level-up leg itself gets faster or slower.
     const builtTick = await colony.runUntil(
       async () => (await standing(rcl3Targets)) >= rcl3Targets.length,
       20_000,

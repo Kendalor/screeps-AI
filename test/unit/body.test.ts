@@ -6,7 +6,7 @@ describe("bodyCost", () => {
     expect(bodyCost([WORK, CARRY, MOVE, MOVE])).toBe(250);
     expect(bodyCost([CARRY, CARRY, MOVE])).toBe(150);
     expect(bodyCost([WORK, CARRY, CARRY, MOVE, MOVE])).toBe(300);
-    expect(bodyCost([CARRY, MOVE])).toBe(100); // the bootstrap pair
+    expect(bodyCost([CARRY, MOVE])).toBe(100);
   });
 
   it("is zero for an empty body", () => {
@@ -19,26 +19,22 @@ describe("affordableSets", () => {
 
   it("divides the budget by the set's derived cost", () => {
     expect(affordableSets(250, set, 1, 5)).toBe(1);
-    expect(affordableSets(499, set, 1, 5)).toBe(1); // no partial sets
+    expect(affordableSets(499, set, 1, 5)).toBe(1);
     expect(affordableSets(500, set, 1, 5)).toBe(2);
   });
 
   it("clamps to the given bounds", () => {
-    expect(affordableSets(0, set, 1, 5)).toBe(1); // floor
-    expect(affordableSets(10_000, set, 1, 5)).toBe(5); // cap
+    expect(affordableSets(0, set, 1, 5)).toBe(1);
+    expect(affordableSets(10_000, set, 1, 5)).toBe(5);
   });
 
   it("tracks the set's parts rather than a hardcoded price", () => {
-    // A cheaper set buys more of itself from the same budget — the point of
-    // deriving the cost instead of stating it.
-    expect(affordableSets(600, [CARRY, CARRY, MOVE], 1, 16)).toBe(4); // 150 each
+    expect(affordableSets(600, [CARRY, CARRY, MOVE], 1, 16)).toBe(4);
   });
 });
 
-// Screeps consumes body parts in array order, front to back: body[0] takes the
-// first hit. Ordering by ascending importance therefore means the parts that
-// keep a creep useful survive longest — MOVE last of all, because an immobile
-// creep cannot retreat, reposition, or even get out of a corridor.
+// Screeps consumes body parts front-to-back on hit; ordering by ascending importance
+// keeps the most useful parts alive longest.
 describe("orderBody", () => {
   it("puts MOVE last and TOUGH first", () => {
     expect(orderBody([MOVE, WORK, TOUGH])).toEqual([TOUGH, WORK, MOVE]);

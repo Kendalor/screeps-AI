@@ -1,17 +1,8 @@
-// Milestone 1: a fresh spawn boots a colony to RCL2 (docs/rewrite-skeleton.md §8).
+// Foundational integration test: proves end-to-end that spawning, resolveTarget candidate fetch,
+// and runStep dispatch actually drive a colony in a real engine — none of that glue is unit-tested.
 //
-// This is the foundational integration test — proving end-to-end that spawning
-// (desired-vs-actual census diff), resolveTarget candidate fetch, and runStep
-// dispatch actually drive a colony in a real engine. None of that glue is
-// unit-tested by design; this is where it is verified.
-//
-// Runs in the harness's default room: bunker terrain with the spawn on the
-// layout's own spawn tile, the same geometry every other scenario uses, since
-// the bunker is the only layout the bot has.
-//
-// Observed on the reference machine: first creep ~tick 2, first upgrade ~tick
-// 593, RCL2 ~tick 779. Budgets below carry margin for run-to-run pathing
-// variance.
+// Observed on the reference machine: first creep ~tick 2, first upgrade ~tick 593, RCL2 ~tick 779.
+// Budgets below carry margin for run-to-run pathing variance.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { BootedColony, bundleBot, CheckpointLadder } from "./harness";
@@ -31,14 +22,8 @@ test(
   async () => {
     const ladder = new CheckpointLadder([
       { name: "first creep alive", by: 150 },
-      // Later than it looks like it should be, because the bunker anchor
-      // optimises for controller proximity (CONTROLLER_WEIGHT) and so starts the
-      // colony *further from its sources*: the opening round trip is long, and
-      // nothing reaches the controller until it completes. The trade pays for
-      // itself immediately after — the short controller haul is why RCL2 still
-      // lands well inside its own budget. Budgeted off the on-layout geometry;
-      // the old 500 assumed a spawn parked near the sources, which no real
-      // bunker colony enjoys.
+      // Bunker anchor optimises for controller proximity, starting the colony further from
+      // sources — the long opening round trip is why this budget is later than it looks.
       { name: "controller upgrading", by: 700 },
       { name: "RCL2", by: 1000 }
     ]);
@@ -65,7 +50,6 @@ test(
     );
 
     const missed = ladder.firstMissed();
-    // Name the first rung missed → the failure phase is known before reading data.
     expect(missed, `checkpoint ladder:\n${ladder.report()}`).toBeNull();
     expect(reachedRcl2, "RCL2 never reached within 1200 ticks").not.toBeNull();
   },

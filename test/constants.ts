@@ -1,7 +1,5 @@
-// Stubs the Screeps global constants for unit tests (see docs/rewrite-skeleton.md §8).
-// @types/screeps declares these as ambient globals; the game engine provides them at
-// runtime. Tests run in plain node, so we define the ones src/ actually references.
-// Add here as new systems need them.
+// Stubs the Screeps global constants for unit tests; @types/screeps declares them as
+// ambient globals normally provided by the game engine at runtime. Add as src/ needs more.
 
 Object.assign(globalThis, {
   OK: 0,
@@ -52,8 +50,7 @@ Object.assign(globalThis, {
 
   MAX_CONSTRUCTION_SITES: 100,
 
-  // Spawn cost per body part, from screeps/common constants — spawning prices
-  // the body it built against the room's energy before emitting the intent.
+  // Spawn cost per body part, from screeps/common constants.
   BODYPART_COST: {
     move: 50,
     work: 100,
@@ -74,8 +71,7 @@ Object.assign(globalThis, {
   CLAIM: "claim",
   TOUGH: "tough",
 
-  // Per-RCL structure count limits, from screeps/common constants. The layout
-  // planner derives the buildable subset at a given controller level from these.
+  // Per-RCL structure count limits, from screeps/common constants.
   CONTROLLER_STRUCTURES: {
     spawn: { 0: 0, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 2, 8: 3 },
     extension: { 0: 0, 1: 0, 2: 5, 3: 10, 4: 20, 5: 30, 6: 40, 7: 50, 8: 60 },

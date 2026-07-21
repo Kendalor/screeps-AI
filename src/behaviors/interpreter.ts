@@ -1,13 +1,9 @@
-// The creep framework (docs/rewrite-skeleton.md §5). The step-advancement
-// decision is a pure function (nextStep) so it is unit-testable without a
-// creep; runStep (added next) is the thin actuator that resolves the target
-// and calls the game API / travelTo.
+// nextStep decides step advancement as a pure function, testable without a creep; runStep is the actuator that touches the game API.
 
 import { resolveTarget } from "./targets";
 import type { Step, TargetSpec } from "./types";
 
-// Gathering steps fill the store; spending steps drain it. This single table
-// replaces the per-job completion conditions scattered across the old jobs.
+// Gathering steps fill the store; spending steps drain it.
 type StepKind = "gather" | "spend";
 
 const STEP_KIND: Record<Step["do"], StepKind> = {
@@ -18,24 +14,18 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   build: "spend",
   repair: "spend",
   upgrade: "spend",
-  // movement steps complete when arrived; treated as spend so an empty store
-  // (or arrival, handled in runStep) advances them. sit never self-completes.
+  // Movement steps are treated as spend so arrival (handled in runStep) advances them; sit never self-completes.
   moveToRoom: "spend",
   sit: "spend"
 };
 
-/** The creep facts the completion rules depend on — a snapshot, not the creep. */
 export interface CreepState {
-  step: number; // current index into the role's step list
-  free: number; // store free capacity
-  used: number; // store used capacity
+  step: number;
+  free: number;
+  used: number;
   targetGone: boolean; // the locked target no longer resolves
 }
 
-/**
- * Given the role's steps and the creep's current state, return the index of the
- * step the creep should run this tick. Wraps around the step list.
- */
 export function nextStep(steps: Step[], s: CreepState): number {
   if (isComplete(steps[s.step], s)) {
     return (s.step + 1) % steps.length;
@@ -43,15 +33,8 @@ export function nextStep(steps: Step[], s: CreepState): number {
   return s.step;
 }
 
-/**
- * Find the first step at or after `from` that isn't already complete given the
- * creep's store fill (free/used), wrapping at most once around the list. Used
- * to skip a step landed on mid-tick (e.g. arriving at "upgrade" with an empty
- * store right after "transfer" drained it) so the creep doesn't waste a tick
- * acting on a step with nothing to do (gh follow-up: allrounder 1-tick
- * controller detour after emptying its store at the spawn). targetGone never
- * applies here — that reflects a resolution attempt this step hasn't made yet.
- */
+// Skips a step landed on mid-tick that's already complete (e.g. arriving at "upgrade" right after "transfer" emptied the store).
+// targetGone is never set here — that reflects a resolution attempt this step hasn't made yet.
 export function firstRunnableStep(steps: Step[], from: number, store: { free: number; used: number }): number {
   for (let i = 0; i < steps.length; i++) {
     const idx = (from + i) % steps.length;
@@ -63,23 +46,14 @@ export function firstRunnableStep(steps: Step[], from: number, store: { free: nu
 export function isComplete(step: Step, s: CreepState): boolean {
   if (s.targetGone) return true;
   const kind = STEP_KIND[step.do];
-  if (kind === "gather") return s.free === 0; // store full
-  return s.used === 0; // spending: store empty
+  if (kind === "gather") return s.free === 0;
+  return s.used === 0;
 }
 
 // --- acting half (touches the live API) --------------------------------------
-// Runs one step for one creep: resolve/validate the target, then act in range
-// or travelTo. Returns whether the step had a valid target this tick — the
-// dispatch (systems/creeps.ts) uses that to set CreepState.targetGone so a step
-// with nothing to do advances instead of stalling (the old jobs' cancel path).
-// build/repair/upgrade act at range 3; everything else at range 1.
+// Resolves/validates the target then acts in range or travelTo. build/repair/upgrade act at range 3; everything else at range 1.
 
-/**
- * What one step did this tick: whether it had anything to act on (`acted`, which
- * drives the targetGone completion rule) and the target it used, if any, for the
- * creep to lock onto next tick. Steps with no target (moveToRoom, sit) act
- * without locking, so the two facts are reported separately.
- */
+// acted feeds CreepState.targetGone in the dispatcher so a step with nothing to do advances instead of stalling.
 export interface StepResult {
   acted: boolean;
   target?: Id<_HasId>;
@@ -116,9 +90,6 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResu
   }
 }
 
-// Resolve the target for `spec` — reusing `locked` when it is still valid — then
-// act if in range, else travel toward it. Reports no target when nothing
-// resolves, so the step has nothing to do this tick.
 function actOn(
   creep: Creep,
   spec: TargetSpec,

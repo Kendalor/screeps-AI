@@ -39,7 +39,7 @@ describe("kernel tick", () => {
   it("stops before tier 2 when CPU exceeds 60% of the steady-state limit", () => {
     const tier1 = vi.fn(() => []);
     const tier2 = vi.fn(() => []);
-    stubGame({ cpuLimit: 20, getUsed: () => 13 }); // 65% of limit
+    stubGame({ cpuLimit: 20, getUsed: () => 13 });
     tick([
       { name: "t1", tier: 1, run: tier1 },
       { name: "t2", tier: 2, run: tier2 }

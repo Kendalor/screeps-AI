@@ -1,18 +1,8 @@
-// Energy accounting for integration runs. Pure logic over per-tick world
-// observations so it is unit-testable without the server: feed it a snapshot
-// each tick, read the tallies at the end.
+// Energy accounting for integration runs. Pure logic over per-tick world observations so it is
+// unit-testable without the server: feed it a snapshot each tick, read the tallies at the end.
 //
-// Definitions (per the RCL3-stall investigation):
-//   harvested  — source energy actually drained. A source holds energyCapacity
-//                and refills to full at each regen; at the reset tick the energy
-//                still sitting in it was NEVER harvested (wasted), and
-//                (capacity - leftover) was harvested over that cycle.
-//   wasted     — the leftover at each regen reset: income the colony left on the
-//                table because no miner drained it in time.
-//   decayed    — dropped energy that vanished without being picked up (only
-//                dropped resources decay).
-//   sinks      — where spent energy went: upgrading (controller progress delta),
-//                construction (site progress delta), creeps (spawn body cost).
+// "wasted" is the energy still sitting in a source at its regen reset — income no miner drained
+// in time, distinct from "harvested" (capacity minus that leftover).
 
 // A loosely-typed room object row as the mockup returns it (engine schema).
 export interface RawObj {
@@ -39,11 +29,7 @@ const BODYPART_COST: Record<string, number> = {
   tough: 10
 };
 
-/**
- * Turn one tick's raw room objects into a TickObs. `seenCreeps` is mutated to
- * remember which creep ids have already been counted, so a creep's body cost is
- * attributed exactly once — on the tick it first appears (i.e. begins spawning).
- */
+// `seenCreeps` is mutated so a creep's body cost is attributed exactly once, on the tick it first appears.
 export function observeTick(objects: RawObj[], seenCreeps: Set<string>): TickObs {
   const sources: SourceObs[] = [];
   let droppedEnergy = 0;
@@ -137,9 +123,7 @@ export class EnergyMetrics {
           // Normal drain: energy fell, all of it was harvested.
           this.harvested += prev - s.energy;
         } else if (s.energy > prev) {
-          // Regen reset: the source refilled. Whatever sat in it just before the
-          // refill (prev) was never harvested this cycle — that is wasted income.
-          // The difference the miners did take is already counted on the drains.
+          // Regen reset: whatever sat in it just before refilling (prev) was never harvested.
           this.wasted += prev;
         }
       }

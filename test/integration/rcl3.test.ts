@@ -1,17 +1,7 @@
-// Milestone 2: a colony finishes the climb into RCL3 under its own behavior
-// (gh issue #10, docs/rewrite-skeleton.md §8).
-//
-// The full natural climb from RCL1 is impractical to run routinely: this
-// room's 2 sources cap income at ~6.67 energy/tick, and RCL2->3 alone needs
-// 45,000 controller progress — tens of thousands of ticks at the observed
-// rate. boot-rcl2.test.ts already covers that early economic climb, so this
-// scenario seeds the controller at RCL2 with progress 100 short of RCL3 (via
-// the setControllerLevel harness helper, gh issue #9) and lets the bot's own
-// behavior — spawning, the census/step chain, upgradeController — finish the
-// last mile for real. The last 100 progress is now closed by the bootstrap
-// creeps' own upgrade step before a dedicated upgrader is spawned (gh #23), so
-// this asserts the climb completes, not which role completed it. Budgets carry
-// margin for run-to-run pathing variance.
+// A colony finishes the climb into RCL3 under its own behavior. The natural climb from RCL1 is
+// impractical to run routinely (RCL2->3 alone needs 45,000 controller progress at ~6.67 energy/tick
+// income), so this seeds the controller 100 progress short of RCL3 and lets the bot's own behavior
+// finish the last mile. Asserts the climb completes, not which role completes it.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { BootedColony, bundleBot, CheckpointLadder } from "./harness";
@@ -30,12 +20,8 @@ afterAll(() => {
 test(
   "seeded near RCL3, the colony finishes the climb under its own behavior",
   async () => {
-    // No "upgrader spawned" rung: seeded only 100 progress short of RCL3, the
-    // colony now closes that gap with its bootstrap creeps' own upgrade step
-    // before the census ever asks for a dedicated upgrader (gh #23 made those
-    // creeps carry 2 WORK and stay lean pre-RCL2, so the last mile is fast).
-    // The milestone is reaching RCL3 in budget, not the mechanism that got
-    // there — assert the end, not the means.
+    // No "upgrader spawned" rung: bootstrap creeps close the last 100 progress themselves
+    // before the census asks for a dedicated upgrader — assert the end, not the means.
     const ladder = new CheckpointLadder([
       { name: "first creep alive", by: 150 },
       { name: "RCL2", by: 1000 },
@@ -64,7 +50,6 @@ test(
     );
 
     const missed = ladder.firstMissed();
-    // Name the first rung missed → the failure phase is known before reading data.
     expect(missed, `checkpoint ladder:\n${ladder.report()}`).toBeNull();
     expect(reachedRcl3, "RCL3 never reached within 5000 ticks").not.toBeNull();
   },

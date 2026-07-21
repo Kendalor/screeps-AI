@@ -1,5 +1,4 @@
-// Builds snapshots from Game state — the only place planners' input touches
-// the live API (docs/rewrite-skeleton.md §1).
+// Builds snapshots from Game state — the only place planners' input touches the live API.
 
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import type { XY } from "../lib/geometry";
@@ -7,7 +6,7 @@ import { censusByColony, type CensusCreep } from "./census";
 import type { Census, ColonySnapshot, EmpireSnapshot, SnapStructure, SnapUnit } from "./types";
 
 export function buildEmpireSnapshot(): EmpireSnapshot {
-  // One pass over all creeps -> census keyed by home colony (skeleton §4).
+  // One pass over all creeps -> census keyed by home colony.
   const census = censusByColony(
     Object.values(Game.creeps).map<CensusCreep>(c => ({
       home: c.memory.home,
@@ -72,10 +71,7 @@ function buildColonySnapshot(room: Room, census: Census): ColonySnapshot {
   };
 }
 
-// Bunker anchor: computed once per colony and cached in ColonyMemory.anchor
-// (building.ts, issue #16) — never recomputed once found. Only building.ts's
-// planner logic needs to be unit-testable/fixture-only; this terrain lookup
-// is the one place that's allowed to touch Game.map.
+// Computed once per colony and cached in ColonyMemory.anchor — never recomputed once found.
 function resolveAnchor(room: Room): XY | null {
   const mem = (Memory.colonies[room.name] ??= { sources: {}, remotes: [], danger: 0 });
   if (mem.anchor) return mem.anchor;

@@ -1,5 +1,4 @@
-// Per-system CPU accounting (docs/rewrite-skeleton.md §2). Read by the
-// dashboard and flushed to Memory.stats from main.ts later.
+// Per-system CPU accounting, read by the dashboard and flushed to Memory.stats.
 
 let cpuBySystem: Record<string, number> = {};
 

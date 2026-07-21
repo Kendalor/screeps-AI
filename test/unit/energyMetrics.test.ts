@@ -22,7 +22,7 @@ describe("energy metrics: harvested and wasted", () => {
   it("counts a source's drop in energy as harvested", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ sources: [source("s1", 3000)] }));
-    m.sample(obs({ sources: [source("s1", 2980)] })); // 20 drained
+    m.sample(obs({ sources: [source("s1", 2980)] }));
 
     expect(m.report().harvested).toBe(20);
   });
@@ -36,10 +36,8 @@ describe("energy metrics: harvested and wasted", () => {
 
   it("counts leftover energy at a regen reset as wasted, not harvested", () => {
     const m = new EnergyMetrics();
-    // A source sitting at 1200 (nobody drained it) then refills to 3000: the
-    // 1200 that was in it is income the colony wasted.
     m.sample(obs({ sources: [source("s1", 1200)] }));
-    m.sample(obs({ sources: [source("s1", 3000)] })); // regen refill
+    m.sample(obs({ sources: [source("s1", 3000)] }));
 
     const r = m.report();
     expect(r.wasted).toBe(1200);
@@ -49,9 +47,9 @@ describe("energy metrics: harvested and wasted", () => {
   it("separates harvest from waste across a full drain-then-regen cycle", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ sources: [source("s1", 3000)] }));
-    m.sample(obs({ sources: [source("s1", 2000)] })); // 1000 harvested
-    m.sample(obs({ sources: [source("s1", 1500)] })); // 500 more harvested
-    m.sample(obs({ sources: [source("s1", 3000)] })); // regen: 1500 leftover wasted
+    m.sample(obs({ sources: [source("s1", 2000)] }));
+    m.sample(obs({ sources: [source("s1", 1500)] }));
+    m.sample(obs({ sources: [source("s1", 3000)] }));
 
     const r = m.report();
     expect(r.harvested).toBe(1500);
@@ -63,7 +61,6 @@ describe("energy metrics: multiple sources", () => {
   it("tracks each source's drain and reset independently", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ sources: [source("s1", 3000), source("s2", 500)] }));
-    // s1 drains 300; s2 regens with 500 leftover wasted.
     m.sample(obs({ sources: [source("s1", 2700), source("s2", 3000)] }));
 
     const r = m.report();
@@ -76,7 +73,7 @@ describe("energy metrics: decay", () => {
   it("counts a net shrink in dropped energy as decay", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ droppedEnergy: 100 }));
-    m.sample(obs({ droppedEnergy: 90 })); // 10 decayed/lost
+    m.sample(obs({ droppedEnergy: 90 }));
 
     expect(m.report().decayed).toBe(10);
   });
@@ -84,7 +81,7 @@ describe("energy metrics: decay", () => {
   it("does not count a growing dropped pile as decay", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ droppedEnergy: 50 }));
-    m.sample(obs({ droppedEnergy: 200 })); // fresh drop, not decay
+    m.sample(obs({ droppedEnergy: 200 }));
 
     expect(m.report().decayed).toBe(0);
   });
@@ -94,7 +91,7 @@ describe("energy metrics: sinks", () => {
   it("attributes controller progress to upgrading", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ controllerProgress: 100 }));
-    m.sample(obs({ controllerProgress: 250 })); // +150 upgraded
+    m.sample(obs({ controllerProgress: 250 }));
 
     expect(m.report().sinks.upgrading).toBe(150);
   });
@@ -102,7 +99,7 @@ describe("energy metrics: sinks", () => {
   it("attributes site progress to construction", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ siteProgress: 0 }));
-    m.sample(obs({ siteProgress: 80 })); // +80 built
+    m.sample(obs({ siteProgress: 80 }));
 
     expect(m.report().sinks.construction).toBe(80);
   });
@@ -110,7 +107,7 @@ describe("energy metrics: sinks", () => {
   it("does not count a completed site (progress sum falling) as negative construction", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ siteProgress: 2900 }));
-    m.sample(obs({ siteProgress: 0 })); // site finished, dropped from the sum
+    m.sample(obs({ siteProgress: 0 }));
 
     expect(m.report().sinks.construction).toBe(0);
   });
@@ -150,13 +147,12 @@ describe("observeTick: raw room objects -> TickObs", () => {
     const creep: RawObj = {
       type: "creep",
       _id: "cr1",
-      body: [{ type: "work" }, { type: "work" }, { type: "carry" }, { type: "move" }] // 100+100+50+50
+      body: [{ type: "work" }, { type: "work" }, { type: "carry" }, { type: "move" }]
     };
 
     const first = observeTick(objs([creep]), seen);
     expect(first.spawnedBodyCost).toBe(300);
 
-    // Same creep next tick — already seen, not recounted.
     const second = observeTick(objs([creep]), seen);
     expect(second.spawnedBodyCost).toBe(0);
   });
@@ -178,7 +174,7 @@ describe("energy metrics: report shape", () => {
   it("averages harvested and wasted over the ticks sampled", () => {
     const m = new EnergyMetrics();
     m.sample(obs({ sources: [source("s1", 3000)] }));
-    m.sample(obs({ sources: [source("s1", 2900)] })); // 100 over 2 ticks
+    m.sample(obs({ sources: [source("s1", 2900)] }));
 
     const r = m.report();
     expect(r.ticks).toBe(2);

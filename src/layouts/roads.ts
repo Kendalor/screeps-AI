@@ -1,7 +1,5 @@
-// Cost-matrix construction + road pathing for connecting a stamped bunker
-// (stamp.ts) to sources and the controller. Pure/unit-testable — no Game access.
-// Ported from legacy/empire/operations/{Operations/roomPlanner/RoomPlannerUtils.ts,
-// economy/MinerOperation.ts, economy/UpgradeOperation.ts}.
+// Cost-matrix construction + road pathing for connecting a stamped bunker (stamp.ts) to sources
+// and the controller. Pure/unit-testable — no Game access.
 
 import type { XY } from "../lib/geometry";
 import type { PlacedStructure } from "./stamp";
@@ -9,14 +7,10 @@ import type { PlacedStructure } from "./stamp";
 const IMPASSABLE = 255;
 const ROAD_COST = 1;
 
-// Structures creeps can walk onto. Containers are the one that matters for
-// mining: a miner is expected to stand *on* its container while working, so
-// treating one as an obstacle both misprices paths and makes a path re-route
-// around a container the moment it gets built. Own ramparts are walkable too.
+// A miner stands *on* its container while working, so it must not be treated as an obstacle.
 const WALKABLE_STRUCTURES = new Set<BuildableStructureConstant>(["road", "container", "rampart"]);
 
-// Minimal own CostMatrix — mirrors the real PathFinder.CostMatrix's get/set
-// shape without depending on the game runtime, so pathing stays fixture-only.
+// Mirrors PathFinder.CostMatrix's get/set shape without depending on the game runtime.
 export class RoadCostMatrix {
   private readonly costs = new Uint8Array(2500);
 
@@ -34,8 +28,7 @@ export interface RoomFixture {
   structures: PlacedStructure[];
 }
 
-// Small binary-heap-free A* (rooms are only 50x50, so a linear scan for the
-// lowest-f node is cheap enough) over a RoadCostMatrix. Finds the cheapest
+// A* without a binary heap (linear scan is cheap enough for a 50x50 room). Finds the cheapest
 // path from `from` to any tile within `range` of `to`, 8-directional movement.
 function findPath(from: XY, to: XY, range: number, cm: RoadCostMatrix): XY[] {
   const key = (p: XY): number => p.x * 50 + p.y;
@@ -129,8 +122,7 @@ export function sourceRoadPath(anchor: XY, source: XY, costMatrix: RoadCostMatri
   return roadPathTo(anchor, source, 1, costMatrix);
 }
 
-// Screeps' UPGRADE_CONTROLLER_RANGE — the farthest an upgrader can stand from
-// the controller and still work it.
+// Screeps' UPGRADE_CONTROLLER_RANGE.
 const UPGRADE_CONTROLLER_RANGE = 3;
 
 export function controllerRoadPath(anchor: XY, controller: XY, costMatrix: RoadCostMatrix): RoadPathResult {
@@ -152,8 +144,6 @@ export function buildCostMatrix(room: RoomFixture): RoadCostMatrix {
     } else if (!WALKABLE_STRUCTURES.has(s.type)) {
       cm.set(s.x, s.y, IMPASSABLE);
     }
-    // Walkable non-road structures keep the underlying terrain cost: creeps
-    // move through them freely, so they must not deflect a path.
   }
   return cm;
 }

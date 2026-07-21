@@ -40,8 +40,6 @@ describe("buildCostMatrix", () => {
       structures: [{ x: 12, y: 12, type: "container" }]
     });
 
-    // A miner is expected to stand *on* its container while working, so a
-    // container must never cost more than plain terrain.
     expect(cm.get(12, 12)).toBeLessThan(255);
   });
 
@@ -101,8 +99,7 @@ describe("controllerRoadPath", () => {
 describe("obstacle routing", () => {
   it("routes around a wall obstacle rather than through it", () => {
     const terrain = openTerrain();
-    // A wall wedge that fully blocks the direct line between anchor and source,
-    // narrow enough to route around within the room.
+    // A wall wedge blocking the direct line between anchor and source.
     for (let y = 5; y <= 15; y++) {
       terrain[15 * 50 + y] = 0;
     }
@@ -116,8 +113,7 @@ describe("obstacle routing", () => {
     for (const p of path) {
       expect(cm.get(p.x, p.y)).toBeLessThan(255);
     }
-    // The path must detour around the wall band (y 5..15 at x=15) rather than
-    // crossing it, so some tile has to leave that y-range while at x=15.
+    // Must detour around the wall band (y 5..15 at x=15), not cross it.
     expect(path.some(p => p.x === 15 && (p.y < 5 || p.y > 15))).toBe(true);
   });
 });

@@ -1,14 +1,10 @@
-// Miner and hauler quotas (docs/rewrite-skeleton.md §9 P1) — the two halves of
-// the container logistics chain. Both hang off containers: a container is what
-// makes a miner worth spawning, and a filling one is what needs hauling away.
+// Miner and hauler quotas — both hang off containers: a container is what makes a miner worth spawning, and a filling one needs hauling away.
 
 import type { ColonySnapshot } from "../snapshot/types";
 
 const MIN_HAULER_ENERGY = 150; // one CARRY,CARRY,MOVE set — the cheapest body
 
-// A miner only pays off once there is a container under it to catch the
-// harvest — before that it fills its lone CARRY and stalls, and bootstrap
-// creeps are the ones keeping the colony moving.
+// A miner only pays off once there is a container to catch the harvest — before that its lone CARRY stalls it.
 export function desiredMinerCount(colony: ColonySnapshot): number {
   return Math.min(colony.sources.length, colony.containers.length);
 }

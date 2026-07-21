@@ -1,15 +1,9 @@
-// Integration harness for the screeps-server-mockup (docs/rewrite-skeleton.md §8).
+// Integration harness for the screeps-server-mockup: boots the *bundled* bot inside a real private
+// server one tick at a time and observes world state (not intent lists, since the `creeps` system
+// acts by side effect and returns []) — the API-touching glue can only be verified against a real
+// engine, not mocks.
 //
-// Unit tests verify the pure planner cores against plain snapshots. The
-// API-touching glue (resolveTarget candidate fetch, runStep dispatch, snapshot
-// builders) can only be verified against a real engine — mocking it would only
-// test the mocks. This harness boots the *bundled* bot inside a real private
-// server one tick at a time and observes world state (not intent lists — the
-// `creeps` system acts by side effect and returns []), so milestones assert on
-// what actually happened in the world.
-//
-// Requires Node 24 + the native mockup build (see the screeps-mockup-install
-// memory). Runs on demand via `npm run test:integration`, never per-commit.
+// Requires Node 24 + the native mockup build. Runs on demand via `npm run test:integration`.
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -34,23 +28,10 @@ const REPO_ROOT = process.cwd();
 
 let cachedBundle: string | undefined;
 
-/**
- * Build the shipped bot bundle with rollup (no DEST/LOCAL env → compile only,
- * no upload, no copy to the live client) and return `dist/main.js` as a string
- * ready to hand to the mockup as the `main` module. Memoised per process so a
- * file with several scenarios only pays the ~1s build once. Runs under the
- * same Node that runs the tests via `process.execPath`.
- *
- * `BOT_BUNDLE` short-circuits the build and reads a prebuilt bundle from that
- * path instead. This is what makes running several test files at once safe:
- * rollup writes to a single shared `dist/main.js`, so several *processes*
- * building at once would race — one truncates the file another is reading,
- * and that worker dies on boot. With `fileParallelism` on, every test file
- * gets its own process (see vitest.integration.config.ts / vitest.benchmark
- * .config.ts, `pool: "forks"`), so both configs set BOT_BUNDLE via a
- * `globalSetup` that builds once up front (test/integration/global-setup.ts).
- * scripts/bench-parallel.mjs does the same for its own multi-process case.
- */
+// Builds the shipped bot bundle with rollup and returns dist/main.js as a string for the mockup's
+// `main` module. Memoised per process. `BOT_BUNDLE` short-circuits the build to read a prebuilt
+// bundle instead — needed because parallel test-file processes all writing dist/main.js would
+// race; global-setup.ts builds once up front and sets this env var for every worker.
 export function bundleBot(): string {
   if (cachedBundle) return cachedBundle;
   const prebuilt = process.env.BOT_BUNDLE;
@@ -64,13 +45,7 @@ export function bundleBot(): string {
   return cachedBundle;
 }
 
-/**
- * An OS-assigned free TCP port, for `boot()` to bind the mockup's storage to
- * when the caller has not pinned one. Letting the OS pick — rather than a
- * hardcoded number per test file — is what lets any number of colonies boot at
- * once, in one process or across several, with no shared list of "ports in
- * use" to keep in sync by hand.
- */
+// Lets any number of colonies boot concurrently without a shared "ports in use" list to maintain.
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
@@ -117,57 +92,24 @@ export interface BootOptions {
   botCode: string;
   /** Owned room. Must be one of stubWorld()'s 9 rooms. Default "W0N1". */
   room?: string;
-  /**
-   * Spawn position. Only consulted when `spawnOnLayout` is switched off, or in
-   * a room that admits no anchor; otherwise the layout decides. Default
-   * (20, 30) — a plain tile in the stub rooms.
-   */
+  /** Spawn position, used only when `spawnOnLayout` is off or the room admits no anchor. Default (20, 30). */
   spawnX?: number;
   spawnY?: number;
   /**
-   * Place the spawn on the tile the bunker layout wants it on, rather than at
-   * `spawnX/spawnY`. Default true — the bunker is the only layout the bot has,
-   * so a spawn anywhere else is a room the bot was never written for.
-   *
-   * Off-layout, the colony survives but is quietly mismeasured:
-   * `CONTROLLER_STRUCTURES.spawn` is 1 until RCL7, so it simply never builds
-   * the layout's spawn, and every distance the bunker is designed around
-   * (filler round trips, the spawn's place in the extension blob) is measured
-   * from the wrong tile. The RCL3 benchmark ran ~20% slow this way.
-   *
-   * Resolved via `predictAnchor` + `layoutSpawnPos`, so the spawn lands exactly
-   * where the bot would have put it. Falls back to `spawnX/spawnY` when the
-   * room admits no anchor — with `terrain` defaulting to `bunkerTerrain()` that
-   * only happens if a caller passes terrain with no 13x13 pocket.
+   * Place the spawn on the bunker layout's own tile rather than `spawnX/spawnY`. Default true —
+   * off-layout the colony survives but is quietly mismeasured (the layout's spawn never gets built
+   * since CONTROLLER_STRUCTURES.spawn caps at 1, and bunker distances are measured from the wrong tile).
    */
   spawnOnLayout?: boolean;
   username?: string;
-  /**
-   * Storage port. Default: an OS-assigned free port, so any number of colonies
-   * can boot concurrently (across files or within one) without their storage
-   * ever colliding. Pass an explicit port only when something outside this
-   * process needs to find it at a known address.
-   */
+  /** Default: an OS-assigned free port, so any number of colonies can boot concurrently. */
   port?: number;
-  /**
-   * Server working directory — where the mockup copies `db.json` and writes
-   * logs. Default: a fresh, uniquely-named temp directory per boot (cleaned up
-   * by `stop()`), so concurrent servers never share one and overwrite each
-   * other's database. Pass an explicit directory only when the caller manages
-   * its own cleanup (see scripts/bench-parallel.mjs).
-   */
+  /** Default: a fresh temp directory per boot (cleaned up by `stop()`), so concurrent servers never collide. */
   serverDir?: string;
   /**
-   * Room terrain, laid down before the first tick. Default `bunkerTerrain()` —
-   * every scenario gets the same anchorable room, because the bunker is the
-   * only layout the bot has and a room it cannot anchor in is not a room the
-   * bot is written for.
-   *
-   * `stubWorld()`'s stock rooms are the alternative and a poor default: their
-   * clearance tops out at 4 against BUNKER_RADIUS=6, so `pickAnchor` returns
-   * null, no layout is ever stamped, and anything downstream of planning
-   * silently does nothing. Pass an explicit matrix only to test that behaviour
-   * deliberately.
+   * Room terrain, laid down before the first tick. Default `bunkerTerrain()`. stubWorld()'s stock
+   * rooms cap clearance at 4 vs BUNKER_RADIUS=6, so pickAnchor would return null and nothing
+   * downstream of planning would run — pass an explicit matrix only to test that deliberately.
    */
   terrain?: TerrainMatrix;
 }
@@ -176,32 +118,18 @@ export interface BootOptions {
 // Terrain
 // ---------------------------------------------------------------------------
 
-/**
- * A room the bunker can actually be anchored in.
- *
- * `stubWorld()`'s rooms are rugged mazes whose maximum distance-to-wall
- * clearance is 4, but `BUNKER_RADIUS` is 6 — the layout needs a 13x13 open
- * pocket. In a stub room `pickAnchor` therefore (correctly) returns null,
- * no anchor is ever cached, and `planBuilding` skips the colony entirely, so
- * nothing downstream of layout placement can be exercised at all.
- *
- * This lays down an open room with a wall border and two interior wall bands
- * well clear of the centre. The bands matter: on a wholly blank grid every
- * interior tile qualifies and the anchor search would be a formality. Here it
- * has to discriminate, while the centre still offers clearance well above 6.
- */
+// A room the bunker can actually be anchored in. stubWorld()'s stock rooms cap clearance at 4
+// vs BUNKER_RADIUS=6, so pickAnchor would return null there and nothing downstream would run.
+// The interior wall bands keep clearance >6 near center while forcing the anchor search to
+// actually discriminate, rather than every tile on a blank grid qualifying trivially.
 export function bunkerTerrain(): TerrainMatrix {
   const terrain = new TerrainMatrix();
-  // Room border — the engine treats edge tiles as unbuildable anyway, and a
-  // solid rim keeps the distance transform's edge handling honest.
   for (let i = 0; i < 50; i++) {
     terrain.set(i, 0, "wall");
     terrain.set(i, 49, "wall");
     terrain.set(0, i, "wall");
     terrain.set(49, i, "wall");
   }
-  // Interior obstacles, kept >6 tiles from the centre so they shape the search
-  // without shrinking the bunker pocket below its required radius.
   for (let y = 3; y < 16; y++) {
     terrain.set(6, y, "wall");
     terrain.set(7, y, "wall");
@@ -217,22 +145,9 @@ export function bunkerTerrain(): TerrainMatrix {
 // Predicting the bot's anchor before the bot exists
 // ---------------------------------------------------------------------------
 
-/**
- * Where the bot *will* anchor its bunker in `room`, computed before it has run.
- *
- * `addBot` fixes the spawn's position before the server ever starts, but the
- * anchor is the bot's own decision and is not cached in Memory until it has
- * ticked — so a scenario choosing a spawn position has nothing to aim at yet.
- * This closes that gap by running the bot's own search (`findAnchorCandidates`
- * + `pickAnchor`, both pure and fixture-only by design) over the room as it
- * stands, which is exactly what `resolveAnchor` in snapshot/colony.ts will do
- * on the first tick. Same terrain, same controller, same sources, same
- * functions — so the prediction is the decision, not a guess that could drift.
- *
- * Call *after* `setTerrain` and before `addBot`: the search reads terrain, so
- * predicting against the stub terrain and then reshaping it would invalidate
- * the answer.
- */
+// Where the bot *will* anchor its bunker, computed before it has run (addBot fixes the spawn
+// position before the anchor is cached in Memory). Runs the same pure search resolveAnchor uses,
+// so this is the decision, not a guess. Call after setTerrain and before addBot.
 export async function predictAnchor(server: ScreepsServer, room: string): Promise<XY | null> {
   const matrix = await server.world.getTerrain(room);
   const grid = new Uint8Array(2500);
@@ -250,15 +165,7 @@ export async function predictAnchor(server: ScreepsServer, room: string): Promis
   });
 }
 
-/**
- * The tile the goal layout puts the colony's first spawn on, given `anchor`.
- *
- * Read out of the goal layout rather than restated, so it tracks Base_2.json:
- * the spawn the bot would build first is the lowest-`order` spawn placement,
- * stamped onto the anchor. `buildableAtRcl` at RCL1 applies the same
- * CONTROLLER_STRUCTURES cap the colony lives under, so this is the one spawn
- * slot it is permitted, not merely the first of three in the file.
- */
+// Read out of the goal layout rather than restated, so it tracks Base_2.json automatically.
 export function layoutSpawnPos(anchor: XY): XY | null {
   const spawn = buildableAtRcl(goalLayout as GoalLayout, 1).find(p => p.type === "spawn");
   if (!spawn) return null;
@@ -267,10 +174,7 @@ export function layoutSpawnPos(anchor: XY): XY | null {
 }
 
 export class BootedColony {
-  /**
-   * Creep ids already charged to the energy accounting. Lives on the colony so
-   * sampling across several runUntil legs stays one continuous record.
-   */
+  // Lives on the colony so sampling across several runUntil legs stays one continuous record.
   private readonly seenCreeps = new Set<string>();
 
   private constructor(
@@ -284,10 +188,8 @@ export class BootedColony {
   static async boot(opts: BootOptions): Promise<BootedColony> {
     const room = opts.room ?? "W0N1";
     const port = opts.port ?? (await getFreePort());
-    // A caller-supplied dir is theirs to manage (see scripts/bench-parallel.mjs,
-    // which shares one across a worker's whole run and cleans it up itself);
-    // otherwise each boot gets its own, so concurrent servers never collide on
-    // the mockup's shared-by-default `db.json` copy.
+    // A caller-supplied dir is theirs to manage; otherwise each boot gets its own so concurrent
+    // servers never collide on the mockup's shared-by-default db.json copy.
     const ownedServerDir = opts.serverDir ? undefined : mkdtempSync(path.join(tmpdir(), "screeps-server-"));
     const dir = opts.serverDir ?? ownedServerDir;
     const server = new ScreepsServer({
@@ -295,12 +197,11 @@ export class BootedColony {
       ...(dir ? { path: dir, logdir: path.join(dir, "logs") } : {})
     });
     await server.world.stubWorld();
-    // Before addBot: the spawn is placed into the room as it then stands, so
-    // reshaping terrain afterwards could bury it in rock.
+    // Before addBot: reshaping terrain after the spawn is placed could bury it in rock.
     await server.world.setTerrain(room, opts.terrain ?? bunkerTerrain());
 
-    // After setTerrain (the anchor search reads terrain) and before addBot (the
-    // spawn position is fixed there and cannot be moved once the server starts).
+    // After setTerrain (anchor search reads terrain) and before addBot (spawn position is
+    // fixed there and cannot move once the server starts).
     let spawn: XY = { x: opts.spawnX ?? 20, y: opts.spawnY ?? 30 };
     if (opts.spawnOnLayout ?? true) {
       const anchor = await predictAnchor(server, room);
@@ -329,37 +230,19 @@ export class BootedColony {
     return { level: c?.level ?? 0, progress: c?.progress ?? 0 };
   }
 
-  /**
-   * Inject a controller level (and optional progress) directly into the
-   * mockup DB, skipping the natural upgrade grind. Call between `boot()` and
-   * the first `runTicks`/`runUntil` to start a scenario at a given RCL.
-   */
+  // Skips the natural upgrade grind. Call between boot() and the first runTicks/runUntil.
   async setControllerLevel(level: number, progress = 0): Promise<void> {
     const { db } = await this.server.world.load();
     await db["rooms.objects"].update({ room: this.room, type: "controller" }, { $set: { level, progress } });
   }
 
-  /**
-   * Inject a structure (or construction site) directly into the mockup DB,
-   * skipping the natural build grind. Call between `boot()` and the first
-   * `runTicks`/`runUntil` to place structures the bot would otherwise build
-   * itself, e.g. `addStructure("container", 22, 30, { store: { energy: 0 },
-   * storeCapacity: 2000 })`.
-   */
+  // Skips the natural build grind, e.g. addStructure("container", 22, 30, { store: { energy: 0 }, storeCapacity: 2000 }).
   async addStructure(type: string, x: number, y: number, attrs: Record<string, unknown> = {}): Promise<void> {
     await this.server.world.addRoomObject(this.room, type, x, y, attrs);
   }
 
-  /**
-   * Inject a living creep directly into the mockup DB, skipping the spawn
-   * queue. `attrs` carries the engine's creep fields (body, store, ageTime,
-   * `spawning: false`, ...) — see test/integration/seed.ts, which builds them
-   * from the bot's own body formulas.
-   *
-   * The creep is owned by the bot but has no CreepMemory: role and home are the
-   * bot's labelling, not the engine's, so pair this with `patchMemory` or the
-   * census will not recognise it. `seedCreeps` does both.
-   */
+  // Skips the spawn queue. Has no CreepMemory (role/home) — pair with `patchMemory` or the census
+  // won't recognise it; `seedCreeps` does both.
   async addCreep(name: string, x: number, y: number, attrs: Record<string, unknown> = {}): Promise<void> {
     await this.server.world.addRoomObject(this.room, "creep", x, y, {
       name,
@@ -369,19 +252,12 @@ export class BootedColony {
     });
   }
 
-  /**
-   * Set the energy in one room object (by db id). Used to stock spawns,
-   * extensions and containers when seeding a mid-game state.
-   */
   async setStore(id: string, energy: number): Promise<void> {
     const { db } = await this.server.world.load();
     await db["rooms.objects"].update({ _id: id }, { $set: { store: { energy } } });
   }
 
-  /**
-   * The room's spawn+extension energy capacity, as `room.energyCapacityAvailable`
-   * reports it — the budget `planSpawning` sizes non-recovery bodies against.
-   */
+  // As room.energyCapacityAvailable reports it — the budget planSpawning sizes non-recovery bodies against.
   async energyCapacity(): Promise<number> {
     const level = (await this.controller()).level;
     const spawns = (await this.structures("spawn")).length;
@@ -389,22 +265,9 @@ export class BootedColony {
     return spawns * SPAWN_ENERGY_CAPACITY + extensions * (EXTENSION_ENERGY_CAPACITY[level] ?? 0);
   }
 
-  /**
-   * Read-modify-write the bot's Memory in the server's env store.
-   *
-   * The mockup exposes Memory read-only (`bot.memory`), but seeding a workforce
-   * requires writing CreepMemory the bot will then read as its own. Patching
-   * rather than replacing keeps whatever the bot has already recorded — the
-   * cached anchor above all, which seeding depends on.
-   *
-   * Forces a global reset afterwards, without which the write does not survive
-   * contact with the bot: `memory/cache.ts` reinstates last tick's parsed Memory
-   * object whenever it runs on a consecutive tick (the RawMemory parse-skip
-   * trick), which discards anything written to storage between two ticks. The
-   * seeded entries then reappear as `{}` — the engine's `creep.memory` getter
-   * creating fresh ones for names the stale object lacks — and every seeded
-   * creep sits inert forever with no role. See `resetGlobal`.
-   */
+  // Read-modify-write the bot's Memory (exposed read-only via bot.memory otherwise). Forces a
+  // global reset afterwards — without it memory/cache.ts's parse-skip trick reinstates last
+  // tick's stale Memory on the next consecutive tick, silently discarding the write.
   async patchMemory(patch: (mem: Record<string, unknown>) => void): Promise<void> {
     const env = this.server.common.storage.env;
     const key = env.keys.MEMORY + this.bot.id;
@@ -414,26 +277,14 @@ export class BootedColony {
     await this.resetGlobal();
   }
 
-  /**
-   * Force the bot's next tick to run in a fresh isolate — a "global reset", the
-   * same event a real server produces when it rotates a runtime.
-   *
-   * Done by bumping the code row's timestamp: the runtime rebuilds its cached
-   * globals when `userCodeTimestamp` changes. That clears the module-level state
-   * the bot carries across ticks, which is what makes an externally-written
-   * Memory visible: `loadMemory` only re-reads storage when it is *not* running
-   * on a tick consecutive to the last one it saw, and a fresh global has no last
-   * tick to be consecutive to.
-   */
+  // Forces the bot's next tick into a fresh isolate (bumping the code row's timestamp), clearing
+  // module-level state so an externally-written Memory is actually re-read instead of cached.
   async resetGlobal(): Promise<void> {
     const { db } = await this.server.world.load();
     await db["users.code"].update({ user: this.bot.id }, { $set: { timestamp: Date.now() } });
   }
 
-  /**
-   * Construction sites the bot has placed itself. Distinct from `structures()`
-   * — a site is intent, a structure is a finished build.
-   */
+  // Distinct from `structures()` — a site is intent, a structure is a finished build.
   async sites(): Promise<RoomObject[]> {
     const id = this.bot.id;
     return (await this.roomObjects()).filter(o => o.type === "constructionSite" && o.user === id);
@@ -444,11 +295,7 @@ export class BootedColony {
     return (await this.roomObjects()).filter(o => o.type === type);
   }
 
-  /**
-   * The bunker anchor the bot computed and cached in Memory, or null before it
-   * has run its layout planning. Read from Memory rather than inferred from
-   * placements — this is the planner's own recorded decision.
-   */
+  // Null before the bot has run its layout planning. Read from Memory, not inferred from placements.
   async anchor(): Promise<{ x: number; y: number } | null> {
     const mem = (await this.memory()) as {
       colonies?: Record<string, { anchor?: { x: number; y: number } }>;
@@ -462,14 +309,7 @@ export class BootedColony {
     return (await this.roomObjects()).filter(o => o.type === "creep" && o.user === id).length;
   }
 
-  /**
-   * Roles of the creeps the bot currently has in Memory. Read from Memory
-   * rather than the world because role is the bot's own labelling — the engine
-   * only knows "creep". Use `hasRole` for the common membership check.
-   *
-   * Genuinely "alive" since the tick loop reaps dead creeps' Memory (#24);
-   * before that fix this over-reported as "every role ever spawned".
-   */
+  // Read from Memory since role is the bot's own labelling — the engine only knows "creep".
   async rolesAlive(): Promise<string[]> {
     const mem = (await this.memory()) as { creeps?: Record<string, { role?: string }> };
     return Object.values(mem.creeps ?? {})
@@ -489,34 +329,16 @@ export class BootedColony {
     );
   }
 
-  /**
-   * Fold the current tick's world state into `metrics`. Call from an `onTick`
-   * hook so a scenario accumulates energy accounting as it runs:
-   *
-   *   const metrics = new EnergyMetrics();
-   *   await colony.runUntil(pred, 1500, () => colony.sampleEnergy(metrics));
-   *
-   * The `seenCreeps` set that attributes each body cost exactly once lives on
-   * the colony, so repeated calls across several runUntil legs keep one
-   * continuous accounting rather than double-counting creeps already alive.
-   */
+  // Call from an onTick hook: colony.runUntil(pred, 1500, () => colony.sampleEnergy(metrics)).
   async sampleEnergy(metrics: EnergyMetrics): Promise<void> {
     metrics.sample(observeTick((await this.roomObjects()) as RawObj[], this.seenCreeps));
   }
 
-  /**
-   * The room's sources, as the planner sees them.
-   */
   async sources(): Promise<XY[]> {
     return (await this.roomObjects()).filter(o => o.type === "source").map(o => ({ x: o.x, y: o.y }));
   }
 
-  /**
-   * The room's walkability grid in the form `layouts/roads` and `layouts/stamp`
-   * expect: 1 = walkable, 0 = wall, indexed `[x*50+y]`. Read from the mockup's
-   * own terrain string rather than reconstructed from the TerrainMatrix passed
-   * to `boot()`, so it reflects the room the bot is actually planning in.
-   */
+  // 1 = walkable, 0 = wall, indexed [x*50+y] — the form layouts/roads and layouts/stamp expect.
   async terrain(): Promise<Uint8Array> {
     const matrix = await this.server.world.getTerrain(this.room);
     const grid = new Uint8Array(2500);
@@ -526,19 +348,9 @@ export class BootedColony {
     return grid;
   }
 
-  /**
-   * A snapshot of this room carrying the fields the *layout* planners read:
-   * anchor, sources, terrain, controllerLevel and the built structures. Every
-   * other field is filled with an empty/zero value — this is deliberately not a
-   * full `buildColonySnapshot`, which needs live `Game` objects that do not
-   * exist outside the engine process.
-   *
-   * The point is that a scenario can ask the bot's own `wantedStructures` what
-   * the colony intends to build at a given RCL, instead of restating the layout
-   * in the test. The anchor comes from the bot's cached decision in Memory, so
-   * it must have run at least one tick first — `anchor()` returns null before
-   * then and `wantedStructures` yields nothing.
-   */
+  // Fields the *layout* planners read (anchor, sources, terrain, controllerLevel, structures);
+  // everything else is zeroed. Deliberately not a full buildColonySnapshot, which needs live Game
+  // objects that don't exist outside the engine process. anchor() is null before the bot's first tick.
   async layoutSnapshot(): Promise<ColonySnapshot> {
     const objects = await this.roomObjects();
     const controller = objects.find(o => o.type === "controller");
@@ -614,14 +426,11 @@ export class BootedColony {
 }
 
 // ---------------------------------------------------------------------------
-// Checkpoint ladder (docs/rewrite-skeleton.md §8)
+// Checkpoint ladder
 // ---------------------------------------------------------------------------
 //
-// Scenarios assert sub-milestones with tick windows rather than one final
-// assert, so a failure names the first rung missed and the phase is known
-// before reading any data. Rungs are checked in order every tick; the first
-// tick each predicate holds is recorded, and a rung is "missed" if that tick
-// exceeds its `by` budget (or it never held).
+// Scenarios assert sub-milestones with tick windows rather than one final assert, so a failure
+// names the first rung missed. A rung is "missed" if its predicate's first-true tick exceeds `by`.
 
 export interface Rung {
   name: string;

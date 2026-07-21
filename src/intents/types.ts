@@ -1,5 +1,4 @@
-// Intent union (docs/rewrite-skeleton.md §4). Planners return these; only
-// intents/execute.ts turns them into game API calls.
+// Intent union: planners return these; only intents/execute.ts turns them into game API calls.
 
 import type { RoleName } from "../memory/schema";
 

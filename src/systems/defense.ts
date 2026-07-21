@@ -1,4 +1,3 @@
-// Tower attack/heal + safemode, tier 1 (docs/rewrite-skeleton.md §4).
 // Pure: reads the snapshot, returns intents, never touches Game.*.
 
 import type { Intent } from "../intents/types";

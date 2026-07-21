@@ -1,12 +1,7 @@
-// ALL memory interfaces — single source of truth (docs/rewrite-skeleton.md §3).
-//
-// Rules:
-// - Every field is owned by exactly one system (noted per field). Other systems
-//   read it through the snapshot, never write it.
-// - Store Id<T>; the snapshot builder resolves them and clears fields whose ids
-//   no longer resolve, so planners never see stale ids.
-// - migrate.ts versions each top-level section independently.
-// - No spawn queue in memory — desired census is recomputed every tick.
+// ALL memory interfaces — single source of truth. Each field is owned by exactly one system; other
+// systems read it through the snapshot, never write it. Store Id<T> — the snapshot builder
+// resolves them and clears fields whose ids no longer resolve. No spawn queue in memory — desired
+// census is recomputed every tick.
 
 import type { TaskState } from "../behaviors/types";
 
@@ -43,11 +38,11 @@ export type RoleName =
   | "pioneer";
 
 export interface ColonyMemory {
-  anchor?: { x: number; y: number }; // owned by building — bunker anchor from layout planner
+  anchor?: { x: number; y: number }; // owned by building
   sources: Record<Id<Source>, SourceMemory>; // owned by mining
   links?: LinkNetworkMemory; // owned by links
-  remotes: string[]; // owned by mining — remote mining room names (future)
-  danger: number; // owned by defense — hostile-presence counter for emergency logic
+  remotes: string[]; // owned by mining (future)
+  danger: number; // owned by defense
 }
 
 export interface SourceMemory {
@@ -69,8 +64,7 @@ export interface ScoutInfo {
   hostile: boolean;
 }
 
-// Section memories below are placeholders until their systems are ported
-// (scouting/expansion in P4, stats alongside kernel/stats.ts).
+// Placeholders until their systems are ported.
 
 export interface ScoutingMemory {
   version: number;

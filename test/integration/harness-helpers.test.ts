@@ -1,6 +1,5 @@
-// Behavior: BootedColony lets a scenario inject a pre-built world state
-// (controller level, structures) before the first tick, so tests don't have
-// to wait out a natural multi-hundred-tick warmup (docs: gh issue #9).
+// BootedColony lets a scenario inject a pre-built world state before the first tick, so tests
+// don't have to wait out a natural multi-hundred-tick warmup.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { BootedColony, bundleBot } from "./harness";

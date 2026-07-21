@@ -1,30 +1,10 @@
-// Putting a colony into a mid-game state, so a scenario can measure one leg of
-// the climb instead of re-measuring every leg before it.
+// Puts a colony into a mid-game state, so a scenario can measure one leg of the climb instead of
+// re-measuring every leg before it (seeding only the controller level would trigger a recovery
+// cold-start instead, since there's no workforce or stocked extensions).
 //
-// The problem this solves: seeding only a controller level (setControllerLevel)
-// gives a room at RCL N with none of RCL N's buildings, no workforce and empty
-// extensions. The bot's first act is then a *recovery* — recoveryRole fires on
-// the empty census, spawns a runt body off the spawn's own 300 energy, and the
-// colony re-bootstraps. Any measurement taken across that window is dominated
-// by a cold start the real colony at that milestone never performs. Seeding the
-// buildings alone is not enough either: the workforce and the stocked
-// extensions are what make the state continuous with the leg before it.
-//
-// So `seedColony` reconstructs all three, and reconstructs them by asking the
-// bot's own planners rather than by listing them here:
-//
-//   structures — `wantedStructures` (systems/building.ts), the same function the
-//                tick uses to decide what to place. Layout, CONTROLLER_STRUCTURES
-//                caps, the road/container gates and the source-biased extension
-//                order therefore all flow through automatically.
-//   workforce  — `desiredCensus` + `roleDef().body` (systems/spawning.ts), the
-//                same quota and body formulas the spawner runs, so the seeded
-//                creeps are the ones the colony would actually be operating.
-//   energy     — a fraction of the room's real capacity, spread across spawn and
-//                extensions the way filling leaves it.
-//
-// A scenario that seeds by hand goes stale the moment any of those change. One
-// that seeds through here moves with them.
+// `seedColony` reconstructs structures, workforce and energy by asking the bot's own planners
+// (`wantedStructures`, `desiredCensus` + `roleDef().body`) rather than listing them here, so a
+// scenario seeded through here moves automatically with layout/quota/body changes.
 
 import { roleDef } from "../../src/behaviors/roles";
 import { orderBody } from "../../src/behaviors/body";
@@ -63,27 +43,10 @@ const at = (o: { type: string; x: number; y: number }): string => `${o.type}@${o
 // Structures
 // ---------------------------------------------------------------------------
 
-/**
- * The db attributes a *finished* structure of `type` carries, mirroring what
- * the engine writes when a construction site completes (@screeps/engine
- * processor/intents/creeps/build.js). A structure injected without them is
- * inert: an extension with no `store` is never filled, an unowned tower never
- * fires, a container with no `storeCapacity` cannot be hauled from — and the
- * colony would then be measured against buildings that exist but do nothing.
- *
- * Extensions must carry their *real* per-RCL capacity here, which is the one
- * place this deliberately diverges from `build.js`. That writes
- * `storeCapacityResource: {energy: 0}` and lets the extension processor tick
- * correct it — safe there, because a structure the processor creates is fixed up
- * before user code next runs. A seeded structure has no such grace: the runtime
- * builds `Game` first, and `makeGameObject` sums
- * `object.storeCapacityResource.energy` over every owned extension. Seeding 0
- * there gives the colony an energyCapacity of 0 for a tick; omitting the field
- * entirely crashes the bot's whole loop with "Cannot read properties of
- * undefined (reading 'energy')".
- *
- * Containers, roads and walls are unowned in Screeps and take no `user`.
- */
+// Attributes a *finished* structure needs to not be inert (store, storeCapacity, hits, ...).
+// Extensions specifically need their real per-RCL storeCapacityResource seeded — unlike the
+// engine's own build.js, there's no processor tick to fix up a 0 before makeGameObject sums it,
+// and omitting the field entirely crashes the bot's loop.
 function structureAttrs(type: string, user: string, level: number): Record<string, unknown> {
   switch (type) {
     case "extension":
@@ -120,27 +83,9 @@ function structureAttrs(type: string, user: string, level: number): Record<strin
   }
 }
 
-/**
- * The placements in `wanted` that the room does not already satisfy, at `level`.
- *
- * Not simply "which tiles are empty". A wanted placement is also satisfied when
- * the room already holds as many of that type as the RCL permits, even on other
- * tiles. The spawn is the case that bites: the goal layout puts a spawn on the
- * bunker anchor, `addBot` has already placed the room's real spawn, and
- * `CONTROLLER_STRUCTURES.spawn` is 1 until RCL7. Where that real spawn is *not*
- * on the layout's tile, a tile-only check reports the layout spawn as
- * outstanding forever — the colony cannot build a second one, so seeding it
- * gives the room two spawns and double the throughput, while a benchmark
- * waiting for it to be built waits for something that can never happen.
- *
- * Scenarios booting with `spawnOnLayout` (harness.ts) avoid that mismatch at the
- * source, and there the spawn is caught by the tile check instead. The cap rule
- * still has to hold: it is what covers a scenario that does place its spawn by
- * hand, and every other capped type.
- *
- * Shared by `seedStructures` and by scenarios computing a build target, so both
- * agree on what "this RCL is finished" means.
- */
+// Not simply "which tiles are empty" — a placement is also satisfied once the room holds as many
+// of that type as the RCL cap allows, even on a different tile (otherwise an off-layout spawn
+// makes the layout's own spawn slot look outstanding forever, since the colony can't build a second).
 export function outstanding(
   wanted: PlacedStructure[],
   present: { type: string; x: number; y: number }[],
@@ -162,10 +107,6 @@ export function outstanding(
   return out;
 }
 
-/**
- * Stand up every structure in `wanted` the room does not already satisfy — see
- * `outstanding`. Returns how many were injected.
- */
 export async function seedStructures(colony: BootedColony, wanted: PlacedStructure[]): Promise<number> {
   const objects = await colony.roomObjects();
   const level = (await colony.controller()).level;
@@ -190,17 +131,8 @@ export interface SeededCreep {
   ttl: number;
 }
 
-/**
- * Life left for the `n`th of `total` creeps, spread evenly across the back
- * two-thirds of a creep lifetime.
- *
- * A seeded workforce that all shares one TTL dies in one lump, and the colony
- * spends the tick after that lump in exactly the total-wipe recovery the
- * seeding exists to avoid — so the run would measure a cold start after all,
- * just delayed. Staggering them reproduces what a running colony actually looks
- * like: creeps replaced a few at a time, spawn pressure spread out. The floor at
- * a third of a lifetime keeps the oldest creep useful long enough to matter.
- */
+// Staggers TTLs across the back two-thirds of a creep lifetime — a shared TTL would make the
+// whole seeded workforce die in one lump, reproducing the cold-start recovery seeding avoids.
 export function spreadTtl(index: number, total: number): number {
   const floor = Math.floor(CREEP_LIFE_TIME / 3);
   if (total <= 1) return CREEP_LIFE_TIME;
@@ -208,14 +140,7 @@ export function spreadTtl(index: number, total: number): number {
   return Math.round(floor + (span * index) / (total - 1));
 }
 
-/**
- * The workforce this colony would be running: `desiredCensus`'s quota, with
- * each creep's body from the same `roleDef` formula the spawner uses, sized off
- * `energyCapacity` exactly as `planSpawning` sizes a non-recovery spawn.
- *
- * Pure — returns the plan without touching the world, so a scenario can assert
- * on what it is about to seed.
- */
+// Pure — returns the plan without touching the world, so a scenario can assert on what it will seed.
 export function plannedWorkforce(colony: ColonySnapshot): SeededCreep[] {
   const census = desiredCensus(colony);
   const context = bodyContext(colony);
@@ -237,17 +162,8 @@ export function plannedWorkforce(colony: ColonySnapshot): SeededCreep[] {
   }));
 }
 
-/**
- * Put `creeps` into the room and register them in the bot's Memory.
- *
- * Both halves are required and neither is sufficient: the engine only knows
- * "creep", while role and home live in the bot's own CreepMemory — a creep in
- * the world with no Memory entry is unrecognised by the census and would be
- * re-spawned; a Memory entry with no creep is reaped by the tick loop (#24).
- *
- * Creeps are placed on `spawnX/Y`-adjacent open tiles around the anchor by way
- * of the spawn position, which is where freshly spawned creeps stand anyway.
- */
+// Both the world object and the Memory entry are required: a creep with no Memory is
+// unrecognised by the census and gets re-spawned; a Memory entry with no creep gets reaped.
 export async function seedCreeps(colony: BootedColony, creeps: SeededCreep[]): Promise<number> {
   if (creeps.length === 0) return 0;
   const spawn = (await colony.structures("spawn"))[0];
@@ -265,8 +181,7 @@ export async function seedCreeps(colony: BootedColony, creeps: SeededCreep[]): P
       storeCapacity: c.body.filter(p => p === "carry").length * CARRY_CAPACITY,
       hits: c.body.length * 100,
       hitsMax: c.body.length * 100,
-      // `spawning: false` matters — a creep left spawning never acts, and the
-      // census counts it, so the colony would sit idle behind a full roster.
+      // A creep left spawning never acts but still counts toward the census.
       spawning: false,
       fatigue: 0,
       ageTime: gameTime + c.ttl
@@ -281,11 +196,7 @@ export async function seedCreeps(colony: BootedColony, creeps: SeededCreep[]): P
   return creeps.length;
 }
 
-/**
- * `count` walkable tiles nearest `(x, y)` that no structure or creep occupies,
- * searched in expanding rings. Seeded creeps must not share a tile with a
- * structure that blocks movement, or they start the run stuck.
- */
+// `count` walkable tiles nearest (x, y) that no structure or creep occupies, in expanding rings.
 async function openTilesNear(
   colony: BootedColony,
   x: number,
@@ -323,19 +234,9 @@ async function openTilesNear(
 // Energy
 // ---------------------------------------------------------------------------
 
-/**
- * Fill spawn and extensions to `fraction` of the room's energy capacity.
- *
- * A seeded colony with empty extensions can only spawn off the spawn's own 300,
- * so its first several spawns are runts regardless of the capacity the seeded
- * buildings imply — `planSpawning` sizes bodies from `energyCapacity` and then
- * refuses them because `energyAvailable` cannot pay. Starting part-full is what
- * a mid-game room actually looks like between filler round trips.
- *
- * Fills whole structures at a time rather than smearing the fraction evenly:
- * that is how filling actually leaves a room, and a half-filled extension is
- * not a state the game produces at rest. Returns the energy placed.
- */
+// Fills whole structures at a time (not smeared evenly) — that's how a real room fills, and
+// starting part-full avoids the seeded colony's first several spawns being runts off just the
+// spawn's own 300 energy.
 export async function fillEnergy(colony: BootedColony, fraction: number): Promise<number> {
   const level = (await colony.controller()).level;
   const perExtension = EXTENSION_ENERGY_CAPACITY[level] ?? 0;
@@ -370,12 +271,9 @@ export async function fillEnergy(colony: BootedColony, fraction: number): Promis
 export interface SeedOptions {
   /** Controller level to seed. The structure set and bodies derive from it. */
   level: number;
-  /** Controller progress toward the next level. Default 0 — a clean start. */
+  /** Controller progress toward the next level. Default 0. */
   progress?: number;
-  /**
-   * Fraction of the room's spawn+extension capacity to start stocked with.
-   * Default 0.7 — part-full, as a running room sits between filler trips.
-   */
+  /** Fraction of the room's spawn+extension capacity to start stocked with. Default 0.7. */
   energyFraction?: number;
 }
 
@@ -385,16 +283,8 @@ export interface SeededState {
   energy: number;
 }
 
-/**
- * Put `colony` into the state a real colony occupies at `level`: every
- * structure it wants there, the workforce it would be running, and part-stocked
- * extensions — so a scenario starting here measures the leg that follows rather
- * than a recovery from an empty room.
- *
- * The colony must already have cached its bunker anchor (run a few ticks after
- * `boot()`), since the anchor is the frame the whole layout is stamped onto.
- * Throws rather than silently seeding nothing if it has not.
- */
+// Colony must already have cached its bunker anchor (run a few ticks after boot()) — throws
+// rather than silently seeding nothing if it has not.
 export async function seedColony(colony: BootedColony, opts: SeedOptions): Promise<SeededState> {
   const { level, progress = 0, energyFraction = 0.7 } = opts;
 
@@ -409,9 +299,7 @@ export async function seedColony(colony: BootedColony, opts: SeedOptions): Promi
   const structures = wantedStructures(snapshot);
   await seedStructures(colony, structures);
 
-  // Re-read after building: energyCapacity and the container-dependent body
-  // context both depend on what now stands, so the workforce is sized against
-  // the seeded room rather than the empty one.
+  // Re-read after building so the workforce is sized against the seeded room, not the empty one.
   const built = await colony.layoutSnapshot();
   const creeps = plannedWorkforce({
     ...built,

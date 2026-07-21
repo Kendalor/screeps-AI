@@ -1,10 +1,5 @@
-// Step / Behavior definitions (docs/rewrite-skeleton.md §5).
-
-// How many creeps may share one resolved target (the targeting cache in
-// targets.ts enforces it against creeps' task.target claims): "allow"/absent =
-// unlimited, "avoid" = exclusive (1), a number = that many. Sources ignore this
-// and use their open harvest-tile count as the cap. Use it to stop creeps
-// piling onto one construction site, dropped pile, etc.
+// How many creeps may share one resolved target: "allow"/absent = unlimited, "avoid" = exclusive (1), a number = that many.
+// Sources ignore this and use their open harvest-tile count as the cap instead.
 export type Share = "allow" | "avoid" | number;
 
 export type TargetSpec =
@@ -28,14 +23,11 @@ export type Step =
   | { do: "sit"; pos: { x: number; y: number } }; // for the anchor logistics sitter
 
 export interface TaskState {
-  step: number; // index into the role's step list
-  target?: Id<_HasId>; // locked target for the current step
+  step: number;
+  target?: Id<_HasId>;
 }
 
-// What a body calculator may know about the colony beyond its energy budget.
-// Only roles whose shape genuinely depends on built structures read it: a
-// miner standing on a container needs no CARRY, but with no container (early)
-// or with a link to feed (late) it must hold energy to hand off.
+// What a body calculator may know beyond the energy budget: e.g. a miner needs no CARRY on a container, but does with a link to feed.
 export interface BodyContext {
   hasContainer: boolean;
   hasLink: boolean;

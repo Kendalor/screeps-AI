@@ -1,14 +1,6 @@
-// Types for the engine's own constants table.
-//
-// The integration harness seeds structures and creeps straight into the mockup
-// db, which means writing the exact `hits`, `storeCapacity` and lifetime values
-// the engine writes when it creates those objects itself. Those live in
-// @screeps/common — the same package the running server reads — so the harness
-// imports them rather than restating them, and a constant that changes under us
-// changes the seeded objects with it.
-//
-// The package ships no types of its own. Only the members the harness actually
-// uses are declared; add to this list as more are needed.
+// Types for @screeps/common's constants table (ships no types of its own). The harness imports
+// these rather than restating them, so a constant that changes under us changes seeded objects too.
+// Only the members actually used are declared; add more as needed.
 
 declare module "@screeps/common/lib/constants" {
   export const CREEP_LIFE_TIME: number;

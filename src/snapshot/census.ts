@@ -1,13 +1,10 @@
-// alive/spawning creep counts per role per colony (docs/rewrite-skeleton.md §1).
-// Pure over a plain creep list so it is unit-tested without Game; the snapshot
-// builder feeds it Game.creeps.
+// Alive/spawning creep counts per role per colony. Pure over a plain creep list so it is
+// unit-tested without Game; the snapshot builder feeds it Game.creeps.
 
 import type { Census } from "./types";
 import type { RoleName } from "../memory/schema";
 
-// The minimal creep facts the census needs — home colony and role. Spawning
-// creeps count too (skeleton §4: "alive + currently spawning"), so a role at
-// quota isn't spawned twice while its creep is still in the spawn.
+// Spawning creeps count too, so a role at quota isn't spawned twice while its creep is still in the spawn.
 export interface CensusCreep {
   home: string;
   role: RoleName;

@@ -1,6 +1,4 @@
-// RawMemory parse-skip trick, ported from legacy MemoryUtils.load
-// (docs/rewrite-skeleton.md §9 P0). On consecutive ticks the engine's lazy
-// JSON parse is skipped by reinstating last tick's parsed object.
+// RawMemory parse-skip trick: on consecutive ticks, reinstate last tick's parsed object instead of letting the engine re-parse.
 
 declare global {
   interface RawMemory {

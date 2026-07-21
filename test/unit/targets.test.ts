@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fitsSpec, matchesWhere, resolveTarget, type TargetCandidate, type TargetKind } from "../../src/behaviors/targets";
 import { stubGame } from "../helpers";
 
-// A candidate carries only the facts the `where` predicates read — a snapshot,
-// not a live game object, so the filter is unit-testable.
+// A candidate carries only the facts the `where` predicates read, not a live game object.
 function struct(over: Partial<TargetCandidate>): TargetCandidate {
   return { freeCapacity: 0, usedCapacity: 0, hits: 100, hitsMax: 100, ...over };
 }
@@ -29,9 +28,8 @@ describe("target where-filter", () => {
   });
 });
 
-// A locked target is re-validated each tick against the step's spec. fitsSpec
-// is the kind half of that check (matchesWhere is the other half): it answers
-// "could this object still be what the spec is asking for?" without the game.
+// fitsSpec is the kind half of re-validating a locked target each tick (matchesWhere
+// is the other half): "could this object still be what the spec is asking for?"
 describe("locked target spec-fit", () => {
   it("a construction site fits a constructionSite spec but a structure does not", () => {
     const site: TargetKind = { kind: "constructionSite" };
@@ -41,9 +39,7 @@ describe("locked target spec-fit", () => {
     );
   });
 
-  // bootstrap transfers to extension, then spawn, then tower — three steps whose
-  // specs differ only by structureType. Without this check a lock taken on an
-  // extension would survive into the spawn step and be acted on as a spawn.
+  // Without this, a lock taken on an extension step would survive into a spawn step.
   it("a structure fits only a spec asking for its own structureType", () => {
     const extension: TargetKind = { kind: "structure", structureType: STRUCTURE_EXTENSION };
     expect(fitsSpec(extension, { find: "structure", type: STRUCTURE_EXTENSION })).toBe(true);
@@ -59,19 +55,13 @@ describe("locked target spec-fit", () => {
     expect(fitsSpec({ kind: "dropped" }, { find: "tombstone" })).toBe(false);
   });
 
-  // An id-spec names one object outright, so any object that still resolves
-  // under that id is by definition what the step asked for.
   it("an id spec fits whatever the id resolved to", () => {
     expect(fitsSpec({ kind: "source" }, { find: "id", id: "abc" as Id<_HasId> })).toBe(true);
   });
 });
 
-// --- lock reuse ---------------------------------------------------------------
-// resolveTarget takes the id the creep locked last tick. The point of the lock
-// is that a creep walking toward a target does not swap to a nearer one that
-// appears mid-journey (#23), so these tests assert the search never runs: the
-// stub room's find() throws if resolveTarget falls through to a fresh search.
-
+// These tests assert the search never runs: the stub room's find() throws if
+// resolveTarget falls through to a fresh search instead of reusing the lock.
 interface FakeTargetOpts {
   structureType?: StructureConstant;
   free?: number;
@@ -90,8 +80,6 @@ function fakeSite(id: string, opts: FakeTargetOpts = {}): object {
   };
 }
 
-// A creep whose room refuses to be searched — any fresh findCandidates call is
-// a test failure rather than a silently different result.
 function creepWithNoSearch(): Creep {
   return {
     pos: {
@@ -109,8 +97,6 @@ function creepWithNoSearch(): Creep {
   } as unknown as Creep;
 }
 
-// The counterpart: a creep whose room does return candidates, for the cases
-// where dropping the lock and searching again is the expected behavior.
 function creepFinding(candidates: object[]): Creep {
   return {
     pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
@@ -130,7 +116,7 @@ describe("resolveTarget locking", () => {
 
   it("drops a lock whose object no longer resolves and picks a fresh target", () => {
     const replacement = fakeSite("site2");
-    stubGame({ objects: {} }); // the locked site finished and is gone
+    stubGame({ objects: {} });
 
     const got = resolveTarget(creepFinding([replacement]), { find: "constructionSite" }, "site1" as Id<_HasId>);
 
@@ -142,7 +128,6 @@ describe("resolveTarget locking", () => {
     const empty = fakeSite("ext2", { structureType: STRUCTURE_EXTENSION, free: 50 });
     stubGame({ objects: { ext1: full, ext2: empty } });
 
-    // Locked onto ext1, but a supply creep filled it — notFull no longer holds.
     const got = resolveTarget(
       creepFinding([full, empty]),
       { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" },
@@ -152,9 +137,6 @@ describe("resolveTarget locking", () => {
     expect(got).toBe(empty);
   });
 
-  // Replaces the issue's "lock cleared on step change": with spec-fit
-  // re-validation the lock is dropped by the spec no longer matching, which is
-  // the behavior that actually matters (bootstrap: extension step -> spawn step).
   it("drops a lock whose object no longer fits the current step's spec", () => {
     const extension = fakeSite("ext1", { structureType: STRUCTURE_EXTENSION, free: 50 });
     const spawn = fakeSite("spawn1", { structureType: STRUCTURE_SPAWN, free: 50 });
@@ -170,11 +152,8 @@ describe("resolveTarget locking", () => {
   });
 });
 
-// --- targeting cache / share caps ---------------------------------------------
-// A spec's `share` flag limits how many creeps may claim one target. The cache
-// counts claims from creeps' task.target locks, so a creep choosing sees where
-// the others are headed and spreads out.
-
+// A spec's `share` flag limits how many creeps may claim one target, counted
+// from creeps' task.target locks.
 function namedCreep(name: string, candidates: object[], lockedTarget?: string): Creep {
   return {
     name,
@@ -184,8 +163,7 @@ function namedCreep(name: string, candidates: object[], lockedTarget?: string): 
   } as unknown as Creep;
 }
 
-// Register creeps in Game.creeps with the given task.target claims. Advances
-// Game.time so the per-tick claim cache doesn't carry over between tests.
+// Advances Game.time so the per-tick claim cache doesn't carry over between tests.
 let fakeTick = 1;
 function withClaims(claims: Record<string, string | undefined>): void {
   const creeps: Record<string, unknown> = {};
@@ -213,7 +191,6 @@ describe("resolveTarget share caps", () => {
     const a = fakeSite("a");
     const b = fakeSite("b");
     stubGame({ objects: { a, b } });
-    // Two creeps already on 'a'; with share:2 it is full, so 'b' is chosen.
     withClaims({ c1: "a", c2: "a" });
 
     const got = resolveTarget(namedCreep("me", [a, b]), { find: "constructionSite", share: 2 });
@@ -227,7 +204,6 @@ describe("resolveTarget share caps", () => {
     stubGame({ objects: { a, b } });
     withClaims({ c1: "a", c2: "a", c3: "a" });
 
-    // No share cap -> nearest (first) wins regardless of crowding.
     const got = resolveTarget(namedCreep("me", [a, b]), { find: "constructionSite" });
 
     expect((got as { id: string }).id).toBe("a");
@@ -236,7 +212,6 @@ describe("resolveTarget share caps", () => {
   it("does not count the creep's own lock against the cap", () => {
     const a = fakeSite("a");
     stubGame({ objects: { a } });
-    // Only this creep claims 'a'; with share:1 it must still be allowed to keep it.
     withClaims({ me: "a" });
 
     const got = resolveTarget(namedCreep("me", [a], "a"), { find: "constructionSite", share: 1 });
@@ -249,19 +224,15 @@ describe("resolveTarget share caps", () => {
     stubGame({ objects: { only } });
     withClaims({ c1: "only" });
 
-    // Single site, already full for share:1 — but stranding the creep is worse
-    // than sharing, so it still gets the target.
+    // Stranding the creep is worse than sharing, so it still gets the target.
     const got = resolveTarget(namedCreep("me", [only]), { find: "constructionSite", share: 1 });
 
     expect((got as { id: string }).id).toBe("only");
   });
 });
 
-// A source's share cap is its open harvest-tile count, computed from terrain —
-// so harvesters spread across sources instead of stacking. All-plain terrain
-// gives a free-standing source 8 open tiles.
-// 0 = plain everywhere (never TERRAIN_MASK_WALL), so a free-standing source has
-// its full 8 adjacent tiles open.
+// A source's share cap is its open harvest-tile count, computed from terrain.
+// All-plain terrain gives a free-standing source its full 8 adjacent tiles.
 const plainRoom = { getTerrain: () => ({ get: () => 0 }) };
 
 function fakeSource(id: string, x: number, y: number): object {
@@ -282,7 +253,6 @@ describe("resolveTarget source spreading", () => {
     const near = fakeSource("near", 10, 10);
     const far = fakeSource("far", 40, 40);
     stubGame({ objects: { near, far } });
-    // 8 creeps already on 'near' (its 8 open tiles on plain) -> full; 'far' open.
     const claims: Record<string, string> = {};
     for (let i = 0; i < 8; i++) claims["h" + i] = "near";
     withClaims(claims);
@@ -296,7 +266,7 @@ describe("resolveTarget source spreading", () => {
     const a = fakeSource("a", 10, 10);
     stubGame({ objects: { a } });
     const claims: Record<string, string> = {};
-    for (let i = 0; i < 10; i++) claims["h" + i] = "a"; // over its 8 tiles
+    for (let i = 0; i < 10; i++) claims["h" + i] = "a";
     withClaims(claims);
 
     const got = resolveTarget(sourceCreep("me", [a]), { find: "source" });

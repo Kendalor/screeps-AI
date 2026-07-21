@@ -1,6 +1,4 @@
-// Per-section versioned migrations (docs/rewrite-skeleton.md §3). For now
-// only ensures the typed sections exist; version bumps get their own
-// migration steps here as schemas evolve — never an all-or-nothing wipe.
+// Per-section versioned migrations. For now only ensures typed sections exist; version bumps get their own steps here as schemas evolve — never an all-or-nothing wipe.
 
 export function migrateMemory(): void {
   if (Memory.version === undefined) Memory.version = 1;

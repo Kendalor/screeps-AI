@@ -1,9 +1,4 @@
-// Ported verbatim from legacy/utils/traveler/Traveler.ts (docs/rewrite-skeleton.md §9 P0),
-// minus the dead RoomMemoryUtil import, the legacy patchMemory migration, and the
-// lodash calls (game-global `_` is not assumed; replaced with natives).
-//
-// The ambient types below were legacy/utils/traveler/index.d.ts; kept inline in a
-// `declare global` block so they travel with the one file that uses them.
+// Ambient types kept inline in a `declare global` block so they travel with the one file that uses them.
 
 declare global {
     interface PathfinderReturn {
@@ -86,14 +81,6 @@ export class Traveler {
     private static creepMatrixTick: number;
     private static structureMatrixTick: number;
 
-    /**
-     * move creep to destination
-     * @param creep
-     * @param destination
-     * @param options
-     * @returns {number}
-     */
-
     public static travelTo(creep: Creep, destination: HasPos | RoomPosition, options: TravelToOptions = {}): number {
         if (!destination) {
             return ERR_INVALID_ARGS;
@@ -106,7 +93,6 @@ export class Traveler {
 
         destination = this.normalizePos(destination);
 
-        // manage case where creep is nearby destination
         const rangeToDestination = creep.pos.getRangeTo(destination);
         if (options.range && rangeToDestination <= options.range) {
             return OK;
@@ -122,7 +108,6 @@ export class Traveler {
             return OK;
         }
 
-        // initialize data object
         if (!creep.memory._trav) {
             creep.memory._trav = {} as TravelData;
         }
@@ -130,7 +115,6 @@ export class Traveler {
 
         const state = this.deserializeState(travelData, destination);
 
-        // check if creep is stuck
         if (this.isStuck(creep, state)) {
             state.stuckCount++;
             Traveler.circle(creep.pos, "magenta", state.stuckCount * .2);
@@ -138,7 +122,6 @@ export class Traveler {
             state.stuckCount = 0;
         }
 
-        // handle case where creep is stuck
         if (!options.stuckValue) { options.stuckValue = DEFAULT_STUCK_VALUE; }
         if (state.stuckCount >= options.stuckValue && Math.random() > .5) {
             options.ignoreCreeps = false;
@@ -146,7 +129,6 @@ export class Traveler {
             delete travelData.path;
         }
 
-        // delete path cache if destination is different
         if (!this.samePos(state.destination, destination)) {
             if (options.movingTarget && state.destination.isNearTo(destination)) {
                 if (travelData.path) {
@@ -159,11 +141,9 @@ export class Traveler {
         }
 
         if (options.repath && Math.random() < options.repath) {
-            // add some chance that you will find a new path randomly
             delete travelData.path;
         }
 
-        // pathfinding
         let newPath = false;
         if (!travelData.path) {
             newPath = true;
@@ -177,15 +157,12 @@ export class Traveler {
             const cpuUsed = Game.cpu.getUsed() - cpu;
             state.cpu = Math.round(cpuUsed + state.cpu);
             if (state.cpu > REPORT_CPU_THRESHOLD) {
-                // see note at end of file for more info on this
                 console.log(`TRAVELER: heavy cpu use: ${creep.name}, cpu: ${state.cpu} origin: ${
                     creep.pos}, dest: ${destination}`);
             }
 
             let color = "orange";
             if (ret.incomplete) {
-                // uncommenting this is a great way to diagnose creep behavior issues
-                // console.log(`TRAVELER: incomplete path for ${creep.name}`);
                 color = "red";
             }
 
@@ -203,7 +180,6 @@ export class Traveler {
             return ERR_NO_PATH;
         }
 
-        // consume path
         if (state.stuckCount === 0 && !newPath) {
             travelData.path = travelData.path.substr(1);
         }
@@ -220,12 +196,6 @@ export class Traveler {
         return creep.move(nextDirection);
     }
 
-    /**
-     * make position objects consistent so that either can be used as an argument
-     * @param destination
-     * @returns {any}
-     */
-
     public static normalizePos(destination: HasPos | RoomPosition): RoomPosition {
         if (!(destination instanceof RoomPosition)) {
             return destination.pos;
@@ -233,65 +203,27 @@ export class Traveler {
         return destination;
     }
 
-    /**
-     * check if room should be avoided by findRoute algorithm
-     * @param roomName
-     * @returns {RoomMemory|number}
-     */
-
     public static checkAvoid(roomName: string) {
         return Memory.rooms && Memory.rooms[roomName] && Memory.rooms[roomName].avoid;
     }
-
-    /**
-     * check if a position is an exit
-     * @param pos
-     * @returns {boolean}
-     */
 
     public static isExit(pos: Coord): boolean {
         return pos.x === 0 || pos.y === 0 || pos.x === 49 || pos.y === 49;
     }
 
-    /**
-     * check two coordinates match
-     * @param pos1
-     * @param pos2
-     * @returns {boolean}
-     */
-
     public static sameCoord(pos1: Coord, pos2: Coord): boolean {
         return pos1.x === pos2.x && pos1.y === pos2.y;
     }
 
-    /**
-     * check if two positions match
-     * @param pos1
-     * @param pos2
-     * @returns {boolean}
-     */
-
     public static samePos(pos1: RoomPosition, pos2: RoomPosition) {
         return this.sameCoord(pos1, pos2) && pos1.roomName === pos2.roomName;
     }
-
-    /**
-     * draw a circle at position
-     * @param pos
-     * @param color
-     * @param opacity
-     */
 
     public static circle(pos: RoomPosition, color: string, opacity?: number) {
         new RoomVisual(pos.roomName).circle(pos, {
             fill: "transparent", opacity, radius: .45, stroke: color, strokeWidth: .15
         });
     }
-
-    /**
-     * update memory on whether a room should be avoided based on controller owner
-     * @param room
-     */
 
     public static updateRoomStatus(room: Room) {
         if (!room) { return; }
@@ -303,14 +235,6 @@ export class Traveler {
             }
         }
     }
-
-    /**
-     * find a path from origin to destination
-     * @param origin
-     * @param destination
-     * @param options
-     * @returns {PathfinderReturn}
-     */
 
     public static findTravelPath(origin: RoomPosition | HasPos, destination: RoomPosition | HasPos,
                                  options: TravelToOptions = {}): PathfinderReturn {
@@ -328,7 +252,6 @@ export class Traveler {
         const originRoomName = origin.roomName;
         const destRoomName = destination.roomName;
 
-        // check to see whether findRoute should be used
         const roomDistance = Game.map.getRoomLinearDistance(origin.roomName, destination.roomName);
         let allowedRooms = options.route;
         if (!allowedRooms && (options.useFindRoute || (options.useFindRoute === undefined && roomDistance > 2))) {
@@ -393,9 +316,7 @@ export class Traveler {
 
             if (options.useFindRoute === undefined) {
 
-                // handle case where pathfinder failed at a short distance due to not using findRoute
-                // can happen for situations where the creep would have to take an uncommonly indirect path
-                // options.allowedRooms and options.routeCallback can also be used to handle this situation
+                // Retry with findRoute for short hops that still needed an indirect path.
                 if (roomDistance <= 2) {
                     console.log(`TRAVELER: path failed without findroute, trying with options.useFindRoute = true`);
                     console.log(`from: ${origin}, destination: ${destination}`);
@@ -409,14 +330,6 @@ export class Traveler {
 
         return ret;
     }
-
-    /**
-     * find a viable sequence of rooms that can be used to narrow down pathfinder's search algorithm
-     * @param origin
-     * @param destination
-     * @param options
-     * @returns {{}}
-     */
 
     public static findRoute(origin: string, destination: string,
                             options: TravelToOptions = {}): { [roomName: string]: boolean } | void {
@@ -444,13 +357,11 @@ export class Traveler {
 
                 const rangeToRoom = Game.map.getRoomLinearDistance(origin, roomName);
                 if (rangeToRoom > restrictDistance) {
-                    // room is too far out of the way
                     return Number.POSITIVE_INFINITY;
                 }
 
                 if (!options.allowHostile && Traveler.checkAvoid(roomName) &&
                     roomName !== destination && roomName !== origin) {
-                    // room is marked as "avoid" in room memory
                     return Number.POSITIVE_INFINITY;
                 }
 
@@ -490,13 +401,6 @@ export class Traveler {
         return allowedRooms;
     }
 
-    /**
-     * check how many rooms were included in a route returned by findRoute
-     * @param origin
-     * @param destination
-     * @returns {number}
-     */
-
     public static routeDistance(origin: string, destination: string): number | void {
         const linearDistance = Game.map.getRoomLinearDistance(origin, destination);
         if (linearDistance >= 32) {
@@ -509,13 +413,7 @@ export class Traveler {
         }
     }
 
-    /**
-     * build a cost matrix based on structures in the room. Will be cached for more than one tick. Requires vision.
-     * @param room
-     * @param freshMatrix
-     * @returns {any}
-     */
-
+    // Cached for more than one tick. Requires vision.
     public static getStructureMatrix(room: Room, freshMatrix?: boolean): CostMatrix {
         if (!this.structureMatrixCache[room.name] || (freshMatrix && Game.time !== this.structureMatrixTick)) {
             this.structureMatrixTick = Game.time;
@@ -525,12 +423,7 @@ export class Traveler {
         return this.structureMatrixCache[room.name];
     }
 
-    /**
-     * build a cost matrix based on creeps and structures in the room. Will be cached for one tick. Requires vision.
-     * @param room
-     * @returns {any}
-     */
-
+    // Cached for one tick. Requires vision.
     public static getCreepMatrix(room: Room) {
         if (!this.creepMatrixCache[room.name] || Game.time !== this.creepMatrixTick) {
             this.creepMatrixTick = Game.time;
@@ -539,14 +432,6 @@ export class Traveler {
         }
         return this.creepMatrixCache[room.name];
     }
-
-    /**
-     * add structures to matrix so that impassible structures can be avoided and roads given a lower cost
-     * @param room
-     * @param matrix
-     * @param roadCost
-     * @returns {CostMatrix}
-     */
 
     public static addStructuresToMatrix(room: Room, matrix: CostMatrix, roadCost: number): CostMatrix {
 
@@ -578,26 +463,12 @@ export class Traveler {
         return matrix;
     }
 
-    /**
-     * add creeps to matrix so that they will be avoided by other creeps
-     * @param room
-     * @param matrix
-     * @returns {CostMatrix}
-     */
-
     public static addCreepsToMatrix(room: Room, matrix: CostMatrix): CostMatrix {
         room.find(FIND_CREEPS).forEach((creep: Creep) => matrix.set(creep.pos.x, creep.pos.y, 0xff));
         return matrix;
     }
 
-    /**
-     * serialize a path, traveler style. Returns a string of directions.
-     * @param startPos
-     * @param path
-     * @param color
-     * @returns {string}
-     */
-
+    // Returns a string of directions.
     public static serializePath(startPos: RoomPosition, path: RoomPosition[], color = "orange"): string {
         let serializedPath = "";
         let lastPosition = startPos;
@@ -612,13 +483,6 @@ export class Traveler {
         }
         return serializedPath;
     }
-
-    /**
-     * returns a position at a direction relative to origin
-     * @param origin
-     * @param direction
-     * @returns {RoomPosition}
-     */
 
     public static positionAtDirection(origin: RoomPosition, direction: number): RoomPosition | void {
         const offsetX = [0, 0, 1, 1, 1, 0, -1, -1, -1];
@@ -653,10 +517,8 @@ export class Traveler {
         let stuck = false;
         if (state.lastCoord !== undefined) {
             if (this.sameCoord(creep.pos, state.lastCoord)) {
-                // didn't move
                 stuck = true;
             } else if (this.isExit(creep.pos) && this.isExit(state.lastCoord)) {
-                // moved against exit
                 stuck = true;
             }
         }
@@ -665,8 +527,7 @@ export class Traveler {
     }
 }
 
-// this might be higher than you wish, setting it lower is a great way to diagnose creep behavior issues. When creeps
-// need to repath to often or they aren't finding valid paths, it can sometimes point to problems elsewhere in your code
+// Lower this to help diagnose excessive repathing or failed pathing elsewhere in the code.
 const REPORT_CPU_THRESHOLD = 1000;
 
 const DEFAULT_MAXOPS = 20000;
@@ -679,7 +540,6 @@ const STATE_DEST_X = 4;
 const STATE_DEST_Y = 5;
 const STATE_DEST_ROOMNAME = 6;
 
-// assigns a function to Creep.prototype: creep.travelTo(destination)
 Creep.prototype.travelTo = function (destination: RoomPosition | { pos: RoomPosition }, options?: TravelToOptions) {
     return Traveler.travelTo(this, destination, options);
 };

@@ -4,21 +4,16 @@ import { runCreepBehaviors } from "../../src/systems/creeps";
 import { stubGame } from "../helpers";
 import type { EmpireSnapshot } from "../../src/snapshot/types";
 
-// The dispatch is what makes the lock survive a tick: it stores the target
-// runStep used into creep.memory.task.target and hands it back next tick (#23).
-// Driven through runCreepBehaviors — the public entry point — rather than the
-// private runOne, so the test survives refactors of the dispatch internals.
-
+// Driven through runCreepBehaviors (the public entry point) rather than the private
+// runOne, so the test survives refactors of the dispatch internals.
 const EMPTY_SNAPSHOT = { tick: 0, colonies: [] } as EmpireSnapshot;
 
 function siteObj(id: string): object {
   return { id, pos: { x: 10, y: 10 }, progress: 0, progressTotal: 100 };
 }
 
-// A builder carrying energy and parked out of range of its site, so it travels
-// rather than arriving — the exact situation the lock exists for (a nearer site
-// appearing mid-journey). It starts on the role's `build` step (index 3) with a
-// half-full store, so the step neither completes nor advances between ticks.
+// Parked out of range of its site (so it travels rather than arriving) with a
+// half-full store, so the build step neither completes nor advances between ticks.
 const BUILD_STEP = ROLES.builder.steps.findIndex(s => s.do === "build");
 
 function builder(sites: object[]): Creep {
@@ -61,7 +56,6 @@ describe("creep dispatch target locking", () => {
     runCreepBehaviors(EMPTY_SNAPSHOT);
     expect(creep.memory.task?.target).toBe("first");
 
-    // Tick two: a nearer site is now the one a fresh search would return.
     (creep as unknown as { room: { find: () => object[] } }).room.find = () => [nearer, first];
     runCreepBehaviors(EMPTY_SNAPSHOT);
 

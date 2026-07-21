@@ -3,9 +3,8 @@ import { buildCostMatrix, sourceRoadPath } from "../../src/layouts/roads";
 import { minedStructures, planMining } from "../../src/systems/mining";
 import { colony, containerAt, empire, openTerrain, sourceAt } from "../fixtures";
 
-// Where the planner *should* put the source structure, derived independently
-// from the already-ported road pathing rather than hardcoded — the test states
-// the rule ("last road tile, adjacent to the source"), not a magic coordinate.
+// The last road tile adjacent to the source, derived independently from road
+// pathing rather than a hardcoded coordinate.
 function expectedSpot(anchor: { x: number; y: number }, source: { x: number; y: number }) {
   const cm = buildCostMatrix({ terrain: openTerrain(), structures: [] });
   return sourceRoadPath(anchor, source, cm).structurePos;
@@ -42,8 +41,6 @@ describe("minedStructures", () => {
       storageId: undefined
     });
 
-    // Legacy gated the whole building list on room.storage — backwards, since
-    // containers are what fund the economy that pays for storage (issue #22).
     expect(minedStructures(snap)).toHaveLength(1);
   });
 
@@ -68,9 +65,8 @@ describe("minedStructures", () => {
     expect(declared).toEqual([{ x: spot.x, y: spot.y, type: "link" }]);
   });
 
-  // Stability matters more than optimality here: the declaration is compared
-  // against what's built, so a spot that moves once the container exists makes
-  // building.ts place a container, then demolish it and place another, forever.
+  // A spot that moves once the container exists makes building.ts demolish and
+  // replace it forever.
   it("keeps declaring the same spot once the container is built there", () => {
     const base = colony({
       anchor: { x: 10, y: 10 },

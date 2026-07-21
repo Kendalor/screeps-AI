@@ -1,10 +1,3 @@
-// The benchmark recorder is pure file/arithmetic logic, so it belongs in the
-// fast suite even though its only consumer is the integration harness. What
-// matters is the ring-buffer trim, the "baseline excludes the current run"
-// rule, the direction handling, and that a measurement added later starts its
-// own history — get those wrong and every future comparison is quietly
-// meaningless.
-
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -58,7 +51,6 @@ describe("recordBenchmark: grouping", () => {
 
     const runs = loadBenchmarks(file).rcl2;
     expect(runs).toHaveLength(1);
-    // The point of the grouped shape: figures observed together stay together.
     expect(runs[0]).toMatchObject({ ticks: 510, energyHarvestedPerTick: 6.04 });
     expect(runs[0].at).toBeTypeOf("string");
   });
@@ -90,7 +82,6 @@ describe("recordBenchmark: grouping", () => {
 
     const runs = loadBenchmarks(file).rcl2;
     expect(runs).toHaveLength(MAX_RUNS);
-    // Oldest dropped, newest appended last.
     expect(measurementOf(runs[0], "ticks")).toBe(101);
     expect(measurementOf(runs.at(-1)!, "ticks")).toBe(999);
   });
@@ -127,8 +118,6 @@ describe("recordBenchmark: baselines", () => {
   });
 
   it("gives a measurement added later its own history, undragged by older runs", () => {
-    // Older runs recorded only ticks; harvest is new. Its baseline must come
-    // from the one run that has it, not be polluted by the tick figures.
     seed([{ ticks: 500 }, { ticks: 500 }, { ticks: 500, energyHarvestedPerTick: 6 }]);
 
     const r = recordBenchmark("rcl2", { ticks: 500, energyHarvestedPerTick: 7 }, {}, file);
@@ -152,7 +141,6 @@ describe("recordBenchmark: baselines", () => {
 describe("isRegression", () => {
   it("tolerates run-to-run variance below the threshold", () => {
     seedTicks([500]);
-    // +20% on a live server is noise, not a regression.
     expect(isRegression(recordBenchmark("rcl2", { ticks: 600 }, {}, file).get("ticks")!)).toBe(false);
   });
 
@@ -172,7 +160,6 @@ describe("isRegression", () => {
 
   it("honours a per-measurement tolerance", () => {
     seedTicks([500]);
-    // +10% passes the default 25% gate but not a tight 5% one.
     const r = recordBenchmark("rcl2", { ticks: 550 }, { ticks: { tolerance: 0.05 } }, file);
     expect(isRegression(r.get("ticks")!)).toBe(true);
   });
@@ -206,7 +193,6 @@ describe("isRegression", () => {
       const higher = recordBenchmark("rcl2", { v: 7 }, { v: { direction: "higher" } }, file).get("v")!;
 
       expect(lower.regressionRatio).toBeCloseTo(-(higher.regressionRatio as number));
-      // A 30% drop: an improvement when lower is better, a regression when higher is.
       expect(isRegression(lower)).toBe(false);
       expect(isRegression(higher)).toBe(true);
     });
@@ -224,7 +210,6 @@ describe("regressions", () => {
       file
     );
 
-    // ticks barely moved; harvest halved; decay quadrupled.
     expect(regressions(r).map(c => c.measurement)).toEqual(["energyHarvestedPerTick", "energyDecayed"]);
   });
 
@@ -307,7 +292,6 @@ describe("formatResult", () => {
     expect(out).toContain("benchmark rcl2:");
     expect(out).toContain("ticks: 520 ticks");
     expect(out).toContain("energyDecayed: 90");
-    // History renders each prior run as one line carrying all its measurements.
     expect(out).toContain("history (oldest first, 1 run(s)):");
     expect(out).toContain("ticks=500 energyDecayed=100");
   });

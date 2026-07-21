@@ -11,10 +11,8 @@ describe("distanceTransform", () => {
     const dt = distanceTransform(openRoom());
     const at = (x: number, y: number) => dt[x * 50 + y];
 
-    // Room edges are treated as walls, so clearance is 0 right at the border...
     expect(at(0, 25)).toBe(0);
     expect(at(25, 0)).toBe(0);
-    // ...and rises monotonically moving inward toward the center.
     const column = [0, 1, 2, 3, 4, 5].map(y => at(25, y));
     for (let i = 1; i < column.length; i++) {
       expect(column[i]).toBeGreaterThan(column[i - 1]);
@@ -27,13 +25,11 @@ describe("distanceTransform", () => {
 
     const withWall = openRoom();
     for (let x = 20; x < 30; x++) {
-      withWall[x * 50 + 25] = 0; // a horizontal wall band through the room center
+      withWall[x * 50 + 25] = 0;
     }
     const dt = distanceTransform(withWall);
     const at = (x: number, y: number) => dt[x * 50 + y];
 
-    // A tile just above the wall band has much less clearance than the same
-    // tile did in the open room, since the wall is now its nearest obstacle.
     expect(at(25, 24)).toBeLessThan(withoutWall[25 * 50 + 24]);
     expect(at(25, 24)).toBeLessThanOrEqual(1);
   });
@@ -41,8 +37,6 @@ describe("distanceTransform", () => {
 
 describe("findAnchorCandidates", () => {
   it("returns tiles within a small open pocket that has enough radius to fit the bunker", () => {
-    // A tiny walkable room (bunkerRadius=2) surrounded by wall, big enough to
-    // fit a 5x5 bunker footprint (radius 2) roughly in the middle.
     const terrain = new Uint8Array(2500); // all wall
     for (let x = 10; x <= 20; x++) {
       for (let y = 10; y <= 20; y++) {
@@ -59,9 +53,7 @@ describe("findAnchorCandidates", () => {
       expect(c.y).toBeGreaterThanOrEqual(11);
       expect(c.y).toBeLessThanOrEqual(19);
     }
-    // The exact center of the open pocket should have enough clearance to qualify.
     expect(candidates).toContainEqual({ x: 15, y: 15 });
-    // A tile right at the pocket's border has no clearance margin and must not qualify.
     expect(candidates).not.toContainEqual({ x: 10, y: 15 });
   });
 
@@ -72,12 +64,9 @@ describe("findAnchorCandidates", () => {
   });
 
   it("includes a tile whose clearance exactly equals bunkerRadius (regression: legacy threshold inconsistency)", () => {
-    // Legacy Bunker.doTransform used `dt >= 6` while RoomPlannerUtils.doTransform
-    // used `dt > BUNKER_RADIUS` (6) — the off-by-one excluded exact-fit tiles.
-    // This fully open room has a known clearance of exactly 6 at its center.
     const terrain = openRoom();
     const dt = distanceTransform(openRoom());
-    expect(dt[6 * 50 + 25]).toBe(6); // sanity-check the fixture's known clearance
+    expect(dt[6 * 50 + 25]).toBe(6);
 
     expect(findAnchorCandidates(terrain, 6)).toContainEqual({ x: 6, y: 25 });
   });
@@ -90,7 +79,7 @@ describe("pickAnchor", () => {
       sources: [{ x: 6, y: 5 }, { x: 5, y: 6 }]
     };
     const candidates = [
-      { x: 24, y: 24 }, // raw room-center — far from controller/sources
+      { x: 24, y: 24 }, // far from controller/sources
       { x: 6, y: 6 } // close to controller and both sources
     ];
 

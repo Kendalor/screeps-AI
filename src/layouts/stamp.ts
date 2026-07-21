@@ -1,5 +1,4 @@
 // Bunker anchor search + coordinate stamping — pure, fixture-only (no Game access).
-// Ported from legacy/empire/operations/Operations/roomPlanner/{Bunker.ts,RoomPlannerUtils.ts}.
 
 import { range, type XY } from "../lib/geometry";
 import type { GoalPlacement } from "./sync";
@@ -8,15 +7,12 @@ export interface PlacedStructure extends XY {
   type: BuildableStructureConstant;
 }
 
-// Largest bunker footprint across all RCL layouts (Base_7.json, RCL8, spans
-// -6..6): a candidate anchor must fit this radius even at low RCL, otherwise
-// the bunker would need to be re-anchored on every expansion.
+// Largest bunker footprint across all RCL layouts; anchors must fit this even at low RCL so the
+// bunker never needs re-anchoring on expansion.
 export const BUNKER_RADIUS = 6;
 
-// Reads real room terrain into the walkability grid distanceTransform expects.
-// The only function here that touches Game — not unit tested (fixture-only
-// rule applies to the pure planning logic above), exercised via integration
-// tests instead. Ported verbatim from Bunker.walkablePixelsForRoom.
+// Reads real room terrain into the walkability grid distanceTransform expects. The only function
+// here that touches Game — exercised via integration tests, not unit tests.
 export function walkablePixelsForRoom(roomName: string): Uint8Array {
   const array = new Uint8Array(2500);
   const terrain = Game.map.getRoomTerrain(roomName);
@@ -28,8 +24,7 @@ export function walkablePixelsForRoom(roomName: string): Uint8Array {
   return array;
 }
 
-// Two-pass Chebyshev distance transform: for each open tile, the distance to
-// the nearest wall (or room edge). Ported verbatim from Bunker.distanceTransform.
+// Two-pass Chebyshev distance transform: for each open tile, the distance to the nearest wall (or room edge).
 export function distanceTransform(array: Uint8Array, oob = -1): Uint8Array {
   let A;
   let B;
@@ -88,12 +83,8 @@ export function distanceTransform(array: Uint8Array, oob = -1): Uint8Array {
   return array;
 }
 
-// Every tile whose distance-to-wall is at least bunkerRadius: the bunker's
-// footprint (radius bunkerRadius, centered on the anchor) is fully open there.
-// Legacy code disagreed on the boundary condition (Bunker.doTransform used
-// `>= 6`, RoomPlannerUtils.doTransform used `> BUNKER_RADIUS`) — `>=` is
-// correct: a tile with clearance exactly equal to the radius still fits the
-// footprint flush against its nearest wall.
+// Every tile whose distance-to-wall is at least bunkerRadius: the footprint fits flush against
+// the nearest wall there, so `>=` (not `>`) is the correct boundary.
 export function findAnchorCandidates(terrain: Uint8Array, bunkerRadius = BUNKER_RADIUS): XY[] {
   const dt = distanceTransform(terrain.slice());
   const out: XY[] = [];
@@ -110,18 +101,11 @@ export interface AnchorRoom {
   sources: XY[];
 }
 
-// How much more the controller's distance counts than a source's when scoring
-// an anchor. The bunker feeds the controller continuously (upgraders walk it
-// every tick), while sources are served by dedicated haulers on roads — so the
-// controller path dominates the layout's value.
+// Controller path dominates anchor scoring: upgraders walk it every tick, while sources are
+// served by dedicated haulers on roads.
 export const CONTROLLER_WEIGHT = 2;
 
-// Legacy RoomPlannerUtils.getMostCenterPos picked the candidate closest to the
-// map's raw {24.5, 24.5} center — a poor proxy for a real room, since rooms
-// vary widely in where their controller and sources actually sit. This picks
-// the bunker-fitting candidate that minimizes weighted distance to the
-// controller (heavily) plus the sources, since that's what the anchor is
-// actually optimizing for.
+// Picks the bunker-fitting candidate minimizing weighted distance to the controller (heavily) plus the sources.
 export function pickAnchor(candidates: XY[], room: AnchorRoom): XY | null {
   let best: XY | null = null;
   let bestScore = Infinity;
@@ -138,9 +122,7 @@ export function pickAnchor(candidates: XY[], room: AnchorRoom): XY | null {
   return best;
 }
 
-// Translates anchor-relative placements (from buildableAtRcl) onto an absolute
-// anchor position, yielding the concrete room coordinates to place structures
-// at. Forward-apply of legacy Bunker.convertToRelative, which did the inverse.
+// Translates anchor-relative placements onto an absolute anchor position.
 export function stampLayout(placements: GoalPlacement[], anchor: XY): PlacedStructure[] {
   return placements.map(p => ({
     x: p.x + anchor.x,

@@ -91,9 +91,7 @@ describe("actuator", () => {
       colonies: { W1N1: { sources: { src1: { spot: { x: 19, y: 11 }, containerId: "cont1" } }, remotes: [], danger: 0 } }
     };
 
-    // A container that momentarily isn't in the snapshot (out of vision, or a
-    // tick where it was destroyed and is being rebuilt) must not wipe the id —
-    // roles reading SourceMemory would lose their handle for no good reason.
+    // A container momentarily out of vision must not wipe the recorded id.
     execute([{ kind: "recordSourceSpot", room: "W1N1", source: "src1" as Id<Source>, spot: { x: 19, y: 11 } }]);
 
     const mem = (globalThis as { Memory: { colonies: Record<string, { sources: Record<string, { containerId?: string }> }> } })

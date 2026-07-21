@@ -1,6 +1,4 @@
-// The tiered loop (docs/rewrite-skeleton.md §2). Replaces OperationsManager
-// and the Operation lifecycle. Systems are plain functions ordered in source;
-// CPU guards measure against Game.cpu.limit so degradation is gradual.
+// The tiered loop: systems are plain functions ordered in source; CPU guards measure against Game.cpu.limit so degradation is gradual.
 
 import { execute } from "../intents/execute";
 import type { Intent } from "../intents/types";
@@ -22,16 +20,12 @@ export interface System {
   run(snap: EmpireSnapshot): Intent[];
 }
 
-// Ordered: tier 1 must run every tick even at 0 bucket; tier 2 is economy
-// planning skipped under CPU pressure; tier 3 is luxury needing bucket headroom.
+// tier 1: must run every tick even at 0 bucket. tier 2: economy planning, skipped under CPU pressure. tier 3: luxury, needs bucket headroom.
 export const SYSTEMS: System[] = [
-  // tier 1 — must run, every tick, even at 0 bucket
   { name: "defense", tier: 1, run: planDefense },
   { name: "spawning", tier: 1, run: planSpawning },
-  { name: "creeps", tier: 1, run: runCreepBehaviors }, // interpreter dispatch
-  // tier 2 — economy planning, skipped under CPU pressure
+  { name: "creeps", tier: 1, run: runCreepBehaviors },
   { name: "mining", tier: 2, interval: 50, run: planMining },
-  // links (tier 1) and the rest of tier 2 land with their ports
   { name: "building", tier: 3, interval: 100, run: planBuilding }
 ];
 
