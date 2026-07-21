@@ -26,10 +26,10 @@ describe("flattenGoal", () => {
     expect(goal.placements.find(p => p.type === "extension")).toMatchObject({ x: 2, y: 0 });
   });
 
-  it("bakes a greedy nearest-to-cluster build-order for extensions, growing outward from the spawns", () => {
-    // spawn at anchor; a line of extensions stretching away from it. The build
-    // order must fill them nearest-first so the cluster grows contiguously,
-    // never jumping to a far extension before a nearer one.
+  it("bakes a greedy nearest-to-blob build-order for extensions, growing outward from storage", () => {
+    // A line of extensions stretching away from the core. The build order must
+    // fill them nearest-first so the blob grows contiguously, never jumping to a
+    // far extension before a nearer one.
     const source: PlannerLayout = {
       rcl: 8,
       structures: {
@@ -56,6 +56,63 @@ describe("flattenGoal", () => {
     // order values are contiguous and distinct across the whole layout
     const orders = goal.placements.map(p => p.order).sort((a, b) => a - b);
     expect(orders).toEqual(orders.map((_, i) => i));
+  });
+
+  it("seeds extension growth on storage, not on the anchor or the spawns", () => {
+    // The anchor is the terminal/storage midpoint, so push those two far apart:
+    // terminal at x=15, storage at x=35 puts the anchor at x=25 with storage a
+    // full 10 tiles east of it. One extension hugs storage, another hugs the
+    // anchor. Seeding on the anchor (or on the spawn beside it) would build the
+    // anchor-side one first; seeding on storage — where a filler loads — must
+    // build the storage-side one first.
+    const source: PlannerLayout = {
+      rcl: 8,
+      structures: {
+        terminal: [{ x: 15, y: 25 }], // rel {-10,0}
+        storage: [{ x: 35, y: 25 }], // rel {10,0}
+        spawn: [{ x: 25, y: 24 }], // rel {0,-1} — beside the anchor
+        extension: [
+          { x: 26, y: 25 }, // rel {1,0} — hugs the anchor/spawn
+          { x: 34, y: 25 } // rel {9,0} — hugs storage
+        ]
+      }
+    };
+
+    const exts = flattenGoal(source)
+      .placements.filter(p => p.type === "extension")
+      .sort((a, b) => a.order - b.order);
+
+    expect(exts.map(e => e.x)).toEqual([9, 1]);
+  });
+
+  it("does not let the bunker core act as blob seed, which would order extensions as a ring", () => {
+    // Four extensions equidistant from the anchor, one per diagonal, with the
+    // core filling the tiles around the anchor. Growth must chain through the
+    // extensions themselves — picking the storage-side one, then its NEIGHBOUR —
+    // rather than treating all four as equally adjacent to the core and
+    // emitting them as an even ring.
+    const source: PlannerLayout = {
+      rcl: 8,
+      structures: {
+        terminal: [{ x: 24, y: 25 }],
+        storage: [{ x: 26, y: 25 }],
+        spawn: [{ x: 25, y: 24 }, { x: 25, y: 26 }],
+        extension: [
+          { x: 27, y: 24 }, // rel {2,-1} — beside storage
+          { x: 27, y: 26 }, // rel {2,1}  — beside storage
+          { x: 23, y: 24 }, // rel {-2,-1} — far side
+          { x: 23, y: 26 } // rel {-2,1}  — far side
+        ]
+      }
+    };
+
+    const exts = flattenGoal(source)
+      .placements.filter(p => p.type === "extension")
+      .sort((a, b) => a.order - b.order);
+
+    // Both storage-side extensions come before both far-side ones.
+    expect(exts.slice(0, 2).every(e => e.x === 2)).toBe(true);
+    expect(exts.slice(2).every(e => e.x === -2)).toBe(true);
   });
 });
 

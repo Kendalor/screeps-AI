@@ -106,10 +106,11 @@ function planColony(colony: ColonySnapshot): Intent[] {
   const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...operational];
   const buildableOperational =
     colony.controllerLevel >= CONTAINERS_FROM_RCL ? operational : operational.filter(p => p.type !== "container");
-  const rawBuildable = [
-    ...stampLayout(buildableAtRcl(GOAL, colony.controllerLevel), anchor),
-    ...buildableOperational
-  ];
+  // The baked extension order grows a blob out from storage; which side of that
+  // blob to extend first is a per-room choice, so bias it toward this room's
+  // sources — the miner->filler leg is shorter when extensions face the sources.
+  const atRcl = buildableAtRcl(GOAL, colony.controllerLevel, { anchor, sources: colony.sources });
+  const rawBuildable = [...stampLayout(atRcl, anchor), ...buildableOperational];
   // Hold roads back entirely until RCL4, then gate the rest ("roads only where
   // needed") as before.
   const roadReady = colony.controllerLevel >= ROADS_FROM_RCL;

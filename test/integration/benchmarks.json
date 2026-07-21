@@ -10,6 +10,39 @@
       "sinkUpgrading": 0.16597164303586323,
       "sinkConstruction": 0,
       "sinkCreeps": 0.8340283569641368
+    },
+    {
+      "at": "2026-07-21T09:41:17.038Z",
+      "commit": "0985976",
+      "ticks": 509,
+      "energyHarvestedPerTick": 1.8622047244094488,
+      "energyWasteFraction": 0.5911840968020743,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.16597164303586323,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8340283569641368
+    },
+    {
+      "at": "2026-07-21T09:44:17.702Z",
+      "commit": "0985976",
+      "ticks": 512,
+      "energyHarvestedPerTick": 1.8512720156555773,
+      "energyWasteFraction": 0.5901213171577123,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.16597164303586323,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8340283569641368
+    },
+    {
+      "at": "2026-07-21T09:51:07.190Z",
+      "commit": "0985976",
+      "ticks": 506,
+      "energyHarvestedPerTick": 1.8732673267326734,
+      "energyWasteFraction": 0.5897658282740676,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.1652754590984975,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8347245409015025
     }
   ],
   "rcl2-extensions-built": [
@@ -23,6 +56,39 @@
       "sinkUpgrading": 0.012824594115239438,
       "sinkConstruction": 0.6802037382327527,
       "sinkCreeps": 0.30697166765200784
+    },
+    {
+      "at": "2026-07-21T09:42:13.656Z",
+      "commit": "0985976",
+      "ticks": 3621,
+      "energyHarvestedPerTick": 6.041988950276243,
+      "energyWasteFraction": 0.6478959399851895,
+      "energyDecayed": 441,
+      "sinkUpgrading": 0.012711674078066747,
+      "sinkConstruction": 0.6728652921888335,
+      "sinkCreeps": 0.31442303373309977
+    },
+    {
+      "at": "2026-07-21T09:45:10.738Z",
+      "commit": "0985976",
+      "ticks": 3579,
+      "energyHarvestedPerTick": 6.102850754611515,
+      "energyWasteFraction": 0.6228279269008878,
+      "energyDecayed": 347,
+      "sinkUpgrading": 0.01267358770392342,
+      "sinkConstruction": 0.6727338097164173,
+      "sinkCreeps": 0.3145926025796593
+    },
+    {
+      "at": "2026-07-21T09:52:09.487Z",
+      "commit": "0985976",
+      "ticks": 3599,
+      "energyHarvestedPerTick": 6.017787659811006,
+      "energyWasteFraction": 0.6037915385741472,
+      "energyDecayed": 514,
+      "sinkUpgrading": 0.012769244751431428,
+      "sinkConstruction": 0.6804962283013724,
+      "sinkCreeps": 0.3067345269471962
     }
   ]
 }
