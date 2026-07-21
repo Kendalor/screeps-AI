@@ -94,11 +94,53 @@ function recoveryRole(colony: ColonySnapshot): RoleName | undefined {
   return colony.sources.length > 0 ? "bootstrap" : undefined;
 }
 
+// A source regenerates 3000 energy every 300 ticks — 10/tick — and one WORK
+// part harvests 2/tick, so 5 WORK saturates a source.
+const WORK_PER_SOURCE = 5;
+// Draining the sources is only half the job: the energy still has to be spent
+// on extensions and construction sites, and a creep doing that is not
+// harvesting. This multiplier buys the surplus work-ticks that turn harvested
+// energy into built structures — without it the colony harvests at exactly the
+// regen rate and never gets ahead (gh #23).
+const SPEND_HEADROOM = 2;
+// Bootstrap is a stopgap workforce; miners/haulers replace it. Cap the count so
+// a big room cannot spend its whole spawn throughput on allrounders.
+const MAX_BOOTSTRAP = 12;
+// Before RCL2 there is nothing for a big workforce to do — no extensions to
+// fill, and the fastest path to RCL2 is to put early energy on the controller,
+// not into spawning more harvesters. Stay at the old flat count until then.
+const PRE_RCL2_PER_SOURCE = 2;
+
+/**
+ * How many bootstrap creeps the colony wants, sized by harvest throughput
+ * rather than a flat per-source count: enough WORK parts across the workforce
+ * to drain every source with headroom left to spend what they gather. Bigger
+ * bodies carry more WORK each, so the count falls as energyCapacity climbs.
+ *
+ * Held lean until RCL2 so the first upgrades are not delayed behind a swollen
+ * workforce (gh #23) — the throughput target applies once there are extensions
+ * and a construction backlog to justify it.
+ */
+export function desiredBootstrapCount(colony: ColonySnapshot): number {
+  if (colony.controllerLevel < 2) return colony.sources.length * PRE_RCL2_PER_SOURCE;
+  const workNeeded = colony.sources.length * WORK_PER_SOURCE * SPEND_HEADROOM;
+  const workPerCreep = bootstrapWorkParts(colony.energyCapacity);
+  return Math.min(MAX_BOOTSTRAP, Math.ceil(workNeeded / workPerCreep));
+}
+
+// The WORK parts one bootstrap body actually gets at this budget — asking the
+// role table rather than restating its formula, so the quota tracks any change
+// to the body automatically.
+function bootstrapWorkParts(energyCapacity: number): number {
+  const body = roleDef("bootstrap")?.body(energyCapacity, { hasContainer: false, hasLink: false }) ?? [];
+  return Math.max(1, body.filter(p => p === WORK).length);
+}
+
 // P0 bootstrap quota plus the P1 miner/hauler/upgrader/builder quotas. Miners
 // are one per container-backed source; haulers follow from what they fill.
 function desiredCensus(colony: ColonySnapshot): Census {
   return {
-    bootstrap: colony.sources.length * 2,
+    bootstrap: desiredBootstrapCount(colony),
     miner: desiredMinerCount(colony),
     hauler: desiredHaulerCount(colony),
     upgrader: desiredUpgraderCount(colony),

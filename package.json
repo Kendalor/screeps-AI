@@ -11,6 +11,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "watch:integration": "vitest run --config vitest.watch.config.ts",
     "sync-layouts": "tsx scripts/sync-layouts.ts",
+    "watch:server": "node scripts/watch-server.mjs",
     "prebuild": "npm test",
     "bundle": "rollup -c",
     "build": "rollup -c --verbose --environment LOCAL:true",

@@ -4,18 +4,24 @@
 import type { RoleName } from "../memory/schema";
 import type { BodyContext, RoleDef } from "./types";
 
-// Ported from Allrounder.getBody: 200-energy [WORK,CARRY,MOVE] sets, clamped
-// to [300, 1200] energy and at most 4 sets; a spare >100 energy buys a
-// leading MOVE,CARRY pair.
+// [WORK,CARRY,MOVE,MOVE] sets — 250 energy each. The doubled MOVE is the point:
+// a loaded creep generates 2 fatigue per WORK/CARRY and clears 2 per MOVE, so
+// one MOVE per weight-part is the minimum that keeps it at road speed carrying
+// energy. Anything leaner (e.g. [WORK,CARRY,MOVE]) crawls 1 tile every 2 ticks
+// loaded and spends its life on the road — the harvest-throughput leak the
+// WORK-dense body caused (gh #23 follow-up). Floor of one set (buildable at the
+// RCL1 300 cap, 50 unavoidable spare); capped so a big room doesn't field
+// oversized allrounders instead of specialists.
+const BOOTSTRAP_SET: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE];
+const BOOTSTRAP_SET_COST = 250;
+const MAX_BOOTSTRAP_SETS = 5;
+
 function bootstrapBody(energy: number): BodyPartConstant[] {
-  const energyCap = Math.min(Math.max(300, energy), 1200);
-  const fullSets = Math.min(Math.max(1, Math.floor(energyCap / 200)), 4);
+  const budget = Math.max(BOOTSTRAP_SET_COST, energy);
+  const sets = Math.min(MAX_BOOTSTRAP_SETS, Math.max(1, Math.floor(budget / BOOTSTRAP_SET_COST)));
   let parts: BodyPartConstant[] = [];
-  if (energyCap - fullSets * 200 > 100) {
-    parts = [MOVE, CARRY];
-  }
-  for (let i = 0; i < fullSets; i++) {
-    parts = parts.concat([WORK, CARRY, MOVE]);
+  for (let i = 0; i < sets; i++) {
+    parts = parts.concat(BOOTSTRAP_SET);
   }
   return parts;
 }

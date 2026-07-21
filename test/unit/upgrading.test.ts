@@ -7,17 +7,14 @@ describe("desiredUpgraderCount (ported UpgradeOperation.getMaxUpgraders)", () =>
     expect(desiredUpgraderCount(colony({ storageEnergy: 0, energyAvailable: 200, controllerLevel: 1 }))).toBe(0);
   });
 
-  it("returns 0 at RCL1 even with energy to spare — bootstrap covers upgrading that early", () => {
+  it("returns 0 without storage at any RCL — a dedicated upgrader has nothing to withdraw from", () => {
+    // The upgrader role is withdraw-from-link/storage -> upgrade, with no
+    // harvest step. Before storage exists it cannot gather at all and just
+    // wanders (observed spawning inert at RCL2). Bootstrap's own wraparound
+    // upgrade step covers the controller until storage arrives.
     expect(desiredUpgraderCount(colony({ storageEnergy: 0, energyAvailable: 3000, controllerLevel: 1 }))).toBe(0);
-  });
-
-  it("without storage, scales with available energy at a fixed controller level", () => {
-    expect(desiredUpgraderCount(colony({ storageEnergy: 0, energyAvailable: 300, controllerLevel: 3 }))).toBe(1);
-    expect(desiredUpgraderCount(colony({ storageEnergy: 0, energyAvailable: 600, controllerLevel: 3 }))).toBe(2);
-  });
-
-  it("without storage, caps the quota at the controller level", () => {
-    expect(desiredUpgraderCount(colony({ storageEnergy: 0, energyAvailable: 3000, controllerLevel: 2 }))).toBe(2);
+    expect(desiredUpgraderCount(colony({ storageEnergy: 0, energyAvailable: 3000, controllerLevel: 2 }))).toBe(0);
+    expect(desiredUpgraderCount(colony({ storageEnergy: 0, energyAvailable: 3000, controllerLevel: 3 }))).toBe(0);
   });
 
   it("with storage, scales with stored energy instead of room energy (ported getMaxUpgraders)", () => {

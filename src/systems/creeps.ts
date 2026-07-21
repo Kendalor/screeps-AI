@@ -27,15 +27,22 @@ function runOne(creep: Creep): void {
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us
 
-  // Act this tick; whether a target resolved feeds the completion check so a
-  // step with nothing to do advances rather than stalling.
-  const hadTarget = runStep(creep, def.steps[task.step]);
+  // Act this tick, reusing last tick's locked target if it is still valid.
+  // Whether a target resolved feeds the completion check so a step with nothing
+  // to do advances rather than stalling.
+  const result = runStep(creep, def.steps[task.step], task.target);
 
   const state: CreepState = {
     step: task.step,
     free: creep.store.getFreeCapacity(),
     used: creep.store.getUsedCapacity(),
-    targetGone: !hadTarget
+    targetGone: !result.acted
   };
   task.step = nextStep(def.steps, state);
+
+  // Carry the lock to next tick so the creep finishes what it started rather
+  // than re-picking the nearest target every tick (#23). The lock is validated
+  // against the step's spec on reuse, so it is safe to hold across a step
+  // change: a target the new step cannot use is dropped there.
+  task.target = result.target;
 }

@@ -4,20 +4,36 @@ import { ROLES, roleDef } from "../../src/behaviors/roles";
 describe("bootstrap body (ported Allrounder.getBody)", () => {
   const body = (energy: number) => ROLES.bootstrap.body(energy);
 
-  it("builds one work set at the 300-energy floor", () => {
-    expect(body(300)).toEqual([WORK, CARRY, MOVE]);
-    expect(body(0)).toEqual([WORK, CARRY, MOVE]); // never below the floor
+  // The move ratio, not the WORK count, is what makes an allrounder useful: a
+  // creep carrying energy generates 2 fatigue per WORK/CARRY part and clears 2
+  // per MOVE, so anything short of one MOVE per weight-part crawls (a
+  // [WORK,CARRY,MOVE] creep moves 1 tile every 2 ticks when loaded, spending its
+  // life on the road). The body is [WORK,CARRY,MOVE,MOVE] sets — full road speed
+  // loaded — sized to the energy budget.
+  const weight = (b: BodyPartConstant[]) => b.filter(p => p === WORK || p === CARRY).length;
+  const moves = (b: BodyPartConstant[]) => b.filter(p => p === MOVE).length;
+
+  it("builds one full-speed set at the 250 floor", () => {
+    expect(body(300)).toEqual([WORK, CARRY, MOVE, MOVE]);
+    expect(body(0)).toEqual([WORK, CARRY, MOVE, MOVE]); // never below the floor
   });
 
-  it("adds a move/carry pair when leftover energy exceeds 100", () => {
-    // 550: two 200-sets leave 150 spare -> leading MOVE,CARRY
-    expect(body(550)).toEqual([MOVE, CARRY, WORK, CARRY, MOVE, WORK, CARRY, MOVE]);
+  it("keeps one MOVE per weight-part at every size (full road speed when loaded)", () => {
+    for (const e of [300, 550, 800, 1000, 1200]) {
+      expect(moves(body(e))).toBe(weight(body(e)));
+    }
   });
 
-  it("caps at four work sets regardless of energy", () => {
+  it("adds another set as energy grows", () => {
+    // 500 buys a second [WORK,CARRY,MOVE,MOVE] set.
+    expect(body(500)).toEqual([WORK, CARRY, MOVE, MOVE, WORK, CARRY, MOVE, MOVE]);
+  });
+
+  it("caps the number of sets regardless of energy", () => {
     const capped = body(5000);
-    expect(capped).toEqual(body(1200));
-    expect(capped.filter(p => p === WORK)).toHaveLength(4);
+    expect(moves(capped)).toBe(weight(capped)); // still balanced
+    expect(capped.filter(p => p === WORK)).toHaveLength(5); // 5-set cap
+    expect(body(10_000)).toEqual(capped); // no growth past the cap
   });
 });
 
@@ -47,8 +63,8 @@ describe("builder role", () => {
     });
   });
 
-  it("shares the bootstrap body formula (ported Builder.getBody — same WORK/CARRY/MOVE sets)", () => {
-    expect(ROLES.builder.body(300)).toEqual([WORK, CARRY, MOVE]);
+  it("shares the bootstrap body formula (ported Builder.getBody — same full-speed sets)", () => {
+    expect(ROLES.builder.body(300)).toEqual([WORK, CARRY, MOVE, MOVE]);
     expect(ROLES.builder.body(550)).toEqual(ROLES.bootstrap.body(550));
   });
 });

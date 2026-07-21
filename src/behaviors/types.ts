@@ -1,11 +1,18 @@
 // Step / Behavior definitions (docs/rewrite-skeleton.md §5).
 
+// How many creeps may share one resolved target (the targeting cache in
+// targets.ts enforces it against creeps' task.target claims): "allow"/absent =
+// unlimited, "avoid" = exclusive (1), a number = that many. Sources ignore this
+// and use their open harvest-tile count as the cap. Use it to stop creeps
+// piling onto one construction site, dropped pile, etc.
+export type Share = "allow" | "avoid" | number;
+
 export type TargetSpec =
-  | { find: "structure"; type: StructureConstant; where?: "notFull" | "hasEnergy" | "damaged" }
-  | { find: "dropped" }
-  | { find: "tombstone" }
+  | { find: "structure"; type: StructureConstant; where?: "notFull" | "hasEnergy" | "damaged"; share?: Share }
+  | { find: "dropped"; share?: Share }
+  | { find: "tombstone"; share?: Share }
   | { find: "source" }
-  | { find: "constructionSite" }
+  | { find: "constructionSite"; share?: Share }
   | { find: "controller" }
   | { find: "id"; id: Id<_HasId> };
 

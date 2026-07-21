@@ -25,6 +25,41 @@ import { minedStructures } from "./mining";
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
 
+// Focus construction: cap open sites low so a small pre-storage workforce
+// finishes a couple of structures instead of smearing effort across a whole
+// RCL's backlog (gh #23 follow-up). Two at a time keeps the colony always
+// building something without spreading thin.
+const FOCUS_SITE_CAP = 2;
+// Roads are dead weight while the structural bunker is still going up; hold them
+// until RCL4, by which point extensions/tower/storage give the colony the
+// capacity to afford paving.
+const ROADS_FROM_RCL = 4;
+// Containers are for miners, and miners don't spawn until RCL3-with-extensions.
+// A container placed earlier is 5000 energy nobody can use, and it would sit in
+// a scarce focus slot starving the extensions that actually grow the colony —
+// exactly the RCL2 stall observed on the live server. So hold containers until
+// RCL3.
+const CONTAINERS_FROM_RCL = 3;
+// Which sites win the scarce slots, most important first: tower (defense), then
+// extensions (capacity growth), then containers, then storage. Containers rank
+// below extensions — even once buildable they wait until extensions have the
+// slots. Anything not listed (link, terminal, lab, spawn, ...) sorts after these
+// at DEFAULT_PRIORITY; roads sort dead last so they only appear once structures
+// are exhausted.
+const TYPE_PRIORITY: Partial<Record<BuildableStructureConstant, number>> = {
+  tower: 0,
+  extension: 1,
+  container: 2,
+  storage: 3
+};
+const DEFAULT_PRIORITY = 10;
+const ROAD_PRIORITY = 99;
+
+function typePriority(type: BuildableStructureConstant): number {
+  if (type === ROAD) return ROAD_PRIORITY;
+  return TYPE_PRIORITY[type] ?? DEFAULT_PRIORITY;
+}
+
 // One builder per 5k of outstanding work, never more than 4 — a full bunker
 // rollout is tens of thousands of progress, and an uncapped quota would starve
 // every other role of spawn capacity.
@@ -65,16 +100,38 @@ function planColony(colony: ColonySnapshot): Intent[] {
   // serving before the roads to them are planned.
   const operational = minedStructures(colony);
   // Full RCL8 goal (not just this RCL's buildable subset): a structure from a
-  // higher tier that's already built (e.g. after a downgrade) is not stale.
+  // higher tier that's already built (e.g. after a downgrade) is not stale. The
+  // goal check keeps all operational structures (they are never stale), but the
+  // buildable set below withholds containers until miners exist to use them.
   const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...operational];
+  const buildableOperational =
+    colony.controllerLevel >= CONTAINERS_FROM_RCL ? operational : operational.filter(p => p.type !== "container");
+  const rawBuildable = [
+    ...stampLayout(buildableAtRcl(GOAL, colony.controllerLevel), anchor),
+    ...buildableOperational
+  ];
+  // Hold roads back entirely until RCL4, then gate the rest ("roads only where
+  // needed") as before.
+  const roadReady = colony.controllerLevel >= ROADS_FROM_RCL;
   const buildable = gateRoads(
-    [...stampLayout(buildableAtRcl(GOAL, colony.controllerLevel), anchor), ...operational],
+    roadReady ? rawBuildable : rawBuildable.filter(p => p.type !== ROAD),
     colony
   );
+  // Prioritise which sites claim the scarce slots: tower first, then extensions,
+  // then containers/storage, everything else, roads last. buildableAtRcl already
+  // returns placements in the baked build sequence, so the original index breaks
+  // ties within a type and extension growth stays contiguous.
+  const prioritised = buildable
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => typePriority(a.p.type) - typePriority(b.p.type) || a.i - b.i)
+    .map(e => e.p);
 
-  let budget = MAX_CONSTRUCTION_SITES - colony.sites.length;
+  // Cap open sites low to keep construction focused (FOCUS_SITE_CAP), never
+  // exceeding the engine's own room limit.
+  const cap = Math.min(FOCUS_SITE_CAP, MAX_CONSTRUCTION_SITES);
+  let budget = cap - colony.sites.length;
   const out: Intent[] = [];
-  for (const placement of buildable) {
+  for (const placement of prioritised) {
     if (budget <= 0) break;
     const exists = colony.structures.some(sameSpot(placement)) || colony.sites.some(sameSpot(placement));
     if (exists) continue;

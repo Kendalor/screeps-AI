@@ -57,46 +57,64 @@ function isComplete(step: Step, s: CreepState): boolean {
 // with nothing to do advances instead of stalling (the old jobs' cancel path).
 // build/repair/upgrade act at range 3; everything else at range 1.
 
-export function runStep(creep: Creep, step: Step): boolean {
+/**
+ * What one step did this tick: whether it had anything to act on (`acted`, which
+ * drives the targetGone completion rule) and the target it used, if any, for the
+ * creep to lock onto next tick. Steps with no target (moveToRoom, sit) act
+ * without locking, so the two facts are reported separately.
+ */
+export interface StepResult {
+  acted: boolean;
+  target?: Id<_HasId>;
+}
+
+export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResult {
   switch (step.do) {
     case "harvest":
-      return actOn(creep, step.from, t => creep.harvest(t as Source));
+      return actOn(creep, step.from, locked, t => creep.harvest(t as Source));
     case "withdraw":
-      return actOn(creep, step.from, t =>
+      return actOn(creep, step.from, locked, t =>
         creep.withdraw(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY)
       );
     case "pickup":
-      return actOn(creep, step.from, t => creep.pickup(t as Resource));
+      return actOn(creep, step.from, locked, t => creep.pickup(t as Resource));
     case "transfer":
-      return actOn(creep, step.to, t =>
+      return actOn(creep, step.to, locked, t =>
         creep.transfer(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY)
       );
     case "build":
-      return actOn(creep, step.at ?? { find: "constructionSite" }, t => creep.build(t as ConstructionSite), 3);
+      return actOn(creep, step.at ?? { find: "constructionSite" }, locked, t => creep.build(t as ConstructionSite), 3);
     case "repair":
-      return actOn(creep, step.at, t => creep.repair(t as Structure), 3);
+      return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3);
     case "upgrade":
-      return actOn(creep, { find: "controller" }, t => creep.upgradeController(t as StructureController), 3);
+      return actOn(creep, { find: "controller" }, locked, t => creep.upgradeController(t as StructureController), 3);
     case "moveToRoom":
       if (creep.room.name !== step.room) {
         creep.travelTo(new RoomPosition(25, 25, step.room));
       }
-      return true;
+      return { acted: true };
     case "sit":
       creep.travelTo(new RoomPosition(step.pos.x, step.pos.y, creep.room.name));
-      return true;
+      return { acted: true };
   }
 }
 
-// Resolve the target for `spec`; if in range run `action`, else travel. Returns
-// false when no target resolves (the step has nothing to do this tick).
-function actOn(creep: Creep, spec: TargetSpec, action: (t: RoomObject) => number, range = 1): boolean {
-  const target = resolveTarget(creep, spec);
-  if (!target) return false;
+// Resolve the target for `spec` — reusing `locked` when it is still valid — then
+// act if in range, else travel toward it. Reports no target when nothing
+// resolves, so the step has nothing to do this tick.
+function actOn(
+  creep: Creep,
+  spec: TargetSpec,
+  locked: Id<_HasId> | undefined,
+  action: (t: RoomObject) => number,
+  range = 1
+): StepResult {
+  const target = resolveTarget(creep, spec, locked);
+  if (!target) return { acted: false };
   if (creep.pos.inRangeTo(target as { pos: RoomPosition }, range)) {
     action(target);
   } else {
     creep.travelTo(target as { pos: RoomPosition });
   }
-  return true;
+  return { acted: true, target: (target as unknown as { id: Id<_HasId> }).id };
 }

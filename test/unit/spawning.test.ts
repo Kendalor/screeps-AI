@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { planSpawning } from "../../src/systems/spawning";
+import { desiredBootstrapCount, planSpawning } from "../../src/systems/spawning";
 import { colony, containerAt, empire, sourceAt, spawn } from "../fixtures";
+
+// "the bootstrap quota is already met" — derived from the quota rather than
+// hardcoded, so these fixtures keep meaning that if the sizing changes. The
+// quota depends on controllerLevel (lean pre-RCL2), so callers pass the same
+// level their scenario uses.
+function bootstrapMet(over: Parameters<typeof colony>[0] = {}): number {
+  return desiredBootstrapCount(colony(over));
+}
 
 describe("spawning planner", () => {
   it("spawns a bootstrap when the colony is below quota", () => {
@@ -18,7 +26,7 @@ describe("spawning planner", () => {
         kind: "spawn",
         spawn: "spawn1",
         role: "bootstrap",
-        body: [WORK, CARRY, MOVE],
+        body: [WORK, CARRY, MOVE, MOVE],
         memory: { home: "W1N1", role: "bootstrap" }
       }
     ]);
@@ -27,9 +35,9 @@ describe("spawning planner", () => {
   it("emits nothing when the census already meets quota", () => {
     const snap = empire(
       colony({
-        // 1 source -> bootstrap 2; no containers so no miners or haulers, and
-        // RCL1 wants no upgraders. Every quota met.
-        census: { bootstrap: 2 },
+        // 1 source; no containers so no miners or haulers, and RCL1 wants no
+        // upgraders. Every quota met.
+        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)] }) },
         spawns: [spawn()],
         sources: [sourceAt(20, 10)]
       })
@@ -50,13 +58,16 @@ describe("spawning planner", () => {
     expect(planSpawning(snap)).toEqual([]);
   });
 
-  it("spawns an upgrader once the bootstrap and miner quotas are met", () => {
+  it("spawns an upgrader once storage exists and higher-priority quotas are met", () => {
     const snap = empire(
       colony({
-        census: { bootstrap: 2 }, // 1 source, no containers -> both quotas met
+        // 1 source, no containers -> bootstrap/miner quotas met; storage present
+        // so a dedicated upgrader is now warranted (needs storage to withdraw).
+        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], controllerLevel: 4 }) },
         spawns: [spawn()],
         energyAvailable: 300,
-        controllerLevel: 3,
+        controllerLevel: 4,
+        storageEnergy: 200_000,
         sources: [sourceAt(20, 10)]
       })
     );
@@ -77,7 +88,7 @@ describe("spawning planner", () => {
     // CARRY and stalls, starving the upgrade that gets the colony to RCL2.
     const snap = empire(
       colony({
-        census: { bootstrap: 4 },
+        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10), sourceAt(30, 40)] }) },
         spawns: [spawn()],
         energyAvailable: 300,
         sources: [sourceAt(20, 10), sourceAt(30, 40)],
@@ -91,7 +102,8 @@ describe("spawning planner", () => {
   it("spawns one miner per source once containers exist", () => {
     const snap = empire(
       colony({
-        census: { bootstrap: 4 }, // 2 sources -> bootstrap quota met
+        // 2 sources -> bootstrap quota met
+        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10), sourceAt(30, 40)] }) },
         spawns: [spawn()],
         energyAvailable: 300,
         sources: [sourceAt(20, 10), sourceAt(30, 40)],
@@ -113,7 +125,7 @@ describe("spawning planner", () => {
   it("spawns a hauler once the miner quota is met and a container is filling", () => {
     const snap = empire(
       colony({
-        census: { bootstrap: 2, miner: 1 },
+        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)] }), miner: 1 },
         spawns: [spawn()],
         energyAvailable: 300,
         sources: [sourceAt(20, 10)],
@@ -127,7 +139,8 @@ describe("spawning planner", () => {
   it("spawns a builder once a construction backlog exists and higher-priority quotas are met", () => {
     const snap = empire(
       colony({
-        census: { bootstrap: 2, upgrader: 4 }, // everything above builder satisfied
+        // everything above builder satisfied
+        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], controllerLevel: 4 }), upgrader: 4 },
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
@@ -142,7 +155,7 @@ describe("spawning planner", () => {
         kind: "spawn",
         spawn: "spawn1",
         role: "builder",
-        body: [WORK, CARRY, MOVE],
+        body: [WORK, CARRY, MOVE, MOVE],
         memory: { home: "W1N1", role: "builder" }
       }
     ]);
@@ -151,7 +164,8 @@ describe("spawning planner", () => {
   it("fills the upgrader deficit before the builder one — builder is lowest priority", () => {
     const snap = empire(
       colony({
-        census: { bootstrap: 2 }, // upgrader AND builder both under quota
+        // upgrader AND builder both under quota
+        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], controllerLevel: 4 }) },
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
@@ -242,7 +256,10 @@ describe("spawning planner", () => {
     // strand a colony that can afford the hauler it actually needs.
     const snap = empire(
       colony({
-        census: { bootstrap: 2, miner: 1 },
+        census: {
+          bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], energyCapacity: 150 }),
+          miner: 1
+        },
         spawns: [spawn()],
         // Capacity, not availability, is what sizes the body (issue #21) — a
         // 150-capacity room wants exactly one CARRY,CARRY,MOVE set, which it
@@ -279,7 +296,7 @@ describe("spawning planner", () => {
     // on WHICH TICK the planner happened to run. A spawn firing just after the
     // room spent energy locked in a runt that then lived ~1500 ticks. Capacity
     // is the room's persistent, timing-independent budget.
-    // 800 capacity sizes a 4-WORK body costing exactly 800. Sized from
+    // 800 capacity sizes a 3-set [WORK,CARRY,MOVE,MOVE] body (750). Sized from
     // availability, a full room would instead yield only what that tick's
     // energy bought — the two are visibly different creeps.
     const snap = empire(
@@ -293,7 +310,7 @@ describe("spawning planner", () => {
     );
 
     const [intent] = planSpawning(snap);
-    expect(intent.kind === "spawn" && intent.body.filter(p => p === WORK)).toHaveLength(4);
+    expect(intent.kind === "spawn" && intent.body.filter(p => p === WORK)).toHaveLength(3);
   });
 
   it("waits for a refill rather than spawning a runt sized to a drained room", () => {
@@ -337,6 +354,52 @@ describe("spawning planner", () => {
     const [intent] = planSpawning(snap);
     expect(intent).toMatchObject({ role: "bootstrap" });
     // The 300-regen body, not the 1300-capacity one the room cannot afford.
-    expect(intent.kind === "spawn" && intent.body).toEqual([WORK, CARRY, MOVE]);
+    expect(intent.kind === "spawn" && intent.body).toEqual([WORK, CARRY, MOVE, MOVE]);
+  });
+});
+
+// --- bootstrap quota ----------------------------------------------------------
+// Bootstrap is the colony's whole workforce before miners/haulers exist, so the
+// quota is sized by harvest throughput, not by a flat per-source constant. Two
+// sources yield 20 energy/tick (3000 per 300-tick regen each) and one WORK part
+// harvests 2/tick, so 10 WORK drains them exactly — the quota must field enough
+// creeps to cover that plus a margin of work-ticks left to spend the energy on
+// building (gh #23).
+describe("bootstrap quota", () => {
+  it("fields enough WORK parts to drain every source with headroom to spend", () => {
+    // From RCL2 the throughput target applies. At the 300 floor bootstrapBody
+    // is [WORK,CARRY,MOVE] — 1 WORK each.
+    const twoSources = colony({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
+
+    // 2 sources * 10 energy/tick / 2 per WORK = 10 WORK to saturate.
+    expect(desiredBootstrapCount(twoSources)).toBeGreaterThanOrEqual(10);
+  });
+
+  it("scales down as bigger bodies carry more WORK each", () => {
+    // At 800 capacity bootstrapBody carries 4 WORK, so far fewer creeps cover
+    // the same throughput — the quota must not keep spawning a flat count.
+    const small = colony({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
+    const large = colony({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 800, controllerLevel: 2 });
+
+    expect(desiredBootstrapCount(large)).toBeLessThan(desiredBootstrapCount(small));
+  });
+
+  it("scales with the number of sources", () => {
+    const one = colony({ sources: [sourceAt(10, 10)], energyCapacity: 300, controllerLevel: 2 });
+    const two = colony({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
+
+    expect(desiredBootstrapCount(two)).toBeGreaterThan(desiredBootstrapCount(one));
+  });
+
+  // Before RCL2 there are no extensions to fill and no backlog worth a big
+  // workforce — a swollen bootstrap count just delays the first upgrade that
+  // reaches RCL2. Stay lean until RCL2, then ramp to the throughput target.
+  it("stays lean before RCL2 so upgrading leads the early game", () => {
+    const sources = [sourceAt(10, 10), sourceAt(40, 40)];
+    const rcl1 = colony({ sources, energyCapacity: 300, controllerLevel: 1 });
+    const rcl2 = colony({ sources, energyCapacity: 300, controllerLevel: 2 });
+
+    expect(desiredBootstrapCount(rcl1)).toBeLessThan(desiredBootstrapCount(rcl2));
+    expect(desiredBootstrapCount(rcl1)).toBeLessThanOrEqual(sources.length * 2);
   });
 });
