@@ -32,6 +32,33 @@ describe("spawning planner", () => {
     ]);
   });
 
+  // Damage consumes body parts in array order, so what the planner emits — not
+  // what the body formula happens to assemble — is what decides which parts a
+  // creep keeps under fire. A multi-set body is the case where the two differ:
+  // the formula groups parts per set, the intent must be sorted by priority.
+  it("orders the spawned body so the most valuable parts are destroyed last", () => {
+    const snap = empire(
+      colony({
+        census: {},
+        spawns: [spawn()],
+        energyAvailable: 750,
+        energyCapacity: 750,
+        sources: [sourceAt(20, 10)]
+      })
+    );
+
+    const [intent] = planSpawning(snap);
+    expect(intent).toMatchObject({ kind: "spawn", role: "bootstrap" });
+
+    const body = (intent as { body: BodyPartConstant[] }).body;
+    expect(body).toEqual([WORK, WORK, WORK, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE]);
+    // The property behind the expectation: no part outranks one before it.
+    const rank = (p: BodyPartConstant) => [TOUGH, WORK, CARRY, CLAIM, RANGED_ATTACK, ATTACK, HEAL, MOVE].indexOf(p);
+    for (let i = 1; i < body.length; i++) {
+      expect(rank(body[i])).toBeGreaterThanOrEqual(rank(body[i - 1]));
+    }
+  });
+
   it("emits nothing when the census already meets quota", () => {
     const snap = empire(
       colony({

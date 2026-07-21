@@ -29,6 +29,32 @@ describe("bootstrap body (ported Allrounder.getBody)", () => {
     expect(body(500)).toEqual([WORK, CARRY, MOVE, MOVE, WORK, CARRY, MOVE, MOVE]);
   });
 
+  // The gap between whole sets is 250 energy — two extensions' worth of growth
+  // that the old formula threw away entirely, so a 450-capacity room spawned the
+  // same runt as a 250-capacity one. Spend the remainder on CARRY+MOVE pairs
+  // (100 each, fatigue-neutral) up to 3 CARRY per WORK: more energy per trip
+  // from the same harvest rate, which is what an allrounder walking to the
+  // controller is limited by.
+  it("spends the remainder between sets on CARRY+MOVE pairs", () => {
+    expect(body(350)).toEqual([WORK, CARRY, CARRY, MOVE, MOVE, MOVE]);
+    expect(body(450)).toEqual([WORK, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE]);
+  });
+
+  it("prefers a whole extra set over more carry once one is affordable", () => {
+    // 500 buys the 2-WORK body rather than 1 WORK with 4 CARRY: at the source
+    // WORK is the bottleneck, so the second WORK is worth more than the carry.
+    expect(body(500).filter(p => p === WORK)).toHaveLength(2);
+    // ...and the pairs then resume on top of the larger base.
+    expect(body(600)).toEqual([WORK, CARRY, CARRY, MOVE, MOVE, MOVE, WORK, CARRY, MOVE, MOVE]);
+  });
+
+  it("never proposes a body the budget cannot pay for", () => {
+    const cost = (b: BodyPartConstant[]) => b.reduce((s, p) => s + BODYPART_COST[p], 0);
+    for (let e = 250; e <= 1400; e += 50) {
+      expect(cost(body(e))).toBeLessThanOrEqual(e);
+    }
+  });
+
   it("caps the number of sets regardless of energy", () => {
     const capped = body(5000);
     expect(moves(capped)).toBe(weight(capped)); // still balanced
@@ -63,9 +89,14 @@ describe("builder role", () => {
     });
   });
 
-  it("shares the bootstrap body formula (ported Builder.getBody — same full-speed sets)", () => {
+  // Builder keeps the plain whole-set formula (ported Builder.getBody). The
+  // bootstrap rungs between sets are tuned for a creep that harvests its own
+  // energy; a builder withdraws a full load from storage in one tick, so extra
+  // CARRY buys it nothing the next set does not buy better.
+  it("builds whole full-speed sets only, ignoring the remainder", () => {
     expect(ROLES.builder.body(300)).toEqual([WORK, CARRY, MOVE, MOVE]);
-    expect(ROLES.builder.body(550)).toEqual(ROLES.bootstrap.body(550));
+    expect(ROLES.builder.body(450)).toEqual([WORK, CARRY, MOVE, MOVE]);
+    expect(ROLES.builder.body(550)).toEqual([WORK, CARRY, MOVE, MOVE, WORK, CARRY, MOVE, MOVE]);
   });
 });
 

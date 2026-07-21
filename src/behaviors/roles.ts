@@ -2,6 +2,7 @@
 // Adding a role is adding a row here — not five files and two registries.
 
 import type { RoleName } from "../memory/schema";
+import { affordableSets, bodyCost, countPart, parts } from "./body";
 import type { BodyContext, RoleDef } from "./types";
 
 // [WORK,CARRY,MOVE,MOVE] sets — 250 energy each. The doubled MOVE is the point:
@@ -13,30 +14,80 @@ import type { BodyContext, RoleDef } from "./types";
 // RCL1 300 cap, 50 unavoidable spare); capped so a big room doesn't field
 // oversized allrounders instead of specialists.
 const BOOTSTRAP_SET: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE];
-const BOOTSTRAP_SET_COST = 250;
 const MAX_BOOTSTRAP_SETS = 5;
+// A CARRY+MOVE pair — one weight-part and one MOVE, so it keeps the 1:1 ratio
+// the set is built on.
+const BOOTSTRAP_PAIR: BodyPartConstant[] = [CARRY, MOVE];
+// Carry parts one WORK's harvest can usefully fill on a trip. Past this the
+// creep spends more of its life standing at the source filling up than it saves
+// in trips, so the remainder is better held back for the next whole set.
+const MAX_CARRY_PER_WORK = 3;
 
-function bootstrapBody(energy: number): BodyPartConstant[] {
-  const budget = Math.max(BOOTSTRAP_SET_COST, energy);
-  const sets = Math.min(MAX_BOOTSTRAP_SETS, Math.max(1, Math.floor(budget / BOOTSTRAP_SET_COST)));
-  let parts: BodyPartConstant[] = [];
+function wholeSets(energy: number): BodyPartConstant[] {
+  const sets = affordableSets(energy, BOOTSTRAP_SET, 1, MAX_BOOTSTRAP_SETS);
+  let body: BodyPartConstant[] = [];
   for (let i = 0; i < sets; i++) {
-    parts = parts.concat(BOOTSTRAP_SET);
+    body = body.concat(BOOTSTRAP_SET);
   }
-  return parts;
+  return body;
 }
 
-// Ported from Upgrader.getBody: a WORK/CARRY/MOVE base, clamped to a
-// 300-energy floor, plus WORK,WORK,MOVE sets (heavy WORK, standard 2:1
-// move ratio) up to 15 sets (the 50-body-part cap).
-function upgraderBody(energy: number): BodyPartConstant[] {
-  const energyCap = Math.min(Math.max(300, energy), 4050);
-  const fullSets = Math.min(15, Math.max(0, Math.floor((energyCap - 300) / 250)));
-  let parts: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE];
-  for (let i = 0; i < fullSets; i++) {
-    parts = parts.concat([WORK, WORK, MOVE]);
+/**
+ * Whole [WORK,CARRY,MOVE,MOVE] sets, plus CARRY+MOVE pairs bought out of the
+ * leftover energy between sets.
+ *
+ * Sets alone only step every 250 energy, so a room's first extensions bought
+ * nothing: at 350 and 450 capacity it still spawned the 250 runt and threw the
+ * rest away. The pairs turn each 100 of that remainder into carry capacity —
+ * fatigue-neutral, so the creep still moves at full road speed loaded — and the
+ * next whole set takes over as soon as it is affordable, because a second WORK
+ * doubles the harvest rate and that is the real bottleneck.
+ *
+ * Rungs: 250 [W C MM] -> 350 [W CC MMM] -> 450 [W CCC MMMM] -> 500 [W C MM]x2
+ * -> 600 -> 700 -> 750 [W C MM]x3, and so on.
+ */
+function bootstrapBody(energy: number): BodyPartConstant[] {
+  const base = wholeSets(energy);
+  const work = countPart(base, WORK);
+
+  const spare = Math.max(0, energy - bodyCost(base));
+  const room = work * MAX_CARRY_PER_WORK - countPart(base, CARRY);
+  const pairs = Math.max(0, Math.min(room, Math.floor(spare / bodyCost(BOOTSTRAP_PAIR))));
+  if (pairs === 0) return base;
+
+  // Spread the pairs across the sets rather than appending them, so the CARRY
+  // and its matching MOVE are decided together and the 1:1 ratio is visible in
+  // the shape. The final part order is not decided here — orderBody sorts the
+  // assembled body by survival priority before it is spawned.
+  const carryPerSet = 1 + Math.floor(pairs / work);
+  let extra = pairs % work; // the sets that get one more than the rest
+  let body: BodyPartConstant[] = [];
+  for (let i = 0; i < work; i++) {
+    const carry = carryPerSet + (extra > 0 ? 1 : 0);
+    if (extra > 0) extra--;
+    body = body.concat([WORK, ...parts(CARRY, carry), ...parts(MOVE, carry + 1)]);
   }
-  return parts;
+  return body;
+}
+
+// Ported from Builder.getBody: whole full-speed sets, remainder unspent.
+const builderBody = wholeSets;
+
+// Ported from Upgrader.getBody: a WORK/CARRY/MOVE base plus WORK,WORK,MOVE sets
+// (heavy WORK, standard 2:1 move ratio) bought from whatever the base leaves,
+// up to 15 sets (the 50-body-part cap).
+const UPGRADER_BASE: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE];
+const UPGRADER_SET: BodyPartConstant[] = [WORK, WORK, MOVE];
+const MAX_UPGRADER_SETS = 15;
+
+function upgraderBody(energy: number): BodyPartConstant[] {
+  const spare = Math.max(0, energy - bodyCost(UPGRADER_BASE));
+  const sets = affordableSets(spare, UPGRADER_SET, 0, MAX_UPGRADER_SETS);
+  let body: BodyPartConstant[] = UPGRADER_BASE;
+  for (let i = 0; i < sets; i++) {
+    body = body.concat(UPGRADER_SET);
+  }
+  return body;
 }
 
 const SOURCE_SATURATING_WORK = 5; // 5 WORK * 2 energy/tick == a source's 10/tick
@@ -55,27 +106,29 @@ function minerBody(energy: number, ctx: BodyContext): BodyPartConstant[] {
   // A parked miner barely moves, so MOVE is bought last, out of whatever the
   // WORK parts leave behind — up to the usual 1 MOVE per 2 WORK, never zero.
   const carry = ctx.hasLink ? 1 : 0; // a link must be transferred into
-  const budget = energy - carry * 50;
-  const work = Math.min(SOURCE_SATURATING_WORK, Math.max(1, Math.floor((budget - 50) / 100)));
-  const move = Math.max(1, Math.min(Math.ceil(work / 2), Math.floor((budget - work * 100) / 50)));
+  // Reserve one MOVE up front — the miner still has to walk to the source, so
+  // WORK is sized from what is left after the carry and that one MOVE.
+  const budget = energy - bodyCost(parts(CARRY, carry)) - BODYPART_COST[MOVE];
+  const work = Math.min(SOURCE_SATURATING_WORK, Math.max(1, Math.floor(budget / BODYPART_COST[WORK])));
+  const spare = energy - bodyCost([...parts(WORK, work), ...parts(CARRY, carry)]);
+  const move = Math.max(1, Math.min(Math.ceil(work / 2), Math.floor(spare / BODYPART_COST[MOVE])));
 
-  return [
-    ...(new Array<BodyPartConstant>(work).fill(WORK)),
-    ...(new Array<BodyPartConstant>(carry).fill(CARRY)),
-    ...(new Array<BodyPartConstant>(move).fill(MOVE))
-  ];
+  return [...parts(WORK, work), ...parts(CARRY, carry), ...parts(MOVE, move)];
 }
 
 // Ported from HaulerOperation's carry-parts math: CARRY,CARRY,MOVE sets
 // (2:1, enough MOVE to stay at speed on roads) repeated up to the energy
 // cap, never fewer than one set.
+const HAULER_SET: BodyPartConstant[] = [CARRY, CARRY, MOVE];
+const MAX_HAULER_SETS = 16; // 16 sets = 48 parts, just under the 50-part cap
+
 function haulerBody(energy: number): BodyPartConstant[] {
-  const sets = Math.min(16, Math.max(1, Math.floor(energy / 150))); // 16 sets = 48 parts
-  let parts: BodyPartConstant[] = [];
+  const sets = affordableSets(energy, HAULER_SET, 1, MAX_HAULER_SETS);
+  let body: BodyPartConstant[] = [];
   for (let i = 0; i < sets; i++) {
-    parts = parts.concat([CARRY, CARRY, MOVE]);
+    body = body.concat(HAULER_SET);
   }
-  return parts;
+  return body;
 }
 
 export const ROLES = {
@@ -95,10 +148,13 @@ export const ROLES = {
   // Ported from Builder's job priority (the Build* jobs, then PickupNearest),
   // recast forward: refill from storage, then a container, then fall back to
   // harvesting a source directly, and spend it on whatever site is nearest.
-  // Body is Allrounder's formula — legacy Builder.getBody is the same
-  // WORK/CARRY/MOVE set calculation, so bootstrapBody covers both.
+  // Body is legacy Builder.getBody's whole-set calculation — deliberately not
+  // bootstrapBody: the extra CARRY bootstrap buys between sets pays off for a
+  // creep that fills up 2 energy at a time at a source, but a builder withdraws
+  // a full load from storage in one tick, so for it the next WORK is always the
+  // better use of the remainder.
   builder: {
-    body: bootstrapBody,
+    body: builderBody,
     steps: [
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },

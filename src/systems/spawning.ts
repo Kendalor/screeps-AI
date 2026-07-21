@@ -3,6 +3,7 @@
 // the actual census in the snapshot, and emit spawn intents for the highest
 // deficit at an available spawn. No persisted spawn list, no name bookkeeping.
 
+import { bodyCost, countPart, orderBody } from "../behaviors/body";
 import { roleDef } from "../behaviors/roles";
 import type { BodyContext } from "../behaviors/types";
 import type { Intent } from "../intents/types";
@@ -40,7 +41,10 @@ export function planSpawning(snap: EmpireSnapshot): Intent[] {
     // rejected by the affordability guard every tick and the colony would stay
     // dead forever. The spawn's own regen is the honest budget there.
     const budget = recovering ? colony.energyAvailable : colony.energyCapacity;
-    const body = def.body(budget, bodyContext(colony));
+    // Order once, here, rather than in each body formula: damage eats parts in
+    // array order, so this is a property of every body ever spawned, and a role
+    // added later cannot forget to apply it.
+    const body = orderBody(def.body(budget, bodyContext(colony)));
     // Body calculators clamp their energy argument up to a per-role floor, so
     // below it they return a body the room cannot pay for. Pricing the body the
     // role actually produced keeps this honest when body formulas change —
@@ -56,10 +60,6 @@ export function planSpawning(snap: EmpireSnapshot): Intent[] {
     });
   }
   return out;
-}
-
-function bodyCost(body: BodyPartConstant[]): number {
-  return body.reduce((sum, part) => sum + BODYPART_COST[part], 0);
 }
 
 // Total creep loss — the one state a colony cannot leave on its own. Nothing is
@@ -133,7 +133,7 @@ export function desiredBootstrapCount(colony: ColonySnapshot): number {
 // to the body automatically.
 function bootstrapWorkParts(energyCapacity: number): number {
   const body = roleDef("bootstrap")?.body(energyCapacity, { hasContainer: false, hasLink: false }) ?? [];
-  return Math.max(1, body.filter(p => p === WORK).length);
+  return Math.max(1, countPart(body, WORK));
 }
 
 // P0 bootstrap quota plus the P1 miner/hauler/upgrader/builder quotas. Miners
