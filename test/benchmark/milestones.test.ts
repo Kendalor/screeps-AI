@@ -39,9 +39,11 @@
 //                               diagnostic half: a drop in harvest says the
 //                               economy got worse, the split says where it went.
 //
-// Both need bunkerTerrain(): stubWorld()'s stock rooms top out at clearance 4
-// and cannot host a BUNKER_RADIUS=6 bunker, so no anchor is ever found and no
-// extension site is ever placed (see harness.bunkerTerrain).
+// Both run in the harness's default room — bunker terrain, spawn on the
+// layout's own spawn tile. Both halves are load-bearing: stubWorld()'s stock
+// rooms top out at clearance 4 against BUNKER_RADIUS=6, so no anchor is found
+// and no extension site is ever placed; and an off-layout spawn measures the
+// bunker's distances from the wrong tile.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import {
@@ -51,8 +53,8 @@ import {
   regressions,
   type BenchResult
 } from "./benchmarks";
-import { EnergyMetrics, type EnergyReport } from "./energyMetrics";
-import { BootedColony, bunkerTerrain, bundleBot, CheckpointLadder } from "./harness";
+import { EnergyMetrics, type EnergyReport } from "../integration/energyMetrics";
+import { BootedColony, bundleBot, CheckpointLadder } from "../integration/harness";
 
 // CONTROLLER_STRUCTURES.extension[2] — the engine's own cap at RCL2.
 const EXTENSIONS_AT_RCL2 = 5;
@@ -71,6 +73,15 @@ const SPEC: BenchmarkSpec = {
   sinkCreeps: { unit: "fraction of spend" }
 };
 
+// History file is overridable so several runs of this benchmark can be executed
+// concurrently to build up history faster (scripts/bench-parallel.mjs).
+// `recordBenchmark` is an unlocked read-modify-write of one JSON file, so
+// concurrent runs sharing it would collide — one silently dropping the other's
+// entry. The driver script gives each worker its own shard file, then merges
+// the shards into the committed history sequentially. (The storage port and
+// server dir need no such override: `BootedColony.boot` self-allocates both.)
+const BENCH_OUT = process.env.BENCH_FILE;
+
 let colony: BootedColony;
 
 // One accounting spans both milestones: each benchmark reports the economy as
@@ -78,13 +89,11 @@ let colony: BootedColony;
 const energy = new EnergyMetrics();
 
 beforeAll(async () => {
-  colony = await BootedColony.boot({
-    botCode: bundleBot(),
-    port: 21085,
-    terrain: bunkerTerrain(),
-    spawnX: 25,
-    spawnY: 25
-  });
+  // Default room and default spawn placement: bunker terrain with the spawn on
+  // the layout's own spawn tile (harness.ts). Both matter to the figures — the
+  // bunker's geometry is measured from the anchor, so an off-layout spawn would
+  // benchmark a room the layout was never designed for.
+  colony = await BootedColony.boot({ botCode: bundleBot() });
 }, 120_000);
 
 afterAll(() => {
@@ -124,7 +133,15 @@ test(
   async () => {
     const ladder = new CheckpointLadder([
       { name: "first creep alive", by: 150 },
-      { name: "controller upgrading", by: 500 },
+      // First delivery is later than it looks like it should be, because the
+      // bunker anchor optimises for controller proximity (CONTROLLER_WEIGHT) and
+      // so starts the colony *further from its sources*: the opening round trip
+      // is long, and nothing reaches the controller until it completes. The trade
+      // pays for itself immediately after — the short controller haul is why RCL2
+      // still lands inside its own budget with room to spare. Budgeted off the
+      // on-layout geometry (~600); the old 500 was calibrated against a spawn
+      // parked near the sources, which no real bunker colony enjoys.
+      { name: "controller upgrading", by: 700 },
       { name: "RCL2", by: 1200 }
     ]);
 
@@ -158,7 +175,7 @@ test(
     // otherwise record a 0 baseline and look stable forever.
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
 
-    check(recordBenchmark("rcl2", { ticks: rcl2Tick, ...economyOf(report) }, SPEC));
+    check(recordBenchmark("rcl2", { ticks: rcl2Tick, ...economyOf(report) }, SPEC, BENCH_OUT));
   },
   300_000
 );
@@ -187,7 +204,7 @@ test(
     const report = energy.report();
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
 
-    check(recordBenchmark("rcl2-extensions-built", { ticks: builtTick, ...economyOf(report) }, SPEC));
+    check(recordBenchmark("rcl2-extensions-built", { ticks: builtTick, ...economyOf(report) }, SPEC, BENCH_OUT));
   },
   600_000
 );

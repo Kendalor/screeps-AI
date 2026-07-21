@@ -9,21 +9,16 @@
 // one the bot placed and built under its own power.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { BootedColony, bunkerTerrain, bundleBot } from "./harness";
+import { BootedColony, bundleBot } from "./harness";
 
 let colony: BootedColony;
 
 beforeAll(async () => {
-  // bunkerTerrain() is mandatory: stubWorld()'s stock rooms top out at
-  // clearance 4 and cannot host a BUNKER_RADIUS=6 bunker, so the anchor stays
-  // null forever and no planner — mining included — ever runs.
-  colony = await BootedColony.boot({
-    botCode: bundleBot(),
-    port: 21083,
-    terrain: bunkerTerrain(),
-    spawnX: 25,
-    spawnY: 25
-  });
+  // Default room and spawn placement (harness.ts). Both are load-bearing here:
+  // an unanchorable room runs no planner at all (mining included), and the
+  // miner/hauler paths this test exercises run between the sources and the
+  // bunker, so an off-layout spawn would measure the wrong distances.
+  colony = await BootedColony.boot({ botCode: bundleBot() });
   // Seeded at RCL3 for the same reason as rcl3.test.ts: the natural climb from
   // RCL1 costs tens of thousands of ticks. Containers are gated at RCL2, so
   // this is above the gate without being near the RCL7 link switchover.

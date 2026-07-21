@@ -17,7 +17,7 @@ import { BootedColony, bundleBot } from "./harness";
 let colony: BootedColony;
 
 beforeAll(async () => {
-  colony = await BootedColony.boot({ botCode: bundleBot(), port: 21079 });
+  colony = await BootedColony.boot({ botCode: bundleBot() });
   // Skip the RCL1 warmup (issue #9): recovery is about losing what you had, so
   // the room starts established rather than as a fresh spawn.
   await colony.setControllerLevel(4); // RCL4 is the first level that allows storage

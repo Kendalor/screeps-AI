@@ -19,7 +19,7 @@ import { BootedColony, bundleBot, CheckpointLadder } from "./harness";
 let colony: BootedColony;
 
 beforeAll(async () => {
-  colony = await BootedColony.boot({ botCode: bundleBot(), port: 21079 });
+  colony = await BootedColony.boot({ botCode: bundleBot() });
   await colony.setControllerLevel(2, 44_900);
 }, 120_000);
 

@@ -36,9 +36,10 @@
 // from a cold boot) so both describe this leg alone. See that file's header for
 // what each one means.
 //
-// Needs bunkerTerrain() for the same reason the other milestones do: stubWorld()
-// rooms top out at clearance 4 and cannot host a BUNKER_RADIUS=6 bunker, so no
-// anchor is found and nothing downstream of layout planning ever runs.
+// Runs in the harness's default room for the same reason the other milestones
+// do: bunker terrain (stubWorld() rooms top out at clearance 4 against
+// BUNKER_RADIUS=6, so no anchor is found and nothing downstream of layout
+// planning runs) with the spawn on the layout's own spawn tile.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import type { PlacedStructure } from "../../src/layouts/stamp";
@@ -50,9 +51,9 @@ import {
   regressions,
   type BenchResult
 } from "./benchmarks";
-import { EnergyMetrics, type EnergyReport } from "./energyMetrics";
-import { BootedColony, bunkerTerrain, bundleBot, CheckpointLadder } from "./harness";
-import { outstanding, seedColony } from "./seed";
+import { EnergyMetrics, type EnergyReport } from "../integration/energyMetrics";
+import { BootedColony, bundleBot, CheckpointLadder } from "../integration/harness";
+import { outstanding, seedColony } from "../integration/seed";
 
 // Same interpretation as milestones.test.ts — these measure the same quantities
 // at a later pair of milestones.
@@ -79,19 +80,14 @@ const TARGET_LEVEL = 3;
 // computed on the first snapshot, and nothing meaningful is built in this window.
 const TICKS_TO_ANCHOR = 5;
 
-// Port and history file are overridable so several runs of this benchmark can be
-// executed concurrently to build up history faster (scripts/bench-parallel.mjs).
-// Both must be per-run: the mockup binds a storage port, and `recordBenchmark` is
-// an unlocked read-modify-write of one JSON file, so two concurrent runs sharing
-// either would collide — one silently dropping the other's entry. The driver
-// script gives each worker its own port and shard file, then merges the shards
-// into the committed history sequentially.
-const PORT = Number(process.env.BENCH_PORT ?? 21087);
+// History file is overridable so several runs of this benchmark can be executed
+// concurrently to build up history faster (scripts/bench-parallel.mjs).
+// `recordBenchmark` is an unlocked read-modify-write of one JSON file, so
+// concurrent runs sharing it would collide — one silently dropping the other's
+// entry. The driver script gives each worker its own shard file, then merges
+// the shards into the committed history sequentially. (The storage port and
+// server dir need no such override: `BootedColony.boot` self-allocates both.)
 const BENCH_OUT = process.env.BENCH_FILE;
-// The mockup's server directory defaults to a shared `./server`, into which it
-// copies the seed db — concurrent runs clobber each other's database and die
-// within seconds, so a parallel worker must be given its own.
-const SERVER_DIR = process.env.BENCH_SERVER_DIR;
 
 let colony: BootedColony;
 
@@ -102,14 +98,12 @@ let rcl3Targets: PlacedStructure[] = [];
 const energy = new EnergyMetrics();
 
 beforeAll(async () => {
-  colony = await BootedColony.boot({
-    botCode: bundleBot(),
-    port: PORT,
-    serverDir: SERVER_DIR,
-    terrain: bunkerTerrain(),
-    spawnX: 25,
-    spawnY: 25
-  });
+  // Default room and spawn placement (harness.ts): bunker terrain, spawn on the
+  // layout's own spawn tile. A hand-placed spawn is not wrong so much as
+  // *off-layout* — the bunker's geometry (filler round trips, the spawn's place
+  // in the extension blob) is all measured from the anchor, so a spawn parked
+  // elsewhere quietly benchmarks a room the layout was never designed for.
+  colony = await BootedColony.boot({ botCode: bundleBot() });
 
   await colony.runTicks(TICKS_TO_ANCHOR);
   expect(
@@ -123,11 +117,14 @@ beforeAll(async () => {
   expect(seeded.energy, "the seeded colony started with no energy — it would recover rather than run").toBeGreaterThan(0);
 
   // The RCL3 target, from the same planner asked as if the colony were already
-  // there: this is the set it will aim for once it arrives. Reduced to what the
-  // room does not already satisfy, which is what makes it a *reachable* target —
-  // the goal layout wants a spawn on the bunker anchor, but the room's real spawn
-  // already fills the single slot RCL3 allows, so a raw target set would sit
-  // permanently one structure short of complete (see `outstanding`).
+  // there: this is the set it will aim for once it arrives. Reduced by
+  // `outstanding` to what the room does not already satisfy, which is what makes
+  // it a *reachable* target: a wanted placement is also satisfied when the room
+  // already holds as many of that type as the RCL permits, and a raw target set
+  // would then wait forever on a structure the colony is not allowed to build.
+  // The spawn is the standing example — one slot until RCL7, already filled —
+  // though `spawnOnLayout` now puts that spawn on the tile the layout asks for,
+  // so it drops out on the tile check rather than the cap.
   const snapshotAtRcl3 = { ...(await colony.layoutSnapshot()), controllerLevel: TARGET_LEVEL };
   rcl3Targets = outstanding(
     wantedStructures(snapshotAtRcl3),

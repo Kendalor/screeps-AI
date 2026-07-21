@@ -24,21 +24,16 @@
 // its own. Everything asserted below is the bot's own doing — nothing is injected.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { BootedColony, bunkerTerrain, bundleBot, CheckpointLadder } from "./harness";
+import { BootedColony, bundleBot, CheckpointLadder } from "./harness";
 
 let colony: BootedColony;
 
 beforeAll(async () => {
-  // stubWorld()'s stock rooms top out at clearance 4 and cannot host a
-  // BUNKER_RADIUS=6 bunker at all, so no anchor would ever be found — see
-  // bunkerTerrain(). Spawn near the centre, inside the buildable pocket.
-  colony = await BootedColony.boot({
-    botCode: bundleBot(),
-    port: 21081,
-    terrain: bunkerTerrain(),
-    spawnX: 25,
-    spawnY: 25
-  });
+  // Default room and spawn placement (harness.ts): bunker terrain, spawn on the
+  // layout's own spawn tile — so the colony plans around the same geometry it
+  // would in a real room. This test needs both: it asserts the anchor is found
+  // at all, which stubWorld()'s clearance-4 rooms could never satisfy.
+  colony = await BootedColony.boot({ botCode: bundleBot() });
   await colony.setControllerLevel(3);
 }, 120_000);
 

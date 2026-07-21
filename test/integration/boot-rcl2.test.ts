@@ -5,8 +5,13 @@
 // dispatch actually drive a colony in a real engine. None of that glue is
 // unit-tested by design; this is where it is verified.
 //
-// Observed on the reference machine: first creep ~tick 10, RCL2 ~tick 573.
-// Budgets below carry margin for run-to-run pathing variance.
+// Runs in the harness's default room: bunker terrain with the spawn on the
+// layout's own spawn tile, the same geometry every other scenario uses, since
+// the bunker is the only layout the bot has.
+//
+// Observed on the reference machine: first creep ~tick 2, first upgrade ~tick
+// 593, RCL2 ~tick 779. Budgets below carry margin for run-to-run pathing
+// variance.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { BootedColony, bundleBot, CheckpointLadder } from "./harness";
@@ -26,7 +31,15 @@ test(
   async () => {
     const ladder = new CheckpointLadder([
       { name: "first creep alive", by: 150 },
-      { name: "controller upgrading", by: 500 },
+      // Later than it looks like it should be, because the bunker anchor
+      // optimises for controller proximity (CONTROLLER_WEIGHT) and so starts the
+      // colony *further from its sources*: the opening round trip is long, and
+      // nothing reaches the controller until it completes. The trade pays for
+      // itself immediately after — the short controller haul is why RCL2 still
+      // lands well inside its own budget. Budgeted off the on-layout geometry;
+      // the old 500 assumed a spawn parked near the sources, which no real
+      // bunker colony enjoys.
+      { name: "controller upgrading", by: 700 },
       { name: "RCL2", by: 1000 }
     ]);
 

@@ -12,10 +12,16 @@
 // memory). Runs on demand via `npm run test:integration`, never per-commit.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import net from "node:net";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { ScreepsServer, TerrainMatrix } from "screeps-server-mockup";
 import { EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY } from "@screeps/common/lib/constants";
+import goalLayout from "../../src/layouts/Base_2.json";
+import { buildableAtRcl } from "../../src/layouts/goal";
+import { findAnchorCandidates, pickAnchor, stampLayout } from "../../src/layouts/stamp";
+import type { GoalLayout } from "../../src/layouts/sync";
 import type { XY } from "../../src/lib/geometry";
 import type { ColonySnapshot } from "../../src/snapshot/types";
 import { EnergyMetrics, observeTick, type RawObj } from "./energyMetrics";
@@ -32,15 +38,18 @@ let cachedBundle: string | undefined;
  * Build the shipped bot bundle with rollup (no DEST/LOCAL env → compile only,
  * no upload, no copy to the live client) and return `dist/main.js` as a string
  * ready to hand to the mockup as the `main` module. Memoised per process so a
- * suite of scenarios only pays the ~1s build once. Runs under the same Node
- * that runs the tests via `process.execPath`.
+ * file with several scenarios only pays the ~1s build once. Runs under the
+ * same Node that runs the tests via `process.execPath`.
  *
  * `BOT_BUNDLE` short-circuits the build and reads a prebuilt bundle from that
- * path instead. Concurrent runs need it: rollup writes to a single shared
- * `dist/main.js`, so several processes building at once race — one truncates
- * the file another is reading, and that worker dies on boot. The parallel
- * driver (scripts/bench-parallel.mjs) therefore builds once up front and points
- * every worker at the result.
+ * path instead. This is what makes running several test files at once safe:
+ * rollup writes to a single shared `dist/main.js`, so several *processes*
+ * building at once would race — one truncates the file another is reading,
+ * and that worker dies on boot. With `fileParallelism` on, every test file
+ * gets its own process (see vitest.integration.config.ts / vitest.benchmark
+ * .config.ts, `pool: "forks"`), so both configs set BOT_BUNDLE via a
+ * `globalSetup` that builds once up front (test/integration/global-setup.ts).
+ * scripts/bench-parallel.mjs does the same for its own multi-process case.
  */
 export function bundleBot(): string {
   if (cachedBundle) return cachedBundle;
@@ -53,6 +62,27 @@ export function bundleBot(): string {
   execFileSync(process.execPath, [rollupBin, "-c"], { cwd: REPO_ROOT, stdio: "ignore" });
   cachedBundle = readFileSync(path.join(REPO_ROOT, "dist", "main.js"), "utf8");
   return cachedBundle;
+}
+
+/**
+ * An OS-assigned free TCP port, for `boot()` to bind the mockup's storage to
+ * when the caller has not pinned one. Letting the OS pick — rather than a
+ * hardcoded number per test file — is what lets any number of colonies boot at
+ * once, in one process or across several, with no shared list of "ports in
+ * use" to keep in sync by hand.
+ */
+async function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const address = srv.address();
+      srv.close(() => {
+        if (typeof address === "object" && address) resolve(address.port);
+        else reject(new Error("could not determine a free port"));
+      });
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -87,23 +117,57 @@ export interface BootOptions {
   botCode: string;
   /** Owned room. Must be one of stubWorld()'s 9 rooms. Default "W0N1". */
   room?: string;
-  /** Spawn position. Default (20, 30) — a plain tile in the stub rooms. */
+  /**
+   * Spawn position. Only consulted when `spawnOnLayout` is switched off, or in
+   * a room that admits no anchor; otherwise the layout decides. Default
+   * (20, 30) — a plain tile in the stub rooms.
+   */
   spawnX?: number;
   spawnY?: number;
+  /**
+   * Place the spawn on the tile the bunker layout wants it on, rather than at
+   * `spawnX/spawnY`. Default true — the bunker is the only layout the bot has,
+   * so a spawn anywhere else is a room the bot was never written for.
+   *
+   * Off-layout, the colony survives but is quietly mismeasured:
+   * `CONTROLLER_STRUCTURES.spawn` is 1 until RCL7, so it simply never builds
+   * the layout's spawn, and every distance the bunker is designed around
+   * (filler round trips, the spawn's place in the extension blob) is measured
+   * from the wrong tile. The RCL3 benchmark ran ~20% slow this way.
+   *
+   * Resolved via `predictAnchor` + `layoutSpawnPos`, so the spawn lands exactly
+   * where the bot would have put it. Falls back to `spawnX/spawnY` when the
+   * room admits no anchor — with `terrain` defaulting to `bunkerTerrain()` that
+   * only happens if a caller passes terrain with no 13x13 pocket.
+   */
+  spawnOnLayout?: boolean;
   username?: string;
-  /** Storage port. Default 21077 to dodge the standard 21025 private server. */
+  /**
+   * Storage port. Default: an OS-assigned free port, so any number of colonies
+   * can boot concurrently (across files or within one) without their storage
+   * ever colliding. Pass an explicit port only when something outside this
+   * process needs to find it at a known address.
+   */
   port?: number;
   /**
    * Server working directory — where the mockup copies `db.json` and writes
-   * logs. Defaults to `./server`, which is *shared*, so two servers running at
-   * once would overwrite each other's database and die within seconds of
-   * starting. Any concurrent use must pass a distinct directory per server; see
-   * scripts/bench-parallel.mjs, which gives each worker its own.
+   * logs. Default: a fresh, uniquely-named temp directory per boot (cleaned up
+   * by `stop()`), so concurrent servers never share one and overwrite each
+   * other's database. Pass an explicit directory only when the caller manages
+   * its own cleanup (see scripts/bench-parallel.mjs).
    */
   serverDir?: string;
   /**
-   * Replace the stub room's terrain before the first tick. Required by any
-   * scenario that exercises the bunker layout — see `bunkerTerrain()`.
+   * Room terrain, laid down before the first tick. Default `bunkerTerrain()` —
+   * every scenario gets the same anchorable room, because the bunker is the
+   * only layout the bot has and a room it cannot anchor in is not a room the
+   * bot is written for.
+   *
+   * `stubWorld()`'s stock rooms are the alternative and a poor default: their
+   * clearance tops out at 4 against BUNKER_RADIUS=6, so `pickAnchor` returns
+   * null, no layout is ever stamped, and anything downstream of planning
+   * silently does nothing. Pass an explicit matrix only to test that behaviour
+   * deliberately.
    */
   terrain?: TerrainMatrix;
 }
@@ -149,6 +213,59 @@ export function bunkerTerrain(): TerrainMatrix {
   return terrain;
 }
 
+// ---------------------------------------------------------------------------
+// Predicting the bot's anchor before the bot exists
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the bot *will* anchor its bunker in `room`, computed before it has run.
+ *
+ * `addBot` fixes the spawn's position before the server ever starts, but the
+ * anchor is the bot's own decision and is not cached in Memory until it has
+ * ticked — so a scenario choosing a spawn position has nothing to aim at yet.
+ * This closes that gap by running the bot's own search (`findAnchorCandidates`
+ * + `pickAnchor`, both pure and fixture-only by design) over the room as it
+ * stands, which is exactly what `resolveAnchor` in snapshot/colony.ts will do
+ * on the first tick. Same terrain, same controller, same sources, same
+ * functions — so the prediction is the decision, not a guess that could drift.
+ *
+ * Call *after* `setTerrain` and before `addBot`: the search reads terrain, so
+ * predicting against the stub terrain and then reshaping it would invalidate
+ * the answer.
+ */
+export async function predictAnchor(server: ScreepsServer, room: string): Promise<XY | null> {
+  const matrix = await server.world.getTerrain(room);
+  const grid = new Uint8Array(2500);
+  for (let x = 0; x < 50; x++) {
+    for (let y = 0; y < 50; y++) grid[x * 50 + y] = matrix.get(x, y) === "wall" ? 0 : 1;
+  }
+
+  const objects = (await server.world.roomObjects(room)) as RoomObject[];
+  const controller = objects.find(o => o.type === "controller");
+  if (!controller) return null;
+
+  return pickAnchor(findAnchorCandidates(grid), {
+    controller: { x: controller.x, y: controller.y },
+    sources: objects.filter(o => o.type === "source").map(s => ({ x: s.x, y: s.y }))
+  });
+}
+
+/**
+ * The tile the goal layout puts the colony's first spawn on, given `anchor`.
+ *
+ * Read out of the goal layout rather than restated, so it tracks Base_2.json:
+ * the spawn the bot would build first is the lowest-`order` spawn placement,
+ * stamped onto the anchor. `buildableAtRcl` at RCL1 applies the same
+ * CONTROLLER_STRUCTURES cap the colony lives under, so this is the one spawn
+ * slot it is permitted, not merely the first of three in the file.
+ */
+export function layoutSpawnPos(anchor: XY): XY | null {
+  const spawn = buildableAtRcl(goalLayout as GoalLayout, 1).find(p => p.type === "spawn");
+  if (!spawn) return null;
+  const [placed] = stampLayout([spawn], anchor);
+  return { x: placed.x, y: placed.y };
+}
+
 export class BootedColony {
   /**
    * Creep ids already charged to the energy accounting. Lives on the colony so
@@ -159,29 +276,47 @@ export class BootedColony {
   private constructor(
     readonly server: ScreepsServer,
     readonly bot: Awaited<ReturnType<ScreepsServer["world"]["addBot"]>>,
-    readonly room: string
+    readonly room: string,
+    /** Set when `boot()` created the server dir itself, so `stop()` removes it. */
+    private readonly ownedServerDir?: string
   ) {}
 
   static async boot(opts: BootOptions): Promise<BootedColony> {
     const room = opts.room ?? "W0N1";
-    const dir = opts.serverDir;
+    const port = opts.port ?? (await getFreePort());
+    // A caller-supplied dir is theirs to manage (see scripts/bench-parallel.mjs,
+    // which shares one across a worker's whole run and cleans it up itself);
+    // otherwise each boot gets its own, so concurrent servers never collide on
+    // the mockup's shared-by-default `db.json` copy.
+    const ownedServerDir = opts.serverDir ? undefined : mkdtempSync(path.join(tmpdir(), "screeps-server-"));
+    const dir = opts.serverDir ?? ownedServerDir;
     const server = new ScreepsServer({
-      port: opts.port ?? 21077,
+      port,
       ...(dir ? { path: dir, logdir: path.join(dir, "logs") } : {})
     });
     await server.world.stubWorld();
     // Before addBot: the spawn is placed into the room as it then stands, so
     // reshaping terrain afterwards could bury it in rock.
-    if (opts.terrain) await server.world.setTerrain(room, opts.terrain);
+    await server.world.setTerrain(room, opts.terrain ?? bunkerTerrain());
+
+    // After setTerrain (the anchor search reads terrain) and before addBot (the
+    // spawn position is fixed there and cannot be moved once the server starts).
+    let spawn: XY = { x: opts.spawnX ?? 20, y: opts.spawnY ?? 30 };
+    if (opts.spawnOnLayout ?? true) {
+      const anchor = await predictAnchor(server, room);
+      const onLayout = anchor ? layoutSpawnPos(anchor) : null;
+      if (onLayout) spawn = onLayout;
+    }
+
     const bot = await server.world.addBot({
       username: opts.username ?? "kendalor",
       room,
-      x: opts.spawnX ?? 20,
-      y: opts.spawnY ?? 30,
+      x: spawn.x,
+      y: spawn.y,
       modules: { main: opts.botCode }
     });
     await server.start();
-    return new BootedColony(server, bot, room);
+    return new BootedColony(server, bot, room, ownedServerDir);
   }
 
   /** All room objects in the colony room (walls excluded — engine object rows). */
@@ -474,6 +609,7 @@ export class BootedColony {
   /** Kill the server child processes. Call in afterAll. */
   stop(): void {
     this.server.stop();
+    if (this.ownedServerDir) rmSync(this.ownedServerDir, { recursive: true, force: true });
   }
 }
 

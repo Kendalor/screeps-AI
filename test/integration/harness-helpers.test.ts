@@ -8,7 +8,7 @@ import { BootedColony, bundleBot } from "./harness";
 let colony: BootedColony;
 
 beforeAll(async () => {
-  colony = await BootedColony.boot({ botCode: bundleBot(), port: 21078 });
+  colony = await BootedColony.boot({ botCode: bundleBot() });
 }, 120_000);
 
 afterAll(() => {

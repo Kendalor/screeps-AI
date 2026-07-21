@@ -126,12 +126,17 @@ function structureAttrs(type: string, user: string, level: number): Record<strin
  * Not simply "which tiles are empty". A wanted placement is also satisfied when
  * the room already holds as many of that type as the RCL permits, even on other
  * tiles. The spawn is the case that bites: the goal layout puts a spawn on the
- * bunker anchor, but `addBot` has already placed the room's real spawn wherever
- * the scenario asked for it, and `CONTROLLER_STRUCTURES.spawn` is 1 until RCL7.
- * A tile-only check therefore reports that spawn as outstanding forever — the
- * colony cannot build a second one, so seeding it gives the room two spawns and
- * double the throughput, while a benchmark waiting for it to be built waits for
- * something that can never happen.
+ * bunker anchor, `addBot` has already placed the room's real spawn, and
+ * `CONTROLLER_STRUCTURES.spawn` is 1 until RCL7. Where that real spawn is *not*
+ * on the layout's tile, a tile-only check reports the layout spawn as
+ * outstanding forever — the colony cannot build a second one, so seeding it
+ * gives the room two spawns and double the throughput, while a benchmark
+ * waiting for it to be built waits for something that can never happen.
+ *
+ * Scenarios booting with `spawnOnLayout` (harness.ts) avoid that mismatch at the
+ * source, and there the spawn is caught by the tile check instead. The cap rule
+ * still has to hold: it is what covers a scenario that does place its spawn by
+ * hand, and every other capped type.
  *
  * Shared by `seedStructures` and by scenarios computing a build target, so both
  * agree on what "this RCL is finished" means.

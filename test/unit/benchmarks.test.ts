@@ -21,7 +21,7 @@ import {
   median,
   recordBenchmark,
   regressions
-} from "../integration/benchmarks";
+} from "../benchmark/benchmarks";
 
 let file: string;
 
