@@ -1,5 +1,6 @@
 // Builds snapshots from Game state — the only place planners' input touches the live API.
 
+import { openHarvestTiles } from "../behaviors/targets";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import type { XY } from "../lib/geometry";
 import { censusByColony, type CensusCreep } from "./census";
@@ -42,7 +43,8 @@ function buildColonySnapshot(room: Room, census: Census): ColonySnapshot {
       .map(s => ({ id: s.id as Id<StructureSpawn>, busy: (s as StructureSpawn).spawning !== null })),
     energyAvailable: room.energyAvailable,
     energyCapacity: room.energyCapacityAvailable,
-    sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y })),
+    sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
+    drops: room.find(FIND_DROPPED_RESOURCES).map(d => ({ id: d.id, x: d.pos.x, y: d.pos.y, amount: d.amount })),
     terrain: walkablePixelsForRoom(room.name),
     controllerLevel: controller.level,
     controllerProgress: controller.progress,

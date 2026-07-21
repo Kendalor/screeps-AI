@@ -73,11 +73,29 @@ describe("upgrader body (ported Upgrader.getBody)", () => {
   });
 });
 
+describe("bootstrap role", () => {
+  it("picks up a drop pile before harvesting a source itself", () => {
+    expect(roleDef("bootstrap")).toEqual({
+      body: ROLES.bootstrap.body,
+      steps: [
+        { do: "pickup", from: { find: "dropped" } },
+        { do: "harvest", from: { find: "source" } },
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
+        { do: "build" },
+        { do: "upgrade" }
+      ]
+    });
+  });
+});
+
 describe("builder role", () => {
-  it("resolves via roleDef and gathers from storage/container, falling back to harvest, before building", () => {
+  it("resolves via roleDef and picks up a pile, then gathers from storage/container, falling back to harvest, before building", () => {
     expect(roleDef("builder")).toEqual({
       body: ROLES.builder.body,
       steps: [
+        { do: "pickup", from: { find: "dropped" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
         { do: "harvest", from: { find: "source" } },
@@ -101,8 +119,19 @@ describe("miner body", () => {
   const body = (energy: number, over: Partial<Parameters<typeof ROLES.miner.body>[1]> = {}) =>
     ROLES.miner.body(energy, { hasContainer: false, hasLink: false, ...over });
 
-  it("carries a CARRY part when there is no container to drop into", () => {
-    expect(body(300)).toEqual([WORK, WORK, CARRY, MOVE]);
+  it("drops CARRY entirely before a container exists, letting energy pile on the ground", () => {
+    expect(body(300)).toEqual([WORK, WORK, MOVE, MOVE]);
+  });
+
+  it("adds WORK,MOVE sets as capacity grows, still with no CARRY", () => {
+    expect(body(450)).toEqual([WORK, WORK, MOVE, MOVE, WORK, MOVE]);
+  });
+
+  it("stops at 6 WORK (slightly above the 5 that exactly saturate a source) with no CARRY, however rich the room", () => {
+    const rich = body(5000);
+    expect(rich.filter(p => p === WORK)).toHaveLength(6);
+    expect(rich.filter(p => p === CARRY)).toHaveLength(0);
+    expect(rich.filter(p => p === MOVE)).toHaveLength(6);
   });
 
   it("drops the CARRY once there is a container to stand on", () => {
@@ -158,10 +187,11 @@ describe("miner role", () => {
 });
 
 describe("hauler role", () => {
-  it("withdraws from a container, then fills storage before falling back to spawn", () => {
+  it("picks up a drop pile before withdrawing from a container, then fills storage before falling back to spawn", () => {
     expect(roleDef("hauler")).toEqual({
       body: ROLES.hauler.body,
       steps: [
+        { do: "pickup", from: { find: "dropped" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } }
@@ -192,10 +222,11 @@ describe("supply role", () => {
 });
 
 describe("upgrader role", () => {
-  it("resolves via roleDef and withdraws from link/storage before upgrading", () => {
+  it("resolves via roleDef and picks up a pile, then withdraws from link/storage before upgrading", () => {
     expect(roleDef("upgrader")).toEqual({
       body: ROLES.upgrader.body,
       steps: [
+        { do: "pickup", from: { find: "dropped" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
         { do: "upgrade" }

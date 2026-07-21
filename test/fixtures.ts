@@ -4,6 +4,7 @@ import type {
   ColonySnapshot,
   EmpireSnapshot,
   SnapContainer,
+  SnapDrop,
   SnapSource,
   SnapSpawn,
   SnapTower,
@@ -16,8 +17,12 @@ export function openTerrain(): Uint8Array {
   return new Uint8Array(2500).fill(1);
 }
 
-export function sourceAt(x: number, y: number, id = `source_${x}_${y}`): SnapSource {
-  return { id: id as Id<Source>, x, y };
+export function sourceAt(x: number, y: number, id = `source_${x}_${y}`, openTiles = 8): SnapSource {
+  return { id: id as Id<Source>, x, y, openTiles };
+}
+
+export function dropAt(x: number, y: number, amount = 50, id = `drop_${x}_${y}`): SnapDrop {
+  return { id: id as Id<Resource>, x, y, amount };
 }
 
 export function empire(...colonies: ColonySnapshot[]): EmpireSnapshot {
@@ -36,6 +41,7 @@ export function colony(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     energyAvailable: 300,
     energyCapacity: 300,
     sources: [sourceAt(20, 10)],
+    drops: [],
     terrain: openTerrain(),
     controllerLevel: 1,
     controllerProgress: 0,

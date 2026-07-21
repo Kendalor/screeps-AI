@@ -112,13 +112,29 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
   const candidates = findCandidates(creep, spec).filter(
     c => spec.find !== "structure" || matchesWhere(toCandidate(c), spec.where)
   );
+  // A pile below the worthwhile floor is deprioritized, not excluded — falls back to the full
+  // set below if nothing clears the bar, same as the share-cap fallback.
+  const worthwhile = spec.find !== "dropped" ? candidates : candidates.filter(c => isWorthwhile(creep, c));
+  const consider = worthwhile.length > 0 ? worthwhile : candidates;
   // Fall back to the full set if every candidate is at its share cap — no target means the creep does nothing at all.
-  const uncrowded = candidates.filter(c =>
+  const uncrowded = consider.filter(c =>
     withinShareCap(creep, (c as unknown as { id: Id<_HasId> }).id, shareCap(spec, c))
   );
-  const pool = uncrowded.length > 0 ? uncrowded : candidates;
+  const pool = uncrowded.length > 0 ? uncrowded : consider;
 
   return creep.pos.findClosestByPath(pool as RoomObject[]) ?? pool[0] ?? null;
+}
+
+// The minimum a drop pile must hold before a creep will walk to it: a fraction of the
+// collector's own free capacity, plus a small absolute floor so a big creep doesn't ignore
+// every pile in an empty room. Scales from RCL1 to RCL8 with no retuning.
+const WORTHWHILE_FRACTION = 0.25;
+const WORTHWHILE_FLOOR = 50;
+
+function isWorthwhile(creep: Creep, candidate: RoomObject): boolean {
+  const amount = (candidate as unknown as { amount: number }).amount;
+  const free = creep.store.getFreeCapacity(RESOURCE_ENERGY) ?? 0;
+  return amount >= Math.max(WORTHWHILE_FRACTION * free, WORTHWHILE_FLOOR);
 }
 
 // --- targeting cache ----------------------------------------------------------
@@ -138,9 +154,18 @@ function claimCounts(): Record<string, number> {
   return counts;
 }
 
-// Unlimited by default; sources use their open-tile count so the cap is physical, not arbitrary.
+// A reference collector's worth of capacity (a cheap 2-CARRY hauler set) — the unit a pile's
+// claim limit is measured against, so a large pile absorbs several collectors and a small one
+// locks to one.
+const REFERENCE_CLAIM_CAPACITY = 100;
+
+// Unlimited by default; sources use their open-tile count and drop piles their size so the cap is physical, not arbitrary.
 function shareCap(spec: TargetSpec, candidate: RoomObject): number {
   if (spec.find === "source") return openHarvestTiles(candidate as Source);
+  if (spec.find === "dropped") {
+    const amount = (candidate as unknown as { amount: number }).amount;
+    return Math.max(1, Math.ceil(amount / REFERENCE_CLAIM_CAPACITY));
+  }
   const share = (spec as { share?: "allow" | "avoid" | number }).share;
   if (share === undefined || share === "allow") return Infinity;
   if (share === "avoid") return 1;
@@ -154,15 +179,16 @@ function withinShareCap(creep: Creep, id: Id<_HasId>, cap: number): boolean {
   return claimedByOthers < cap;
 }
 
-// Walkable tiles adjacent to the source, i.e. its share cap.
-function openHarvestTiles(source: Source): number {
-  const terrain = source.room.getTerrain();
+// Walkable tiles adjacent to a position, i.e. its share cap. Takes any positioned
+// object (not just Source) so the snapshot builder can reuse it for the same count.
+export function openHarvestTiles(at: { pos: { x: number; y: number }; room: { getTerrain(): { get(x: number, y: number): number } } }): number {
+  const terrain = at.room.getTerrain();
   let open = 0;
   for (let dx = -1; dx <= 1; dx++) {
     for (let dy = -1; dy <= 1; dy++) {
       if (dx === 0 && dy === 0) continue;
-      const x = source.pos.x + dx;
-      const y = source.pos.y + dy;
+      const x = at.pos.x + dx;
+      const y = at.pos.y + dy;
       if (x < 0 || x > 49 || y < 0 || y > 49) continue;
       if (terrain.get(x, y) !== TERRAIN_MASK_WALL) open++;
     }

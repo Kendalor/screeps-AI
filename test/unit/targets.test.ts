@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { fitsSpec, matchesWhere, resolveTarget, type TargetCandidate, type TargetKind } from "../../src/behaviors/targets";
+import {
+  fitsSpec,
+  matchesWhere,
+  openHarvestTiles,
+  resolveTarget,
+  type TargetCandidate,
+  type TargetKind
+} from "../../src/behaviors/targets";
 import { stubGame } from "../helpers";
 
 // A candidate carries only the facts the `where` predicates read, not a live game object.
@@ -231,10 +238,68 @@ describe("resolveTarget share caps", () => {
   });
 });
 
-// A source's share cap is its open harvest-tile count, computed from terrain.
-// All-plain terrain gives a free-standing source its full 8 adjacent tiles.
-const plainRoom = { getTerrain: () => ({ get: () => 0 }) };
+// A drop pile candidate; freeCapacity is what the worthwhile-amount rule reads to size its floor.
+function fakeDrop(id: string, amount: number): object {
+  return { id, pos: { x: 5, y: 5 }, amount };
+}
 
+function collectorCreep(name: string, freeCapacity: number, candidates: object[]): Creep {
+  return {
+    name,
+    pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+    room: { find: () => candidates },
+    store: { getFreeCapacity: () => freeCapacity },
+    memory: { task: { step: 0 } }
+  } as unknown as Creep;
+}
+
+describe("resolveTarget worthwhile-amount filter for drop piles", () => {
+  it("prefers a pile that clears 25% of the collector's free capacity", () => {
+    const big = fakeDrop("big", 100);
+    const small = fakeDrop("small", 10);
+    stubGame({ objects: { big, small } });
+
+    // free capacity 200 -> worthwhile floor is max(0.25*200, 50) = 50; only "big" clears it.
+    const got = resolveTarget(collectorCreep("me", 200, [small, big]), { find: "dropped" });
+
+    expect((got as { id: string }).id).toBe("big");
+  });
+
+  it("falls back to the best trivial pile when nothing clears the worthwhile bar", () => {
+    const only = fakeDrop("only", 5);
+    stubGame({ objects: { only } });
+
+    // A decaying pile must still eventually be picked up, or it would be orphaned forever.
+    const got = resolveTarget(collectorCreep("me", 200, [only]), { find: "dropped" });
+
+    expect((got as { id: string }).id).toBe("only");
+  });
+});
+
+describe("resolveTarget pile claim limits", () => {
+  it("locks a small pile to a single claimant", () => {
+    const small = fakeDrop("small", 80); // under the 100-energy reference capacity -> cap of 1
+    const large = fakeDrop("large", 500);
+    stubGame({ objects: { small, large } });
+    withClaims({ other: "small" });
+
+    const got = resolveTarget(collectorCreep("me", 200, [small, large]), { find: "dropped" });
+
+    expect((got as { id: string }).id).toBe("large");
+  });
+
+  it("lets several collectors claim a large pile", () => {
+    const large = fakeDrop("large", 500); // 500 / 100 -> cap of 5
+    stubGame({ objects: { large } });
+    withClaims({ c1: "large", c2: "large", c3: "large" });
+
+    const got = resolveTarget(collectorCreep("me", 200, [large]), { find: "dropped" });
+
+    expect((got as { id: string }).id).toBe("large");
+  });
+});
+
+// A source's share cap is its open harvest-tile count, computed from terrain.
 function fakeSource(id: string, x: number, y: number): object {
   return { id, pos: { x, y }, energy: 3000, room: plainRoom };
 }
@@ -247,6 +312,26 @@ function sourceCreep(name: string, sources: object[], lockedTarget?: string): Cr
     memory: { task: lockedTarget ? { step: 0, target: lockedTarget } : { step: 0 } }
   } as unknown as Creep;
 }
+
+// All-plain terrain gives a free-standing source its full 8 adjacent tiles.
+const plainRoom = { getTerrain: () => ({ get: () => 0 }) };
+
+// The snapshot builder needs this same count for each source, so it must work
+// against a plain positioned object, not just a live Source.
+describe("openHarvestTiles", () => {
+  it("counts all 8 neighbors open on plain terrain away from the room edge", () => {
+    expect(openHarvestTiles({ pos: { x: 25, y: 25 }, room: plainRoom })).toBe(8);
+  });
+
+  it("excludes neighbors that are walls", () => {
+    const wallRoom = { getTerrain: () => ({ get: (x: number, y: number) => (x === 25 && y === 24 ? 1 : 0) }) };
+    expect(openHarvestTiles({ pos: { x: 25, y: 25 }, room: wallRoom })).toBe(7);
+  });
+
+  it("excludes neighbors that fall off the room edge", () => {
+    expect(openHarvestTiles({ pos: { x: 0, y: 0 }, room: plainRoom })).toBe(3);
+  });
+});
 
 describe("resolveTarget source spreading", () => {
   it("sends a harvester to the emptier source once the nearer one fills its tiles", () => {

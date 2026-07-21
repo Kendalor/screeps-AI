@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { desiredMinerCount } from "../../src/systems/logistics";
 import { desiredBootstrapCount, planSpawning } from "../../src/systems/spawning";
 import { colony, containerAt, empire, sourceAt, spawn } from "../fixtures";
 
@@ -6,6 +7,12 @@ import { colony, containerAt, empire, sourceAt, spawn } from "../fixtures";
 // rather than hardcoding a count, so callers must pass the same level their scenario uses.
 function bootstrapMet(over: Parameters<typeof colony>[0] = {}): number {
   return desiredBootstrapCount(colony(over));
+}
+
+// Same, for miner — tests about lower-priority roles need the miner deficit satisfied too,
+// now that miner wants creeps from RCL1 rather than only once a container exists.
+function minerMet(over: Parameters<typeof colony>[0] = {}): number {
+  return desiredMinerCount(colony(over));
 }
 
 describe("spawning planner", () => {
@@ -55,11 +62,19 @@ describe("spawning planner", () => {
   });
 
   it("emits nothing when the census already meets quota", () => {
+    // One hauler alive lifts the cold-start floor, so the miner quota is met by whatever
+    // desiredMinerCount actually wants at this hauler count rather than a hardcoded 1.
+    const sources = [sourceAt(20, 10)];
+    const census = { hauler: 1 };
     const snap = empire(
       colony({
-        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)] }) },
+        census: {
+          bootstrap: bootstrapMet({ sources }),
+          miner: minerMet({ sources, census }),
+          ...census
+        },
         spawns: [spawn()],
-        sources: [sourceAt(20, 10)]
+        sources
       })
     );
 
@@ -79,14 +94,20 @@ describe("spawning planner", () => {
   });
 
   it("spawns an upgrader once storage exists and higher-priority quotas are met", () => {
+    const sources = [sourceAt(20, 10)];
+    const census = { hauler: 1 };
     const snap = empire(
       colony({
-        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], controllerLevel: 4 }) },
+        census: {
+          bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
+          miner: minerMet({ sources, census }),
+          ...census
+        },
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
         storageEnergy: 200_000,
-        sources: [sourceAt(20, 10)]
+        sources
       })
     );
 
@@ -101,18 +122,19 @@ describe("spawning planner", () => {
     ]);
   });
 
-  it("does not spawn miners before a container exists to receive them", () => {
+  it("spawns a miner from RCL1 with no container, once the bootstrap quota is met", () => {
+    const sources = [sourceAt(20, 10), sourceAt(30, 40)];
     const snap = empire(
       colony({
-        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10), sourceAt(30, 40)] }) },
+        census: { bootstrap: bootstrapMet({ sources }) },
         spawns: [spawn()],
         energyAvailable: 300,
-        sources: [sourceAt(20, 10), sourceAt(30, 40)],
+        sources,
         containers: []
       })
     );
 
-    expect(planSpawning(snap)).not.toMatchObject([{ role: "miner" }]);
+    expect(planSpawning(snap)).toMatchObject([{ role: "miner" }]);
   });
 
   it("spawns one miner per source once containers exist", () => {
@@ -152,13 +174,20 @@ describe("spawning planner", () => {
   });
 
   it("spawns a builder once a construction backlog exists and higher-priority quotas are met", () => {
+    const sources = [sourceAt(20, 10)];
+    const census = { hauler: 1 };
     const snap = empire(
       colony({
-        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], controllerLevel: 4 }), upgrader: 4 },
+        census: {
+          bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
+          miner: minerMet({ sources, census }),
+          upgrader: 4,
+          ...census
+        },
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
-        sources: [sourceAt(20, 10)],
+        sources,
         storageEnergy: 200_000,
         constructionProgress: 4_000
       })
@@ -176,13 +205,19 @@ describe("spawning planner", () => {
   });
 
   it("fills the upgrader deficit before the builder one — builder is lowest priority", () => {
+    const sources = [sourceAt(20, 10)];
+    const census = { hauler: 1 };
     const snap = empire(
       colony({
-        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], controllerLevel: 4 }) },
+        census: {
+          bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
+          miner: minerMet({ sources, census }),
+          ...census
+        },
         spawns: [spawn()],
         energyAvailable: 300,
         controllerLevel: 4,
-        sources: [sourceAt(20, 10)],
+        sources,
         storageEnergy: 200_000,
         constructionProgress: 4_000
       })

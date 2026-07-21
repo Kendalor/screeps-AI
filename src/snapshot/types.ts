@@ -37,6 +37,12 @@ export interface SnapContainer extends XY {
 
 export interface SnapSource extends XY {
   id: Id<Source>;
+  openTiles: number; // walkable tiles adjacent to the source, i.e. its miner/collector share cap
+}
+
+export interface SnapDrop extends XY {
+  id: Id<Resource>;
+  amount: number;
 }
 
 export interface ColonySnapshot {
@@ -50,6 +56,7 @@ export interface ColonySnapshot {
   energyAvailable: number;
   energyCapacity: number;
   sources: SnapSource[];
+  drops: SnapDrop[]; // ground-level energy from drop mining
   terrain: Uint8Array; // 1 = walkable, 0 = wall, indexed [x*50+y]
   controllerLevel: number;
   controllerProgress: number;

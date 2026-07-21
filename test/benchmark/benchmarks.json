@@ -98,6 +98,17 @@
       "sinkUpgrading": 0.16597164303586323,
       "sinkConstruction": 0,
       "sinkCreeps": 0.8340283569641368
+    },
+    {
+      "at": "2026-07-21T16:28:58.700Z",
+      "commit": "5d8aae3",
+      "ticks": 772,
+      "energyHarvestedPerTick": 0.9053177691309987,
+      "energyWasteFraction": 0.8662322729014948,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.16597164303586323,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8340283569641368
     }
   ],
   "rcl2-extensions-built": [
@@ -199,6 +210,17 @@
       "sinkUpgrading": 0.012735473600424516,
       "sinkConstruction": 0.5665390592426942,
       "sinkCreeps": 0.4207254671568813
+    },
+    {
+      "at": "2026-07-21T16:29:43.209Z",
+      "commit": "5d8aae3",
+      "ticks": 3137,
+      "energyHarvestedPerTick": 8.764030612244898,
+      "energyWasteFraction": 0.43664165949247735,
+      "energyDecayed": 732,
+      "sinkUpgrading": 0.010536157359128339,
+      "sinkConstruction": 0.5381710956884462,
+      "sinkCreeps": 0.4512927469524255
     }
   ],
   "rcl3": [
@@ -300,6 +322,17 @@
       "sinkUpgrading": 0.5471234742012352,
       "sinkConstruction": 0,
       "sinkCreeps": 0.45287652579876475
+    },
+    {
+      "at": "2026-07-21T16:30:58.597Z",
+      "commit": "5d8aae3",
+      "ticks": 7308,
+      "energyHarvestedPerTick": 10.347849904135852,
+      "energyWasteFraction": 0.4028199291856348,
+      "energyDecayed": 2851,
+      "sinkUpgrading": 0.5504367186162014,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.4495632813837986
     }
   ],
   "rcl3-buildings-built": [
@@ -401,6 +434,17 @@
       "sinkUpgrading": 0.34204015966730916,
       "sinkConstruction": 0.2269188155478319,
       "sinkCreeps": 0.43104102478485895
+    },
+    {
+      "at": "2026-07-21T16:32:18.516Z",
+      "commit": "5d8aae3",
+      "ticks": 11386,
+      "energyHarvestedPerTick": 11.639718804920914,
+      "energyWasteFraction": 0.36250493305483633,
+      "energyDecayed": 6050,
+      "sinkUpgrading": 0.35256573711336225,
+      "sinkConstruction": 0.23095111152321565,
+      "sinkCreeps": 0.4164831513634221
     }
   ]
 }
