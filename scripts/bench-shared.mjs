@@ -47,6 +47,14 @@ export function buildBundleOnce(shardDir) {
  * on the committed history file.
  */
 export function runWorker({ id, testFile, shard, botBundle }) {
+  // Seed the shard with the committed history so recordBenchmark's baseline
+  // lookup — which only ever reads BENCH_FILE — sees real prior runs instead
+  // of reporting "no baseline yet" on every single run. The seeded counts are
+  // remembered so mergeIntoHistory can tell seed from new entry afterwards.
+  const seed = load(HISTORY);
+  writeFileSync(shard, JSON.stringify(seed), "utf8");
+  const seedCounts = Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.length]));
+
   const env = { ...process.env, BENCH_FILE: shard, BOT_BUNDLE: botBundle };
   const args = [
     path.join("node_modules", "vitest", "vitest.mjs"),
@@ -61,7 +69,12 @@ export function runWorker({ id, testFile, shard, botBundle }) {
     const started = Date.now();
     execFile(process.execPath, args, { cwd: REPO, env, maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {
       const seconds = ((Date.now() - started) / 1000).toFixed(0);
-      const runs = load(shard);
+      const all = load(shard);
+      // Only the tail past the seed is this worker's own new data — the rest
+      // is the committed history it was seeded with, already on disk.
+      const runs = Object.fromEntries(
+        Object.entries(all).map(([benchmark, entries]) => [benchmark, entries.slice(seedCounts[benchmark] ?? 0)])
+      );
       const count = Object.values(runs).reduce((n, list) => n + list.length, 0);
       // A worker that fails its assertions still records whatever it measured,
       // so keep the entries either way — but a worker that recorded *nothing*
@@ -70,10 +83,13 @@ export function runWorker({ id, testFile, shard, botBundle }) {
       // loud: silently merging a partial batch looks identical to a smaller
       // one that was asked for on purpose.
       console.log(`  ${id}: ${error ? "FAILED" : "ok"} in ${seconds}s, ${count} entr${count === 1 ? "y" : "ies"}`);
-      if (count === 0) {
-        const tail = `${stdout ?? ""}${stderr ?? ""}`.trim().split("\n").slice(-15).join("\n    ");
-        console.log(`    !! recorded nothing — last output:\n    ${tail}`);
-      }
+      // Each worker's own console output (formatResult()'s per-measurement
+      // comparisons, most importantly) only exists in this captured buffer —
+      // execFile never lets it reach the real terminal on its own — so it must
+      // be printed here or the run's actual evaluation is silently lost.
+      const output = `${stdout ?? ""}${stderr ?? ""}`.trim();
+      if (output) console.log(`    ${output.split("\n").join("\n    ")}`);
+      if (count === 0) console.log(`    !! recorded nothing`);
       resolve({ runs, ok: count > 0 });
     });
   });
