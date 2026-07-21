@@ -1,0 +1,28 @@
+{
+  "rcl2": [
+    {
+      "at": "2026-07-21T09:33:02.285Z",
+      "commit": "88a2698",
+      "ticks": 507,
+      "energyHarvestedPerTick": 1.8695652173913044,
+      "energyWasteFraction": 0.5901213171577123,
+      "energyDecayed": 0,
+      "sinkUpgrading": 0.16597164303586323,
+      "sinkConstruction": 0,
+      "sinkCreeps": 0.8340283569641368
+    }
+  ],
+  "rcl2-extensions-built": [
+    {
+      "at": "2026-07-21T09:33:52.801Z",
+      "commit": "88a2698",
+      "ticks": 3600,
+      "energyHarvestedPerTick": 5.97832731314254,
+      "energyWasteFraction": 0.6060206548011426,
+      "energyDecayed": 348,
+      "sinkUpgrading": 0.012824594115239438,
+      "sinkConstruction": 0.6802037382327527,
+      "sinkCreeps": 0.30697166765200784
+    }
+  ]
+}

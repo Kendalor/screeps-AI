@@ -43,7 +43,24 @@ export function nextStep(steps: Step[], s: CreepState): number {
   return s.step;
 }
 
-function isComplete(step: Step, s: CreepState): boolean {
+/**
+ * Find the first step at or after `from` that isn't already complete given the
+ * creep's store fill (free/used), wrapping at most once around the list. Used
+ * to skip a step landed on mid-tick (e.g. arriving at "upgrade" with an empty
+ * store right after "transfer" drained it) so the creep doesn't waste a tick
+ * acting on a step with nothing to do (gh follow-up: allrounder 1-tick
+ * controller detour after emptying its store at the spawn). targetGone never
+ * applies here — that reflects a resolution attempt this step hasn't made yet.
+ */
+export function firstRunnableStep(steps: Step[], from: number, store: { free: number; used: number }): number {
+  for (let i = 0; i < steps.length; i++) {
+    const idx = (from + i) % steps.length;
+    if (!isComplete(steps[idx], { step: idx, ...store, targetGone: false })) return idx;
+  }
+  return from;
+}
+
+export function isComplete(step: Step, s: CreepState): boolean {
   if (s.targetGone) return true;
   const kind = STEP_KIND[step.do];
   if (kind === "gather") return s.free === 0; // store full

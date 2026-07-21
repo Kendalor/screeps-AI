@@ -19,9 +19,10 @@ export const BUNKER_RADIUS = 6;
 // tests instead. Ported verbatim from Bunker.walkablePixelsForRoom.
 export function walkablePixelsForRoom(roomName: string): Uint8Array {
   const array = new Uint8Array(2500);
+  const terrain = Game.map.getRoomTerrain(roomName);
   for (let x = 0; x < 50; ++x) {
     for (let y = 0; y < 50; ++y) {
-      array[x * 50 + y] = Game.map.getTerrainAt(x, y, roomName) !== "wall" ? 1 : 0;
+      array[x * 50 + y] = terrain.get(x, y) !== TERRAIN_MASK_WALL ? 1 : 0;
     }
   }
   return array;

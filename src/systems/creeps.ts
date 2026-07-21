@@ -6,7 +6,7 @@
 // is enforced at room-level decisions, not per-creep pathfinding. So this
 // returns no intents — its effect is the runStep calls inside.
 
-import { nextStep, runStep, type CreepState } from "../behaviors/interpreter";
+import { firstRunnableStep, nextStep, runStep, type CreepState } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import type { EmpireSnapshot } from "../snapshot/types";
@@ -26,6 +26,17 @@ function runOne(creep: Creep): void {
 
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us
+
+  // A step advanced onto at the end of last tick (e.g. "upgrade" right after
+  // "transfer" emptied the store) can already be done before it ever acts —
+  // skip straight to one that actually has something to do, in the same tick,
+  // rather than wasting a tick walking toward/acting on a no-op step.
+  const runnable = firstRunnableStep(def.steps, task.step, {
+    free: creep.store.getFreeCapacity(),
+    used: creep.store.getUsedCapacity()
+  });
+  if (runnable !== task.step) task.target = undefined; // lock belonged to the skipped step
+  task.step = runnable;
 
   // Act this tick, reusing last tick's locked target if it is still valid.
   // Whether a target resolved feeds the completion check so a step with nothing

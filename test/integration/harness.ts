@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ScreepsServer, TerrainMatrix } from "screeps-server-mockup";
+import { EnergyMetrics, observeTick, type RawObj } from "./energyMetrics";
 
 const REPO_ROOT = process.cwd();
 
@@ -126,6 +127,12 @@ export function bunkerTerrain(): TerrainMatrix {
 }
 
 export class BootedColony {
+  /**
+   * Creep ids already charged to the energy accounting. Lives on the colony so
+   * sampling across several runUntil legs stays one continuous record.
+   */
+  private readonly seenCreeps = new Set<string>();
+
   private constructor(
     readonly server: ScreepsServer,
     readonly bot: Awaited<ReturnType<ScreepsServer["world"]["addBot"]>>,
@@ -238,6 +245,21 @@ export class BootedColony {
       (sum, s) => sum + ((s.store?.energy as number | undefined) ?? 0),
       0
     );
+  }
+
+  /**
+   * Fold the current tick's world state into `metrics`. Call from an `onTick`
+   * hook so a scenario accumulates energy accounting as it runs:
+   *
+   *   const metrics = new EnergyMetrics();
+   *   await colony.runUntil(pred, 1500, () => colony.sampleEnergy(metrics));
+   *
+   * The `seenCreeps` set that attributes each body cost exactly once lives on
+   * the colony, so repeated calls across several runUntil legs keep one
+   * continuous accounting rather than double-counting creeps already alive.
+   */
+  async sampleEnergy(metrics: EnergyMetrics): Promise<void> {
+    metrics.sample(observeTick((await this.roomObjects()) as RawObj[], this.seenCreeps));
   }
 
   /** Parsed bot Memory (or {} before the first tick writes it). */

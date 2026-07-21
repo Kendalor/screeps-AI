@@ -13,6 +13,7 @@ import { range, type XY } from "../lib/geometry";
 // so it cannot use the game's ambient STRUCTURE_* globals — spell the one
 // structure type it branches on as its literal value.
 const EXTENSION = "extension";
+const STORAGE = "storage";
 
 export interface PlannerLayout {
   rcl: number;
@@ -48,21 +49,22 @@ export function flattenGoal(source: PlannerLayout): GoalLayout {
 
   // Extensions are the one type numerous enough that WHICH ones to build first
   // matters (fill-path length). Everything else is capped-or-nothing per RCL and
-  // just gets built when its tier unlocks — those seed the cluster the
-  // extensions grow out from.
+  // just gets built when its tier unlocks.
   const seeds: GoalPlacement[] = [];
   const extensions: XY[] = [];
+  let storage: XY | undefined;
   for (const type of Object.keys(source.structures)) {
     for (const pos of source.structures[type] ?? []) {
       if (type === EXTENSION) {
         extensions.push(rel(pos));
       } else {
+        if (type === STORAGE) storage = rel(pos);
         seeds.push({ ...rel(pos), type: type as BuildableStructureConstant, order: 0 });
       }
     }
   }
 
-  const ordered = orderExtensions(extensions, [origin, ...seeds]);
+  const ordered = orderExtensions(extensions, storage ?? origin);
 
   const placements = [...seeds, ...ordered];
   // Reassign a single contiguous global build-order: seeds first (built as
