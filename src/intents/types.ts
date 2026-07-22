@@ -1,15 +1,13 @@
 // Intent union: planners return these; only intents/execute.ts turns them into game API calls.
 
-import type { RoleName } from "../memory/schema";
-
 export type Intent =
   | { kind: "towerAttack"; tower: Id<StructureTower>; target: Id<Creep> }
   | { kind: "towerHeal"; tower: Id<StructureTower>; target: Id<Creep> }
   | { kind: "safeMode"; room: string }
   | {
+      // No top-level role: memory.role is ground truth, and a second carrier would have nothing enforcing agreement.
       kind: "spawn";
       spawn: Id<StructureSpawn>;
-      role: RoleName;
       body: BodyPartConstant[];
       memory: CreepMemory;
       dir?: DirectionConstant;

@@ -17,7 +17,7 @@ describe("actuator", () => {
     stubGame({ time: 1234567, objects: { spawn1: { spawnCreep, pos: { findInRange: () => [] } } } });
     const memory: CreepMemory = { home: "W1N1", role: "bootstrap" };
 
-    execute([{ kind: "spawn", spawn: "spawn1" as Id<StructureSpawn>, role: "bootstrap", body: [WORK, CARRY, MOVE], memory }]);
+    execute([{ kind: "spawn", spawn: "spawn1" as Id<StructureSpawn>, body: [WORK, CARRY, MOVE], memory }]);
 
     expect(spawnCreep).toHaveBeenCalledTimes(2);
     expect(spawnCreep).toHaveBeenNthCalledWith(1, [WORK, CARRY, MOVE], "bootstrap_W1N1_1234567", {
@@ -38,7 +38,6 @@ describe("actuator", () => {
       {
         kind: "spawn",
         spawn: "spawn1" as Id<StructureSpawn>,
-        role: "bootstrap",
         body: [WORK, CARRY, MOVE],
         memory: { home: "W1N1", role: "bootstrap" }
       }
@@ -56,7 +55,6 @@ describe("actuator", () => {
       {
         kind: "spawn",
         spawn: "spawn1" as Id<StructureSpawn>,
-        role: "bootstrap",
         body: [WORK, CARRY, MOVE],
         memory: { home: "W1N1", role: "bootstrap" },
         dir: 3 as DirectionConstant

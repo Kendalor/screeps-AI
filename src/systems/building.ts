@@ -2,8 +2,12 @@
 // source containers), and who builds it. Pure: reads the snapshot, returns plain data, never touches Game.*/Memory.
 
 import GOAL_JSON from "../layouts/Base_2.json";
+import { orderBody } from "../behaviors/body";
+import { roleDef } from "../behaviors/roles";
 import type { Colony } from "../colony";
 import type { Intent } from "../intents/types";
+// Aliased: this file already has a DEFAULT_PRIORITY for structure types, which is unrelated.
+import { DEFAULT_PRIORITY as CREEP_PRIORITY, fillTo, opName, type CreepRequest } from "../spawn/request";
 import { buildableAtRcl } from "../layouts/goal";
 import type { PlacedStructure } from "../layouts/stamp";
 import { stampLayout } from "../layouts/stamp";
@@ -11,6 +15,7 @@ import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
 import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
 import { minedStructures } from "./mining";
+import { bodyContext } from "./spawnContext";
 
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
@@ -42,12 +47,22 @@ const MAX_BUILDERS = 4;
 // Storage must clear this reserve plus the outstanding sites' cost before dedicated builders are affordable.
 const STORAGE_RESERVE = 50_000;
 
-export function desiredBuilderCount(colony: ColonySnapshot): number {
+function wantedBuilders(colony: ColonySnapshot): number {
   if (colony.constructionProgress <= 0) return 0;
   // Pre-storage, bootstrap already builds via its step loop, so a dedicated builder would only double-staff construction.
   if (colony.storageEnergy <= 0) return 0;
   if (colony.storageEnergy < STORAGE_RESERVE + colony.constructionProgress) return 0;
   return Math.min(MAX_BUILDERS, Math.ceil(colony.constructionProgress / PROGRESS_PER_BUILDER));
+}
+
+export function builderRequests({ snapshot: colony }: Colony): CreepRequest[] {
+  return fillTo(
+    wantedBuilders(colony),
+    colony.creeps.filter(c => c.role === "builder").length,
+    orderBody(roleDef("builder")?.body(colony.energyCapacity, bodyContext(colony)) ?? []),
+    CREEP_PRIORITY.builder,
+    { role: "builder", home: colony.name, op: opName("building", colony.name) }
+  );
 }
 
 export function planBuilding({ snapshot: colony }: Colony): Intent[] {

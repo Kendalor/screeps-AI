@@ -2,10 +2,12 @@
 
 import { colony, type Colony } from "../src/colony";
 import { empire, type Empire } from "../src/empire";
+import type { RoleName } from "../src/memory/schema";
 import type {
   ColonySnapshot,
   EmpireSnapshot,
   SnapContainer,
+  SnapCreep,
   SnapDrop,
   SnapSource,
   SnapSpawn,
@@ -48,7 +50,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     hostiles: [],
     woundedFriendlies: [],
     safeModeAvailable: false,
-    census: {},
+    creeps: [],
     spawns: [],
     energyAvailable: 300,
     energyCapacity: 300,
@@ -90,4 +92,33 @@ export function containerAt(
 
 export function spawn(id = "spawn1", busy = false): SnapSpawn {
   return { id: id as Id<StructureSpawn>, busy };
+}
+
+let creepSeq = 0;
+
+// One live creep as a requester's satisfaction check sees it. `over` takes any SnapCreep field plus
+// extra memory, so a test says `snapCreep("miner", { memory: { sourceId } })` without restating the rest.
+export function snapCreep(
+  role: RoleName,
+  over: Partial<Omit<SnapCreep, "memory">> & { memory?: Partial<CreepMemory> } = {}
+): SnapCreep {
+  const { memory, ...rest } = over;
+  const name = rest.name ?? `${role}_${creepSeq++}`;
+  const home = rest.home ?? "W1N1";
+  return {
+    id: name as Id<Creep>,
+    name,
+    body: [WORK, CARRY, MOVE],
+    spawning: false,
+    ticksToLive: 1000,
+    ...rest,
+    role,
+    home,
+    memory: { role, home, ...memory }
+  };
+}
+
+// `n` creeps of one role — the common shape of "this quota is already met".
+export function snapCreeps(role: RoleName, n: number, over: Parameters<typeof snapCreep>[1] = {}): SnapCreep[] {
+  return Array.from({ length: n }, () => snapCreep(role, over));
 }

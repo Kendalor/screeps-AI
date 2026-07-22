@@ -1,0 +1,64 @@
+// The vocabulary demand is expressed in: a request, its priority scale, and the name a requester
+// stamps on the creeps it owns. Types and constants only — the request *functions* deliberately stay
+// beside the quota they replaced (see PRD 0005 §7), so nothing here centralises demand.
+
+/**
+ * One creep a requester found missing. Always exactly one — a requester short three haulers emits
+ * three requests. There is no `role` field: `memory.role` is ground truth, and a second carrier
+ * would have nothing enforcing agreement between them.
+ */
+export interface CreepRequest {
+  body: BodyPartConstant[]; // the requester computed it, sized against the budget it chose
+  priority: number; // absolute across the empire; higher wins
+  memory: CreepMemory; // complete — role, home, op, and anything role-specific
+}
+
+// Reserved for the wipe restart. Nothing else may reach it: a colony with no creeps has no other
+// way out, since every normal quota evaluates to zero.
+export const RECOVERY_PRIORITY = 1000;
+
+// Ports today's PRIORITY array order (bootstrap, miner, hauler, upgrader, builder) onto an absolute
+// scale — economy high, growth low. Gaps are deliberate so a future requester slots in without
+// renumbering. Relative order is byte-identical to the array it replaces.
+export const DEFAULT_PRIORITY = {
+  bootstrap: 100,
+  miner: 95,
+  hauler: 90,
+  upgrader: 60,
+  builder: 50
+} as const;
+
+/**
+ * The name a requester stamps on `CreepMemory.op` to claim the creeps it ordered. In stage 2 the
+ * value is a string literal with no object behind it; in stage 3 it becomes an operation's own name.
+ * Both call this so the two can never drift.
+ *
+ * Known limit: `kind:room` is unique only while there is at most one operation of a kind per room.
+ * Remote mining breaks that, and widening it is stage 3+'s problem.
+ */
+export function opName(kind: string, room: string): string {
+  return `${kind}:${room}`;
+}
+
+/**
+ * The plain-count satisfaction check, shared by every requester whose demand is "N of this role,
+ * and I have M". Emits one request per missing creep, or none when the quota is already met.
+ *
+ * Each request gets its own copy of the body: they are otherwise one array shared by every request
+ * a call produces, so anything that later resizes a body in place would corrupt its siblings.
+ *
+ * Miner demand deliberately does not use this — its deficit is per source, not a count, which is
+ * the whole reason requests replaced counts.
+ */
+export function fillTo(
+  wanted: number,
+  have: number,
+  body: BodyPartConstant[],
+  priority: number,
+  memory: CreepMemory
+): CreepRequest[] {
+  const missing = wanted - have;
+  // A role whose body formula yields nothing has no request to make, however short it is.
+  if (missing <= 0 || body.length === 0) return [];
+  return Array.from({ length: missing }, () => ({ body: [...body], priority, memory: { ...memory } }));
+}

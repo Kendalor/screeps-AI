@@ -3,16 +3,16 @@
 // cold-start instead, since there's no workforce or stocked extensions).
 //
 // `seedColony` reconstructs structures, workforce and energy by asking the bot's own planners
-// (`wantedStructures`, `desiredCensus` + `roleDef().body`) rather than listing them here, so a
-// scenario seeded through here moves automatically with layout/quota/body changes.
+// (`wantedStructures` and the spawn requesters) rather than listing them here, so a scenario seeded
+// through here moves automatically with layout/quota/body changes.
 
-import { roleDef } from "../../src/behaviors/roles";
-import { orderBody } from "../../src/behaviors/body";
 import type { PlacedStructure } from "../../src/layouts/stamp";
 import type { RoleName } from "../../src/memory/schema";
 import type { ColonySnapshot } from "../../src/snapshot/types";
-import { wantedStructures } from "../../src/systems/building";
-import { bodyContext, desiredCensus } from "../../src/systems/spawning";
+import { builderRequests, wantedStructures } from "../../src/systems/building";
+import { haulerRequests, minerRequests } from "../../src/systems/logistics";
+import { bootstrapRequests } from "../../src/systems/spawning";
+import { upgraderRequests } from "../../src/systems/upgrading";
 import type { BootedColony } from "./harness";
 
 // Engine constants, taken from the same package the running server uses rather
@@ -122,10 +122,12 @@ export async function seedStructures(colony: BootedColony, wanted: PlacedStructu
 // Workforce
 // ---------------------------------------------------------------------------
 
-/** One seeded creep: the role it plays and the body the spawner would give it. */
+/** One seeded creep: the body the spawner would give it and the memory it would carry. */
 export interface SeededCreep {
   name: string;
   role: RoleName;
+  /** The requesting memory verbatim, so a seeded creep is claimed by its requester exactly as a spawned one is. */
+  memory: CreepMemory;
   body: BodyPartConstant[];
   /** Ticks of life left — see `spreadTtl`. */
   ttl: number;
@@ -141,24 +143,33 @@ export function spreadTtl(index: number, total: number): number {
 }
 
 // Pure — returns the plan without touching the world, so a scenario can assert on what it will seed.
+//
+// Asks the requesters themselves what the colony is missing, so the seeded workforce moves with the
+// quotas rather than being restated here. Recovery is excluded deliberately: it only fires on a
+// wipe, and seeding is the opposite of a wipe.
+//
+// Caveat worth knowing when reading a seeded scenario: `colony` here comes from layoutSnapshot(),
+// whose `creeps` is always empty, so every satisfaction check sees a colony with nothing alive.
+// That lands on the cold-start branches — miner demand is clamped to the one-miner floor because no
+// hauler exists, and hauler demand is zero because seeded containers start empty. This is what
+// the census-based version did too, so scenarios are unchanged; it is *not* the steady-state
+// workforce a running RCL3 colony fields.
 export function plannedWorkforce(colony: ColonySnapshot): SeededCreep[] {
-  const census = desiredCensus(colony);
-  const context = bodyContext(colony);
+  const wrapped = { snapshot: colony };
+  const requests = [
+    ...bootstrapRequests(wrapped),
+    ...minerRequests(wrapped),
+    ...haulerRequests(wrapped),
+    ...upgraderRequests(wrapped),
+    ...builderRequests(wrapped)
+  ].filter(r => r.body.length > 0);
 
-  const wanted: { role: RoleName; body: BodyPartConstant[] }[] = [];
-  for (const [role, count] of Object.entries(census) as [RoleName, number | undefined][]) {
-    const def = roleDef(role);
-    if (!def) continue;
-    const body = orderBody(def.body(colony.energyCapacity, context));
-    if (body.length === 0) continue;
-    for (let i = 0; i < (count ?? 0); i++) wanted.push({ role, body });
-  }
-
-  return wanted.map((w, i) => ({
-    name: `seed_${w.role}_${i}`,
-    role: w.role,
-    body: w.body,
-    ttl: spreadTtl(i, wanted.length)
+  return requests.map((r, i) => ({
+    name: `seed_${r.memory.role}_${i}`,
+    role: r.memory.role,
+    memory: r.memory,
+    body: r.body,
+    ttl: spreadTtl(i, requests.length)
   }));
 }
 
@@ -189,8 +200,10 @@ export async function seedCreeps(colony: BootedColony, creeps: SeededCreep[]): P
   }
 
   await colony.patchMemory(mem => {
-    const creepMem = (mem.creeps ??= {}) as Record<string, { home: string; role: string }>;
-    for (const c of creeps) creepMem[c.name] = { home: colony.room, role: c.role };
+    const creepMem = (mem.creeps ??= {}) as Record<string, CreepMemory>;
+    // home comes from the request, not from the room being seeded: a request's own `home` is what
+    // binds the creep to its sponsoring colony.
+    for (const c of creeps) creepMem[c.name] = { ...c.memory };
   });
 
   return creeps.length;

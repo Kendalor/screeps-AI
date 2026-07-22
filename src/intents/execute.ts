@@ -34,7 +34,7 @@ function act(intent: Intent): ScreepsReturnCode {
     case "spawn": {
       const spawn = Game.getObjectById(intent.spawn);
       if (!spawn) return ERR_NOT_FOUND;
-      const name = `${intent.role}_${intent.memory.home}_${Game.time}`;
+      const name = `${intent.memory.role}_${intent.memory.home}_${Game.time}`;
       // Dry run first so a failure never leaves a half-spawned state.
       const dry = spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: true });
       if (dry !== OK) return dry;

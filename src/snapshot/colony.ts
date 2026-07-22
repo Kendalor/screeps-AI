@@ -3,29 +3,39 @@
 import { openHarvestTiles } from "../behaviors/targets";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import type { XY } from "../lib/geometry";
-import { censusByColony, type CensusCreep } from "./census";
-import type { Census, ColonySnapshot, EmpireSnapshot, SnapStructure, SnapUnit } from "./types";
+import { censusByColony } from "./census";
+import type { ColonySnapshot, EmpireSnapshot, SnapCreep, SnapStructure, SnapUnit } from "./types";
 
 export function buildEmpireSnapshot(): EmpireSnapshot {
-  // One pass over all creeps -> census keyed by home colony.
-  const census = censusByColony(
-    Object.values(Game.creeps).map<CensusCreep>(c => ({
-      home: c.memory.home,
-      role: c.memory.role,
-      spawning: c.spawning
-    }))
-  );
+  // One pass over all creeps -> grouped by home colony.
+  const byColony = censusByColony(Object.values(Game.creeps).map(snapCreep));
 
   const colonies: ColonySnapshot[] = [];
   for (const name in Game.rooms) {
     const room = Game.rooms[name];
     if (!room.controller?.my) continue;
-    colonies.push(buildColonySnapshot(room, census[name] ?? {}));
+    colonies.push(buildColonySnapshot(room, byColony[name] ?? []));
   }
   return { tick: Game.time, colonies };
 }
 
-function buildColonySnapshot(room: Room, census: Census): ColonySnapshot {
+// Body is filtered to living parts: a part at 0 hits is destroyed and harvests nothing, so a
+// requester counting WORK must not see it. Memory is passed by reference (typed Readonly upstream),
+// not copied — see SnapCreep.
+function snapCreep(c: Creep): SnapCreep {
+  return {
+    id: c.id,
+    name: c.name,
+    body: c.body.filter(p => p.hits > 0).map(p => p.type),
+    ticksToLive: c.ticksToLive,
+    spawning: c.spawning,
+    role: c.memory.role,
+    home: c.memory.home,
+    memory: c.memory
+  };
+}
+
+function buildColonySnapshot(room: Room, creeps: SnapCreep[]): ColonySnapshot {
   const controller = room.controller!;
   const myCreeps = room.find(FIND_MY_CREEPS);
   return {
@@ -37,7 +47,7 @@ function buildColonySnapshot(room: Room, census: Census): ColonySnapshot {
     woundedFriendlies: myCreeps.filter(c => c.hits < c.hitsMax).map(snapUnit),
     safeModeAvailable:
       controller.safeModeAvailable > 0 && !controller.safeMode && !controller.safeModeCooldown,
-    census,
+    creeps,
     spawns: room
       .find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_SPAWN })
       .map(s => ({ id: s.id as Id<StructureSpawn>, busy: (s as StructureSpawn).spawning !== null })),

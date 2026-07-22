@@ -23,7 +23,44 @@ export interface SnapSpawn {
   busy: boolean; // spawning right now
 }
 
-export type Census = Partial<Record<RoleName, number>>;
+// One live creep, as a requester's satisfaction check sees it. Counts are not carried: different
+// requesters want different projections of the same creeps (WORK per source, CARRY per remote, TTL
+// for pre-spawn), and an aggregate can only serve the one that was guessed at when it was written.
+export interface SnapCreep {
+  // From the live Creep — the only source for these.
+  id: Id<Creep>;
+  name: string;
+  // Live parts only (hits > 0): a dead part harvests nothing, so countPart() answers what the caller means.
+  body: BodyPartConstant[];
+  ticksToLive?: number; // undefined while spawning
+  spawning: boolean;
+
+  // Shortcuts to the two memory fields read constantly. Never independently authoritative — if one
+  // ever disagrees with memory, the snapshot builder is wrong.
+  role: RoleName; // === memory.role
+  home: string; // === memory.home
+
+  // The whole memory object, live reference, deeply readonly. Not a deep copy: that would be a
+  // stringify-per-creep-per-tick, and stale by design since behaviours write `task` every tick.
+  // The readonly-ness costs nothing at runtime and makes a planner write to Memory a compile error,
+  // keeping the Intent -> execute.ts boundary the single answer to "what wrote this field".
+  //
+  // Deep, not `Readonly<CreepMemory>`: that is shallow, so it would still permit
+  // `memory.task.step = 3` — a mutation of live Memory through the exact nested field behaviours
+  // own, which is the one case the boundary most needs to forbid.
+  memory: DeepReadonly<CreepMemory>;
+}
+
+// Structural deep-readonly. Functions and primitives pass through untouched; arrays and plain
+// objects are frozen recursively at the type level only (no runtime Object.freeze — this is a
+// compile-time boundary, not a runtime one).
+export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends readonly (infer U)[]
+    ? readonly DeepReadonly<U>[]
+    : T extends object
+      ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+      : T;
 
 export interface SnapStructure extends XY {
   type: BuildableStructureConstant;
@@ -51,7 +88,10 @@ export interface ColonySnapshot {
   hostiles: SnapUnit[];
   woundedFriendlies: SnapUnit[];
   safeModeAvailable: boolean;
-  census: Census; // alive + spawning creeps per role in this colony
+  // Alive + spawning creeps that call this colony home (by memory.home, not by which room they
+  // stand in). Spawning ones are included so a request isn't filled twice while its creep is still
+  // in the spawn.
+  creeps: SnapCreep[];
   spawns: SnapSpawn[];
   energyAvailable: number;
   energyCapacity: number;

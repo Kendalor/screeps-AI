@@ -360,7 +360,7 @@ export class BootedColony {
       hostiles: [],
       woundedFriendlies: [],
       safeModeAvailable: false,
-      census: {},
+      creeps: [],
       spawns: [],
       energyAvailable: 0,
       energyCapacity: 0,

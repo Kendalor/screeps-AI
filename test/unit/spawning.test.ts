@@ -1,60 +1,251 @@
 import { describe, expect, it } from "vitest";
-import { desiredMinerCount } from "../../src/systems/logistics";
-import { desiredBootstrapCount, planSpawning } from "../../src/systems/spawning";
-import { colony } from "../../src/colony";
-import { colonySnap, containerAt, sourceAt, spawn } from "../fixtures";
+import { bodyCost } from "../../src/behaviors/body";
+import type { Intent } from "../../src/intents/types";
+import { RECOVERY_PRIORITY, type CreepRequest } from "../../src/spawn/request";
+import { bootstrapRequests, desiredBootstrapCount, planSpawning, recoveryRequests } from "../../src/systems/spawning";
+import { colonySnap, containerAt, snapCreep, snapCreeps, sourceAt, spawn, testColony } from "../fixtures";
 
-// Derives "quota already met" from the real quota (which depends on controllerLevel)
-// rather than hardcoding a count, so callers must pass the same level their scenario uses.
-function bootstrapMet(over: Parameters<typeof colony>[0] = {}): number {
-  return desiredBootstrapCount(colonySnap(over));
-}
+// planSpawning is a pure arbiter: it never names a role and never compares counts, so its tests
+// drive it through the requesters that stand behind it rather than through hand-built request lists.
+describe("spawn arbiter", () => {
+  it("emits a spawn intent for the highest-priority request", () => {
+    const colony = testColony({ spawns: [spawn()], energyAvailable: 300, sources: [sourceAt(20, 10)] });
 
-// Same, for miner — tests about lower-priority roles need the miner deficit satisfied too,
-// now that miner wants creeps from RCL1 rather than only once a container exists.
-function minerMet(over: Parameters<typeof colony>[0] = {}): number {
-  return desiredMinerCount(colonySnap(over));
-}
-
-describe("spawning planner", () => {
-  it("spawns a bootstrap when the colony is below quota", () => {
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [{ id: "spawn1" as Id<StructureSpawn>, busy: false }],
-        energyAvailable: 300,
-        sources: [sourceAt(20, 10)]
-      })
-    );
-
-    expect(planSpawning(snap)).toEqual([
+    expect(planSpawning(colony)).toEqual([
       {
         kind: "spawn",
         spawn: "spawn1",
-        role: "bootstrap",
         body: [WORK, CARRY, MOVE, MOVE],
-        memory: { home: "W1N1", role: "bootstrap" }
+        memory: { home: "W1N1", role: "bootstrap", op: "recovery:W1N1" }
       }
     ]);
   });
 
-  // Damage consumes body parts in array order; a multi-set body is grouped per set
-  // by the formula, so the emitted intent must re-sort it by priority.
-  it("orders the spawned body so the most valuable parts are destroyed last", () => {
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [spawn()],
-        energyAvailable: 750,
-        energyCapacity: 750,
-        sources: [sourceAt(20, 10)]
-      })
-    );
+  it("emits nothing when every requester is satisfied", () => {
+    const source = sourceAt(20, 10, "source_20_10", 1);
+    const colony = testColony({
+      spawns: [spawn()],
+      sources: [source],
+      creeps: [
+        ...snapCreeps("bootstrap", desiredBootstrapCount(colonySnap({ sources: [source] }))),
+        ...snapCreeps("hauler", 1),
+        snapCreep("miner", { memory: { sourceId: source.id } })
+      ]
+    });
 
-    const [intent] = planSpawning(snap);
-    expect(intent).toMatchObject({ kind: "spawn", role: "bootstrap" });
+    expect(planSpawning(colony)).toEqual([]);
+  });
 
-    const body = (intent as { body: BodyPartConstant[] }).body;
+  it("does not spawn from a busy spawn", () => {
+    const colony = testColony({ spawns: [spawn("spawn1", true)], sources: [sourceAt(20, 10)] });
+
+    expect(planSpawning(colony)).toEqual([]);
+  });
+
+  // The trap this replaces: "for each spawn, find the best request" hands the same top-priority
+  // request to every idle spawn, spawning it N times in one tick.
+  it("consumes a request at most once per tick", () => {
+    // Storage but no sources: recovery wants exactly one supply creep and nothing else does.
+    const colony = testColony({
+      spawns: [spawn("spawn1"), spawn("spawn2")],
+      sources: [],
+      energyAvailable: 1000,
+      energyCapacity: 1000,
+      storageEnergy: 50_000
+    });
+
+    expect(planSpawning(colony)).toHaveLength(1);
+  });
+
+  it("gives N idle spawns N distinct requests, in priority order", () => {
+    const colony = testColony({
+      spawns: [spawn("spawn1"), spawn("spawn2")],
+      sources: [sourceAt(20, 10)],
+      energyAvailable: 2000,
+      energyCapacity: 300
+    });
+
+    const intents = planSpawning(colony);
+    expect(intents).toHaveLength(2);
+    expect(intents.map(i => i.kind === "spawn" && i.spawn)).toEqual(["spawn1", "spawn2"]);
+    // Recovery outranks the ordinary bootstrap request, and the two are different requests.
+    expect(intents.map(i => i.kind === "spawn" && i.memory.op)).toEqual(["recovery:W1N1", "bootstrap:W1N1"]);
+  });
+
+  // energyAvailable is one shared room pool: two spawns each emitting an affordable body in a room
+  // that can only pay for one produces a silent ERR_NOT_ENOUGH_ENERGY without a running budget.
+  it("deducts each spawn from a running energy budget", () => {
+    const colony = testColony({
+      spawns: [spawn("spawn1"), spawn("spawn2")],
+      sources: [sourceAt(20, 10)],
+      energyAvailable: 300,
+      energyCapacity: 300
+    });
+
+    const intents = planSpawning(colony);
+    expect(intents).toHaveLength(1);
+    expect(bodyCost((intents[0] as Extract<Intent, { kind: "spawn" }>).body)).toBeLessThanOrEqual(300);
+  });
+
+  it("waits for a refill rather than spawning a runt sized to a drained room", () => {
+    const colony = testColony({
+      // One live creep: an ordinary tick on the normal path, not a wipe.
+      creeps: snapCreeps("bootstrap", 1),
+      spawns: [spawn()],
+      energyAvailable: 400,
+      energyCapacity: 800,
+      sources: [sourceAt(20, 10)]
+    });
+
+    expect(planSpawning(colony)).toEqual([]);
+  });
+
+  // Filling with affordable creeps first would consume the colony's energy on cheap ones forever,
+  // so the expensive high-priority request never becomes affordable. A livelock, not an inversion.
+  it("stops on an unaffordable request instead of skipping to a cheaper one", () => {
+    const colony = testColony({
+      // Bootstrap is short and expensive at this capacity; the hauler request behind it is cheap.
+      creeps: [...snapCreeps("bootstrap", 1), ...snapCreeps("miner", 1)],
+      spawns: [spawn()],
+      energyAvailable: 200,
+      energyCapacity: 800,
+      controllerLevel: 2,
+      sources: [sourceAt(20, 10)],
+      containers: [containerAt(10, 10, 500)]
+    });
+
+    expect(planSpawning(colony)).toEqual([]);
+  });
+});
+
+describe("recoveryRequests", () => {
+  it("outranks every ordinary request", () => {
+    const [request] = recoveryRequests(testColony({ sources: [sourceAt(20, 10)] }));
+    const ordinary = bootstrapRequests(testColony({ sources: [sourceAt(20, 10)] }));
+
+    expect(request.priority).toBe(RECOVERY_PRIORITY);
+    for (const r of ordinary) expect(r.priority).toBeLessThan(RECOVERY_PRIORITY);
+  });
+
+  // A hauler moves energy the other way (container -> storage) and would be useless here;
+  // supply withdraws from storage to refill extensions.
+  it("restarts a wiped colony with a supply creep when storage still holds energy", () => {
+    const colony = testColony({
+      sources: [sourceAt(20, 10), sourceAt(30, 40)],
+      energyAvailable: 300,
+      storageEnergy: 50_000
+    });
+
+    expect(recoveryRequests(colony)[0].memory.role).toBe("supply");
+  });
+
+  it("restarts a wiped colony with a bootstrap when there is no stored energy", () => {
+    const colony = testColony({ sources: [sourceAt(20, 10)], energyAvailable: 300, storageEnergy: 0 });
+
+    expect(recoveryRequests(colony)[0].memory.role).toBe("bootstrap");
+  });
+
+  it("asks for nothing when a colony with neither storage nor sources cannot be restarted", () => {
+    expect(recoveryRequests(testColony({ sources: [], storageEnergy: 0 }))).toEqual([]);
+  });
+
+  // The infinite-spawn guard: recovery is the one requester whose satisfaction check is "is
+  // anything alive at all", so an inverted check would spawn every tick forever.
+  it("asks for nothing while any creep is alive", () => {
+    const colony = testColony({
+      creeps: snapCreeps("miner", 1),
+      sources: [sourceAt(20, 10)],
+      storageEnergy: 50_000
+    });
+
+    expect(recoveryRequests(colony)).toEqual([]);
+  });
+
+  // Sizing against available energy is not the same as being affordable: every body formula clamps
+  // to at least one whole set, so below that floor it hands back a body the room cannot pay for.
+  // At RECOVERY_PRIORITY such a request sorts first and would trip the arbiter's stop, blocking
+  // every other request behind it.
+  it("withholds its request when even the smallest body is unaffordable", () => {
+    const colony = testColony({
+      spawns: [spawn()],
+      energyAvailable: 100, // below the 250 a bootstrap's smallest body costs
+      energyCapacity: 300,
+      sources: [sourceAt(20, 10)],
+      storageEnergy: 0
+    });
+
+    expect(recoveryRequests(colony)).toEqual([]);
+    expect(planSpawning(colony)).toEqual([]);
+  });
+
+  it("does not block a lower-priority request it cannot afford", () => {
+    const colony = testColony({
+      // No creeps alive, so recovery is in play; storage funds a supply body costing 150.
+      spawns: [spawn()],
+      energyAvailable: 100,
+      energyCapacity: 300,
+      sources: [sourceAt(20, 10)],
+      storageEnergy: 50_000
+    });
+
+    // Unaffordable at 100, so it stands aside rather than stopping the arbiter on request zero.
+    expect(recoveryRequests(colony)).toEqual([]);
+  });
+
+  // Deliberate exception to capacity sizing: a wiped colony has nothing alive to fill its
+  // extensions, so energyAvailable never exceeds the spawn's own regen and a capacity-sized body
+  // would fail the affordability guard forever.
+  it("sizes its body against available energy, not the capacity it cannot fill", () => {
+    const colony = testColony({
+      spawns: [spawn()],
+      energyAvailable: 300,
+      energyCapacity: 1300,
+      sources: [sourceAt(20, 10)],
+      storageEnergy: 0
+    });
+
+    const [request] = recoveryRequests(colony);
+    expect(request.body).toEqual([WORK, CARRY, MOVE, MOVE]);
+    // Affordable by construction, so it can never trigger the arbiter's stop.
+    expect(bodyCost(request.body)).toBeLessThanOrEqual(300);
+  });
+});
+
+describe("bootstrapRequests", () => {
+  // Each request owns its body and memory: sharing one array across every request a call produces
+  // means anything that later resizes a body in place silently corrupts its siblings.
+  it("gives every request its own body and memory", () => {
+    const sources = [sourceAt(20, 10)];
+    const requests = bootstrapRequests(testColony({ sources }));
+
+    expect(requests.length).toBeGreaterThan(1);
+    expect(requests[0].body).not.toBe(requests[1].body);
+    expect(requests[0].memory).not.toBe(requests[1].memory);
+    expect(requests[0].body).toEqual(requests[1].body);
+  });
+
+  it("asks for nothing once the live bootstraps meet the quota", () => {
+    const sources = [sourceAt(20, 10)];
+    const met = desiredBootstrapCount(colonySnap({ sources }));
+    const colony = testColony({ sources, creeps: snapCreeps("bootstrap", met) });
+
+    expect(bootstrapRequests(colony)).toEqual([]);
+  });
+
+  it("asks only for the shortfall", () => {
+    const sources = [sourceAt(20, 10)];
+    const met = desiredBootstrapCount(colonySnap({ sources }));
+    const colony = testColony({ sources, creeps: snapCreeps("bootstrap", met - 1) });
+
+    expect(bootstrapRequests(colony)).toHaveLength(1);
+  });
+
+  // Damage consumes body parts in array order; a multi-set body is grouped per set by the formula,
+  // so the request must carry it re-sorted by survival priority.
+  it("orders the body so the most valuable parts are destroyed last", () => {
+    const colony = testColony({ energyCapacity: 750, sources: [sourceAt(20, 10)] });
+
+    const body = bootstrapRequests(colony)[0].body;
     expect(body).toEqual([WORK, WORK, WORK, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE]);
     const rank = (p: BodyPartConstant) => [TOUGH, WORK, CARRY, CLAIM, RANGED_ATTACK, ATTACK, HEAL, MOVE].indexOf(p);
     for (let i = 1; i < body.length; i++) {
@@ -62,320 +253,36 @@ describe("spawning planner", () => {
     }
   });
 
-  it("emits nothing when the census already meets quota", () => {
-    // One hauler alive lifts the cold-start floor, so the miner quota is met by whatever
-    // desiredMinerCount actually wants at this hauler count rather than a hardcoded 1.
+  // Sizing from energyAvailable instead would make body size depend on which tick the planner ran;
+  // capacity is the room's persistent, timing-independent budget.
+  it("sizes its body from capacity, so the same room always yields the same body", () => {
+    const workParts = (requests: CreepRequest[]) => requests[0].body.filter(p => p === WORK).length;
+
+    expect(workParts(bootstrapRequests(testColony({ energyAvailable: 550, energyCapacity: 550 })))).toBe(2);
+    expect(workParts(bootstrapRequests(testColony({ energyAvailable: 300, energyCapacity: 800 })))).toBe(3);
+  });
+});
+
+// The round trip that gives a requester identity over its creeps: the memory it writes comes back
+// to it next tick as SnapCreep.memory, and its satisfaction check reads it there. Nothing else
+// binds a creep to the requester that ordered it.
+describe("request memory round trip", () => {
+  it("feeds a spawned request's memory back into the satisfaction check that emitted it", () => {
     const sources = [sourceAt(20, 10)];
-    const census = { hauler: 1 };
-    const snap = colony(
-      colonySnap({
-        census: {
-          bootstrap: bootstrapMet({ sources }),
-          miner: minerMet({ sources, census }),
-          ...census
-        },
-        spawns: [spawn()],
-        sources
-      })
-    );
+    const before = testColony({ spawns: [spawn()], sources, creeps: snapCreeps("bootstrap", 1) });
 
-    expect(planSpawning(snap)).toEqual([]);
-  });
+    const [intent] = planSpawning(before);
+    const spawned = (intent as Extract<Intent, { kind: "spawn" }>).memory;
 
-  it("does not spawn from a busy spawn", () => {
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [spawn("spawn1", true)],
-        sources: [sourceAt(20, 10)]
-      })
-    );
+    // execute.ts puts that memory on the creep; next tick the snapshot exposes it verbatim.
+    const after = testColony({
+      spawns: [spawn()],
+      sources,
+      creeps: [...snapCreeps("bootstrap", 1), snapCreep(spawned.role, { spawning: true, memory: spawned })]
+    });
 
-    expect(planSpawning(snap)).toEqual([]);
-  });
-
-  it("spawns an upgrader once storage exists and higher-priority quotas are met", () => {
-    const sources = [sourceAt(20, 10)];
-    const census = { hauler: 1 };
-    const snap = colony(
-      colonySnap({
-        census: {
-          bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
-          miner: minerMet({ sources, census }),
-          ...census
-        },
-        spawns: [spawn()],
-        energyAvailable: 300,
-        controllerLevel: 4,
-        storageEnergy: 200_000,
-        sources
-      })
-    );
-
-    expect(planSpawning(snap)).toEqual([
-      {
-        kind: "spawn",
-        spawn: "spawn1",
-        role: "upgrader",
-        body: [WORK, CARRY, CARRY, MOVE, MOVE],
-        memory: { home: "W1N1", role: "upgrader" }
-      }
-    ]);
-  });
-
-  it("spawns a miner from RCL1 with no container, once the bootstrap quota is met", () => {
-    const sources = [sourceAt(20, 10), sourceAt(30, 40)];
-    const snap = colony(
-      colonySnap({
-        census: { bootstrap: bootstrapMet({ sources }) },
-        spawns: [spawn()],
-        energyAvailable: 300,
-        sources,
-        containers: []
-      })
-    );
-
-    expect(planSpawning(snap)).toMatchObject([{ role: "miner" }]);
-  });
-
-  it("spawns one miner per source once containers exist", () => {
-    const snap = colony(
-      colonySnap({
-        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10), sourceAt(30, 40)] }) },
-        spawns: [spawn()],
-        energyAvailable: 300,
-        sources: [sourceAt(20, 10), sourceAt(30, 40)],
-        containers: [containerAt(10, 10), containerAt(40, 40)]
-      })
-    );
-
-    expect(planSpawning(snap)).toEqual([
-      {
-        kind: "spawn",
-        spawn: "spawn1",
-        role: "miner",
-        body: [WORK, WORK, MOVE],
-        memory: { home: "W1N1", role: "miner" }
-      }
-    ]);
-  });
-
-  it("spawns a hauler once the miner quota is met and a container is filling", () => {
-    const snap = colony(
-      colonySnap({
-        census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)] }), miner: 1 },
-        spawns: [spawn()],
-        energyAvailable: 300,
-        sources: [sourceAt(20, 10)],
-        containers: [containerAt(10, 10, 500)]
-      })
-    );
-
-    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "hauler" }]);
-  });
-
-  it("spawns a builder once a construction backlog exists and higher-priority quotas are met", () => {
-    const sources = [sourceAt(20, 10)];
-    const census = { hauler: 1 };
-    const snap = colony(
-      colonySnap({
-        census: {
-          bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
-          miner: minerMet({ sources, census }),
-          upgrader: 4,
-          ...census
-        },
-        spawns: [spawn()],
-        energyAvailable: 300,
-        controllerLevel: 4,
-        sources,
-        storageEnergy: 200_000,
-        constructionProgress: 4_000
-      })
-    );
-
-    expect(planSpawning(snap)).toEqual([
-      {
-        kind: "spawn",
-        spawn: "spawn1",
-        role: "builder",
-        body: [WORK, CARRY, MOVE, MOVE],
-        memory: { home: "W1N1", role: "builder" }
-      }
-    ]);
-  });
-
-  it("fills the upgrader deficit before the builder one — builder is lowest priority", () => {
-    const sources = [sourceAt(20, 10)];
-    const census = { hauler: 1 };
-    const snap = colony(
-      colonySnap({
-        census: {
-          bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
-          miner: minerMet({ sources, census }),
-          ...census
-        },
-        spawns: [spawn()],
-        energyAvailable: 300,
-        controllerLevel: 4,
-        sources,
-        storageEnergy: 200_000,
-        constructionProgress: 4_000
-      })
-    );
-
-    const [intent] = planSpawning(snap);
-    expect(intent).toMatchObject({ role: "upgrader" });
-  });
-
-  it("recovers a wiped colony with a supply creep when storage still holds energy", () => {
-    // A hauler moves energy the other way (container -> storage) and would be
-    // useless here; supply withdraws from storage to refill extensions.
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [spawn()],
-        energyAvailable: 300,
-        sources: [sourceAt(20, 10), sourceAt(30, 40)],
-        storageEnergy: 50_000
-      })
-    );
-
-    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "supply" }]);
-  });
-
-  it("recovers a wiped colony with a bootstrap when there is no stored energy", () => {
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [spawn()],
-        energyAvailable: 300,
-        sources: [sourceAt(20, 10)],
-        storageEnergy: 0
-      })
-    );
-
-    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "bootstrap" }]);
-  });
-
-  it("treats a colony with any live creep as healthy, not wiped", () => {
-    // Recovery must fire only on a true wipe; any live creep means the normal
-    // quota diff should decide instead.
-    const snap = colony(
-      colonySnap({
-        census: { miner: 1 },
-        spawns: [spawn()],
-        energyAvailable: 300,
-        sources: [sourceAt(20, 10)],
-        storageEnergy: 50_000
-      })
-    );
-
-    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "bootstrap" }]);
-  });
-
-  it("never emits a body the colony cannot pay for", () => {
-    // Body calculators clamp their energy argument up to a floor, so below that
-    // floor they can hand back a body costing more than the room has.
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [spawn()],
-        energyAvailable: 150,
-        sources: [sourceAt(20, 10)]
-      })
-    );
-
-    expect(planSpawning(snap)).toEqual([]);
-  });
-
-  it("still spawns a cheap role the colony can afford below the bootstrap floor", () => {
-    // The affordability floor is per-role, not a flat 300: a hauler's cheapest body
-    // is one CARRY,CARRY,MOVE set at 150.
-    const snap = colony(
-      colonySnap({
-        census: {
-          bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], energyCapacity: 150 }),
-          miner: 1
-        },
-        spawns: [spawn()],
-        energyAvailable: 200,
-        energyCapacity: 150,
-        sources: [sourceAt(20, 10)],
-        containers: [containerAt(10, 10, 500)]
-      })
-    );
-
-    expect(planSpawning(snap)).toMatchObject([{ kind: "spawn", role: "hauler" }]);
-  });
-
-  it("scales the bootstrap body to available energy", () => {
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [spawn()],
-        energyAvailable: 550,
-        energyCapacity: 550,
-        sources: [sourceAt(20, 10)]
-      })
-    );
-
-    const [intent] = planSpawning(snap);
-    expect(intent).toMatchObject({ kind: "spawn", role: "bootstrap" });
-    expect(intent.kind === "spawn" && intent.body.filter(p => p === WORK)).toHaveLength(2);
-  });
-
-  it("sizes normal-path bodies from capacity, so the same room always yields the same body", () => {
-    // Sizing from energyAvailable instead would make body size depend on which
-    // tick the planner ran; capacity is the room's persistent, timing-independent budget.
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [spawn()],
-        energyAvailable: 800,
-        energyCapacity: 800,
-        sources: [sourceAt(20, 10)]
-      })
-    );
-
-    const [intent] = planSpawning(snap);
-    expect(intent.kind === "spawn" && intent.body.filter(p => p === WORK)).toHaveLength(3);
-  });
-
-  it("waits for a refill rather than spawning a runt sized to a drained room", () => {
-    // With sizing moved to capacity, a drained room can no longer afford the body
-    // it wants; the existing affordability guard becomes "wait until it can pay".
-    const snap = colony(
-      colonySnap({
-        // One live creep: healthy colony on the normal quota path, not a wipe.
-        census: { bootstrap: 1 },
-        spawns: [spawn()],
-        energyAvailable: 400,
-        energyCapacity: 800,
-        sources: [sourceAt(20, 10)]
-      })
-    );
-
-    expect(planSpawning(snap)).toEqual([]);
-  });
-
-  it("sizes a recovery creep from available energy, not the capacity it cannot fill", () => {
-    // Deliberate exception to capacity sizing: a wiped colony has nothing alive to
-    // fill its extensions, so energyAvailable never exceeds the spawn's own regen.
-    const snap = colony(
-      colonySnap({
-        census: {},
-        spawns: [spawn()],
-        energyAvailable: 300,
-        energyCapacity: 1300,
-        sources: [sourceAt(20, 10)],
-        storageEnergy: 0
-      })
-    );
-
-    const [intent] = planSpawning(snap);
-    expect(intent).toMatchObject({ role: "bootstrap" });
-    expect(intent.kind === "spawn" && intent.body).toEqual([WORK, CARRY, MOVE, MOVE]);
+    const requestsAfter = bootstrapRequests(after);
+    expect(bootstrapRequests(before)).toHaveLength(requestsAfter.length + 1);
   });
 });
 

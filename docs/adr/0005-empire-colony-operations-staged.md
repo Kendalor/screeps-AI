@@ -86,17 +86,27 @@ order; only the loop's owner changed.
 The substance. Ported from legacy's `SpawnManager`, which worked well, with its
 persistence removed.
 
+> **Refined by [PRD 0005](../prd/0005-spawn-requests.md).** Reading legacy's
+> `MinerOperation` and `SpawnManager` closely settled three things this section got
+> wrong, all for the same reason — they were written in the count model this stage is
+> leaving. Corrections are marked inline below; the PRD carries the implementable
+> detail.
+
 #### Demand is a body, not a number
 
 ```ts
 export interface CreepRequest {
-  role: RoleName;
   body: BodyPartConstant[];        // the requester computed it
   priority: number;                // absolute across the empire
-  memory: Partial<CreepMemory>;    // op, sourceId, targetRoom, homeRoom …
-  count?: number;                  // default 1
+  memory: CreepMemory;             // complete: role, home, op, sourceId, targetRoom …
 }
 ```
+
+**Corrected**: no top-level `role` and no `count`. Memory is ground truth for `role`
+and `home`, so a separate `request.role` would be a second carrier that must agree
+with `memory.role` with nothing enforcing it. And a request is always exactly one
+creep — see "Requests carry their own deficit" below. `Intent.spawn` drops its `role`
+field for the same reason.
 
 A `Census` count cannot express what the requester knows. Today
 `desiredMinerCount` builds a miner body purely to count its WORK parts, throws it
@@ -118,7 +128,12 @@ why, and adjacent numbers order requests *within* one operation (attacker before
 healer). Absolute integers gave enough leverage in practice; no
 `PRIORITY[role] + offset` scheme.
 
-`spawning.ts`'s flat `PRIORITY` list becomes the default a request may override.
+`spawning.ts`'s flat `PRIORITY` list is deleted, not turned into a default a request
+may override — every request states its own priority, and a default would just be a
+second place to look. Stage 2 ports today's *order* onto legacy's scale rather than
+legacy's values (legacy has no `bootstrap` role and says nothing about `upgrader`), so
+exactly one variable moves in the stage. Recovery sits at a reserved 1000, above
+everything.
 
 #### No queue
 
@@ -134,39 +149,89 @@ used.
 Requests are regenerated from the current snapshot each tick, so staleness cannot
 occur. **Do not reintroduce a persisted spawn queue.**
 
-Double-ordering across ticks is already handled: `censusByColony` counts spawning
-creeps ([census.ts:7](../../src/snapshot/census.ts#L7)), so a request satisfied by an
-in-progress spawn is visible the next tick. That is what legacy's
-`data.creeps.push(name)` ledger existed for, without the persistence.
+Double-ordering across ticks is handled by the snapshot: a creep in progress carries
+`spawning: true`, so a request satisfied by an in-progress spawn is visible the next
+tick.
 
-#### Census keyed by operation
+**Corrected**: this is *not* simply legacy's `data.creeps.push(name)` ledger without
+the persistence. Legacy's ledger covered a creep from the moment it was **requested**;
+`spawning: true` only covers it from the moment it is **in the spawn**. Our window
+closes differently — a request not spawned this tick reappears next tick from the
+current snapshot — and it closes **only** given an invariant this ADR never stated:
+*a request is consumed at most once per tick.* With several idle spawns that must be
+an explicit take-from-the-list loop, not "for each spawn, find the best request." See
+PRD §4.1.
 
-`CreepMemory` gains `op?: string`. `censusByColony` keys by operation alongside role,
-so an operation asks "how many do *I* have" rather than reading a colony-wide role
-count. This is legacy's `data.creeps` + `memory.op`, derived fresh from the snapshot
-each tick instead of stored and reconciled — so there is nothing to validate and
-nothing that can drift. `validateCreeps()` has no counterpart here by design.
+#### Creeps in the snapshot, not a census
 
-Where the assignment matters (a miner belongs to a *source*, not just to Mining),
-`memory.sourceId` carries it and the deficit is per-assignment: "does this source have
-6 WORK covering it" rather than "are there 2 miners." Both keys exist for the same
-reason legacy had both: `op` for ownership, `sourceId` for the specific job.
+`CreepMemory` gains `op?: string` (ownership) and `sourceId?: Id<Source>` (the
+specific job) — both keys, for the same reason legacy had both. An operation asks "how
+many do *I* have" rather than reading a colony-wide role count, derived fresh from the
+snapshot each tick instead of stored and reconciled, so there is nothing to validate
+and nothing that can drift. `validateCreeps()` has no counterpart here by design.
+
+**Corrected**: the mechanism is not an aggregate census keyed by operation alongside
+role. That shape cannot express this section's own example — *"does this source have 6
+WORK covering it"* is a predicate over creep **bodies**, and no
+`Record<RoleName, number>` can answer it. Different operations want different
+projections of the same creeps (WORK per source, CARRY per remote, TTL for pre-spawn);
+an aggregate serves only the projection guessed at when it was written.
+
+So `ColonySnapshot` carries `creeps: SnapCreep[]` and **`Census` ceases to exist as a
+concept**, not merely as a snapshot field. Every count is derived at the point of use.
+Each `SnapCreep` carries its whole memory object — a live reference typed `Readonly`,
+so `op`, `sourceId` and every future per-role field are readable with no snapshot
+change, and a planner still cannot write Memory outside the `Intent` boundary. That
+round trip — requester writes memory, `execute.ts` puts it on the creep, the snapshot
+hands it back — *is* how an operation gets identity over its creeps. See PRD §3.2.
+
+#### Requests carry their own deficit
+
+There is no framework-level deficit check. A requester reads the colony's live creeps,
+works out what is missing, and emits one request per missing creep; every request in
+the list is by construction a creep that does not exist yet. This is legacy's shape
+exactly — `SpawnManager.run()` never compares desired to actual, and every
+`enqueueCreeps()` is `validateCreeps(); if (have < want) enque(...)`.
+
+It is also the only model that expresses the per-assignment case: legacy's
+`MinerOperation` enqueues one entry **per source**, each with its own `sourceId`. Two
+requests from the same operation with the same role and different `sourceId` are
+indistinguishable to any count-based matcher.
+
+The cost, accepted: a requester whose check is inverted spawns forever. Nothing
+catches that structurally; each requester is tested instead.
 
 Existing creeps deploy without `op`. Absent `op` means unowned; attrition clears them
 within a creep lifetime (~1500 ticks). No migration step in `memory/migrate.ts`.
 
 #### What stays in spawning
 
-`planSpawning` remains the arbiter and keeps `recoveryRole`
-([spawning.ts:52](../../src/systems/spawning.ts#L52)), which deliberately sizes
-against `energyAvailable` rather than capacity because a dead colony has no creep to
-fill extensions. That is a spawning-level concern and **overrides a request's body**.
+`planSpawning` remains the arbiter — and ends up with **no role name and no census
+comparison** in it at all: gather requests, sort by priority, pair with idle spawns,
+deduct a running energy budget, emit.
+
+**Corrected**: recovery does not "override a request's body." It is an ordinary
+request at a reserved top priority. There is no census comparison for it to bypass,
+and in total collapse there may be no request to override — every normal quota
+evaluates to zero, which is the entire reason recovery exists. It still sizes against
+`energyAvailable` rather than capacity (a dead colony has no creep to fill
+extensions), but under this stage the requester computes its own body, so that is
+simply what `recoveryRequests` does. No sizing flag on `CreepRequest`; a flag would
+push body derivation back into the arbiter, which is what this stage removes.
+
+Two arbiter rules the original draft left open, both settled in PRD §4.2:
+`energyAvailable` is a shared **room** pool, so the budget is deducted as requests are
+consumed; and when the next request does not fit, **stop** rather than skipping down to
+a cheaper one. Filling with affordable creeps first means energy is permanently
+consumed by cheap creeps and the expensive high-priority request never becomes
+affordable — a livelock, not merely priority inversion.
 
 `execute.ts` already covers two of legacy's capabilities — dry-run before commit, and
 spawn direction toward an adjacent road — and needs no change beyond accepting
-richer `memory`.
+richer `memory` and dropping the now-redundant `role` field.
 
-Gate: benchmark within noise (see §Acceptance).
+Gate: `npm test` green, including `test/integration/`. **No benchmark gate** — see
+§Acceptance.
 
 ### Stage 3 — Building as demand plus an arbiter
 
@@ -212,20 +277,48 @@ Gate: benchmark within noise.
 - `RoomSnapshot`, flag commands, `canAfford`, and per-role files are still not built.
   They are 0003 ideas without a caller; each waits for one. Squad coordination remains
   deferred.
-- Stage 2 changes `CreepMemory`, the census shape, and `planSpawning`'s deficit test
-  together. They cannot be split — the deficit test is meaningless without the keying.
+- Stage 2 changes `CreepMemory`, the snapshot's creep representation, and
+  `planSpawning`'s deficit test together. They cannot be split — the deficit test is
+  meaningless without the creep data behind it, and removing `ColonySnapshot.census`
+  breaks 68 references across 14 files at once. The compiler is the worklist.
+- Stage 2 has no `Operation` type to produce requests, so its requesters are free
+  functions that stay in the file their count function lives in today, and `op` is a
+  string literal (`opName("mining", room)`) with no object behind it. Stage 3 relocates
+  those bodies into operations and the literal becomes `op.name`; nothing else changes.
+  `kind:room` is unique only while there is at most one operation of a type per room —
+  `RemoteMining` breaks it, which is why 0003 wanted a target-room constructor argument.
+- Existing creeps deploy without `op`/`sourceId`, so for one creep lifetime the miner
+  requester sees every source as uncovered and **over-spawns once**. Benchmarks and
+  integration tests start from a fresh world and will not show it; a live deployment
+  will. Accepted rather than migrated.
 
 ## Acceptance
 
-Per stage: `npm test` green, `npm run lint` clean, test count not decreased, and
-`npm run bench` compared against the committed history in
-`test/benchmark/benchmarks.json` (`rcl2` ~775, `rcl2-extensions-built` ~3050, `rcl3`
-~7300, `rcl3-buildings-built` ~11400).
+Per stage: `npm test` green (unit **and** `test/integration/`) and `npm run lint`
+clean.
 
-Run-to-run spread in the existing history is roughly ±3%. Stage 1 must be identical.
-Stages 2 and 3 treat **>5% on any milestone as a failure** — these are refactors of
-behaviour that already works, so a real move means something was not preserved.
-Report it rather than re-baselining the benchmark.
+`npm run bench` is compared against the committed history in
+`test/benchmark/benchmarks.json` (`rcl2` ~775, `rcl2-extensions-built` ~3050, `rcl3`
+~7300, `rcl3-buildings-built` ~11400). Run-to-run spread is roughly ±3%. **Stage 1 must
+be identical** — the same work runs in the same order; only the loop's owner changed.
+
+**Stage 2 has no benchmark gate, and does not hold test count.** The original ">5% is a
+failure" rule assumed each stage is a behaviour-preserving refactor gated on its own.
+That is wrong for stage 2 specifically: `test/benchmark/` measures performance and
+optimisation, stage 2 is infrastructure, and the suite is rewritten again in stage 3
+when operations land. Mid-refactor a worse number is expected and carries no
+information. Record the run once as a baseline for stage 3; do not gate on it, do not
+re-baseline, do not tune to chase it. Likewise "test count not decreased" rewards
+porting tests that assert deleted concepts — port what still means something and drop
+the rest.
+
+What gates stage 2 instead is `test/integration/`, which is **not** the benchmark
+suite: `rcl3.test.ts` asserts *"the climb completes"* under generous ceilings, and
+`emergency-recovery.test.ts` covers the single most behaviour-sensitive change in the
+stage. Those catch an inverted satisfaction check that silently spawns nothing, which
+is the real risk here.
+
+Stage 3 keeps the >5% rule.
 
 The `legacy-rcl2` series (~402 ticks vs the rewrite's ~775) is a separate finding:
 legacy reaches RCL2 faster and then builds nothing (`sinkConstruction: 0`,

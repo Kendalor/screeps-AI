@@ -1,63 +1,105 @@
-// Computes desired census per colony each tick and emits spawn intents for the highest deficit. No persisted spawn queue.
+// The arbiter: gathers every requester's demand, sorts by priority, pairs it with idle spawns and
+// spends the room's energy. It knows no role names and compares no counts — a requester decides
+// what is missing, how big its body is and what memory it carries. No persisted spawn queue: a
+// request not filled this tick is simply re-derived next tick from the live snapshot.
 
 import { bodyCost, countPart, orderBody } from "../behaviors/body";
 import { roleDef } from "../behaviors/roles";
-import type { BodyContext } from "../behaviors/types";
 import type { Colony } from "../colony";
 import type { Intent } from "../intents/types";
-import type { RoleName } from "../memory/schema";
-import type { Census, ColonySnapshot } from "../snapshot/types";
-import { desiredBuilderCount } from "./building";
-import { desiredHaulerCount, desiredMinerCount } from "./logistics";
-import { desiredUpgraderCount } from "./upgrading";
+import type { ColonySnapshot } from "../snapshot/types";
+import { DEFAULT_PRIORITY, fillTo, opName, RECOVERY_PRIORITY, type CreepRequest } from "../spawn/request";
+import { builderRequests } from "./building";
+import { haulerRequests, minerRequests } from "./logistics";
+import { bodyContext } from "./spawnContext";
+import { upgraderRequests } from "./upgrading";
 
-// Earlier roles are filled first under energy pressure; bootstrap keeps the colony alive before anything specialised.
-const PRIORITY: RoleName[] = ["bootstrap", "miner", "hauler", "upgrader", "builder"];
+// Stage 3 inverts this into a poll over the colony's operations; until then the requesters are
+// named here, the way they were when they were counts.
+//
+// A function rather than a module-level array: two of these are declared below and an array would
+// capture them at module-evaluation time, working only by function hoisting. Converting any one of
+// them to a `const` arrow — an ordinary refactor — would then throw at import and take down the
+// whole loop. Resolving them per call costs nothing and cannot break that way.
+function requesters(): ((colony: Colony) => CreepRequest[])[] {
+  return [recoveryRequests, bootstrapRequests, minerRequests, haulerRequests, upgraderRequests, builderRequests];
+}
 
-export function planSpawning({ snapshot: colony }: Colony): Intent[] {
-  const spawn = colony.spawns.find(s => !s.busy);
-  if (!spawn) return [];
+export function planSpawning(colony: Colony): Intent[] {
+  const requests = requesters()
+    .flatMap(request => request(colony))
+    .sort((a, b) => b.priority - a.priority);
+  if (requests.length === 0) return [];
 
-  const recovery = recoveryRole(colony);
-  const recovering = recovery !== undefined;
-  const deficit = recovery ?? firstDeficit(desiredCensus(colony), colony.census);
-  if (!deficit) return [];
+  const idle = colony.snapshot.spawns.filter(s => !s.busy);
+  // energyAvailable is a shared room pool, not per-spawn: two spawns each emitting an affordable
+  // 300 body in a 300 room would produce one success and one silent ERR_NOT_ENOUGH_ENERGY.
+  let budget = colony.snapshot.energyAvailable;
 
-  const def = roleDef(deficit);
+  const out: Intent[] = [];
+  // An explicit take-from-the-list loop, not "for each spawn, find the best request" — the latter
+  // hands the same top-priority request to every idle spawn. Consuming each request at most once
+  // per tick is what closes the double-order window that a persisted queue would otherwise cover.
+  let next = 0;
+  for (const spawn of idle) {
+    const request = requests[next];
+    if (!request) break;
+    const cost = bodyCost(request.body);
+    // Stop rather than skip to a cheaper request lower down: filling with affordable creeps first
+    // means the colony's energy is permanently consumed by cheap ones and the expensive
+    // high-priority request never becomes affordable. That is a livelock, not priority inversion.
+    if (cost > budget) break;
+
+    out.push({ kind: "spawn", spawn: spawn.id, body: request.body, memory: request.memory });
+    budget -= cost;
+    next++;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Recovery
+// ---------------------------------------------------------------------------
+
+// Total creep loss: with nothing alive, energyAvailable only climbs to the spawn's own regen and
+// every normal quota evaluates to zero forever, so this detects a zero creep count directly rather
+// than by watching energy level over time. An ordinary request at a reserved top priority — not a
+// branch in the arbiter, since in total collapse there is no other request to override.
+export function recoveryRequests({ snapshot: colony }: Colony): CreepRequest[] {
+  if (colony.creeps.length > 0) return [];
+
+  // Supply (not hauler, which moves energy the other way) withdraws from storage directly into extensions.
+  // Bootstrap needs no infrastructure, but still needs a source; with neither, there is no way back.
+  const role = colony.storageEnergy > 0 ? "supply" : colony.sources.length > 0 ? "bootstrap" : undefined;
+  if (!role) return [];
+
+  const def = roleDef(role);
   if (!def) return [];
 
-  // Capacity sizing is tick-dependent (a runt if spawned right after energy is spent); recovery has no creep to fill extensions,
-  // so use actual available energy — a capacity-sized body there would fail the affordability guard forever.
-  const budget = recovering ? colony.energyAvailable : colony.energyCapacity;
-  // Ordered once here rather than in each body formula, since damage eats parts in array order for every body.
-  const body = orderBody(def.body(budget, bodyContext(colony)));
-  // Price the produced body rather than a fixed threshold, so it stays honest as body formulas change.
+  // Sized against energyAvailable, not energyCapacity: a dead colony has no creep to fill its
+  // extensions, so a capacity-sized body would fail the affordability guard forever.
+  const body = orderBody(def.body(colony.energyAvailable, bodyContext(colony)));
+  if (body.length === 0) return [];
+
+  // Sizing against available energy still does not guarantee affordability: every body formula
+  // clamps to at least one whole set, so below that floor (250 for bootstrap, 150 for supply) it
+  // hands back a body the room cannot pay for. Withhold it rather than emit it — at
+  // RECOVERY_PRIORITY it sorts first, so an unaffordable recovery request would trip the arbiter's
+  // stop and block every other request behind it while the room refills.
   if (bodyCost(body) > colony.energyAvailable) return [];
 
   return [
     {
-      kind: "spawn",
-      spawn: spawn.id,
-      role: deficit,
       body,
-      memory: { home: colony.name, role: deficit }
+      priority: RECOVERY_PRIORITY,
+      memory: { role, home: colony.name, op: opName("recovery", colony.name) }
     }
   ];
 }
 
-// Total creep loss: with nothing alive, energyAvailable only climbs to the spawn's own regen and every normal quota evaluates
-// to zero forever, so this detects zero-census directly rather than by watching energy level over time.
-// Returns the role that breaks the deadlock, or undefined when the colony is alive and the normal quota diff should run.
-function recoveryRole(colony: ColonySnapshot): RoleName | undefined {
-  const alive = Object.values(colony.census).some(n => n > 0);
-  if (alive) return undefined;
-
-  // Supply (not hauler, which moves energy the other way) withdraws from storage directly into extensions.
-  if (colony.storageEnergy > 0) return "supply";
-
-  // Bootstrap needs no infrastructure, but still needs a source; with none, let the normal quota path decide.
-  return colony.sources.length > 0 ? "bootstrap" : undefined;
-}
+// ---------------------------------------------------------------------------
+// Bootstrap
+// ---------------------------------------------------------------------------
 
 // A source regenerates 10 energy/tick; one WORK part harvests 2/tick, so 5 WORK saturates a source.
 const WORK_PER_SOURCE = 5;
@@ -69,7 +111,7 @@ const WORKFORCE_MULTIPLIER = 2.5;
 const PRE_RCL2_PER_SOURCE = 2;
 
 // Sized by WORK-part throughput needed to drain every source, not a flat per-source count. Deliberately uncapped —
-// planSpawning's affordability guard is the real limit on what the room can field.
+// the arbiter's affordability guard is the real limit on what the room can field.
 export function desiredBootstrapCount(colony: ColonySnapshot): number {
   if (colony.controllerLevel < 2) return colony.sources.length * PRE_RCL2_PER_SOURCE;
   const workNeeded = colony.sources.length * WORK_PER_SOURCE;
@@ -84,31 +126,16 @@ function bootstrapWorkParts(energyCapacity: number): number {
   return Math.max(1, countPart(body, WORK));
 }
 
-// Exported so integration benchmarks can seed a colony with the workforce it would actually have at a milestone, rather than
-// cold-starting from empty and measuring a recovery the real colony never performs.
-export function desiredCensus(colony: ColonySnapshot): Census {
-  return {
-    bootstrap: desiredBootstrapCount(colony),
-    miner: desiredMinerCount(colony),
-    hauler: desiredHaulerCount(colony),
-    upgrader: desiredUpgraderCount(colony),
-    builder: desiredBuilderCount(colony)
-  };
-}
-
-// Exported alongside desiredCensus so a caller reconstructing this colony's workforce sizes bodies exactly as the spawner would.
-export function bodyContext(colony: ColonySnapshot): BodyContext {
-  return {
-    hasContainer: colony.containers.length > 0,
-    hasLink: colony.structures.some(s => s.type === STRUCTURE_LINK)
-  };
-}
-
-function firstDeficit(desired: Census, actual: Census): RoleName | undefined {
-  for (const role of PRIORITY) {
-    const want = desired[role] ?? 0;
-    const have = actual[role] ?? 0;
-    if (have < want) return role;
-  }
-  return undefined;
+export function bootstrapRequests({ snapshot: colony }: Colony): CreepRequest[] {
+  // Capacity sizing, not availability: sizing from what happens to be in the room would make body
+  // size depend on which tick the planner ran. Capacity is the room's persistent budget, and the
+  // arbiter's guard turns "cannot pay yet" into "wait" rather than "spawn a runt".
+  // Ordered here rather than in each body formula, since damage eats parts in array order for every body.
+  return fillTo(
+    desiredBootstrapCount(colony),
+    colony.creeps.filter(c => c.role === "bootstrap").length,
+    orderBody(roleDef("bootstrap")?.body(colony.energyCapacity, bodyContext(colony)) ?? []),
+    DEFAULT_PRIORITY.bootstrap,
+    { role: "bootstrap", home: colony.name, op: opName("bootstrap", colony.name) }
+  );
 }

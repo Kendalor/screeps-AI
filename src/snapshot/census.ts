@@ -1,21 +1,16 @@
-// Alive/spawning creep counts per role per colony. Pure over a plain creep list so it is
-// unit-tested without Game; the snapshot builder feeds it Game.creeps.
+// Groups creeps by the colony they call home. Pure over a plain creep list so it is unit-tested
+// without Game; the snapshot builder feeds it Game.creeps.
+//
+// Grouping is by memory.home, never by the room the creep stands in — a creep visiting a
+// neighbouring room still belongs to its home colony, and keying by room would make miner counts
+// flicker whenever one steps across a border.
 
-import type { Census } from "./types";
-import type { RoleName } from "../memory/schema";
+import type { SnapCreep } from "./types";
 
-// Spawning creeps count too, so a role at quota isn't spawned twice while its creep is still in the spawn.
-export interface CensusCreep {
-  home: string;
-  role: RoleName;
-  spawning: boolean;
-}
-
-export function censusByColony(creeps: CensusCreep[]): Record<string, Census> {
-  const byColony: Record<string, Census> = {};
+export function censusByColony(creeps: SnapCreep[]): Record<string, SnapCreep[]> {
+  const byColony: Record<string, SnapCreep[]> = {};
   for (const c of creeps) {
-    const census = (byColony[c.home] ??= {});
-    census[c.role] = (census[c.role] ?? 0) + 1;
+    (byColony[c.home] ??= []).push(c);
   }
   return byColony;
 }

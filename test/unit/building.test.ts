@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
-import { desiredBuilderCount, planBuilding } from "../../src/systems/building";
+import { builderRequests, planBuilding } from "../../src/systems/building";
 import type { SnapStructure } from "../../src/snapshot/types";
 import { colony } from "../../src/colony";
-import { colonySnap, sourceAt } from "../fixtures";
+import { colonySnap, snapCreeps, sourceAt, testColony } from "../fixtures";
 import { minedStructures } from "../../src/systems/mining";
 import { buildableAtRcl } from "../../src/layouts/goal";
 import { stampLayout } from "../../src/layouts/stamp";
@@ -235,27 +235,41 @@ describe("building planner focus policy", () => {
 
 });
 
-describe("desiredBuilderCount (ported BuildOperation builder quota)", () => {
-  it("returns 0 when there is nothing left to build", () => {
-    expect(desiredBuilderCount(colonySnap({ constructionProgress: 0, storageEnergy: 200_000 }))).toBe(0);
+// The quota formula is ported verbatim from the builder count this replaced, so each count assertion survives
+// as an assertion about how many requests come back.
+describe("builderRequests (ported BuildOperation builder quota)", () => {
+  it("asks for nothing when there is nothing left to build", () => {
+    expect(builderRequests(testColony({ constructionProgress: 0, storageEnergy: 200_000 }))).toEqual([]);
   });
 
   it("scales one builder per 5k of remaining work when storage can bankroll them", () => {
-    expect(desiredBuilderCount(colonySnap({ constructionProgress: 3_000, storageEnergy: 200_000 }))).toBe(1);
-    expect(desiredBuilderCount(colonySnap({ constructionProgress: 8_000, storageEnergy: 200_000 }))).toBe(2);
+    expect(builderRequests(testColony({ constructionProgress: 3_000, storageEnergy: 200_000 }))).toHaveLength(1);
+    expect(builderRequests(testColony({ constructionProgress: 8_000, storageEnergy: 200_000 }))).toHaveLength(2);
   });
 
   it("caps the quota so a full bunker rollout cannot swallow all spawn capacity", () => {
-    expect(desiredBuilderCount(colonySnap({ constructionProgress: 500_000, storageEnergy: 2_000_000 }))).toBe(4);
+    expect(builderRequests(testColony({ constructionProgress: 500_000, storageEnergy: 2_000_000 }))).toHaveLength(4);
   });
 
   it("holds the storage reserve back: no builders when storage cannot cover the reserve plus the build cost", () => {
     // Reserve is 50k; a 10k backlog costs 10k energy, so storage must clear 60k first.
-    expect(desiredBuilderCount(colonySnap({ constructionProgress: 10_000, storageEnergy: 55_000 }))).toBe(0);
-    expect(desiredBuilderCount(colonySnap({ constructionProgress: 10_000, storageEnergy: 65_000 }))).toBe(2);
+    expect(builderRequests(testColony({ constructionProgress: 10_000, storageEnergy: 55_000 }))).toHaveLength(0);
+    expect(builderRequests(testColony({ constructionProgress: 10_000, storageEnergy: 65_000 }))).toHaveLength(2);
   });
 
   it("asks for no dedicated builders before storage exists — bootstrap's build step covers construction that early", () => {
-    expect(desiredBuilderCount(colonySnap({ constructionProgress: 20_000, storageEnergy: 0, controllerLevel: 3 }))).toBe(0);
+    expect(
+      builderRequests(testColony({ constructionProgress: 20_000, storageEnergy: 0, controllerLevel: 3 }))
+    ).toEqual([]);
+  });
+
+  it("returns nothing once the live builders meet the quota", () => {
+    const colony = testColony({
+      constructionProgress: 8_000,
+      storageEnergy: 200_000,
+      creeps: snapCreeps("builder", 2)
+    });
+
+    expect(builderRequests(colony)).toEqual([]);
   });
 });

@@ -17,6 +17,11 @@ declare global {
   interface CreepMemory {
     home: string; // colony room name
     role: RoleName;
+    // The requester that ordered this creep, as `kind:room` (see opName). Absent means unowned —
+    // a creep that predates its requester, cleared by attrition rather than migration.
+    op?: string;
+    // Singular: an RCL7+ two-source miner does not exist here, so the honest port is one assignment.
+    sourceId?: Id<Source>;
     task?: TaskState; // current behavior progress — owned by behaviors/interpreter.ts
   }
 

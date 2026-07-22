@@ -70,15 +70,40 @@ _Avoid_: max harvest, full mining
 
 ### Spawn scheduling
 
+**Request**:
+A single creep a requester has decided is missing, carrying the body, the priority
+and the complete creep memory to spawn it with. Always exactly one creep — a
+requester short three haulers emits three requests.
+_Avoid_: order, job, entry, queue item, spawn task
+
+**Requester**:
+Whatever states demand for creeps. Colony-scoped functions today; operations later.
+A requester computes its own bodies and runs its own satisfaction check — nothing
+does that on its behalf.
+_Avoid_: producer, provider, client
+
+**Arbiter**:
+The single consumer that decides which requests actually become creeps, by priority
+and affordability. It knows nothing about roles.
+_Avoid_: scheduler, dispatcher, manager
+
+**Satisfaction check**:
+A requester's own reading of the colony's live creeps to decide what is still
+missing. Distinct from validation or reconciliation: there is no ledger to prune,
+so nothing can drift and nothing needs repairing.
+_Avoid_: validation, reconciliation, sync
+
 **Deficit**:
-The gap between a role's desired census and its live census. Spawn order is derived
-from deficits each tick rather than read from a fixed list.
+What a requester finds missing during its satisfaction check. Not necessarily a
+count — a deficit may be per assignment ("this source has no miner") or per body
+("this source lacks 6 WORK"), which is why it is not expressed as a census gap.
 _Avoid_: shortfall, gap, need
 
-**Proportional deficit**:
-A role's deficit expressed as a fraction of its own target, used so roles with
-different absolute quotas compete for the spawn on equal footing.
-_Avoid_: relative need, weighted deficit
+**Assignment**:
+The specific job a creep was spawned for, carried in its memory beyond its role — a
+miner belongs to a *source*, not merely to mining. Two creeps of the same role for
+the same requester are told apart by their assignment.
+_Avoid_: task (which is behaviour progress), binding, allocation
 
 **Collector cap**:
 The limit on miner headcount imposed by how much energy the colony can actually
@@ -86,6 +111,7 @@ collect, preventing miners whose output nobody retrieves.
 _Avoid_: hauler gate, miner limit
 
 **Recovery**:
-The wipe state in which a colony has zero live creeps and bypasses deficit
-scheduling entirely to spawn a single restart creep.
+The wipe state in which a colony has zero live creeps. Its restart creep is an
+ordinary request at a reserved top priority, sized against energy actually
+available rather than capacity — a dead colony has nothing to fill its extensions.
 _Avoid_: emergency, panic, bootstrap (which is a role, not a state)
