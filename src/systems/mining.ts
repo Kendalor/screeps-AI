@@ -2,11 +2,12 @@
 // systems/building.ts owns construction); planMining records source-spot bookkeeping as intents so roles avoid re-pathing.
 // Pure — reads the snapshot, returns plain data, never touches Game.*/Memory.
 
+import type { Colony } from "../colony";
 import type { Intent } from "../intents/types";
 import { buildCostMatrix, sourceRoadPath } from "../layouts/roads";
 import type { PlacedStructure } from "../layouts/stamp";
 import type { XY } from "../lib/geometry";
-import type { ColonySnapshot, EmpireSnapshot, SnapSource } from "../snapshot/types";
+import type { ColonySnapshot, SnapSource } from "../snapshot/types";
 
 // Deliberately not gated on storage: the container-backed economy is what funds storage, so gating on it would deadlock the colony.
 const MIN_CONTAINER_RCL = 2;
@@ -40,20 +41,18 @@ export function minedStructures(colony: ColonySnapshot): PlacedStructure[] {
   return [...sourceSpots(colony).values()].map(spot => ({ x: spot.x, y: spot.y, type }));
 }
 
-export function planMining(snap: EmpireSnapshot): Intent[] {
+export function planMining({ snapshot: colony }: Colony): Intent[] {
   const out: Intent[] = [];
-  for (const colony of snap.colonies) {
-    for (const [source, spot] of sourceSpots(colony)) {
-      // Direct id handle so roles avoid scanning the room every tick.
-      const container = colony.containers.find(c => c.x === spot.x && c.y === spot.y);
-      out.push({
-        kind: "recordSourceSpot",
-        room: colony.name,
-        source: source.id,
-        spot: { x: spot.x, y: spot.y },
-        ...(container ? { container: container.id } : {})
-      });
-    }
+  for (const [source, spot] of sourceSpots(colony)) {
+    // Direct id handle so roles avoid scanning the room every tick.
+    const container = colony.containers.find(c => c.x === spot.x && c.y === spot.y);
+    out.push({
+      kind: "recordSourceSpot",
+      room: colony.name,
+      source: source.id,
+      spot: { x: spot.x, y: spot.y },
+      ...(container ? { container: container.id } : {})
+    });
   }
   return out;
 }

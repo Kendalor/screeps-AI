@@ -1,5 +1,11 @@
 # Empire/Colony/Operation replaces the flat systems/ pipeline
 
+> **Superseded by [ADR 0005](0005-empire-colony-operations-staged.md).** The diagnosis
+> below stands and is quoted there; the prescription designed the whole hierarchy at
+> once and left holes where the pieces meet (whose `RoomSnapshot`, who constructs
+> operations, which operation owns a spawned creep). 0005 keeps the target shape and
+> stages the work around spawning, where those holes actually bite.
+
 `systems/*.ts` conflated three unrelated things under one name: pure quota math
 (`desiredMinerCount` in `logistics.ts`), capability logic that owns a domain concept
 end-to-end (`mining.ts`, `defense.ts`), and cross-cutting arbitration (`spawning.ts`

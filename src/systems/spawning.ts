@@ -3,9 +3,10 @@
 import { bodyCost, countPart, orderBody } from "../behaviors/body";
 import { roleDef } from "../behaviors/roles";
 import type { BodyContext } from "../behaviors/types";
+import type { Colony } from "../colony";
 import type { Intent } from "../intents/types";
 import type { RoleName } from "../memory/schema";
-import type { Census, ColonySnapshot, EmpireSnapshot } from "../snapshot/types";
+import type { Census, ColonySnapshot } from "../snapshot/types";
 import { desiredBuilderCount } from "./building";
 import { desiredHaulerCount, desiredMinerCount } from "./logistics";
 import { desiredUpgraderCount } from "./upgrading";
@@ -13,37 +14,35 @@ import { desiredUpgraderCount } from "./upgrading";
 // Earlier roles are filled first under energy pressure; bootstrap keeps the colony alive before anything specialised.
 const PRIORITY: RoleName[] = ["bootstrap", "miner", "hauler", "upgrader", "builder"];
 
-export function planSpawning(snap: EmpireSnapshot): Intent[] {
-  const out: Intent[] = [];
-  for (const colony of snap.colonies) {
-    const spawn = colony.spawns.find(s => !s.busy);
-    if (!spawn) continue;
+export function planSpawning({ snapshot: colony }: Colony): Intent[] {
+  const spawn = colony.spawns.find(s => !s.busy);
+  if (!spawn) return [];
 
-    const recovery = recoveryRole(colony);
-    const recovering = recovery !== undefined;
-    const deficit = recovery ?? firstDeficit(desiredCensus(colony), colony.census);
-    if (!deficit) continue;
+  const recovery = recoveryRole(colony);
+  const recovering = recovery !== undefined;
+  const deficit = recovery ?? firstDeficit(desiredCensus(colony), colony.census);
+  if (!deficit) return [];
 
-    const def = roleDef(deficit);
-    if (!def) continue;
+  const def = roleDef(deficit);
+  if (!def) return [];
 
-    // Capacity sizing is tick-dependent (a runt if spawned right after energy is spent); recovery has no creep to fill extensions,
-    // so use actual available energy — a capacity-sized body there would fail the affordability guard forever.
-    const budget = recovering ? colony.energyAvailable : colony.energyCapacity;
-    // Ordered once here rather than in each body formula, since damage eats parts in array order for every body.
-    const body = orderBody(def.body(budget, bodyContext(colony)));
-    // Price the produced body rather than a fixed threshold, so it stays honest as body formulas change.
-    if (bodyCost(body) > colony.energyAvailable) continue;
+  // Capacity sizing is tick-dependent (a runt if spawned right after energy is spent); recovery has no creep to fill extensions,
+  // so use actual available energy — a capacity-sized body there would fail the affordability guard forever.
+  const budget = recovering ? colony.energyAvailable : colony.energyCapacity;
+  // Ordered once here rather than in each body formula, since damage eats parts in array order for every body.
+  const body = orderBody(def.body(budget, bodyContext(colony)));
+  // Price the produced body rather than a fixed threshold, so it stays honest as body formulas change.
+  if (bodyCost(body) > colony.energyAvailable) return [];
 
-    out.push({
+  return [
+    {
       kind: "spawn",
       spawn: spawn.id,
       role: deficit,
       body,
       memory: { home: colony.name, role: deficit }
-    });
-  }
-  return out;
+    }
+  ];
 }
 
 // Total creep loss: with nothing alive, energyAvailable only climbs to the spawn's own regen and every normal quota evaluates

@@ -3,10 +3,12 @@
 
 import { firstRunnableStep, nextStep, runStep, type CreepState } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
+import type { Empire } from "../empire";
 import type { Intent } from "../intents/types";
-import type { EmpireSnapshot } from "../snapshot/types";
 
-export function runCreepBehaviors(_snap: EmpireSnapshot): Intent[] {
+// Empire-scoped, unlike the colony planners: this iterates Game.creeps directly rather than a snapshot, so it has no
+// colony to be scoped to. That is debt — creep behaviour is per-colony work that never got snapshot-ified.
+export function runCreepBehaviors(_empire: Empire): Intent[] {
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
     if (creep.spawning) continue;

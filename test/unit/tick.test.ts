@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Colony } from "../../src/colony";
 import { tick, type System } from "../../src/kernel/tick";
+import { colonySnap, testEmpire } from "../fixtures";
 import { stubGame } from "../helpers";
+
+function twoColonies() {
+  return testEmpire(colonySnap({ name: "W1N1" }), colonySnap({ name: "W2N2" }));
+}
 
 describe("kernel tick", () => {
   it("runs a system and executes its intents against the game API", () => {
@@ -14,6 +20,7 @@ describe("kernel tick", () => {
     const sys: System = {
       name: "test",
       tier: 1,
+      scope: "empire",
       run: () => [{ kind: "towerAttack", tower: "tower1" as Id<StructureTower>, target: "hostile1" as Id<Creep> }]
     };
 
@@ -25,7 +32,7 @@ describe("kernel tick", () => {
 
   it("skips a system whose interval does not divide the current tick", () => {
     const run = vi.fn(() => []);
-    const sys: System = { name: "interval", tier: 1, interval: 10, run };
+    const sys: System = { name: "interval", tier: 1, scope: "empire", interval: 10, run };
 
     stubGame({ time: 5 });
     tick([sys]);
@@ -41,8 +48,8 @@ describe("kernel tick", () => {
     const tier2 = vi.fn(() => []);
     stubGame({ cpuLimit: 20, getUsed: () => 13 });
     tick([
-      { name: "t1", tier: 1, run: tier1 },
-      { name: "t2", tier: 2, run: tier2 }
+      { name: "t1", tier: 1, scope: "empire", run: tier1 },
+      { name: "t2", tier: 2, scope: "empire", run: tier2 }
     ]);
 
     expect(tier1).toHaveBeenCalledTimes(1);
@@ -54,8 +61,8 @@ describe("kernel tick", () => {
     const tier3 = vi.fn(() => []);
     stubGame({ cpuLimit: 20, getUsed: () => 0, bucket: 2000 });
     tick([
-      { name: "t2", tier: 2, run: tier2 },
-      { name: "t3", tier: 3, run: tier3 }
+      { name: "t2", tier: 2, scope: "empire", run: tier2 },
+      { name: "t3", tier: 3, scope: "empire", run: tier3 }
     ]);
 
     expect(tier2).toHaveBeenCalledTimes(1);
@@ -68,12 +75,43 @@ describe("kernel tick", () => {
     const boom: System = {
       name: "boom",
       tier: 1,
+      scope: "empire",
       run: () => {
         throw new Error("kaboom");
       }
     };
 
-    expect(() => tick([boom, { name: "after", tier: 1, run: after }])).not.toThrow();
+    expect(() => tick([boom, { name: "after", tier: 1, scope: "empire", run: after }])).not.toThrow();
     expect(after).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs a colony system once per colony", () => {
+    const run = vi.fn(() => []);
+    stubGame({});
+
+    tick([{ name: "percolony", tier: 1, scope: "colony", run }], twoColonies());
+
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls.map(([c]) => (c as Colony).snapshot.name)).toEqual(["W1N1", "W2N2"]);
+  });
+
+  it("isolates a crashing colony so its siblings still run", () => {
+    const seen: string[] = [];
+    stubGame({});
+
+    const sys: System = {
+      name: "boom",
+      tier: 1,
+      scope: "colony",
+      run: (c: Colony) => {
+        if (c.snapshot.name === "W1N1") throw new Error("kaboom");
+        seen.push(c.snapshot.name);
+        return [];
+      }
+    };
+
+    expect(() => tick([sys], twoColonies())).not.toThrow();
+    // The guard is inside the colony loop, so one colony's bad snapshot doesn't blind the next.
+    expect(seen).toEqual(["W2N2"]);
   });
 });

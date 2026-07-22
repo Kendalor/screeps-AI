@@ -1,5 +1,7 @@
 // Snapshot fixtures for planner tests — plain objects, no game engine.
 
+import { colony, type Colony } from "../src/colony";
+import { empire, type Empire } from "../src/empire";
 import type {
   ColonySnapshot,
   EmpireSnapshot,
@@ -25,11 +27,21 @@ export function dropAt(x: number, y: number, amount = 50, id = `drop_${x}_${y}`)
   return { id: id as Id<Resource>, x, y, amount };
 }
 
-export function empire(...colonies: ColonySnapshot[]): EmpireSnapshot {
+export function empireSnap(...colonies: ColonySnapshot[]): EmpireSnapshot {
   return { tick: 0, colonies };
 }
 
-export function colony(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
+// The wrapper a colony-scoped planner actually takes. Named separately from colonySnap so neither name lies about
+// what it returns, and so no call site has to nest two factories.
+export function testColony(over: Partial<ColonySnapshot> = {}): Colony {
+  return colony(colonySnap(over));
+}
+
+export function testEmpire(...colonies: ColonySnapshot[]): Empire {
+  return empire(empireSnap(...colonies));
+}
+
+export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
   return {
     name: "W1N1",
     towers: [],

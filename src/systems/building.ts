@@ -2,13 +2,14 @@
 // source containers), and who builds it. Pure: reads the snapshot, returns plain data, never touches Game.*/Memory.
 
 import GOAL_JSON from "../layouts/Base_2.json";
+import type { Colony } from "../colony";
 import type { Intent } from "../intents/types";
 import { buildableAtRcl } from "../layouts/goal";
 import type { PlacedStructure } from "../layouts/stamp";
 import { stampLayout } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
-import type { ColonySnapshot, EmpireSnapshot, SnapStructure } from "../snapshot/types";
+import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
 import { minedStructures } from "./mining";
 
 const GOAL = GOAL_JSON as GoalLayout;
@@ -49,13 +50,9 @@ export function desiredBuilderCount(colony: ColonySnapshot): number {
   return Math.min(MAX_BUILDERS, Math.ceil(colony.constructionProgress / PROGRESS_PER_BUILDER));
 }
 
-export function planBuilding(snap: EmpireSnapshot): Intent[] {
-  const out: Intent[] = [];
-  for (const colony of snap.colonies) {
-    if (!colony.anchor) continue;
-    out.push(...planColony(colony));
-  }
-  return out;
+export function planBuilding({ snapshot: colony }: Colony): Intent[] {
+  if (!colony.anchor) return [];
+  return planColony(colony);
 }
 
 // Exported because integration benchmarks seed a colony at one RCL and need this same derivation to know the next level's target set.

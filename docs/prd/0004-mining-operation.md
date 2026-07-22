@@ -1,5 +1,10 @@
 # PRD: Mining as the first Operation
 
+> **Superseded — do not implement.** Its ADR was replaced by
+> [ADR 0005](../adr/0005-empire-colony-operations-staged.md), which stages the work
+> around spawning rather than starting from a single operation. A replacement PRD
+> should be written per stage.
+
 Implements [ADR 0004](../adr/0004-mining-as-the-first-operation.md). Read that first —
 it carries the reasoning; this document carries the decisions and the acceptance gate.
 
@@ -39,7 +44,7 @@ building it — that is a finding about the ADR, not a task to complete.
 src/operations/
   types.ts        # Operation interface
   index.ts        # operationsFor(), mergeCensus()
-  mining.ts       # class Mining
+  mining.ts       # mining() factory
 ```
 
 ### 3.1 Module direction (decided — do not rearrange)
@@ -80,19 +85,38 @@ export interface Operation {
 
 All three methods are required. An operation wanting nothing returns `{}` / `[]`.
 
-### 3.3 Construction
+### 3.3 Construction — factories, not classes (decided)
+
+Operations are **closure factories returning `Operation`**, not classes. `src/` has no
+classes today outside the vendored `lib/traveler.ts`; do not introduce the first one
+here.
 
 ```ts
 // src/operations/index.ts
 export function operationsFor(colony: ColonySnapshot): Operation[] {
-  return [new Mining(colony.name)];
+  return [mining(colony.name)];
 }
 ```
 
-**Constructors take identity, never data.** `new Mining("W1N1")` stores a room name.
-It must not accept a snapshot, must not path, must not read Memory. This is load-
-bearing: `planSpawning` is tier 1 and constructs operations every tick regardless of
-CPU pressure (§3.6).
+Two properties this buys, both load-bearing:
+
+- **`extends` is structurally impossible.** ADR 0003 mandates composition — a future
+  `RemoteMining` *holds* a `mining()` instance and delegates to it explicitly. With
+  factories there is no base class to inherit from, so the banned option cannot be
+  reached for. (Legacy's `RemoteMiningOperation extends FlagOperation` is the pattern
+  being moved away from.)
+- **No `this`.** Methods cannot be detached from their object, so
+  `ops.map(op => op.desiredCreeps)` cannot produce a runtime `this`-is-undefined
+  failure that TypeScript will not catch.
+
+**Factories take identity, never data.** `mining("W1N1")` closes over a room name. It
+must not accept a snapshot, must not path, must not read Memory. This is load-bearing:
+`planSpawning` is tier 1 and constructs operations every tick regardless of CPU
+pressure (§3.6).
+
+Return the object literal directly with the `Operation` return type annotated, so
+nothing beyond the interface can leak out. Do not add public helpers to the returned
+object — anything an operation needs internally stays a closure-scoped `const`.
 
 Instances are per-tick and disposable. `operationsFor` may be called several times in
 one tick by different callers; each gets fresh instances. That is fine and expected.
@@ -107,22 +131,32 @@ one tick by different callers; each gets fresh instances. That is fine and expec
 | `systems/logistics.ts` | `desiredMinerCount`, `desiredHaulerCount`, `minerWorkParts`, `WORK_PER_SOURCE`, `MIN_HAULER_ENERGY` → merged into `desiredCreeps()` |
 
 ```ts
-export class Mining implements Operation {
-  readonly name: string;
-  constructor(private readonly room: string) {
-    this.name = `mining:${room}`;
-  }
+export function mining(room: string): Operation {
+  // Per-instance memo; see §3.5. Lives here, not on the returned object.
+  let spots: Map<SnapSource, XY> | undefined;
 
-  desiredCreeps(snap: EmpireSnapshot): Census {
-    const colony = this.colony(snap);
-    if (!colony) return {};
-    return { miner: desiredMinerCount(colony), hauler: desiredHaulerCount(colony) };
-  }
-  // structures(), plan() likewise resolve the colony by name first.
+  const colonyIn = (snap: EmpireSnapshot) => snap.colonies.find(c => c.name === room);
+  const sourceSpots = (colony: ColonySnapshot) => (spots ??= computeSourceSpots(colony));
+
+  return {
+    name: `mining:${room}`,
+
+    desiredCreeps(snap) {
+      const colony = colonyIn(snap);
+      if (!colony) return {};
+      return { miner: desiredMinerCount(colony), hauler: desiredHaulerCount(colony) };
+    },
+
+    // structures(), plan() likewise resolve the colony by name first.
+  };
 }
 ```
 
-Resolving `this.room` against the snapshot yields `undefined` if the room is not in
+The returned literal is checked against the annotated `Operation` return type, so
+parameter types on the methods are inferred — no need to restate `snap:
+EmpireSnapshot` on each.
+
+Resolving `room` against the snapshot yields `undefined` if the room is not in
 `snap.colonies` (lost, or not yet visible). Every method returns empty in that case —
 do not throw.
 
@@ -141,18 +175,20 @@ pathfinding and is the one place this refactor could regress CPU: under the new 
 `structures()` may be called twice per tick (from `wantedStructures` *and*
 `planColony`) plus once from `plan()`.
 
-Memoize lazily on the instance:
+Memoize lazily in the factory's closure (shown in §3.4):
 
 ```ts
-private spots?: Map<SnapSource, XY>;
-private sourceSpots(colony: ColonySnapshot): Map<SnapSource, XY> {
-  return (this.spots ??= computeSourceSpots(colony));
-}
+let spots: Map<SnapSource, XY> | undefined;
+const sourceSpots = (colony: ColonySnapshot) => (spots ??= computeSourceSpots(colony));
 ```
 
-Lazy, so the constructor stays free. Instance-scoped, so the cache lifetime is exactly
-one tick and cannot go stale. Note this makes an instance single-colony — which it
-already is, since `this.room` is fixed.
+Lazy, so the factory call stays free. Closure-scoped, so the cache lifetime is exactly
+one instance — i.e. one tick — and cannot go stale, and is genuinely unreachable from
+outside rather than `private` by convention. Note this makes an instance
+single-colony, which it already is since `room` is fixed.
+
+`computeSourceSpots` is the module-level pure function moved from `systems/mining.ts`;
+only the caching wrapper lives in the closure.
 
 Today `minedStructures` is called twice per tick with no memoization, so this is a
 small CPU *improvement*, not a regression.
@@ -242,14 +278,14 @@ silently invalidates the RCL3 benchmark instead of failing loudly.
 | `src/kernel/tick.ts` | `mining` entry → `operations` |
 | `test/integration/seed.ts:299` | pass snapshot to `wantedStructures` |
 | `test/benchmark/milestones-rcl3-from-seed.test.ts:62` | same |
-| `test/unit/building.test.ts` | 4 × `minedStructures` → `new Mining(room).structures(snap)` |
+| `test/unit/building.test.ts` | 4 × `minedStructures` → `mining(room).structures(snap)` |
 | `test/unit/mining.test.ts` + `test/unit/logistics.test.ts` | merge → `test/unit/operations/mining.test.ts` |
 
 ## 5. Sequence (test-first)
 
 1. **Write `operations/types.ts`.** Interface only, no implementation.
 2. **Merge the two test files** into `test/unit/operations/mining.test.ts`, rewritten
-   against `new Mining(...)`. They fail to compile — that is the red state.
+   against `mining(...)`. They fail to compile — that is the red state.
 3. **Implement `Mining`** by moving code. Green.
 4. **Add `operations/index.ts`** (`operationsFor`, `mergeCensus`, `planOperations`)
    with unit tests for `mergeCensus` summing across operations.
@@ -291,6 +327,11 @@ count before and after, and any point where §2's non-goals felt necessary.
 
 - `EmpireSnapshot` is passed by reference; passing the whole snapshot everywhere costs
   nothing. Do not slim it for performance.
+- The factory style (§3.3) is a deliberate choice, not an oversight. Do not convert
+  operations to classes, and do not add a base factory that other operations call
+  through to get shared behaviour — that reintroduces inheritance under another name.
+  Shared logic between operations belongs in module-level pure functions that each
+  factory calls, the way `computeSourceSpots` is called from `mining()`.
 - The `roleDef("miner")` lookup inside `minerWorkParts` asks the role table for its
   own body formula rather than restating it. Keep that — it is why the quota tracks
   body changes automatically.

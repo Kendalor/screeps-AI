@@ -1,24 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { desiredMinerCount } from "../../src/systems/logistics";
 import { desiredBootstrapCount, planSpawning } from "../../src/systems/spawning";
-import { colony, containerAt, empire, sourceAt, spawn } from "../fixtures";
+import { colony } from "../../src/colony";
+import { colonySnap, containerAt, sourceAt, spawn } from "../fixtures";
 
 // Derives "quota already met" from the real quota (which depends on controllerLevel)
 // rather than hardcoding a count, so callers must pass the same level their scenario uses.
 function bootstrapMet(over: Parameters<typeof colony>[0] = {}): number {
-  return desiredBootstrapCount(colony(over));
+  return desiredBootstrapCount(colonySnap(over));
 }
 
 // Same, for miner — tests about lower-priority roles need the miner deficit satisfied too,
 // now that miner wants creeps from RCL1 rather than only once a container exists.
 function minerMet(over: Parameters<typeof colony>[0] = {}): number {
-  return desiredMinerCount(colony(over));
+  return desiredMinerCount(colonySnap(over));
 }
 
 describe("spawning planner", () => {
   it("spawns a bootstrap when the colony is below quota", () => {
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [{ id: "spawn1" as Id<StructureSpawn>, busy: false }],
         energyAvailable: 300,
@@ -40,8 +41,8 @@ describe("spawning planner", () => {
   // Damage consumes body parts in array order; a multi-set body is grouped per set
   // by the formula, so the emitted intent must re-sort it by priority.
   it("orders the spawned body so the most valuable parts are destroyed last", () => {
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [spawn()],
         energyAvailable: 750,
@@ -66,8 +67,8 @@ describe("spawning planner", () => {
     // desiredMinerCount actually wants at this hauler count rather than a hardcoded 1.
     const sources = [sourceAt(20, 10)];
     const census = { hauler: 1 };
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {
           bootstrap: bootstrapMet({ sources }),
           miner: minerMet({ sources, census }),
@@ -82,8 +83,8 @@ describe("spawning planner", () => {
   });
 
   it("does not spawn from a busy spawn", () => {
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [spawn("spawn1", true)],
         sources: [sourceAt(20, 10)]
@@ -96,8 +97,8 @@ describe("spawning planner", () => {
   it("spawns an upgrader once storage exists and higher-priority quotas are met", () => {
     const sources = [sourceAt(20, 10)];
     const census = { hauler: 1 };
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {
           bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
           miner: minerMet({ sources, census }),
@@ -124,8 +125,8 @@ describe("spawning planner", () => {
 
   it("spawns a miner from RCL1 with no container, once the bootstrap quota is met", () => {
     const sources = [sourceAt(20, 10), sourceAt(30, 40)];
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: { bootstrap: bootstrapMet({ sources }) },
         spawns: [spawn()],
         energyAvailable: 300,
@@ -138,8 +139,8 @@ describe("spawning planner", () => {
   });
 
   it("spawns one miner per source once containers exist", () => {
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10), sourceAt(30, 40)] }) },
         spawns: [spawn()],
         energyAvailable: 300,
@@ -160,8 +161,8 @@ describe("spawning planner", () => {
   });
 
   it("spawns a hauler once the miner quota is met and a container is filling", () => {
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: { bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)] }), miner: 1 },
         spawns: [spawn()],
         energyAvailable: 300,
@@ -176,8 +177,8 @@ describe("spawning planner", () => {
   it("spawns a builder once a construction backlog exists and higher-priority quotas are met", () => {
     const sources = [sourceAt(20, 10)];
     const census = { hauler: 1 };
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {
           bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
           miner: minerMet({ sources, census }),
@@ -207,8 +208,8 @@ describe("spawning planner", () => {
   it("fills the upgrader deficit before the builder one — builder is lowest priority", () => {
     const sources = [sourceAt(20, 10)];
     const census = { hauler: 1 };
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {
           bootstrap: bootstrapMet({ sources, controllerLevel: 4 }),
           miner: minerMet({ sources, census }),
@@ -230,8 +231,8 @@ describe("spawning planner", () => {
   it("recovers a wiped colony with a supply creep when storage still holds energy", () => {
     // A hauler moves energy the other way (container -> storage) and would be
     // useless here; supply withdraws from storage to refill extensions.
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [spawn()],
         energyAvailable: 300,
@@ -244,8 +245,8 @@ describe("spawning planner", () => {
   });
 
   it("recovers a wiped colony with a bootstrap when there is no stored energy", () => {
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [spawn()],
         energyAvailable: 300,
@@ -260,8 +261,8 @@ describe("spawning planner", () => {
   it("treats a colony with any live creep as healthy, not wiped", () => {
     // Recovery must fire only on a true wipe; any live creep means the normal
     // quota diff should decide instead.
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: { miner: 1 },
         spawns: [spawn()],
         energyAvailable: 300,
@@ -276,8 +277,8 @@ describe("spawning planner", () => {
   it("never emits a body the colony cannot pay for", () => {
     // Body calculators clamp their energy argument up to a floor, so below that
     // floor they can hand back a body costing more than the room has.
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [spawn()],
         energyAvailable: 150,
@@ -291,8 +292,8 @@ describe("spawning planner", () => {
   it("still spawns a cheap role the colony can afford below the bootstrap floor", () => {
     // The affordability floor is per-role, not a flat 300: a hauler's cheapest body
     // is one CARRY,CARRY,MOVE set at 150.
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {
           bootstrap: bootstrapMet({ sources: [sourceAt(20, 10)], energyCapacity: 150 }),
           miner: 1
@@ -309,8 +310,8 @@ describe("spawning planner", () => {
   });
 
   it("scales the bootstrap body to available energy", () => {
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [spawn()],
         energyAvailable: 550,
@@ -327,8 +328,8 @@ describe("spawning planner", () => {
   it("sizes normal-path bodies from capacity, so the same room always yields the same body", () => {
     // Sizing from energyAvailable instead would make body size depend on which
     // tick the planner ran; capacity is the room's persistent, timing-independent budget.
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [spawn()],
         energyAvailable: 800,
@@ -344,8 +345,8 @@ describe("spawning planner", () => {
   it("waits for a refill rather than spawning a runt sized to a drained room", () => {
     // With sizing moved to capacity, a drained room can no longer afford the body
     // it wants; the existing affordability guard becomes "wait until it can pay".
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         // One live creep: healthy colony on the normal quota path, not a wipe.
         census: { bootstrap: 1 },
         spawns: [spawn()],
@@ -361,8 +362,8 @@ describe("spawning planner", () => {
   it("sizes a recovery creep from available energy, not the capacity it cannot fill", () => {
     // Deliberate exception to capacity sizing: a wiped colony has nothing alive to
     // fill its extensions, so energyAvailable never exceeds the spawn's own regen.
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         census: {},
         spawns: [spawn()],
         energyAvailable: 300,
@@ -382,21 +383,21 @@ describe("spawning planner", () => {
 // sources yield 20 energy/tick and one WORK harvests 2/tick, so 10 WORK saturates them.
 describe("bootstrap quota", () => {
   it("fields enough WORK parts to drain every source with headroom to spend", () => {
-    const twoSources = colony({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
+    const twoSources = colonySnap({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
 
     expect(desiredBootstrapCount(twoSources)).toBeGreaterThanOrEqual(10);
   });
 
   it("scales down as bigger bodies carry more WORK each", () => {
-    const small = colony({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
-    const large = colony({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 800, controllerLevel: 2 });
+    const small = colonySnap({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
+    const large = colonySnap({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 800, controllerLevel: 2 });
 
     expect(desiredBootstrapCount(large)).toBeLessThan(desiredBootstrapCount(small));
   });
 
   it("scales with the number of sources", () => {
-    const one = colony({ sources: [sourceAt(10, 10)], energyCapacity: 300, controllerLevel: 2 });
-    const two = colony({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
+    const one = colonySnap({ sources: [sourceAt(10, 10)], energyCapacity: 300, controllerLevel: 2 });
+    const two = colonySnap({ sources: [sourceAt(10, 10), sourceAt(40, 40)], energyCapacity: 300, controllerLevel: 2 });
 
     expect(desiredBootstrapCount(two)).toBeGreaterThan(desiredBootstrapCount(one));
   });
@@ -405,8 +406,8 @@ describe("bootstrap quota", () => {
   // just delay the first upgrade to RCL2.
   it("stays lean before RCL2 so upgrading leads the early game", () => {
     const sources = [sourceAt(10, 10), sourceAt(40, 40)];
-    const rcl1 = colony({ sources, energyCapacity: 300, controllerLevel: 1 });
-    const rcl2 = colony({ sources, energyCapacity: 300, controllerLevel: 2 });
+    const rcl1 = colonySnap({ sources, energyCapacity: 300, controllerLevel: 1 });
+    const rcl2 = colonySnap({ sources, energyCapacity: 300, controllerLevel: 2 });
 
     expect(desiredBootstrapCount(rcl1)).toBeLessThan(desiredBootstrapCount(rcl2));
     expect(desiredBootstrapCount(rcl1)).toBeLessThanOrEqual(sources.length * 2);

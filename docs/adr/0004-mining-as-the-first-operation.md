@@ -1,5 +1,13 @@
 # Mining as the first Operation (narrows ADR 0003)
 
+> **Superseded by [ADR 0005](0005-empire-colony-operations-staged.md).** Narrowing to
+> one operation was the wrong cut: with a single `Mining` the load-bearing questions
+> (census keying by operation, cross-operation arbitration, role collision) are all
+> invisible, and this ADR's answer to them — "counts just sum, creeps are not bound to
+> operations" — is incoherent as soon as a second operation exists. 0005 stages the
+> work around spawning instead. `docs/prd/0004-mining-operation.md` is superseded with
+> it and should not be implemented.
+
 ADR 0003 diagnosed the `systems/*.ts` layout correctly: mining's quota lives in
 `logistics.ts`, its structure placement in `mining.ts`, its role in the shared
 `roles.ts` table, and room-scoping is a `for (const colony of snap.colonies)` loop

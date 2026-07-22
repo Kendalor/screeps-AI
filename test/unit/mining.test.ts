@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildCostMatrix, sourceRoadPath } from "../../src/layouts/roads";
 import { minedStructures, planMining } from "../../src/systems/mining";
-import { colony, containerAt, empire, openTerrain, sourceAt } from "../fixtures";
+import { colony } from "../../src/colony";
+import { colonySnap, containerAt, openTerrain, sourceAt } from "../fixtures";
 
 // The last road tile adjacent to the source, derived independently from road
 // pathing rather than a hardcoded coordinate.
@@ -14,7 +15,7 @@ describe("minedStructures", () => {
   it("declares a container on the last road tile next to each source", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colony({ anchor, sources: [source], controllerLevel: 3 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3 });
 
     const declared = minedStructures(snap);
 
@@ -23,7 +24,7 @@ describe("minedStructures", () => {
   });
 
   it("declares a container per source", () => {
-    const snap = colony({
+    const snap = colonySnap({
       anchor: { x: 25, y: 25 },
       sources: [sourceAt(20, 10), sourceAt(30, 40)],
       controllerLevel: 3
@@ -33,7 +34,7 @@ describe("minedStructures", () => {
   });
 
   it("declares containers at RCL2 without waiting for storage", () => {
-    const snap = colony({
+    const snap = colonySnap({
       anchor: { x: 10, y: 10 },
       sources: [sourceAt(20, 10)],
       controllerLevel: 2,
@@ -45,7 +46,7 @@ describe("minedStructures", () => {
   });
 
   it("declares nothing at RCL1, when the miner economy cannot be afforded yet", () => {
-    const snap = colony({
+    const snap = colonySnap({
       anchor: { x: 10, y: 10 },
       sources: [sourceAt(20, 10)],
       controllerLevel: 1
@@ -57,7 +58,7 @@ describe("minedStructures", () => {
   it("declares a link instead of a container at RCL7", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colony({ anchor, sources: [source], controllerLevel: 7 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7 });
 
     const declared = minedStructures(snap);
 
@@ -68,7 +69,7 @@ describe("minedStructures", () => {
   // A spot that moves once the container exists makes building.ts demolish and
   // replace it forever.
   it("keeps declaring the same spot once the container is built there", () => {
-    const base = colony({
+    const base = colonySnap({
       anchor: { x: 10, y: 10 },
       sources: [sourceAt(20, 10)],
       controllerLevel: 3
@@ -81,7 +82,7 @@ describe("minedStructures", () => {
   });
 
   it("declares nothing before an anchor is found", () => {
-    const snap = colony({ anchor: null, sources: [sourceAt(20, 10)], controllerLevel: 3 });
+    const snap = colonySnap({ anchor: null, sources: [sourceAt(20, 10)], controllerLevel: 3 });
 
     expect(minedStructures(snap)).toEqual([]);
   });
@@ -91,7 +92,7 @@ describe("planMining", () => {
   it("records each source's mining spot so roles can find it without re-pathing", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = empire(colony({ anchor, sources: [source], controllerLevel: 3 }));
+    const snap = colony(colonySnap({ anchor, sources: [source], controllerLevel: 3 }));
 
     const intents = planMining(snap);
 
@@ -109,8 +110,8 @@ describe("planMining", () => {
     const source = sourceAt(20, 10);
     const spot = expectedSpot(anchor, source);
     const container = containerAt(spot.x, spot.y);
-    const snap = empire(
-      colony({
+    const snap = colony(
+      colonySnap({
         anchor,
         sources: [source],
         controllerLevel: 3,
@@ -127,7 +128,7 @@ describe("planMining", () => {
   });
 
   it("plans nothing for a colony with no anchor yet", () => {
-    const snap = empire(colony({ anchor: null, sources: [sourceAt(20, 10)], controllerLevel: 3 }));
+    const snap = colony(colonySnap({ anchor: null, sources: [sourceAt(20, 10)], controllerLevel: 3 }));
 
     expect(planMining(snap)).toEqual([]);
   });
