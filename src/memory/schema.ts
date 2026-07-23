@@ -3,6 +3,7 @@
 // resolves them and clears fields whose ids no longer resolve. No spawn queue in memory — desired
 // census is recomputed every tick.
 
+import type { RoomType } from "../lib/roomName";
 import type { TaskState } from "../behaviors/types";
 
 declare global {
@@ -27,6 +28,9 @@ declare global {
     // Singular: an RCL7+ two-source miner does not exist here, so the honest port is one assignment.
     sourceId?: Id<Source>;
     task?: TaskState; // current behavior progress — owned by behaviors/interpreter.ts
+    // The room a scout is currently walking to. Owned by the scout behaviour (empire/creeps.ts):
+    // cleared on arrival so the behaviour picks the next unscouted room from its colony's todo.
+    scoutTarget?: string;
   }
 
   interface RoomMemory {
@@ -66,17 +70,27 @@ export interface LinkNetworkMemory {
   sources: Id<StructureLink>[];
 }
 
+// One room as scouting last observed it. Written only by the scout behaviour recording what it stood
+// in (execute.ts's recordScout), read by remote-mining and expansion to decide what is worth
+// claiming. The room *type* is stored even though it is derivable from the name — it is the cheap
+// filter a reader applies before touching the rest, and storing it means an unvisited room already
+// carries its type (set from the name) with `tick` absent to mark it never actually seen.
 export interface ScoutInfo {
-  tick: number; // Game.time when last scouted
-  sources: number;
-  owner?: string;
-  hostile: boolean;
+  tick?: number; // Game.time when last physically seen; absent means classified-but-unvisited
+  type: RoomType;
+  sources: number; // source count — the headline remote-mining input
+  mineral?: MineralConstant; // the room's mineral, if any (normal/keeper rooms)
+  owner?: string; // controller owner's username, if owned/reserved
+  hostile: boolean; // owned by someone other than us
 }
 
-// Placeholders until their systems are ported.
-
+// The one piece of scouting state a single tick cannot rederive: how far out the frontier has
+// pushed. Legacy grew the radius outward as rooms in the current ring were exhausted (todo empty ->
+// radius+1). The todo list itself is NOT stored — it is recomputed every tick from the room graph
+// and RoomMemory (the rewrite rejects legacy's persisted, drift-prone Operation.data.todo). Only the
+// radius survives, so the frontier does not reset to 1 every restart.
 export interface ScoutingMemory {
-  version: number;
+  radius: number; // current scouting radius in rooms; grows toward MAX_SCOUT_RANGE
 }
 
 export interface ExpansionMemory {

@@ -3,7 +3,7 @@
 export function migrateMemory(): void {
   if (Memory.version === undefined) Memory.version = 1;
   if (!Memory.colonies) Memory.colonies = {};
-  if (!Memory.scouting) Memory.scouting = { version: 1 };
+  if (!Memory.scouting) Memory.scouting = { radius: 1 };
   if (!Memory.expansion) Memory.expansion = { version: 1 };
   if (!Memory.stats) Memory.stats = { version: 1 };
   if (!Memory.metrics) Memory.metrics = {};

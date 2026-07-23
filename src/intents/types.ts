@@ -23,6 +23,9 @@ export type Intent =
       container?: Id<StructureContainer>;
       link?: Id<StructureLink>;
     }
+  // A scout recording what it currently stands in. The room name is carried explicitly rather than
+  // read from the creep, so the actuator stays a pure Memory write with no Game lookup.
+  | { kind: "recordScout"; room: string; info: import("../memory/schema").ScoutInfo }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
   // A batch of drawing primitives for one room's RoomVisual. The planner decides *what* the panel

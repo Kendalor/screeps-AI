@@ -16,7 +16,8 @@ export interface SnapTower {
 }
 
 import type { XY } from "../lib/geometry";
-import type { RoleName } from "../memory/schema";
+import type { RoleName, ScoutInfo } from "../memory/schema";
+import type { RoomType } from "../lib/roomName";
 
 export interface SnapSpawn {
   id: Id<StructureSpawn>;
@@ -82,6 +83,17 @@ export interface SnapDrop extends XY {
   amount: number;
 }
 
+// A room reachable within the current scouting radius, as the Scouting operation sees it: its name,
+// its map-grid distance from this colony (for ranking the nearest todo), its type, and whatever
+// scouting last recorded (`info`, absent if never seen). Built by walking the room graph at the
+// snapshot boundary — the one place describeExits is touched — so the operation stays pure.
+export interface ScoutCandidate {
+  room: string;
+  distance: number; // rooms from this colony (roomLinearDistance)
+  type: RoomType;
+  info?: ScoutInfo; // last recorded observation; absent means never scouted
+}
+
 // What mining has already recorded for a source, so an operation can tell a write that would change
 // something from one that would rewrite the same values. Observed state — read back from Memory at
 // the snapshot boundary, exactly like a structure is read from the room.
@@ -127,6 +139,9 @@ export interface ColonySnapshot {
   structures: SnapStructure[];
   sites: SnapStructure[];
   constructionProgress: number; // total work remaining across all sites in the room
+  // Rooms within the current scouting radius of this colony, each carrying its last observation.
+  // The Scouting operation ranks these into scout demand; empty until the frontier is walked.
+  scoutTargets: ScoutCandidate[];
 }
 
 export interface EmpireSnapshot {

@@ -76,6 +76,11 @@ function act(intent: Intent): ScreepsReturnCode {
       }
       return OK; // RoomVisual calls never fail with a return code
     }
+    case "recordScout": {
+      const mem = (Memory.rooms[intent.room] ??= {} as RoomMemory);
+      mem.scouted = intent.info;
+      return OK;
+    }
     case "recordSourceSpot": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
       const source = (mem.sources[intent.source] ??= {});

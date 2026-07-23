@@ -43,7 +43,11 @@ export const DEFAULT_PRIORITY = {
   miner: 95,
   hauler: 90,
   builder: 65,
-  upgrader: 60
+  upgrader: 60,
+  // Below the whole economy: a scout is a single cheap MOVE and pure future value (vision for remote
+  // mining/expansion), so it yields every spawn to a creep that produces or builds now. It still sits
+  // above the floor so a settled colony with spare energy does eventually field one.
+  scout: 30
 } as const;
 
 /**

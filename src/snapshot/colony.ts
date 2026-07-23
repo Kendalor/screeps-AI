@@ -4,6 +4,7 @@ import { openHarvestTiles } from "../behaviors/targets";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import type { XY } from "../lib/geometry";
 import { censusByColony } from "./census";
+import { scoutCandidatesAround } from "./scoutGraph";
 import type { ColonySnapshot, EmpireSnapshot, SnapCreep, SnapStructure, SnapUnit } from "./types";
 
 export function buildEmpireSnapshot(): EmpireSnapshot {
@@ -83,7 +84,11 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number): Col
     sites: room.find(FIND_MY_CONSTRUCTION_SITES).map(snapStructure),
     constructionProgress: room
       .find(FIND_CONSTRUCTION_SITES)
-      .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0)
+      .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0),
+    // The rooms within the current scouting radius, each with its last observation — walked from the
+    // room graph at this one boundary so the Scouting operation reads plain data. Radius grows as the
+    // frontier is exhausted (empire/creeps.ts advances it); default 1 before scouting has run.
+    scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1)
   };
 }
 

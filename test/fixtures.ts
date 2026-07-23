@@ -6,6 +6,7 @@ import type { RoleName } from "../src/memory/schema";
 import type {
   ColonySnapshot,
   EmpireSnapshot,
+  ScoutCandidate,
   SnapContainer,
   SnapCreep,
   SnapDrop,
@@ -14,6 +15,8 @@ import type {
   SnapTower,
   SnapUnit
 } from "../src/snapshot/types";
+import type { ScoutInfo } from "../src/memory/schema";
+import { roomType, roomLinearDistance } from "../src/lib/roomName";
 
 // All-walkable terrain — the default for planner fixtures that don't care
 // about walls. Tests exercising pathing around obstacles carve their own.
@@ -81,8 +84,21 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     structures: [],
     sites: [],
     constructionProgress: 0,
+    scoutTargets: [],
     ...over
   };
+}
+
+// A scout candidate room, distance and type derived from the name so a test only states the name
+// and (optionally) what was last observed. `origin` defaults to the standard fixture colony W1N1.
+export function scoutTarget(room: string, info?: ScoutInfo, origin = "W1N1"): ScoutCandidate {
+  return { room, distance: roomLinearDistance(origin, room), type: roomType(room), info };
+}
+
+// A recorded observation, seen `tick` ticks ago (Game.time in tests defaults to 0, so pass an
+// absolute tick). Sources/hostility default to a plain surveyed normal room.
+export function scouted(over: Partial<ScoutInfo> = {}): ScoutInfo {
+  return { tick: 0, type: "normal", sources: 2, hostile: false, ...over };
 }
 
 export function hostileAt(x: number, y: number, id = `hostile_${x}_${y}`): SnapUnit {
