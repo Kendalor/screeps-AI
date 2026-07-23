@@ -23,9 +23,18 @@ export type Intent =
       container?: Id<StructureContainer>;
       link?: Id<StructureLink>;
     }
-  // A scout recording what it currently stands in. The room name is carried explicitly rather than
-  // read from the creep, so the actuator stays a pure Memory write with no Game lookup.
-  | { kind: "recordScout"; room: string; info: import("../memory/schema").ScoutInfo }
+  // Record what a scout currently stands in. The planner decides *that* a room is worth recording
+  // (its scout is there and the room is stale); execute.ts reads the live room to build the
+  // observation, so no live-room read leaks into the pure operation.
+  | { kind: "recordScout"; room: string }
+  // Assign a scout its next target room. The planner picks *which* room (nearest unscouted, from the
+  // snapshot); execute.ts computes the room-by-room route (Game.map.findRoute) and writes both the
+  // target and the route into the creep's memory for the moveToRoom behaviour to walk.
+  | { kind: "setScoutTarget"; creep: Id<Creep>; targetRoom: string }
+  // Push the scouting frontier one ring outward, up to a cap. Emitted when the current radius is
+  // fully surveyed so next tick's snapshot reaches farther. execute.ts owns the Memory write and the
+  // cap so the operation stays pure.
+  | { kind: "advanceScoutRadius" }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
   // A batch of drawing primitives for one room's RoomVisual. The planner decides *what* the panel

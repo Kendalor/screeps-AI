@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { needsScouting, Scouting, staleAfter } from "../../../src/operations/scouting";
-import { colonySnap, scouted, scoutTarget, snapCreeps } from "../../fixtures";
+import { colonySnap, scouted, scoutTarget, snapCreep, snapCreeps } from "../../fixtures";
 
 const scouting = new Scouting("W1N1");
 const scoutRequests = (snap: Parameters<Scouting["desiredCreeps"]>[0]) =>
@@ -80,5 +80,94 @@ describe("Scouting demand", () => {
 
   it("wants nothing when there are no rooms in range yet", () => {
     expect(scouting.desiredCreeps(colonySnap({ scoutTargets: [] }))).toEqual([]);
+  });
+});
+
+// The operation drives its scouts through intents rather than the creep acting on its own: it reads
+// each scout's current room from the snapshot, tells it to record a room worth recording, and assigns
+// it the next target. Pure — no Game; execute.ts turns these into the live-room read and the route.
+describe("Scouting intents", () => {
+  // A scout sitting in a room its own frontier still wants surveyed → record it.
+  it("records the room a scout stands in when that room is stale", () => {
+    const scout = snapCreep("scout", { room: "W1N2", memory: { op: "scouting:W1N1" } });
+    const snap = colonySnap({ creeps: [scout], scoutTargets: [scoutTarget("W1N2")] });
+    expect(scouting.intents(snap)).toContainEqual({ kind: "recordScout", room: "W1N2" });
+  });
+
+  it("does not record a room already freshly scouted", () => {
+    const scout = snapCreep("scout", { room: "W1N2", memory: { op: "scouting:W1N1" } });
+    const snap = colonySnap({ creeps: [scout], scoutTargets: [scoutTarget("W1N2", scouted())] });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordScout" }));
+  });
+
+  // A scout with no target gets the nearest unscouted room assigned.
+  it("assigns an unassigned scout its nearest unscouted target", () => {
+    const scout = snapCreep("scout", { room: "W1N1", memory: { op: "scouting:W1N1" } });
+    const snap = colonySnap({
+      creeps: [scout],
+      scoutTargets: [scoutTarget("W1N3"), scoutTarget("W1N2")]
+    });
+    expect(scouting.intents(snap)).toContainEqual({
+      kind: "setScoutTarget",
+      creep: scout.id,
+      targetRoom: "W1N2"
+    });
+  });
+
+  // A scout that reached its target (standing in it) is reassigned the next room.
+  it("reassigns a scout that has arrived at its target", () => {
+    const scout = snapCreep("scout", {
+      room: "W1N2",
+      memory: { op: "scouting:W1N1", scoutTarget: "W1N2" }
+    });
+    const snap = colonySnap({
+      creeps: [scout],
+      scoutTargets: [scoutTarget("W1N2", scouted()), scoutTarget("W2N1")]
+    });
+    expect(scouting.intents(snap)).toContainEqual({
+      kind: "setScoutTarget",
+      creep: scout.id,
+      targetRoom: "W2N1"
+    });
+  });
+
+  // A scout still en route to a target it hasn't reached is left alone — no reassignment churn.
+  it("leaves a scout travelling to an unreached target undisturbed", () => {
+    const scout = snapCreep("scout", {
+      room: "W1N1",
+      memory: { op: "scouting:W1N1", scoutTarget: "W1N2" }
+    });
+    const snap = colonySnap({ creeps: [scout], scoutTargets: [scoutTarget("W1N2")] });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "setScoutTarget" }));
+  });
+
+  // Another operation's scout is not driven by this one.
+  it("ignores scouts it does not own", () => {
+    const scout = snapCreep("scout", { room: "W1N2", memory: { op: "scouting:W9N9" } });
+    const snap = colonySnap({ creeps: [scout], scoutTargets: [scoutTarget("W1N2")] });
+    expect(scouting.intents(snap)).toEqual([]);
+  });
+
+  it("emits nothing when it owns no scouts", () => {
+    const snap = colonySnap({ scoutTargets: [scoutTarget("W1N2")] });
+    expect(scouting.intents(snap)).toEqual([]);
+  });
+
+  // Frontier exhausted with a scout alive → push the radius out one ring (execute.ts caps it).
+  it("advances the scouting radius when its scouts have surveyed everything in range", () => {
+    const scout = snapCreep("scout", { room: "W1N1", memory: { op: "scouting:W1N1" } });
+    const snap = colonySnap({ creeps: [scout], scoutTargets: [scoutTarget("W1N2", scouted())] });
+    expect(scouting.intents(snap)).toContainEqual({ kind: "advanceScoutRadius" });
+  });
+
+  it("does not advance the radius while any room in range still needs scouting", () => {
+    const scout = snapCreep("scout", { room: "W1N1", memory: { op: "scouting:W1N1" } });
+    const snap = colonySnap({ creeps: [scout], scoutTargets: [scoutTarget("W1N2")] });
+    expect(scouting.intents(snap)).not.toContainEqual({ kind: "advanceScoutRadius" });
+  });
+
+  it("does not advance the radius with no scouts to use it", () => {
+    const snap = colonySnap({ scoutTargets: [scoutTarget("W1N2", scouted())] });
+    expect(scouting.intents(snap)).not.toContainEqual({ kind: "advanceScoutRadius" });
   });
 });

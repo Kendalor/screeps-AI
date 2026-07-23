@@ -143,6 +143,7 @@ export function snapCreep(
     body: [WORK, CARRY, MOVE],
     spawning: false,
     ticksToLive: 1000,
+    room: home, // defaults to home; a scout out on the frontier overrides it
     ...rest,
     role,
     home,

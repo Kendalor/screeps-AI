@@ -8,7 +8,6 @@
 
 import { firstRunnableStep, nextStep, runStep, type CreepState } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
-import { runScout } from "./scout";
 
 export function runCreepBehaviors(): void {
   for (const name in Game.creeps) {
@@ -19,13 +18,6 @@ export function runCreepBehaviors(): void {
 }
 
 function runOne(creep: Creep): void {
-  // Scouting is room-to-room travel, not the in-room step loop every other role runs, so it has its
-  // own behaviour rather than a `steps` table it could never fit.
-  if (creep.memory.role === "scout") {
-    runScout(creep);
-    return;
-  }
-
   const def = roleDef(creep.memory.role);
   if (!def || def.steps.length === 0) return;
 

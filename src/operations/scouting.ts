@@ -4,25 +4,21 @@
 // rooms exist near me" graph is walked once at the snapshot boundary (colony.scoutTargets); this
 // operation reads it as plain data, decides which are stale, and sizes the scout fleet.
 //
-// Pure — reads the snapshot, returns plain data, never touches Game.*/Memory. Per-scout target
-// assignment is NOT here: a scout picks the nearest unscouted room itself (empire/creeps.ts), so the
-// operation only decides *how many* scouts to field, not where each goes.
+// Pure — reads the snapshot, returns plain data, never touches Game.*/Memory. It drives its scouts
+// entirely through intents (recordScout, setScoutTarget), the same plan/execute split every other
+// operation uses: execute.ts does the live-room read and the route computation, the moveToRoom
+// behaviour does the walking. This operation only *decides* — how many scouts, and which room each
+// records or heads for next.
 
-import type { ColonySnapshot, ScoutCandidate } from "../snapshot/types";
-import type { RoomType } from "../lib/roomName";
+import { needsScouting, pickScoutTarget } from "../behaviors/scout";
+import type { Intent } from "../intents/types";
+import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { DEFAULT_PRIORITY, fillTo, type CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
-// Re-survey intervals per room type, in ticks. A normal room's controller/sources barely change, so
-// its data is good for a long time; a highway carries only transient rare resources (power banks,
-// deposits) and must be re-checked often to catch them before they decay. Ported from legacy
-// RoomMemoryUtil's SCOUTING_INTERVALL constants.
-const STALE_AFTER: Record<RoomType, number> = {
-  normal: 100000,
-  keeper: 200000,
-  highway: 3000,
-  intersection: 3000
-};
+// The staleness rules live in the behaviour's pure core (shared with the target picker); re-exported
+// here so callers and tests that think in terms of the operation still reach them from one place.
+export { needsScouting, staleAfter } from "../behaviors/scout";
 
 // One scout covers roughly this many rooms of frontier — the fleet is sized ceil(todo / this),
 // legacy's ratio. Below this, a single scout suffices however large the ring.
@@ -35,23 +31,6 @@ const MAX_SCOUTS = 3;
 // A scout only walks — a lone MOVE part is the whole body. No WORK, no CARRY: it never harvests,
 // builds, or carries; it exists to put vision in a room. The cheapest possible creep.
 const SCOUT_BODY: BodyPartConstant[] = [MOVE];
-
-/** The re-survey interval for a room type, exposed so the scout behaviour and tests agree with the
- * operation on what "stale" means. */
-export function staleAfter(type: RoomType): number {
-  return STALE_AFTER[type];
-}
-
-/**
- * Whether a candidate room is worth a scout's visit right now: true if it was never observed, or its
- * last observation is older than its type's re-survey interval. `now` is passed explicitly (the
- * snapshot's tick) so the decision is pure and unit-testable without Game.time.
- */
-export function needsScouting(candidate: ScoutCandidate, now = 0): boolean {
-  const info = candidate.info;
-  if (!info || info.tick === undefined) return true; // never physically seen
-  return now - info.tick >= staleAfter(candidate.type);
-}
 
 export class Scouting extends Operation {
   public readonly kind = "scouting";
@@ -76,5 +55,58 @@ export class Scouting extends Operation {
       home: colony.name,
       op: this.name
     });
+  }
+
+  /**
+   * Drives this operation's scouts through intents, the same plan/execute split every other
+   * operation uses: it never moves a creep or writes memory itself. Per owned scout, per tick:
+   *
+   *  - if the scout stands in a room that still needs surveying, emit `recordScout` — execute.ts
+   *    reads the live room and writes the observation;
+   *  - if the scout has no target, or has reached the one it had, emit `setScoutTarget` with the
+   *    nearest unscouted room — execute.ts computes the route and writes it into memory.
+   *
+   * A scout still travelling to an unreached target gets neither intent: it is left to walk. The
+   * movement itself is the moveToRoom behaviour, which reads the target this assigns.
+   */
+  public override intents(colony: ColonySnapshot): Intent[] {
+    const scouts = this.owned(colony, "scout");
+    const out: Intent[] = [];
+    for (const scout of scouts) {
+      if (this.shouldRecord(colony, scout)) out.push({ kind: "recordScout", room: scout.room });
+
+      const target = this.nextTargetFor(colony, scout);
+      if (target) out.push({ kind: "setScoutTarget", creep: scout.id, targetRoom: target });
+    }
+
+    // The scouts have nothing left in range to survey — push the frontier out one ring so next
+    // tick's snapshot reaches farther. Only with scouts alive to use the wider radius, and only when
+    // the current ring is genuinely exhausted (no target was assignable above), so it grows once per
+    // exhausted ring rather than every idle tick. execute.ts caps it at MAX_SCOUT_RANGE.
+    const nothingToDo = scouts.length > 0 && !colony.scoutTargets.some(t => needsScouting(t, colony.tick));
+    if (nothingToDo) out.push({ kind: "advanceScoutRadius" });
+
+    return out;
+  }
+
+  // The scout's current room is worth recording if scouting still wants it — i.e. it is a frontier
+  // room (in scoutTargets) whose observation is missing or stale. A scout sitting in its home colony
+  // or a room off the frontier records nothing.
+  private shouldRecord(colony: ColonySnapshot, scout: SnapCreep): boolean {
+    const candidate = colony.scoutTargets.find(t => t.room === scout.room);
+    return candidate !== undefined && needsScouting(candidate, colony.tick);
+  }
+
+  // The room to (re)assign this scout, or undefined to leave it travelling. A scout needs a new
+  // target when it has none, or when it has arrived at the one it had (standing in it). Otherwise it
+  // is mid-route and must not be disturbed, or the reassignment would thrash its route every tick.
+  private nextTargetFor(colony: ColonySnapshot, scout: SnapCreep): string | undefined {
+    const assigned = scout.memory.scoutTarget;
+    const stillTravelling = assigned !== undefined && assigned !== scout.room;
+    if (stillTravelling) return undefined;
+    // Exclude the room the scout already stands in: it is being recorded this tick (shouldRecord), so
+    // re-targeting it would send the scout nowhere and rewrite its route for a zero-length trip.
+    const elsewhere = colony.scoutTargets.filter(t => t.room !== scout.room);
+    return pickScoutTarget(elsewhere, scout.room, colony.tick);
   }
 }

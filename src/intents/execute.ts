@@ -1,7 +1,13 @@
 // The actuator: calls the game API and logs any non-OK result. Non-game side effects (e.g. recordSourceSpot's Memory write) live here too, so planners stay pure.
 
 import { log } from "../lib/log";
+import { roomType } from "../lib/roomName";
+import type { RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
+
+// The farthest the scouting frontier grows, in rooms. Legacy's MAX_RANGE. Lives here because
+// advanceScoutRadius owns the radius write and its bounds.
+const MAX_SCOUT_RANGE = 6;
 
 export function execute(intents: Intent[]): void {
   for (const intent of intents) {
@@ -77,8 +83,24 @@ function act(intent: Intent): ScreepsReturnCode {
       return OK; // RoomVisual calls never fail with a return code
     }
     case "recordScout": {
+      const room = Game.rooms[intent.room];
+      // The scout must actually have vision for the observation to be real — the operation only emits
+      // this for a room its scout stands in, but a lost creep between snapshot and execute is possible.
+      if (!room) return ERR_NOT_FOUND;
       const mem = (Memory.rooms[intent.room] ??= {} as RoomMemory);
-      mem.scouted = intent.info;
+      mem.scouted = observeRoom(room);
+      return OK;
+    }
+    case "setScoutTarget": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      creep.memory.scoutTarget = intent.targetRoom;
+      creep.memory.route = routeTo(creep.room.name, intent.targetRoom);
+      return OK;
+    }
+    case "advanceScoutRadius": {
+      const mem = (Memory.scouting ??= { radius: 1 });
+      if (mem.radius < MAX_SCOUT_RANGE) mem.radius += 1;
       return OK;
     }
     case "recordSourceSpot": {
@@ -94,6 +116,34 @@ function act(intent: Intent): ScreepsReturnCode {
       log.error(`no actuator for intent kind "${intent.kind}" yet`);
       return OK; // already logged; don't double-report
   }
+}
+
+// What a scout sees of the room it stands in, distilled to the ScoutInfo that remote mining and
+// expansion read. Lives here, not in a planner, because it reads a live Room; `tick` stamps when it
+// was seen so staleAfter() can age it out. Owner is the controller's owner or reserver; the room is
+// hostile if that owner is someone other than us.
+function observeRoom(room: Room): ScoutInfo {
+  const c = room.controller;
+  const owner = c?.owner?.username ?? c?.reservation?.username;
+  const mineral = room.find(FIND_MINERALS)[0]?.mineralType;
+  return {
+    tick: Game.time,
+    type: roomType(room.name),
+    sources: room.find(FIND_SOURCES).length,
+    ...(mineral ? { mineral } : {}),
+    ...(owner ? { owner } : {}),
+    hostile: owner !== undefined && !c?.my
+  };
+}
+
+// A room-by-room route from `from` to `dest`, ready for a creep to walk one room at a time. Uses
+// Game.map.findRoute so a long haul follows planned exits rather than a single greedy travelTo across
+// unknown terrain. On failure (no route) the route is just the destination, and the mover falls back
+// to travelTo — better a best-effort walk than a stranded creep.
+function routeTo(from: string, dest: string): RouteMemory {
+  const route = Game.map.findRoute(from, dest);
+  const rooms = route === ERR_NO_PATH ? [dest] : route.map(step => step.room);
+  return { dest, rooms, index: 0 };
 }
 
 // Spawn toward an adjacent road so the newborn creep doesn't block the spawn.

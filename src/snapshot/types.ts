@@ -40,6 +40,10 @@ export interface SnapCreep {
   // ever disagrees with memory, the snapshot builder is wrong.
   role: RoleName; // === memory.role
   home: string; // === memory.home
+  // The room the creep currently stands in (creep.pos.roomName) — distinct from `home`, which is the
+  // colony that funds it. A scout out on the frontier is in a room it does not call home; the
+  // Scouting operation needs this to decide whether the scout has arrived and what room to record.
+  room: string;
 
   // The whole memory object, live reference, deeply readonly. Not a deep copy: that would be a
   // stringify-per-creep-per-tick, and stale by design since behaviours write `task` every tick.

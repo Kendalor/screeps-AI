@@ -3,8 +3,10 @@
 import { resolveTarget } from "./targets";
 import type { Step, TargetSpec } from "./types";
 
-// Gathering steps fill the store; spending steps drain it.
-type StepKind = "gather" | "spend";
+// Gathering steps fill the store; spending steps drain it. Movement steps complete only on arrival,
+// never on store state — their completion is signalled by runStep returning acted:false (arrived),
+// which the dispatcher turns into targetGone.
+type StepKind = "gather" | "spend" | "move";
 
 const STEP_KIND: Record<Step["do"], StepKind> = {
   harvest: "gather",
@@ -14,9 +16,10 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   build: "spend",
   repair: "spend",
   upgrade: "spend",
-  // Movement steps are treated as spend so arrival (handled in runStep) advances them; sit never self-completes.
-  moveToRoom: "spend",
-  sit: "spend"
+  // Movement steps never self-complete on store state: an empty scout on a moveToRoom must keep
+  // travelling, not be skipped as "already done". Arrival is the only completion, via targetGone.
+  moveToRoom: "move",
+  sit: "move"
 };
 
 export interface CreepState {
@@ -51,6 +54,7 @@ export function isComplete(step: Step, s: CreepState): boolean {
   // up more the moment one sink fills. The condition reads the creep's own store, never a target's.
   if (step.when === "empty" && s.used > 0) return true;
   const kind = STEP_KIND[step.do];
+  if (kind === "move") return false; // completes only via targetGone (arrival), handled above
   if (kind === "gather") return s.free === 0;
   return s.used === 0;
 }
@@ -85,14 +89,49 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResu
     case "upgrade":
       return actOn(creep, { find: "controller" }, locked, t => creep.upgradeController(t as StructureController), 3);
     case "moveToRoom":
-      if (creep.room.name !== step.room) {
-        creep.travelTo(new RoomPosition(25, 25, step.room));
-      }
-      return { acted: true };
+      return moveToRoom(creep, step);
     case "sit":
       creep.travelTo(new RoomPosition(step.pos.x, step.pos.y, creep.room.name));
       return { acted: true };
   }
+}
+
+// Move toward a room, following a precomputed room-route when one is present. Returns acted:false on
+// arrival (destination reached, or no destination to go to) so the dispatcher advances past the step;
+// acted:true while still travelling. Two destinations: a static `step.room`, or the dynamic
+// `memory.scoutTarget` (walked via `memory.route`).
+function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" }): StepResult {
+  const dest = step.to === "scoutTarget" ? creep.memory.scoutTarget : step.room;
+  if (!dest) return { acted: false }; // nothing to move toward — step is a no-op, advance past it
+
+  if (creep.room.name === dest) {
+    // Arrived. Clear a consumed dynamic target and its route so the next assignment starts clean.
+    if (step.to === "scoutTarget") {
+      creep.memory.scoutTarget = undefined;
+      creep.memory.route = undefined;
+    }
+    return { acted: false };
+  }
+
+  // Follow the stored route if it still leads to this destination; otherwise a plain travelTo, which
+  // also covers the static-room case and the route-computation-failed fallback.
+  const route = creep.memory.route;
+  const nextRoom = route && route.dest === dest ? advanceRoute(route, creep.room.name) : dest;
+  creep.travelTo(new RoomPosition(25, 25, nextRoom), { range: 20 });
+  return { acted: true };
+}
+
+/**
+ * The next room a creep should head for along a stored route, advancing the route's cursor as rooms
+ * are entered. If the creep now stands in the room at `index`, the cursor steps forward; the returned
+ * room is the one at the (possibly advanced) cursor, clamped to the last room so a creep that overran
+ * still aims at the destination. Mutates `route.index` — the one persisted cursor the mover owns.
+ */
+export function advanceRoute(route: { rooms: string[]; index: number }, currentRoom: string): string {
+  if (route.rooms[route.index] === currentRoom && route.index < route.rooms.length - 1) {
+    route.index++;
+  }
+  return route.rooms[Math.min(route.index, route.rooms.length - 1)];
 }
 
 function actOn(

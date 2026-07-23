@@ -1,11 +1,38 @@
-// The scout behaviour's pure core. A scout walks between rooms recording what it sees; the one
-// decision that can be made without touching Game — *which* room to walk to next — lives here so it
-// is unit-testable. The travel and the observation-recording that wrap it are glue in
-// empire/creeps.ts, where Game and the live Room are unavoidable.
+// The scout behaviour's pure core: the two decisions that need no Game — whether a room's data has
+// gone stale, and which room a scout should walk to next. Both the Scouting operation (which sizes
+// the fleet and drives it via intents) and any test read these directly. The travel, the live-room
+// observation, and the route computation are execute.ts/interpreter glue, where Game is unavoidable.
 
-import { roomLinearDistance } from "../lib/roomName";
-import { needsScouting } from "../operations/scouting";
+import { roomLinearDistance, type RoomType } from "../lib/roomName";
 import type { ScoutCandidate } from "../snapshot/types";
+
+// Re-survey intervals per room type, in ticks. A normal room's controller/sources barely change, so
+// its data is good for a long time; a highway carries only transient rare resources (power banks,
+// deposits) and must be re-checked often to catch them before they decay. Ported from legacy
+// RoomMemoryUtil's SCOUTING_INTERVALL constants.
+const STALE_AFTER: Record<RoomType, number> = {
+  normal: 100000,
+  keeper: 200000,
+  highway: 3000,
+  intersection: 3000
+};
+
+/** The re-survey interval for a room type, exposed so the behaviour, the operation and tests agree
+ * on what "stale" means. */
+export function staleAfter(type: RoomType): number {
+  return STALE_AFTER[type];
+}
+
+/**
+ * Whether a candidate room is worth a scout's visit right now: true if it was never observed, or its
+ * last observation is older than its type's re-survey interval. `now` is passed explicitly (the
+ * snapshot's tick) so the decision is pure and unit-testable without Game.time.
+ */
+export function needsScouting(candidate: ScoutCandidate, now = 0): boolean {
+  const info = candidate.info;
+  if (!info || info.tick === undefined) return true; // never physically seen
+  return now - info.tick >= staleAfter(candidate.type);
+}
 
 /**
  * The next room a scout standing in `from` should survey: the nearest candidate that still needs

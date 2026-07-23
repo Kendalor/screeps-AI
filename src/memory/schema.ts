@@ -28,9 +28,14 @@ declare global {
     // Singular: an RCL7+ two-source miner does not exist here, so the honest port is one assignment.
     sourceId?: Id<Source>;
     task?: TaskState; // current behavior progress — owned by behaviors/interpreter.ts
-    // The room a scout is currently walking to. Owned by the scout behaviour (empire/creeps.ts):
-    // cleared on arrival so the behaviour picks the next unscouted room from its colony's todo.
+    // The room a scout is currently assigned to reach. Written by the setScoutTarget intent (the
+    // Scouting operation decides which room, execute.ts fills it in with `route`); read by the
+    // moveToRoom behaviour, which clears it on arrival so the operation assigns the next one.
     scoutTarget?: string;
+    // A precomputed room-by-room route to a distant target, so the mover crosses large distances the
+    // way Game.map.findRoute plans rather than one greedy travelTo. Written by setScoutTarget, walked
+    // and advanced by the moveToRoom behaviour. General-purpose — any long-haul role can reuse it.
+    route?: RouteMemory;
   }
 
   interface RoomMemory {
@@ -56,6 +61,15 @@ export interface ColonyMemory {
   links?: LinkNetworkMemory; // owned by links
   remotes: string[]; // owned by mining (future)
   danger: number; // owned by defense
+}
+
+// A room-by-room route and how far along it the creep is. `rooms` is the ordered sequence *from the
+// creep's room at planning time to the destination*, exclusive of the start; `index` is the next room
+// to enter. The mover advances `index` as each room is reached and is done when it runs out.
+export interface RouteMemory {
+  dest: string; // the room this route leads to — a guard against walking a stale route to elsewhere
+  rooms: string[]; // ordered rooms to pass through, next-to-enter at `index`
+  index: number;
 }
 
 export interface SourceMemory {

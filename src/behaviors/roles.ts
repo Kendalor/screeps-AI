@@ -178,6 +178,14 @@ export const ROLES = {
   // only fires when the structure sinks have no not-full target, so it never diverts energy the
   // spawn/extensions still need. Consumers also pull from haulers themselves (see their roles), so
   // the two meet in the middle — whichever acts first moves the load.
+  // A scout only travels: it walks to whatever room the Scouting operation assigned via
+  // memory.scoutTarget, following the precomputed route, and idles once there. The operation does the
+  // rest — recording what the scout sees and assigning the next target — through intents, so the
+  // creep itself needs no work parts and no logic beyond "go to the room I was told to."
+  scout: {
+    body: () => [MOVE],
+    steps: [{ do: "moveToRoom", to: "scoutTarget" }]
+  },
   hauler: {
     body: haulerBody,
     steps: [

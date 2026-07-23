@@ -97,3 +97,76 @@ describe("actuator", () => {
     expect(mem.sources.src1.containerId).toBe("cont1");
   });
 });
+
+// A live room stub whose finds return the given sources/mineral and controller. find is keyed by the
+// FIND_* constant execute uses.
+function stubScoutRoom(
+  name: string,
+  over: { sources?: number; mineral?: string; controller?: unknown } = {}
+): unknown {
+  const sources = Array.from({ length: over.sources ?? 2 }, (_, i) => ({ id: `s${i}` }));
+  const minerals = over.mineral ? [{ mineralType: over.mineral }] : [];
+  return {
+    name,
+    controller: over.controller,
+    find: (type: number) => (type === FIND_SOURCES ? sources : type === FIND_MINERALS ? minerals : [])
+  };
+}
+
+describe("actuator — scouting", () => {
+  it("records what a scout sees of its room into RoomMemory", () => {
+    stubGame({ time: 500, rooms: { W1N2: stubScoutRoom("W1N2", { sources: 2, mineral: RESOURCE_OXYGEN }) } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: unknown }> } }).Memory.rooms.W1N2;
+    expect(mem.scouted).toEqual({ tick: 500, type: "normal", sources: 2, mineral: RESOURCE_OXYGEN, hostile: false });
+  });
+
+  it("marks a room hostile when its controller is owned by someone else", () => {
+    const room = stubScoutRoom("W1N2", { controller: { owner: { username: "Enemy" }, my: false } });
+    stubGame({ time: 10, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { owner?: string; hostile?: boolean } }> } })
+      .Memory.rooms.W1N2;
+    expect(mem.scouted).toMatchObject({ owner: "Enemy", hostile: true });
+  });
+
+  it("does nothing for a room the scout has no vision of", () => {
+    stubGame({ rooms: {} });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    execute([{ kind: "recordScout", room: "W9N9" }]);
+    expect((globalThis as { Memory: { rooms: Record<string, unknown> } }).Memory.rooms.W9N9).toBeUndefined();
+  });
+
+  it("assigns a scout its target and a route computed by findRoute", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      findRoute: () => [{ room: "W1N2" }, { room: "W1N3" }]
+    };
+
+    execute([{ kind: "setScoutTarget", creep: "scout1" as Id<Creep>, targetRoom: "W1N3" }]);
+
+    expect(creep.memory.scoutTarget).toBe("W1N3");
+    expect(creep.memory.route).toEqual({ dest: "W1N3", rooms: ["W1N2", "W1N3"], index: 0 });
+  });
+
+  it("grows the scouting radius, capped, on advanceScoutRadius", () => {
+    stubGame();
+    (globalThis as Record<string, unknown>).Memory = { scouting: { radius: 1 } };
+
+    execute([{ kind: "advanceScoutRadius" }]);
+    expect((globalThis as { Memory: { scouting: { radius: number } } }).Memory.scouting.radius).toBe(2);
+
+    // At the cap it stays put rather than growing without bound.
+    (globalThis as { Memory: { scouting: { radius: number } } }).Memory.scouting.radius = 6;
+    execute([{ kind: "advanceScoutRadius" }]);
+    expect((globalThis as { Memory: { scouting: { radius: number } } }).Memory.scouting.radius).toBe(6);
+  });
+});

@@ -32,6 +32,7 @@ function snapCreep(c: Creep): SnapCreep {
     spawning: c.spawning,
     role: c.memory.role,
     home: c.memory.home,
+    room: c.pos.roomName,
     memory: c.memory
   };
 }

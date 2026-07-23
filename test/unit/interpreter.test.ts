@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstRunnableStep, nextStep, runStep, type CreepState } from "../../src/behaviors/interpreter";
+import { advanceRoute, firstRunnableStep, nextStep, runStep, type CreepState } from "../../src/behaviors/interpreter";
 import type { Step } from "../../src/behaviors/types";
 import { stubGame } from "../helpers";
 
@@ -13,6 +13,29 @@ const STEPS: Step[] = [
 function state(over: Partial<CreepState> = {}): CreepState {
   return { step: 0, free: 50, used: 0, targetGone: false, ...over };
 }
+
+describe("advanceRoute", () => {
+  it("aims at the first room while the creep is still at the start", () => {
+    // Standing in the origin (not yet in rooms[0]) — head for rooms[0], cursor unchanged.
+    const route = { rooms: ["W1N2", "W1N3", "W1N4"], index: 0 };
+    expect(advanceRoute(route, "W1N1")).toBe("W1N2");
+    expect(route.index).toBe(0);
+  });
+
+  it("advances the cursor once the creep enters the room at the cursor", () => {
+    const route = { rooms: ["W1N2", "W1N3", "W1N4"], index: 0 };
+    // Now in W1N2 (rooms[0]) — cursor steps to 1, aim at the next room.
+    expect(advanceRoute(route, "W1N2")).toBe("W1N3");
+    expect(route.index).toBe(1);
+  });
+
+  it("clamps at the final room so an overrun still aims at the destination", () => {
+    const route = { rooms: ["W1N2", "W1N3", "W1N4"], index: 2 };
+    // In the last room already — cursor does not run past the end, aim stays on the destination.
+    expect(advanceRoute(route, "W1N4")).toBe("W1N4");
+    expect(route.index).toBe(2);
+  });
+});
 
 describe("interpreter step advancement", () => {
   it("stays on a gathering step while the creep still has free capacity", () => {

@@ -35,7 +35,11 @@ export type Step = ({
     | { do: "build"; at?: TargetSpec }
     | { do: "repair"; at: TargetSpec; upTo?: number }
     | { do: "upgrade" }
-    | { do: "moveToRoom"; room: string }
+    // Move to another room. A static `room` names a fixed destination; `to: "scoutTarget"` reads the
+    // destination from creep memory (written by the setScoutTarget intent) and walks the precomputed
+    // `memory.route` room by room, so a distant target is crossed the way findRoute planned it rather
+    // than by one greedy travelTo. The step is complete when the creep is in the destination room.
+    | { do: "moveToRoom"; room?: string; to?: "scoutTarget" }
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
   );
 
