@@ -9,7 +9,6 @@ import { buildEmpireSnapshot } from "../snapshot/colony";
 import { planBuilding } from "../systems/building";
 import { runCreepBehaviors } from "../systems/creeps";
 import { planDefense } from "../systems/defense";
-import { planMining } from "../systems/mining";
 import { planSpawning } from "../systems/spawning";
 import { cleanCreepMemory } from "./creepMemory";
 import { stats } from "./stats";
@@ -39,9 +38,16 @@ export const SYSTEMS: System[] = [
   { name: "defense", tier: 1, scope: "colony", run: planDefense },
   { name: "spawning", tier: 1, scope: "colony", run: planSpawning },
   { name: "creeps", tier: 1, scope: "empire", run: runCreepBehaviors },
-  { name: "mining", tier: 2, scope: "colony", interval: 50, run: planMining },
+  // Operations' direct intents — the channel that is not arbitrated. Their demand does not run here:
+  // desiredCreeps() is polled by spawning, structures() by building. Keeps the interval and tier the
+  // mining system had, so the benchmark stays comparable.
+  { name: "operations", tier: 2, scope: "colony", interval: 50, run: runOperations },
   { name: "building", tier: 3, scope: "colony", interval: 100, run: planBuilding }
 ];
+
+function runOperations(colony: Colony): Intent[] {
+  return colony.operations.flatMap(op => op.intents(colony.snapshot));
+}
 
 // `injected` exists for the same reason the `systems` parameter does: dispatch tests care about tiers, intervals and
 // isolation, not about standing up a Room the snapshot builder will accept. Not a default parameter — that would build

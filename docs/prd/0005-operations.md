@@ -445,6 +445,22 @@ One commit; the compiler is the worklist.
 
 There is no green intermediate state between steps 2 and 6.
 
+**Done** — all seven steps landed as written. `src/operations/` holds the base class,
+`operationsFor`, and `Mining`; `systems/logistics.ts` and `systems/mining.ts` are deleted.
+Unit 274 green, lint clean, `test/integration/` unchanged from its pre-stage state
+(6 passed; `mining-container` and `rcl3` fail identically on the parent commit — a
+pre-existing failure this stage neither caused nor fixed, see §8's note that integration is
+the gate: the bar is "no new breakage", and it is met).
+
+Two details worth carrying forward:
+
+- `CONTAINERS_FROM_RCL` moved from `building.ts` into `Mining`, so the RCL gate now lives
+  with the operation that knows what it needs *when*. `building.ts` no longer re-gates what
+  an operation hands it — one owner, per §5.2.
+- `wantedStructures(colony, claimed)` gained the claims parameter rather than reaching for
+  operations itself, keeping it a pure function of its arguments for the benchmark and seed
+  call sites that were already using it.
+
 ---
 
 ## 11. What this PRD changed in ADR 0005

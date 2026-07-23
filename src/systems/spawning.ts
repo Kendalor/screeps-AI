@@ -10,25 +10,28 @@ import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
 import { DEFAULT_PRIORITY, fillTo, opName, RECOVERY_PRIORITY, type CreepRequest } from "../spawn/request";
 import { builderRequests } from "./building";
-import { haulerRequests, minerRequests } from "./logistics";
 import { bodyContext } from "./spawnContext";
 import { upgraderRequests } from "./upgrading";
 
-// Stage 3 inverts this into a poll over the colony's operations; until then the requesters are
-// named here, the way they were when they were counts.
+// Demand now arrives from two sources: the colony's operations, and the roles no operation owns yet
+// (recovery, bootstrap, upgrader, builder). The latter are visible debt — each is a candidate
+// operation — and stay named here, the way they were when they were counts.
 //
 // A function rather than a module-level array: two of these are declared below and an array would
 // capture them at module-evaluation time, working only by function hoisting. Converting any one of
 // them to a `const` arrow — an ordinary refactor — would then throw at import and take down the
 // whole loop. Resolving them per call costs nothing and cannot break that way.
 function requesters(): ((colony: Colony) => CreepRequest[])[] {
-  return [recoveryRequests, bootstrapRequests, minerRequests, haulerRequests, upgraderRequests, builderRequests];
+  return [recoveryRequests, bootstrapRequests, upgraderRequests, builderRequests];
 }
 
 export function planSpawning(colony: Colony): Intent[] {
-  const requests = requesters()
-    .flatMap(request => request(colony))
-    .sort((a, b) => b.priority - a.priority);
+  // Concatenated, then flat-sorted: the arbiter treats an operation's request exactly like an
+  // unowned requester's, so priority alone decides. Nothing here knows which is which.
+  const requests = [
+    ...colony.operations.flatMap(op => op.desiredCreeps(colony.snapshot)),
+    ...requesters().flatMap(request => request(colony))
+  ].sort((a, b) => b.priority - a.priority);
   if (requests.length === 0) return [];
 
   const idle = colony.snapshot.spawns.filter(s => !s.busy);

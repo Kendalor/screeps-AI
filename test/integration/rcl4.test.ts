@@ -1,6 +1,6 @@
 // PARTIAL milestone toward "storage online by RCL4": proves the bot plans a bunker and places its
-// own construction sites at RCL4. The rest is blocked on systems/mining.ts (container/link
-// placement) — until that lands, minerRequests and haulerRequests stay pinned at 0.
+// own construction sites at RCL4. The rest is blocked on the Mining operation's container/link
+// placement — until that lands, its miner and hauler demand stays pinned at 0.
 //
 // Seeded at RCL3 rather than a cold boot: this room's income caps near 6.67 energy/tick and the
 // RCL3->4 leg alone needs 135,000 controller progress. Everything asserted below is the bot's

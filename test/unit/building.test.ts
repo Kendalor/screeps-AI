@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
 import { builderRequests, planBuilding } from "../../src/systems/building";
-import type { SnapStructure } from "../../src/snapshot/types";
+import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
 import { colony } from "../../src/colony";
 import { colonySnap, snapCreeps, sourceAt, testColony } from "../fixtures";
-import { minedStructures } from "../../src/systems/mining";
+import { Mining } from "../../src/operations/mining";
 import { buildableAtRcl } from "../../src/layouts/goal";
 import { stampLayout } from "../../src/layouts/stamp";
 import type { GoalLayout } from "../../src/layouts/sync";
 import GOAL_JSON from "../../src/layouts/Base_2.json";
 import type { XY } from "../../src/lib/geometry";
+
+// What the colony's Mining operation claims — the same call planBuilding makes, so these tests
+// assert the arbiter merges real operation demand rather than a re-stated copy of it.
+const minedStructures = (snap: ColonySnapshot) => new Mining(snap.name).structures(snap);
 
 // Every non-road structure the goal permits at `rcl`, stamped at the anchor.
 function allNonRoadStructuresAt(anchor: XY, rcl: number): SnapStructure[] {

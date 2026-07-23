@@ -14,7 +14,6 @@ import { stampLayout } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
 import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
-import { minedStructures } from "./mining";
 import { bodyContext } from "./spawnContext";
 
 const GOAL = GOAL_JSON as GoalLayout;
@@ -24,8 +23,6 @@ const ROAD: BuildableStructureConstant = "road";
 const FOCUS_SITE_CAP = 2;
 // Roads are dead weight while the bunker is still going up; hold until RCL4 when the colony can afford paving.
 export const ROADS_FROM_RCL = 4;
-// A container placed before miners exist is 5000 energy nobody can use, sitting in a scarce focus slot starving extensions.
-export const CONTAINERS_FROM_RCL = 3;
 // Most important first: tower (defense), extensions (capacity), containers, storage. Unlisted types sort at DEFAULT_PRIORITY; roads last.
 const TYPE_PRIORITY: Partial<Record<BuildableStructureConstant, number>> = {
   tower: 0,
@@ -65,28 +62,26 @@ export function builderRequests({ snapshot: colony }: Colony): CreepRequest[] {
   );
 }
 
-export function planBuilding({ snapshot: colony }: Colony): Intent[] {
-  if (!colony.anchor) return [];
-  return planColony(colony);
+export function planBuilding(colony: Colony): Intent[] {
+  if (!colony.snapshot.anchor) return [];
+  // Polled once and threaded through: an operation is asked what it wants exactly once per plan, so
+  // placement and demolition cannot disagree about what was claimed this tick.
+  const claimed = colony.operations.flatMap(op => op.structures(colony.snapshot));
+  return planColony(colony.snapshot, claimed);
 }
 
 // Exported because integration benchmarks seed a colony at one RCL and need this same derivation to know the next level's target set.
-export function wantedStructures(colony: ColonySnapshot): PlacedStructure[] {
+// `claimed` is what the colony's operations asked for this tick — already state-gated by each
+// operation (Mining withholds its containers below CONTAINERS_FROM_RCL), so this merges rather than re-gates.
+export function wantedStructures(colony: ColonySnapshot, claimed: PlacedStructure[] = []): PlacedStructure[] {
   const anchor = colony.anchor;
   if (!anchor) return [];
-  // Mining declares a container/link beside each source; collected here since one system owns site placement and road gating
-  // needs to see these tiles as structures worth serving.
-  const operational = minedStructures(colony);
-  const buildableOperational =
-    colony.controllerLevel >= CONTAINERS_FROM_RCL ? operational : operational.filter(p => p.type !== "container");
   // Bias extension growth toward this room's sources — shortens the miner->filler leg.
   const atRcl = buildableAtRcl(GOAL, colony.controllerLevel, { anchor, sources: colony.sources });
-  const rawBuildable = [...stampLayout(atRcl, anchor), ...buildableOperational];
+  const rawBuildable = [...stampLayout(atRcl, anchor), ...claimed];
   const roadReady = colony.controllerLevel >= ROADS_FROM_RCL;
-  const buildable = gateRoads(
-    roadReady ? rawBuildable : rawBuildable.filter(p => p.type !== ROAD),
-    colony
-  );
+  // Roads are gated after the merge, so a road adjacent to an operation's container counts as served.
+  const buildable = gateRoads(roadReady ? rawBuildable : rawBuildable.filter(p => p.type !== ROAD), colony);
   // Ties within a type keep buildableAtRcl's original build-sequence order, so extension growth stays contiguous.
   return buildable
     .map((p, i) => ({ p, i }))
@@ -94,11 +89,12 @@ export function wantedStructures(colony: ColonySnapshot): PlacedStructure[] {
     .map(e => e.p);
 }
 
-function planColony(colony: ColonySnapshot): Intent[] {
+function planColony(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
   const anchor = colony.anchor!;
   // Full RCL8 goal, not just this RCL's buildable subset: a higher-tier structure already built (e.g. after a downgrade) is not stale.
-  const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...minedStructures(colony)];
-  const prioritised = wantedStructures(colony);
+  // Operations' claims join it, so demolition tears down exactly what no operation claims this tick.
+  const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...claimed];
+  const prioritised = wantedStructures(colony, claimed);
 
   const cap = Math.min(FOCUS_SITE_CAP, MAX_CONSTRUCTION_SITES);
   let budget = cap - colony.sites.length;

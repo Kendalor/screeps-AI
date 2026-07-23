@@ -10,7 +10,7 @@ import type { PlacedStructure } from "../../src/layouts/stamp";
 import type { RoleName } from "../../src/memory/schema";
 import type { ColonySnapshot } from "../../src/snapshot/types";
 import { builderRequests, wantedStructures } from "../../src/systems/building";
-import { haulerRequests, minerRequests } from "../../src/systems/logistics";
+import { operationsFor } from "../../src/operations";
 import { bootstrapRequests } from "../../src/systems/spawning";
 import { upgraderRequests } from "../../src/systems/upgrading";
 import type { BootedColony } from "./harness";
@@ -155,11 +155,11 @@ export function spreadTtl(index: number, total: number): number {
 // the census-based version did too, so scenarios are unchanged; it is *not* the steady-state
 // workforce a running RCL3 colony fields.
 export function plannedWorkforce(colony: ColonySnapshot): SeededCreep[] {
-  const wrapped = { snapshot: colony };
+  const wrapped = { snapshot: colony, operations: operationsFor(colony.name) };
   const requests = [
     ...bootstrapRequests(wrapped),
-    ...minerRequests(wrapped),
-    ...haulerRequests(wrapped),
+    // The operations' own demand, polled exactly as planSpawning polls it.
+    ...wrapped.operations.flatMap(op => op.desiredCreeps(colony)),
     ...upgraderRequests(wrapped),
     ...builderRequests(wrapped)
   ].filter(r => r.body.length > 0);
@@ -309,7 +309,12 @@ export async function seedColony(colony: BootedColony, opts: SeedOptions): Promi
     throw new Error("cannot seed: the colony has not cached a bunker anchor yet — run a few ticks after boot()");
   }
 
-  const structures = wantedStructures(snapshot);
+  // Operations' claims are passed in, as planBuilding does — without them the seed builds the bunker
+  // stamp but none of mining's source containers.
+  const structures = wantedStructures(
+    snapshot,
+    operationsFor(snapshot.name).flatMap(op => op.structures(snapshot))
+  );
   await seedStructures(colony, structures);
 
   // Re-read after building so the workforce is sized against the seeded room, not the empty one.

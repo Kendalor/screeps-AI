@@ -1,5 +1,6 @@
 // The colony builds its own source container. Base_2.json has no containers by design, so this
-// depends on systems/mining.ts placing one — nothing here injects it via addStructure().
+// depends on the Mining operation claiming one and planBuilding placing it — nothing here injects
+// it via addStructure().
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { BootedColony, bundleBot } from "./harness";
