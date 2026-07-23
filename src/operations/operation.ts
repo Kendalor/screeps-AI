@@ -7,7 +7,8 @@
 
 import type { Intent } from "../intents/types";
 import type { PlacedStructure } from "../layouts/stamp";
-import type { ColonySnapshot } from "../snapshot/types";
+import type { RoleName } from "../memory/schema";
+import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { opName, type CreepRequest } from "../spawn/request";
 
 /**
@@ -41,6 +42,22 @@ export abstract class Operation {
    */
   public get name(): string {
     return opName(this.kind, this.room);
+  }
+
+  /**
+   * This operation's live creeps of a role — the satisfaction-check primitive. Filtering by role
+   * alone is a bug the moment two operations of the same kind exist (home Mining plus a RemoteMining
+   * both want `miner`): each would count the other's creeps and under-spawn. `memory.op` is the
+   * ownership stamp that tells them apart.
+   *
+   * A creep with **no** `op` is counted as ownable by any matching operation, not ignored: creeps
+   * that predate stage 2 (or a newly added operation) carry no `op`, still do the work, and are
+   * cleared by attrition rather than migration (PRD §6). Excluding them would make every operation
+   * see a bare colony and over-spawn until they died of old age — the same reasoning the unassigned
+   * miner uses for `sourceId`.
+   */
+  protected owned(colony: ColonySnapshot, role: RoleName): readonly SnapCreep[] {
+    return colony.creeps.filter(c => c.role === role && (c.memory.op === undefined || c.memory.op === this.name));
   }
 
   /** Demand — arbitrated by planSpawning, which sorts by priority, budgets and emits `spawn`. */

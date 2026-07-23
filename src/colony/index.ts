@@ -14,7 +14,6 @@ import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { planBuilding } from "./building";
-import { bootstrapRequests, builderRequests, recoveryRequests } from "./requests";
 
 export class Colony {
   public readonly operations: Operation[];
@@ -28,20 +27,15 @@ export class Colony {
   }
 
   /**
-   * Everything this colony wants spawned: its operations' demand, plus the roles no operation owns
-   * yet (recovery, bootstrap, builder). The empire arbiter collects this across all colonies, sorts
-   * by priority and routes. Nothing here spawns — a colony states demand, it does not decide.
+   * Everything this colony wants spawned: its operations' demand. The empire arbiter collects this
+   * across all colonies, sorts by priority and routes. Nothing here spawns — a colony states demand,
+   * it does not decide.
    *
    * A colony-wide priority sort is deliberately NOT done here: merging happens in the arbiter, which
    * sees every colony's requests at once, so one colony cannot pre-empt another's ordering.
    */
   public requests(): CreepRequest[] {
-    return [
-      ...this.operations.flatMap(op => op.desiredCreeps(this.snapshot)),
-      ...recoveryRequests(this.snapshot),
-      ...bootstrapRequests(this.snapshot),
-      ...builderRequests(this.snapshot)
-    ];
+    return this.operations.flatMap(op => op.desiredCreeps(this.snapshot));
   }
 
   /** The construction arbiter for this colony. */

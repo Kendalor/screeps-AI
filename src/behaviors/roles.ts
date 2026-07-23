@@ -116,13 +116,17 @@ export const ROLES = {
       { do: "build" }
     ]
   },
-  // Refill from the controller link, then storage, then upgrade.
+  // Refill from the controller link, then storage, then a mining container, then upgrade. The
+  // container step is what lets a pre-storage upgrader work at all: before storage there is no link
+  // and no storage to draw from, so without it the upgrader would wander inert — the container is
+  // the early-game economy's only standing energy store, and dedicated upgraders lead the RCL climb.
   upgrader: {
     body: upgraderBody,
     steps: [
       { do: "pickup", from: { find: "dropped" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
       { do: "upgrade" }
     ]
   },
@@ -145,14 +149,22 @@ export const ROLES = {
       { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } }
     ]
   },
-  // Drains drop piles and mining containers into storage; before storage exists, the spawn is the only sink worth filling.
+  // Drains mining containers and drop piles into the colony's sinks. Source side: a container is a
+  // concentrated load a hauler empties in one visit, so it comes before scattered ground piles
+  // (which are the pre-container fallback). Sink side: storage first when it exists (the steady-state
+  // sink), else keep the spawning structures topped up — spawn, extensions, towers — since with
+  // bootstrap gone the hauler is the *only* thing filling extensions, and an unfilled extension caps
+  // the room's spawn energy and stalls the climb. The upgrade/build sinks are served by those roles
+  // pulling from the drops/containers directly, not pushed here.
   hauler: {
     body: haulerBody,
     steps: [
-      { do: "pickup", from: { find: "dropped" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "pickup", from: { find: "dropped" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } }
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } }
     ]
   }
 } satisfies Partial<Record<RoleName, RoleDef>>;

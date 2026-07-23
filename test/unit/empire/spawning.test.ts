@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import { bodyCost } from "../../../src/behaviors/body";
 import { planSpawning } from "../../../src/empire/spawning";
 import type { Intent } from "../../../src/intents/types";
-import { desiredBootstrapCount } from "../../../src/colony/requests";
 import { colonySnap, containerAt, roomDistance, snapCreep, snapCreeps, sourceAt, spawn, testEmpire } from "../../fixtures";
 
 // The arbiter takes colonies + a room-distance function. Every ported single-colony case wraps one
@@ -27,15 +26,16 @@ describe("spawn arbiter — single colony", () => {
   });
 
   it("emits nothing when every requester is satisfied", () => {
+    // A single-tile source seats exactly one miner; that 1-WORK miner's output warrants one hauler.
+    // No container energy or drops, so no pre-storage upgraders; no construction, so no builders.
     const source = sourceAt(20, 10, "source_20_10", 1);
     expect(
       arbitrate({
         spawns: [spawn()],
         sources: [source],
         creeps: [
-          ...snapCreeps("bootstrap", desiredBootstrapCount(colonySnap({ sources: [source] }))),
-          ...snapCreeps("hauler", 1),
-          snapCreep("miner", { memory: { sourceId: source.id } })
+          snapCreep("miner", { memory: { sourceId: source.id, op: "mining:W1N1" } }),
+          ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } })
         ]
       })
     ).toEqual([]);
@@ -69,7 +69,9 @@ describe("spawn arbiter — single colony", () => {
 
     expect(intents).toHaveLength(2);
     expect(intents.map(i => i.kind === "spawn" && i.spawn)).toEqual(["spawn1", "spawn2"]);
-    expect(intents.map(i => i.kind === "spawn" && i.memory.op)).toEqual(["recovery:W1N1", "bootstrap:W1N1"]);
+    // With no creeps alive, recovery (1000) leads; the next request is a miner (95) — the economy
+    // roles lead now that the bootstrap workforce is gone.
+    expect(intents.map(i => i.kind === "spawn" && i.memory.op)).toEqual(["recovery:W1N1", "mining:W1N1"]);
   });
 
   it("deducts each spawn from a running energy budget", () => {

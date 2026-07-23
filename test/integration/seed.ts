@@ -7,11 +7,11 @@
 // through here moves automatically with layout/quota/body changes.
 
 import { claimsOf, wantedStructures } from "../../src/colony/building";
-import { bootstrapRequests, builderRequests } from "../../src/colony/requests";
 import type { PlacedStructure } from "../../src/layouts/stamp";
 import type { RoleName } from "../../src/memory/schema";
 import { operationsFor } from "../../src/operations";
 import type { ColonySnapshot } from "../../src/snapshot/types";
+import { opName, type CreepRequest } from "../../src/spawn/request";
 import type { BootedColony } from "./harness";
 
 // Engine constants, taken from the same package the running server uses rather
@@ -149,19 +149,33 @@ export function spreadTtl(index: number, total: number): number {
 //
 // Caveat worth knowing when reading a seeded scenario: `colony` here comes from layoutSnapshot(),
 // whose `creeps` is always empty, so every satisfaction check sees a colony with nothing alive.
-// That lands on the cold-start branches — miner demand is clamped to the one-miner floor because no
-// hauler exists, and hauler demand is zero because seeded containers start empty. This is what
-// the census-based version did too, so scenarios are unchanged; it is *not* the steady-state
-// workforce a running RCL3 colony fields.
+// Miner demand is the full per-source WORK target, but hauler demand is zero — haulers derive from
+// live miner output and there are none alive in this snapshot — and pre-storage upgrader demand is
+// zero too (no live drops or filled containers to withdraw from). So a seeded colony starts with
+// miners and no haulers/upgraders, and the running colony fills those in from tick one. This is the
+// same shape the census-based version produced; it is *not* the steady-state workforce a running
+// RCL3 colony fields.
 export function plannedWorkforce(colony: ColonySnapshot): SeededCreep[] {
-  const operations = operationsFor(colony.name);
+  // Every operation's demand, polled exactly as the empire arbiter polls it. Two exclusions:
+  // recovery (Bootstrap folds it in with its workforce, filtered by its own `op` stamp — it only
+  // fires on a wipe, and seeding is the opposite of a wipe) and empty bodies.
+  //
+  // Ordering is load-bearing here, not incidental: spreadTtl staggers TTL by request index, so the
+  // *order* fixes the seeded workforce's death schedule and thus the recovery timing a scenario
+  // measures. It is pinned to the pre-operations layout — bootstrap workforce first, then the other
+  // operations' demand, then builders — so seeded scenarios (and their benchmark checkpoints) are
+  // unchanged by bootstrap/building having become operations.
+  const recovery = opName("recovery", colony.name);
+  const byRole = (role: RoleName) => (r: CreepRequest) => r.memory.role === role;
+  const demand = operationsFor(colony.name)
+    .flatMap(op => op.desiredCreeps(colony))
+    .filter(r => r.body.length > 0 && r.memory.op !== recovery);
+
   const requests = [
-    ...bootstrapRequests(colony),
-    // The operations' own demand (mining's miners/haulers, upgrading's upgraders), polled exactly as
-    // the empire arbiter polls it. Recovery is excluded deliberately: seeding is the opposite of a wipe.
-    ...operations.flatMap(op => op.desiredCreeps(colony)),
-    ...builderRequests(colony)
-  ].filter(r => r.body.length > 0);
+    ...demand.filter(byRole("bootstrap")),
+    ...demand.filter(r => r.memory.role !== "bootstrap" && r.memory.role !== "builder"),
+    ...demand.filter(byRole("builder"))
+  ];
 
   return requests.map((r, i) => ({
     name: `seed_${r.memory.role}_${i}`,

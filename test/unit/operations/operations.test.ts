@@ -12,6 +12,7 @@ import type { CreepRequest } from "../../../src/spawn/request";
 import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
 import { buildableAtRcl, plannedObstacles } from "../../../src/layouts/goal";
 import { Mining } from "../../../src/operations/mining";
+import { Bootstrap } from "../../../src/operations/bootstrap";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import GOAL_JSON from "../../../src/layouts/Base_2.json";
 import { colonySnap, roomDistance, sourceAt, spawn } from "../../fixtures";
@@ -93,12 +94,12 @@ describe("planSpawning polls operations", () => {
     expect(intents[0]).toMatchObject({ kind: "spawn", memory: { op: "stub:W1N1" } });
   });
 
-  // Operations get no precedence for being operations: the arbiter sorts one flat list, so an
-  // unowned requester at a higher priority still wins.
-  it("orders operation demand against unowned demand by priority alone", () => {
-    // Bootstrap (priority 100) outranks this operation's request, and only one spawn is idle.
+  // Operations get no precedence for being operations: the arbiter sorts one flat list, so a
+  // higher-priority operation still wins over a lower-priority one.
+  it("orders operation demand by priority alone", () => {
+    // Bootstrap (priority 100) outranks this Stub's request, and only one spawn is idle.
     const snap = colonySnap({ spawns: [spawn()], energyAvailable: 300, sources: [sourceAt(20, 10)] });
-    const intents = spawnFor(withOps(snap, new Stub("W1N1", [request("hauler", 1)])));
+    const intents = spawnFor(withOps(snap, new Stub("W1N1", [request("hauler", 1)]), new Bootstrap("W1N1")));
 
     expect(intents).toHaveLength(1);
     expect(intents[0]).toMatchObject({ kind: "spawn", memory: { role: "bootstrap" } });

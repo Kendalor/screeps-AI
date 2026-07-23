@@ -187,14 +187,16 @@ describe("miner role", () => {
 });
 
 describe("hauler role", () => {
-  it("picks up a drop pile before withdrawing from a container, then fills storage before falling back to spawn", () => {
+  it("empties a container before scattered drops, then fills storage before the spawning structures", () => {
     expect(roleDef("hauler")).toEqual({
       body: ROLES.hauler.body,
       steps: [
-        { do: "pickup", from: { find: "dropped" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+        { do: "pickup", from: { find: "dropped" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
-        { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } }
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } }
       ]
     });
   });
@@ -222,13 +224,15 @@ describe("supply role", () => {
 });
 
 describe("upgrader role", () => {
-  it("resolves via roleDef and picks up a pile, then withdraws from link/storage before upgrading", () => {
+  it("resolves via roleDef and picks up a pile, then withdraws from link/storage/container before upgrading", () => {
     expect(roleDef("upgrader")).toEqual({
       body: ROLES.upgrader.body,
       steps: [
         { do: "pickup", from: { find: "dropped" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+        // The container step lets a pre-storage upgrader run off the mining economy.
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
         { do: "upgrade" }
       ]
     });

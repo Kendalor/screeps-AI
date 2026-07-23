@@ -50,6 +50,9 @@ Object.assign(globalThis, {
 
   MAX_CONSTRUCTION_SITES: 100,
 
+  // A WORK part harvests this much energy per tick, from screeps/common constants.
+  HARVEST_POWER: 2,
+
   // Spawn cost per body part, from screeps/common constants.
   BODYPART_COST: {
     move: 50,

@@ -1,5 +1,7 @@
 // The list of what exists, not a rules engine.
 
+import { Bootstrap } from "./bootstrap";
+import { Building } from "./building";
 import { Defense } from "./defense";
 import { Mining } from "./mining";
 import type { Operation } from "./operation";
@@ -9,6 +11,8 @@ export { Operation } from "./operation";
 export { Mining, CONTAINERS_FROM_RCL } from "./mining";
 export { Defense } from "./defense";
 export { Upgrading } from "./upgrading";
+export { Bootstrap } from "./bootstrap";
+export { Building } from "./building";
 
 /**
  * Every colony gets every operation kind, unconditionally. Whether an operation does anything is
@@ -17,10 +21,11 @@ export { Upgrading } from "./upgrading";
  * piece of knowledge across two files and let the two drift.
  *
  * Order matters for one reason only: the structures() poll is sequential, so an operation earlier
- * in this list paths its roads before later ones and they converge onto its routes. Defense and
- * Upgrading claim no structures, so their position is free; Mining is the only one that paths
- * today. When a second pathing operation lands (RemoteMining), its order here becomes a decision.
+ * in this list paths its roads before later ones and they converge onto its routes. Defense,
+ * Upgrading, Building, and Bootstrap claim no structures, so their position is free; Mining is
+ * the only one that paths today. When a second pathing operation lands (RemoteMining), its order
+ * here becomes a decision.
  */
 export function operationsFor(room: string): Operation[] {
-  return [new Mining(room), new Defense(room), new Upgrading(room)];
+  return [new Mining(room), new Defense(room), new Upgrading(room), new Bootstrap(room), new Building(room)];
 }

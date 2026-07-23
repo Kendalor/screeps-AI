@@ -53,32 +53,39 @@ describe("Mining on a colony with nothing to mine", () => {
 });
 
 describe("Mining.desiredCreeps — miners", () => {
-  it("wants exactly one miner for a single source when no haulers are alive yet", () => {
-    expect(minerRequests(colonySnap({ sources: [sourceAt(20, 10)] }))).toHaveLength(1);
+  // Miners lead now and are sized against the source alone: the per-source WORK target (6) divided
+  // by the WORK a 300-energy body carries (2) is 3, and the source's 8 open tiles can seat them.
+  // No hauler ceiling — hauler demand derives from miner output, not the other way round.
+  it("wants enough miners to saturate a source's WORK target, regardless of haulers", () => {
+    expect(minerRequests(colonySnap({ sources: [sourceAt(20, 10)] }))).toHaveLength(3);
   });
 
-  it("caps requests by live hauler count once a hauler exists", () => {
-    // Default 300-energy body carries 2 WORK, so one source (target 6 WORK) wants 3 miners
-    // once the cold-start floor no longer applies — but only one hauler is alive to collect.
-    const snap = colonySnap({ sources: [sourceAt(20, 10)], creeps: snapCreeps("hauler", 1) });
+  // Live miners are counted against the per-source target so the colony does not re-spend the whole
+  // allowance every tick: two of the three wanted are already alive, so only one is still missing.
+  it("asks only for the miners a source is still short", () => {
+    const source = sourceAt(20, 10);
+    const snap = colonySnap({
+      sources: [source],
+      creeps: snapCreeps("miner", 2, { memory: { sourceId: source.id, op: "mining:W1N1" } })
+    });
+
     expect(minerRequests(snap)).toHaveLength(1);
   });
 
-  // The cap is on total miner headcount, not on requests per tick: counting only requests would
-  // let the colony re-spend the whole hauler allowance every tick and mine far past its collectors.
-  it("counts live miners against the collector cap", () => {
+  it("stops asking once a source's WORK target is met", () => {
+    const source = sourceAt(20, 10);
     const snap = colonySnap({
-      sources: [sourceAt(20, 10)],
-      creeps: [...snapCreeps("hauler", 1), ...snapCreeps("miner", 1)]
+      sources: [source],
+      creeps: snapCreeps("miner", 3, { memory: { sourceId: source.id, op: "mining:W1N1" } })
     });
 
     expect(minerRequests(snap)).toEqual([]);
   });
 
-  it("caps requests by the source's open adjacent tiles, even with haulers to spare", () => {
+  it("caps requests by the source's open adjacent tiles", () => {
     // An enclosed source with only one open tile can never seat more than one miner.
     const enclosed = sourceAt(20, 10, "source_20_10", 1);
-    const snap = colonySnap({ sources: [enclosed], creeps: snapCreeps("hauler", 5) });
+    const snap = colonySnap({ sources: [enclosed] });
     expect(minerRequests(snap)).toHaveLength(1);
   });
 
@@ -178,50 +185,169 @@ describe("Mining.desiredCreeps — miners", () => {
 
     expect(request.memory).toMatchObject({ role: "miner", home: "W1N1", op: "mining:W1N1" });
   });
+
+  // The multi-operation bug: filtering by role alone would count another Mining's miners. A miner
+  // stamped for a different op must not satisfy this operation's demand.
+  it("ignores a miner owned by a different operation", () => {
+    const source = sourceAt(20, 10, "source_20_10", 1);
+    const snap = colonySnap({
+      sources: [source],
+      creeps: [
+        ...snapCreeps("hauler", 5),
+        // Assigned to this source but owned by someone else — not our cover.
+        snapCreep("miner", { memory: { op: "mining:W9N9", sourceId: source.id } })
+      ]
+    });
+
+    // Still wants its own miner for the source, since the foreign one does not count.
+    expect(minerRequests(snap)).toHaveLength(1);
+  });
+
+  // A creep with no op is fair game for any matching operation (attrition clears it), so it still
+  // counts as cover — same rule as an unassigned sourceId.
+  it("counts an unowned miner as its own", () => {
+    const source = sourceAt(20, 10, "source_20_10", 1);
+    const snap = colonySnap({
+      sources: [source],
+      creeps: [...snapCreeps("hauler", 5), snapCreep("miner", { memory: { sourceId: source.id } })]
+    });
+
+    expect(minerRequests(snap)).toEqual([]);
+  });
 });
 
+// Haulers now derive from what the miners actually produce — the live miners' WORK converted to
+// income, times the round trip to the drop-off — not a flat one-per-container count. These helpers
+// build owned miners of a given WORK size so a test can dial income directly.
+const wnMiner = (work: number, sourceId = "s") =>
+  snapCreep("miner", { body: Array<BodyPartConstant>(work).fill(WORK), memory: { op: "mining:W1N1", sourceId } });
+const wnMiners = (n: number, work: number) => Array.from({ length: n }, () => wnMiner(work));
+
 describe("Mining.desiredCreeps — haulers", () => {
-  it("wants no haulers when there is nothing to haul from", () => {
-    expect(haulerRequests(colonySnap({ containers: [] }))).toEqual([]);
+  // "No haulers without miners" is the structural rule: income is 0 with no producing miner, so the
+  // target is 0 — even with a source, an anchor, and energy to spend.
+  it("wants no haulers while no miner is producing", () => {
+    expect(haulerRequests(colonySnap({ sources: [sourceAt(20, 10)], anchor: { x: 10, y: 10 } }))).toEqual([]);
   });
 
-  it("wants one hauler per active container", () => {
-    expect(haulerRequests(colonySnap({ containers: [containerAt(10, 10, 500)], energyAvailable: 550 }))).toHaveLength(
-      1
-    );
-    expect(
-      haulerRequests(
-        colonySnap({ containers: [containerAt(10, 10, 500), containerAt(40, 40, 500)], energyAvailable: 550 })
-      )
-    ).toHaveLength(2);
+  // One 3-WORK miner is 6 energy/tick; anchor 10 tiles from the source is a 20-tick round trip, so
+  // 120 energy piles up between visits — one hauler (4 CARRY × 50 = 200 capacity) covers it.
+  it("wants one hauler for a single modest miner nearby", () => {
+    const snap = colonySnap({
+      sources: [sourceAt(20, 10)],
+      anchor: { x: 10, y: 10 },
+      creeps: wnMiners(1, 3)
+    });
+    expect(haulerRequests(snap)).toHaveLength(1);
   });
 
-  it("ignores containers that are sitting empty", () => {
-    expect(
-      haulerRequests(
-        colonySnap({ containers: [containerAt(10, 10, 500), containerAt(40, 40, 0)], energyAvailable: 550 })
-      )
-    ).toHaveLength(1);
+  // Saturated income (two sources, 20 energy/tick capped) over the same trip piles 400 energy — two
+  // haulers. Hauler capacity thus scales with miner output, which is the point.
+  it("fields more haulers as miner output rises", () => {
+    const snap = colonySnap({
+      sources: [sourceAt(20, 10), sourceAt(20, 12)],
+      anchor: { x: 10, y: 10 },
+      creeps: wnMiners(2, 5) // 10 WORK -> 20 energy/tick, at the room cap
+    });
+    expect(haulerRequests(snap).length).toBeGreaterThanOrEqual(2);
+  });
+
+  // Same income, longer haul: a source far from the drop-off needs more carry capacity in flight, so
+  // more haulers. Distance is a first-class input to the fleet size.
+  it("fields more haulers as the haul distance grows", () => {
+    const near = colonySnap({ sources: [sourceAt(15, 10)], anchor: { x: 10, y: 10 }, creeps: wnMiners(1, 3) });
+    const far = colonySnap({ sources: [sourceAt(45, 40)], anchor: { x: 10, y: 10 }, creeps: wnMiners(1, 3) });
+
+    expect(haulerRequests(far).length).toBeGreaterThan(haulerRequests(near).length);
+  });
+
+  // Income is clamped to the room's regen (2 sources × 10), so a miner surplus can never make the
+  // colony ask for haulers to carry energy the sources cannot produce.
+  it("clamps income to the room regen so surplus miners do not inflate the fleet", () => {
+    const surplus = colonySnap({
+      sources: [sourceAt(20, 10), sourceAt(20, 12)],
+      anchor: { x: 10, y: 10 },
+      creeps: wnMiners(6, 5) // 60 WORK -> 120 raw, clamped to 20
+    });
+    const exact = colonySnap({
+      sources: [sourceAt(20, 10), sourceAt(20, 12)],
+      anchor: { x: 10, y: 10 },
+      creeps: wnMiners(2, 5) // 10 WORK -> 20, already at the cap
+    });
+
+    expect(haulerRequests(surplus).length).toBe(haulerRequests(exact).length);
   });
 
   it("wants no haulers when the colony cannot afford even one body", () => {
-    expect(haulerRequests(colonySnap({ containers: [containerAt(10, 10, 500)], energyCapacity: 100 }))).toEqual([]);
-  });
-
-  it("returns nothing once the live haulers cover every filling container", () => {
     const snap = colonySnap({
-      containers: [containerAt(10, 10, 500)],
-      energyAvailable: 550,
-      creeps: snapCreeps("hauler", 1)
+      sources: [sourceAt(20, 10)],
+      anchor: { x: 10, y: 10 },
+      creeps: wnMiners(1, 3),
+      energyCapacity: 100
     });
-
     expect(haulerRequests(snap)).toEqual([]);
   });
 
+  it("asks only for the shortfall once some haulers are alive", () => {
+    const before = colonySnap({
+      sources: [sourceAt(20, 10), sourceAt(20, 12)],
+      anchor: { x: 10, y: 10 },
+      creeps: wnMiners(2, 5)
+    });
+    const wanted = haulerRequests(before).length;
+    expect(wanted).toBeGreaterThanOrEqual(2);
+
+    const after = colonySnap({
+      sources: [sourceAt(20, 10), sourceAt(20, 12)],
+      anchor: { x: 10, y: 10 },
+      creeps: [...wnMiners(2, 5), ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } })]
+    });
+    expect(haulerRequests(after)).toHaveLength(wanted - 1);
+  });
+
   it("stamps the same op as its miners — one operation owns both", () => {
-    const snap = colonySnap({ containers: [containerAt(10, 10, 500)], energyAvailable: 550 });
+    const snap = colonySnap({ sources: [sourceAt(20, 10)], anchor: { x: 10, y: 10 }, creeps: wnMiners(1, 3) });
 
     expect(haulerRequests(snap)[0].memory).toMatchObject({ role: "hauler", home: "W1N1", op: "mining:W1N1" });
+  });
+});
+
+// The arbiter spawns in flat priority order, so alternation is encoded in the priorities themselves:
+// each miner sits just above its paired hauler, each pair below the last. Sorting the whole demand by
+// priority must therefore yield miner, hauler, miner, hauler, ….
+describe("Mining.desiredCreeps — miner/hauler alternation", () => {
+  const roleOrder = (snap: Parameters<Mining["desiredCreeps"]>[0]) =>
+    [...mining.desiredCreeps(snap)]
+      .filter(r => r.memory.role === "miner" || r.memory.role === "hauler")
+      .sort((a, b) => b.priority - a.priority)
+      .map(r => r.memory.role);
+
+  it("interleaves miners and haulers rather than spawning every miner first", () => {
+    // Two saturated sources with live miners producing at the cap: several miners still wanted (the
+    // live ones don't fill the per-source target) and several haulers. The spawn order alternates.
+    const snap = colonySnap({
+      sources: [sourceAt(20, 10), sourceAt(20, 12)],
+      anchor: { x: 10, y: 10 },
+      creeps: wnMiners(2, 5)
+    });
+
+    const order = roleOrder(snap);
+    expect(order[0]).toBe("miner"); // a miner always leads
+    // No two haulers spawn back-to-back before their miners: every hauler is preceded by a miner.
+    let miners = 0;
+    let haulers = 0;
+    for (const role of order) {
+      if (role === "miner") miners++;
+      else haulers++;
+      expect(haulers).toBeLessThanOrEqual(miners);
+    }
+  });
+
+  // "No haulers without miners" and "miners first": with nothing alive, only miners are asked for —
+  // hauler demand needs a producing miner first.
+  it("asks for miners only until one is producing", () => {
+    const snap = colonySnap({ sources: [sourceAt(20, 10)], anchor: { x: 10, y: 10 } });
+    expect(new Set(roleOrder(snap))).toEqual(new Set(["miner"]));
   });
 });
 

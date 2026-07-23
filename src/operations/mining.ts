@@ -13,6 +13,7 @@ import { plannedObstacles } from "../layouts/goal";
 import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../layouts/roads";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
+import { range, type XY } from "../lib/geometry";
 import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
 import { DEFAULT_PRIORITY, fillTo, type CreepRequest } from "../spawn/request";
 import { bodyContext } from "../behaviors/bodyContext";
@@ -36,10 +37,52 @@ const MIN_HAULER_ENERGY = 150; // one CARRY,CARRY,MOVE set — the cheapest body
 // dying and its replacement arriving.
 const WORK_PER_SOURCE = 6;
 
-const roleIs = (role: string) => (c: SnapCreep) => c.role === role;
+// A WORK part harvests HARVEST_POWER (2) energy/tick. The room's whole harvestable income is capped
+// at what its sources regenerate — two sources at 10/tick each — so a miner surplus can never make
+// the colony ask for haulers to carry energy that isn't there.
+const SOURCE_REGEN_PER_TICK = 10;
+// One room's ceiling on harvestable income, stated for the hauler sizing: at most two sources ×
+// 10/tick. Haulers scale with miner throughput *up to* this, never past it. Matches the goal's
+// "capped at 20 energy/tick" for a single room.
+const ROOM_INCOME_CAP = 20;
+// A hauler carries 50 energy per CARRY part. Used to turn "carry capacity needed" into a headcount.
+const ENERGY_PER_CARRY = 50;
+// Fallback source→drop-off distance when no anchor is known yet (the very first ticks). One hauler
+// covers a short opening trip; the estimate self-corrects the moment an anchor is cached.
+const DEFAULT_HAUL_DISTANCE = 10;
+// The empire never fields fewer than one hauler once a miner is producing, nor an unbounded swarm.
+// The upper bound is a safety rail; the distance/income formula almost always lands well under it.
+const MAX_HAULERS = 6;
 
 function sourceStructureType(rcl: number): BuildableStructureConstant {
   return rcl >= LINK_RCL ? "link" : "container";
+}
+
+/**
+ * Rewrite miner/hauler priorities so the arbiter's flat sort spawns them in alternation — miner,
+ * hauler, miner, hauler — rather than draining the spawn budget on every miner before the first
+ * hauler. Pair i puts the miner one step above its hauler, and each pair one step below the last:
+ *
+ *   miners:  95, 93, 91, ...   (DEFAULT_PRIORITY.miner - 2i)
+ *   haulers: 94, 92, 90, ...   (one below the paired miner)
+ *
+ * A flat descending sort over the result yields m0, h0, m1, h1, …. When one list is longer, its
+ * surplus simply continues the descent past the last pair — miners stay ahead, haulers stay behind.
+ * The step never carries the sequence below the upgrader tier (60) for any realistic fleet: even six
+ * pairs bottoms out at 84.
+ *
+ * Priorities are absolute across the empire (PRD 0005 §3.5), so this reshuffles only *within* the
+ * miner/hauler band the two roles already occupied — it does not reorder them against other roles.
+ */
+function interleaveByPriority(miners: CreepRequest[], haulers: CreepRequest[]): CreepRequest[] {
+  const out: CreepRequest[] = [];
+  const pairs = Math.max(miners.length, haulers.length);
+  for (let i = 0; i < pairs; i++) {
+    const top = DEFAULT_PRIORITY.miner - 2 * i;
+    if (i < miners.length) out.push({ ...miners[i], priority: top });
+    if (i < haulers.length) out.push({ ...haulers[i], priority: top - 1 });
+  }
+  return out;
 }
 
 // Asks the role table rather than restating its formula, so the quota tracks any change to the miner
@@ -55,12 +98,19 @@ export class Mining extends Operation {
   public readonly kind = "mining";
 
   /**
-   * Miners (a per-source deficit) then haulers, concatenated in that order with their existing
-   * priorities. The arbiter's flat sort makes emission order irrelevant; keeping source order
-   * stable keeps diffs readable.
+   * Miners and haulers, interleaved by priority so the arbiter spawns them miner, hauler, miner,
+   * hauler — not every miner first. The arbiter sorts on a flat absolute priority, so alternation
+   * has to be *encoded in the priorities themselves*: each miner sits one step above its paired
+   * hauler, each pair one step below the last. That way a room never spends its whole spawn budget
+   * standing up miners a lone hauler cannot keep drained, and it never over-provisions haulers ahead
+   * of the miners whose output justifies them.
+   *
+   * "Miners first, then a hauler" and "no haulers without miners" both still hold: the miner in each
+   * pair outranks its hauler, and hauler demand is zero until a live miner is producing
+   * (`haulerRequests`), so the very first spawn is always a miner.
    */
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
-    return [...this.minerRequests(colony), ...this.haulerRequests(colony)];
+    return interleaveByPriority(this.minerRequests(colony), this.haulerRequests(colony));
   }
 
   /**
@@ -68,37 +118,28 @@ export class Mining extends Operation {
    * colony-wide count: with the same formula the two produce the same spawn sequence, and they
    * diverge only where the colony total is already wrong (one source double-staffed, one bare) —
    * a case a count cannot see.
+   *
+   * Miners lead the economy and are sized against the source alone (the per-source WORK target,
+   * clamped by open tiles) — no hauler-count ceiling. The old ceiling coupled miner headcount to
+   * live haulers, which is now backwards: hauler demand *derives from* miner output
+   * (`haulerRequests`), so making miners wait on haulers that wait on miners would deadlock the
+   * cold start. "Miners first, then a hauler" falls out of this directly — a source with no miner
+   * asks for one at priority 95, and only once that miner is producing does `haulerRequests` see
+   * the WORK to size a hauler at priority 90.
    */
   private minerRequests(colony: ColonySnapshot): CreepRequest[] {
     const workPerBody = minerWorkParts(colony);
-    const miners = colony.creeps.filter(roleIs("miner"));
+    // This operation's miners, not the colony's: a second Mining/RemoteMining must not count these.
+    const miners = this.owned(colony, "miner");
 
     // Per-source want, from the same formula the colony-wide count used.
     const perSource = (source: { openTiles: number }): number =>
       Math.min(Math.ceil(WORK_PER_SOURCE / workPerBody), source.openTiles);
 
-    // Cold-start seed: hauler demand derives from miner output, so zero miners means zero
-    // hauler demand and this quota would never ask for the first one. Scoped to "no haulers
-    // alive" so it lapses once one exists and doesn't cause over-mining later. See ADR 0001.
-    const haulers = colony.creeps.filter(roleIs("hauler")).length;
-
-    // Only haulers count toward collector capacity — bootstraps are deliberately excluded so
-    // bootstrap's own quota (defined in terms of every other role's deficit) cannot chase this
-    // one upward. See ADR 0001.
-    //
-    // Both the cold-start floor and the hauler cap were caps on *total* miner headcount, so live
-    // miners are counted against the same ceiling — capping requests alone would let the colony
-    // re-spend the whole allowance every tick. Now that both live inside one operation this is
-    // internal arithmetic — Mining sizes its miners against its own haulers — rather than
-    // cross-role coupling. Whether either still makes sense is a later question.
-    const ceiling = haulers === 0 ? 1 : haulers;
-    let headcount = miners.length;
-
     // Miners that predate stage 2 carry no sourceId (PRD §6 — cleared by attrition, not migration).
     // They still mine, so they are spread across the sources as generic cover rather than left to
-    // consume the ceiling while covering nothing: counting them only in `headcount` would make every
-    // source look bare *and* the ceiling look full, and the colony would stop asking for miners
-    // entirely until they died of old age.
+    // look like they cover nothing: counting a bare source as bare when an unassigned miner is
+    // sitting on it would make the colony ask for a second miner it does not need.
     let unassigned = miners.filter(c => c.memory.sourceId === undefined).length;
 
     const body = orderBody(roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
@@ -113,8 +154,7 @@ export class Mining extends Operation {
 
       // One request per missing miner on this source, not one per source: a source wanting three
       // miners asks for three, exactly as the colony-wide count did.
-      for (let i = assigned + borrowed; i < wanted && headcount < ceiling; i++) {
-        headcount++;
+      for (let i = assigned + borrowed; i < wanted; i++) {
         out.push({
           body,
           priority: DEFAULT_PRIORITY.miner,
@@ -132,15 +172,93 @@ export class Mining extends Operation {
     return out;
   }
 
+  /**
+   * Haulers sized against what the miners actually produce, not a flat one-per-container count. The
+   * old quota (one hauler per filling container) could not tell a source 5 tiles from the drop-off
+   * from one 25 tiles away, yet the far source needs several times the carry capacity to keep its
+   * pile from decaying. It also never spawned a hauler before a *container* existed, so a room
+   * drop-mining at RCL1 stalled with energy rotting on the ground.
+   *
+   * The formula: income (energy/tick, from live miner WORK, capped at the room's regen) times the
+   * round trip (2 × source→drop-off distance) is the energy that accumulates at the source between
+   * a hauler's visits — the carry capacity the fleet must field. Divide by one hauler's capacity for
+   * the headcount. So a hauler's carry scales with miner capacity (more WORK ⇒ more income) and with
+   * distance, exactly as the goal asks.
+   *
+   * "No haulers without miners" is structural: income is 0 with no producing miners, so the target
+   * is 0. "Miners first, then a hauler" follows — the first miner produces before this asks for
+   * the first hauler, and the hauler's lower priority (90 vs 95) keeps miners ahead when both are
+   * short.
+   */
   private haulerRequests(colony: ColonySnapshot): CreepRequest[] {
     if (colony.energyCapacity < MIN_HAULER_ENERGY) return [];
+
+    const body = orderBody(roleDef("hauler")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
+    const wanted = this.wantedHaulers(colony, body);
     return fillTo(
-      colony.containers.filter(c => c.storeEnergy > 0).length,
-      colony.creeps.filter(roleIs("hauler")).length,
-      orderBody(roleDef("hauler")?.body(colony.energyCapacity, bodyContext(colony)) ?? []),
+      wanted,
+      this.owned(colony, "hauler").length,
+      body,
       DEFAULT_PRIORITY.hauler,
       { role: "hauler", home: colony.name, op: this.name }
     );
+  }
+
+  /**
+   * How many haulers the miners' current output warrants, given the trip they must run. Zero with
+   * no producing miners; otherwise at least one, capped at MAX_HAULERS.
+   */
+  private wantedHaulers(colony: ColonySnapshot, body: BodyPartConstant[]): number {
+    const income = this.harvestIncome(colony);
+    if (income <= 0) return 0;
+
+    const roundTrip = 2 * this.haulDistance(colony);
+    const neededCarry = income * roundTrip;
+    const perHauler = Math.max(1, countPart(body, CARRY)) * ENERGY_PER_CARRY;
+
+    return Math.min(MAX_HAULERS, Math.max(1, Math.ceil(neededCarry / perHauler)));
+  }
+
+  /**
+   * Harvestable income right now: the live miners' WORK, converted to energy/tick, clamped to what
+   * the room's sources can actually regenerate. Only *this operation's* miners count — a sibling's
+   * miners feed a sibling's haulers. A miner that is still spawning already carries its parts and is
+   * about to produce, so it counts too (SnapCreep.body is live parts, spawning included).
+   */
+  private harvestIncome(colony: ColonySnapshot): number {
+    const workParts = this.owned(colony, "miner").reduce(
+      (sum: number, c: SnapCreep) => sum + countPart(c.body, WORK),
+      0
+    );
+    const raw = workParts * HARVEST_POWER;
+    const regenCap = Math.min(ROOM_INCOME_CAP, colony.sources.length * SOURCE_REGEN_PER_TICK);
+    return Math.min(raw, regenCap);
+  }
+
+  /**
+   * Mean distance a hauler travels from a source drop-off back to where it unloads (storage, else
+   * the anchor). Uses the recorded mining spot when there is one, falling back to the source tile,
+   * and a flat default before an anchor is even known. Chebyshev range is a cheap proxy for path
+   * length — good enough to size a fleet, and it costs no pathfinding.
+   */
+  private haulDistance(colony: ColonySnapshot): number {
+    const dropOff = this.dropOff(colony);
+    if (!dropOff || colony.sources.length === 0) return DEFAULT_HAUL_DISTANCE;
+
+    const total = colony.sources.reduce((sum: number, source: SnapSource) => {
+      const spot = colony.sourceMemory[source.id]?.spot ?? source;
+      return sum + range(dropOff, spot);
+    }, 0);
+    return Math.max(1, Math.round(total / colony.sources.length));
+  }
+
+  /** Where haulers deliver: storage if built, else the anchor. Null before either exists. */
+  private dropOff(colony: ColonySnapshot): XY | null {
+    if (colony.storageId) {
+      const storage = colony.structures.find(s => s.type === "storage");
+      if (storage) return { x: storage.x, y: storage.y };
+    }
+    return colony.anchor;
   }
 
   /**

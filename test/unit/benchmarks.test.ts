@@ -76,13 +76,13 @@ describe("recordBenchmark: grouping", () => {
   });
 
   it("keeps only the last MAX_RUNS runs per benchmark", () => {
-    seedTicks(Array.from({ length: MAX_RUNS }, (_, i) => 100 + i));
+    seedTicks(Array.from({ length: MAX_RUNS + 5 }, (_, i) => 100 + i));
 
     recordBenchmark("rcl2", { ticks: 999 }, {}, file);
 
     const runs = loadBenchmarks(file).rcl2;
     expect(runs).toHaveLength(MAX_RUNS);
-    expect(measurementOf(runs[0], "ticks")).toBe(101);
+    expect(measurementOf(runs[0], "ticks")).toBe(106);
     expect(measurementOf(runs.at(-1)!, "ticks")).toBe(999);
   });
 

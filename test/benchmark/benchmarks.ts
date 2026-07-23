@@ -18,7 +18,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const BENCH_FILE = path.join(HERE, "benchmarks.json");
 
 /** How many runs of history to keep per benchmark. Older runs are dropped. */
-export const MAX_RUNS = 10;
+export const MAX_RUNS = 100;
 
 /** Which way is better for a measurement — "lower" for ticks, "higher" for energy rates. */
 export type Direction = "lower" | "higher";

@@ -20,8 +20,8 @@ afterAll(() => {
 test(
   "seeded near RCL3, the colony finishes the climb under its own behavior",
   async () => {
-    // No "upgrader spawned" rung: bootstrap creeps close the last 100 progress themselves
-    // before the census asks for a dedicated upgrader — assert the end, not the means.
+    // No "upgrader spawned" rung: a dedicated upgrader closes the last 100 progress off the
+    // drop-mining economy (there is no bootstrap all-rounder anymore) — assert the end, not the means.
     const ladder = new CheckpointLadder([
       { name: "first creep alive", by: 150 },
       { name: "RCL2", by: 1000 },

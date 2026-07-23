@@ -526,3 +526,55 @@ worth having.
    gated comparison via the mining-container example; the real consequence is broader.
 8. **Structure replacement is named and deferred** (§5.4) — the seam's purpose, recorded so
    a future PRD does not have to rediscover it.
+
+### Follow-up: capabilities become hierarchy methods; `systems/` is deleted
+
+The staged plan left `systems/` as the home for arbiters and the creep runner. That was
+transitional. `systems/` is now **gone**: every capability it held is a method on the
+hierarchy it belongs to.
+
+- **`Colony` is a class with methods**, amending ADR 0005 stage 1's "`Colony` is
+  `{snapshot}` and nothing else, no methods." That constraint guarded against a premature
+  `plan()` baking in per-system dispatch; it never forbade the capabilities stage 3 always
+  intended to land there. `colony.building()` is the construction arbiter (moved from
+  `systems/building.ts`); `colony.requests()` gathers the colony's demand — the flat
+  `desiredCreeps()` of every operation. Recovery, bootstrap, and the builder workforce were the
+  last unowned requesters (interim `colony/requests.ts`); they are now the `Bootstrap` and
+  `Building` operations, so `requests()` is a plain flatMap with no requester special cases left.
+- **`Empire` is a class with methods** holding the genuinely cross-colony capabilities:
+  `empire.spawning(roomDistance)` and `empire.creeps()`.
+- **`bodyContext` moved to `behaviors/`** (from `systems/spawnContext.ts`) — it is body math,
+  and it feeds the role table.
+- **The tiered loop stays.** `kernel/tick.ts` still owns tiers, intervals, and CPU guards;
+  each `SYSTEMS` entry now names a hierarchy method rather than a free planner. Stats keys are
+  unchanged, so the benchmark history stays comparable.
+
+**Spawning became cross-colony.** It was per-colony arbitration; it is now an Empire
+capability because spawn *routing* crosses rooms even though a spawn's energy does not. Ported
+from legacy `SpawnManager`'s routing and generalised:
+
+- `CreepRequest` gained `targetRoom` (where the creep is needed; defaults to `memory.home`)
+  and optional `spawnRoom` (a hard pin, legacy's manual room choice).
+- The arbiter groups idle spawns by colony, keeps a **per-colony** energy budget (energy is a
+  room pool), and routes each request to its `spawnRoom`, else its `targetRoom` if that colony
+  can spawn and pay, else the **nearest colony that can** (`Game.map.getRoomLinearDistance`,
+  injected so the arbiter stays pure). A besieged or drained colony is skipped and the next
+  tried — the re-routing legacy's frozen queue could not do.
+- Not ported, per ADR 0005: the persisted `toSpawnList`, the `pause`/`rebuild` timers,
+  `Math.random()` names. The livelock "stop, don't skip to a cheaper request" rule is kept but
+  scoped per colony, so one colony's expensive request cannot freeze the whole empire.
+- **Behaviour-preserving today:** every request's `targetRoom` is its own room, so with one
+  colony the routing is identical to the old per-colony arbiter. The seam exists for
+  RemoteMining/expansion.
+
+### Follow-up: operations scope their creep counts by ownership
+
+Satisfaction checks filtered creeps by **role alone**, which is correct only while there is at
+most one operation of a kind per colony. Two Mining-family operations (home `Mining` plus a
+`RemoteMining`) would each count the other's miners and under-spawn — exactly the failure
+`memory.op` was introduced to prevent. `Operation.owned(colony, role)` now filters on role
+**and** `op === this.name`, with one deliberate inclusion: a creep carrying **no** `op` counts
+as ownable by any matching operation (attrition clears it, PRD §6), the same rule the
+unassigned-`sourceId` miner already used. The colony-wide requesters (recovery, bootstrap,
+builder) stay role-only: they are structurally one-per-colony, so there is no sibling to
+miscount against.
