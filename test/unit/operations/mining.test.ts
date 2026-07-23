@@ -6,18 +6,33 @@
 // Every case constructs the operation directly and hands it a snapshot: no Game mock, no Colony.
 
 import { describe, expect, it } from "vitest";
+import GOAL_JSON from "../../../src/layouts/Base_2.json";
 import { buildCostMatrix, sourceRoadPath } from "../../../src/layouts/roads";
+import { plannedObstacles } from "../../../src/layouts/goal";
+import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
+import type { GoalLayout } from "../../../src/layouts/sync";
+import type { XY } from "../../../src/lib/geometry";
 import { Mining } from "../../../src/operations/mining";
 import { colonySnap, containerAt, openTerrain, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
 
+const GOAL = GOAL_JSON as GoalLayout;
+
 const mining = new Mining("W1N1");
 
-// The last road tile adjacent to the source, derived independently from road
-// pathing rather than a hardcoded coordinate.
-function expectedSpot(anchor: { x: number; y: number }, source: { x: number; y: number }) {
-  const cm = buildCostMatrix({ terrain: openTerrain(), structures: [] });
-  return sourceRoadPath(anchor, source, cm).structurePos;
+// The last road tile adjacent to the source, derived independently from road pathing rather than a
+// hardcoded coordinate. Pathed against the bunker stamp exactly as Mining does — a built-only
+// matrix would route through ground the layout occupies and disagree with production.
+function expectedRoute(anchor: XY, source: XY, rcl = 3) {
+  const planned = stampLayout(plannedObstacles(GOAL, rcl, anchor, [source]), anchor);
+  const cm = buildCostMatrix({ terrain: openTerrain(), structures: planned });
+  return sourceRoadPath(anchor, source, cm);
 }
+
+const expectedSpot = (anchor: XY, source: XY, rcl = 3) => expectedRoute(anchor, source, rcl).structurePos;
+
+// The baseline planBuilding seeds its operation poll with.
+const plannedAt = (anchor: XY, rcl: number, sources: XY[]) =>
+  stampLayout(plannedObstacles(GOAL, rcl, anchor, sources), anchor);
 
 const minerRequests = (snap: Parameters<Mining["desiredCreeps"]>[0]) =>
   mining.desiredCreeps(snap).filter(r => r.memory.role === "miner");
@@ -260,7 +275,66 @@ describe("Mining.structures", () => {
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7 });
 
     const spot = expectedSpot(anchor, source);
-    expect(mining.structures(snap)).toEqual([{ x: spot.x, y: spot.y, type: "link" }]);
+    expect(mining.structures(snap).filter(s => s.type !== "road")).toEqual([
+      { x: spot.x, y: spot.y, type: "link" }
+    ]);
+  });
+
+  // The container is only worth having if haulers can reach it, and sourceRoadPath computes the
+  // whole route anyway to find where the container goes.
+  it("claims the road leading to its container, not just the container", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3 });
+
+    const route = expectedRoute(anchor, source);
+    // Handed the same baseline expectedRoute paths against, as planBuilding's poll does.
+    const roads = mining.structures(snap, plannedAt(anchor, 3, [source])).filter(s => s.type === "road");
+
+    expect(roads.length).toBeGreaterThan(0);
+    // Every claimed road lies on the route.
+    const onRoute = new Set(route.path.map(p => `${p.x},${p.y}`));
+    for (const r of roads) expect(onRoute.has(`${r.x},${r.y}`)).toBe(true);
+    // The container tile is the route's last step and is never also claimed as road.
+    expect(roads).not.toContainEqual({ x: route.structurePos.x, y: route.structurePos.y, type: "road" });
+  });
+
+  // Two structures on one tile is not a plan planBuilding can execute.
+  it("never claims a tile the layout or a sibling already planned", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3 });
+
+    const planned = plannedAt(anchor, 3, [source]);
+    const claimed = mining.structures(snap, planned);
+
+    const takenTiles = new Set(planned.map(p => `${p.x},${p.y}`));
+    for (const c of claimed) expect(takenTiles.has(`${c.x},${c.y}`)).toBe(false);
+    // And no duplicates within its own claim.
+    const keys = claimed.map(c => `${c.x},${c.y}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  // A route computed over built-only tiles runs through ground the layout will occupy, so the
+  // container position shifts the tick that structure goes up — and a moved position makes
+  // planBuilding demolish and re-place the container forever.
+  it("paths around planned structures, not only built ones", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3 });
+
+    const planned = plannedAt(anchor, 3, [source]);
+    const withPlan = mining.structures(snap, planned);
+    // The same room once the plan is actually standing: the derived container must not move.
+    const built = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 3,
+      structures: planned.map(p => ({ x: p.x, y: p.y, type: p.type }))
+    });
+
+    const containerOf = (s: PlacedStructure[]) => s.find(p => p.type === "container");
+    expect(containerOf(withPlan)).toEqual(containerOf(mining.structures(built, planned)));
   });
 
   // A spot that moves once the container exists makes building.ts demolish and
@@ -272,8 +346,11 @@ describe("Mining.structures", () => {
       controllerLevel: 3
     });
 
-    const [first] = mining.structures(base);
-    const [second] = mining.structures({ ...base, structures: [first] });
+    const containerOf = (snap: typeof base) =>
+      mining.structures(snap).find(p => p.type === "container");
+
+    const first = containerOf(base)!;
+    const second = containerOf({ ...base, structures: [first] });
 
     expect(second).toEqual(first);
   });
@@ -320,6 +397,58 @@ describe("Mining.intents", () => {
 
   it("plans nothing for a colony with no anchor yet", () => {
     const snap = colonySnap({ anchor: null, sources: [sourceAt(20, 10)], controllerLevel: 3 });
+
+    expect(mining.intents(snap)).toEqual([]);
+  });
+
+  // This channel runs every tick now. Re-emitting an identical write 1500 times per creep lifetime
+  // is pure waste, and the base class's rule is that the operation decides — only it knows which of
+  // its writes are idempotent.
+  it("emits nothing once the recorded spot already matches", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 3,
+      sourceMemory: { [source.id]: { spot: { x: spot.x, y: spot.y } } }
+    });
+
+    expect(mining.intents(snap)).toEqual([]);
+  });
+
+  it("still emits when a container appears on an already-recorded spot", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source);
+    const container = containerAt(spot.x, spot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 3,
+      containers: [container],
+      // Spot recorded, container id not yet — the one case a write still has something to add.
+      sourceMemory: { [source.id]: { spot: { x: spot.x, y: spot.y } } }
+    });
+
+    expect(mining.intents(snap)).toContainEqual(
+      expect.objectContaining({ kind: "recordSourceSpot", container: container.id })
+    );
+  });
+
+  it("emits nothing once both spot and container are recorded", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source);
+    const container = containerAt(spot.x, spot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 3,
+      containers: [container],
+      sourceMemory: { [source.id]: { spot: { x: spot.x, y: spot.y }, containerId: container.id } }
+    });
 
     expect(mining.intents(snap)).toEqual([]);
   });

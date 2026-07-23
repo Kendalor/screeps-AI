@@ -8,9 +8,11 @@
 import { countPart, orderBody } from "../behaviors/body";
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
-import { buildCostMatrix, sourceRoadPath } from "../layouts/roads";
-import type { PlacedStructure } from "../layouts/stamp";
-import type { XY } from "../lib/geometry";
+import GOAL_JSON from "../layouts/Base_2.json";
+import { plannedObstacles } from "../layouts/goal";
+import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../layouts/roads";
+import { stampLayout, type PlacedStructure } from "../layouts/stamp";
+import type { GoalLayout } from "../layouts/sync";
 import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
 import { DEFAULT_PRIORITY, fillTo, type CreepRequest } from "../spawn/request";
 import { bodyContext } from "../systems/spawnContext";
@@ -23,6 +25,9 @@ const LINK_RCL = 7;
 // A container placed before miners exist is 5000 energy nobody can use, sitting in a scarce focus slot starving extensions.
 // Moved here from building.ts: gating a source container on RCL is mining's knowledge of what it needs *when*.
 export const CONTAINERS_FROM_RCL = 3;
+
+const GOAL = GOAL_JSON as GoalLayout;
+const ROAD: BuildableStructureConstant = "road";
 
 const MIN_HAULER_ENERGY = 150; // one CARRY,CARRY,MOVE set — the cheapest body
 
@@ -137,10 +142,14 @@ export class Mining extends Operation {
   }
 
   /**
-   * Each source's container/link. Mining never places sites itself — planBuilding owns construction
-   * and merges this with the room planner's baseline.
+   * Each source's container/link **and the road that reaches it**. Mining never places sites itself
+   * — planBuilding owns construction and merges this with the room's layout.
+   *
+   * The road is Mining's to claim: the container is only worth having if haulers can reach it, and
+   * `sourceRoadPath` computes the whole route anyway to find where the container goes. Leaving the
+   * road to the bunker stamp meant claiming a container the layout had no reason to connect.
    */
-  public override structures(colony: ColonySnapshot): PlacedStructure[] {
+  public override structures(colony: ColonySnapshot, planned: readonly PlacedStructure[] = []): PlacedStructure[] {
     if (colony.controllerLevel < MIN_CONTAINER_RCL) return [];
 
     const type = sourceStructureType(colony.controllerLevel);
@@ -148,20 +157,63 @@ export class Mining extends Operation {
     // ask for one, exactly as desiredCreeps() is gated by current state.
     if (type === "container" && colony.controllerLevel < CONTAINERS_FROM_RCL) return [];
 
-    return [...this.sourceSpots(colony).values()].map(spot => ({ x: spot.x, y: spot.y, type }));
+    const out: PlacedStructure[] = [];
+    // Tiles already spoken for — by the layout, by a sibling operation, or by Mining's own earlier
+    // sources in this same loop. Claiming a tile something else already claims would have
+    // planBuilding place two structures on one square.
+    //
+    // Built structures are deliberately **not** in this set. A claim is a statement of what should
+    // exist, not a request to place a site: planBuilding skips placement for what already stands,
+    // and tears down whatever no operation claims. Dropping a claim because the structure was
+    // finished would make Mining demolish its own container the tick after it went up.
+    const taken = new Set(planned.map(p => `${p.x},${p.y}`));
+    const claim = (p: PlacedStructure): void => {
+      const key = `${p.x},${p.y}`;
+      if (taken.has(key)) return;
+      taken.add(key);
+      out.push(p);
+    };
+
+    for (const [, route] of this.sourceRoutes(colony, planned)) {
+      claim({ x: route.structurePos.x, y: route.structurePos.y, type });
+      // The last tile is where the container goes, and the first is the anchor itself — neither is road.
+      for (const tile of route.path.slice(0, -1)) claim({ x: tile.x, y: tile.y, type: ROAD });
+    }
+    return out;
   }
 
   /**
    * Source-spot bookkeeping, so roles avoid re-pathing every tick.
    *
-   * Known inefficiency, ported as-is: it rewrites the same values every run, unconditionally,
-   * whether or not they are already recorded. Throttled only by the tick interval.
+   * Emitted **only when the write would change something**. This channel runs every tick now, and
+   * the previous version rewrote identical values unconditionally — harmless when sampled every
+   * 50th tick, pure waste at 1/1. An intent that changes nothing is not emitted at all, which is
+   * the rule the base class states: the operation decides, because only it knows which of its
+   * writes are idempotent.
+   *
+   * Note this deliberately does not re-path just to check. `sourceRoutes` is the expensive part and
+   * it runs regardless; the comparison is against what is already recorded.
    */
   public override intents(colony: ColonySnapshot): Intent[] {
     const out: Intent[] = [];
-    for (const [source, spot] of this.sourceSpots(colony)) {
+    // The same baseline building.ts seeds its poll with, so the spot recorded here is the spot that
+    // actually gets built. Derived rather than passed: this channel is not arbitrated, so there is
+    // no poll to hand it in.
+    const planned = colony.anchor
+      ? stampLayout(plannedObstacles(GOAL, colony.controllerLevel, colony.anchor, colony.sources), colony.anchor)
+      : [];
+
+    for (const [source, route] of this.sourceRoutes(colony, planned)) {
+      const spot = route.structurePos;
       // Direct id handle so roles avoid scanning the room every tick.
       const container = colony.containers.find(c => c.x === spot.x && c.y === spot.y);
+      const recorded = colony.sourceMemory[source.id];
+
+      const spotUnchanged = recorded?.spot?.x === spot.x && recorded?.spot?.y === spot.y;
+      // execute.ts only ever *adds* an id, so a write is needed only when there is a new one to add.
+      const containerUnchanged = !container || recorded?.containerId === container.id;
+      if (spotUnchanged && containerUnchanged) continue;
+
       out.push({
         kind: "recordSourceSpot",
         room: colony.name,
@@ -173,19 +225,34 @@ export class Mining extends Operation {
     return out;
   }
 
-  // Private, and the shared derivation all three channels read, so the recorded spot can never
-  // disagree with the built spot.
-  private sourceSpots(colony: ColonySnapshot): Map<SnapSource, XY> {
-    const out = new Map<SnapSource, XY>();
+  /**
+   * Private, and the shared derivation every channel reads, so the recorded spot can never disagree
+   * with the built spot.
+   *
+   * Pathed against built **and planned** structures. Built-only was a latent bug: the route ran
+   * through ground the layout will occupy, so the container position shifted the tick that structure
+   * went up — and a moved position makes planBuilding demolish and re-place the container forever.
+   * Planned tiles are the same obstacles, just not yet standing.
+   */
+  private sourceRoutes(
+    colony: ColonySnapshot,
+    planned: readonly PlacedStructure[]
+  ): Map<SnapSource, RoadPathResult> {
+    const out = new Map<SnapSource, RoadPathResult>();
     const anchor = colony.anchor;
     if (!anchor) return out;
 
-    // buildCostMatrix treats containers as walkable, so a built container doesn't deflect the path off the declared spot.
-    const costMatrix = buildCostMatrix({ terrain: colony.terrain, structures: colony.structures });
+    // buildCostMatrix treats containers, roads and ramparts as walkable, so neither a built container
+    // nor a planned road deflects the path off the declared spot — a planned road is *preferred*,
+    // which is what makes two operations share one route rather than lay parallel ones.
+    const costMatrix = buildCostMatrix({
+      terrain: colony.terrain,
+      structures: [...colony.structures, ...planned]
+    });
 
     for (const source of colony.sources) {
-      const { structurePos } = sourceRoadPath(anchor, source, costMatrix);
-      if (structurePos) out.set(source, structurePos);
+      const route = sourceRoadPath(anchor, source, costMatrix);
+      if (route.structurePos) out.set(source, route);
     }
     return out;
   }

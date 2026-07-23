@@ -46,6 +46,7 @@ export function testEmpire(...colonies: ColonySnapshot[]): Empire {
 export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
   return {
     name: "W1N1",
+    tick: 0,
     towers: [],
     hostiles: [],
     woundedFriendlies: [],
@@ -62,6 +63,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     storageEnergy: 0,
     containers: [],
     anchor: null,
+    sourceMemory: {},
     structures: [],
     sites: [],
     constructionProgress: 0,

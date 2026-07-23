@@ -48,8 +48,25 @@ export abstract class Operation {
     return [];
   }
 
-  /** Demand — arbitrated by planBuilding, which merges, orders and emits `placeSite`. */
-  public structures(_colony: ColonySnapshot): PlacedStructure[] {
+  /**
+   * Demand — arbitrated by planBuilding, which merges, orders and emits `placeSite`.
+   *
+   * `planned` is everything intended but not yet built: the room's layout, plus the claims of every
+   * operation polled before this one. An operation that paths (a road to its container, a route to a
+   * remote) **must** path against `[...colony.structures, ...planned]` rather than built structures
+   * alone, for two reasons:
+   *
+   *  - a path computed over built-only tiles runs through ground the layout will later occupy, so
+   *    the derived position moves the moment that structure goes up; and
+   *  - a sibling's road is in `planned` at ROAD_COST, so A* reuses it instead of laying a second
+   *    road one tile over. Two operations heading to nearby targets converge onto one route.
+   *
+   * That second property is why planBuilding polls **sequentially**, accumulating as it goes:
+   * operation order in `operationsFor()` decides who paths freely and who bends toward existing
+   * plans. Nothing here knows what produced `planned` — a bunker stamp today, a per-room computed
+   * layout later.
+   */
+  public structures(_colony: ColonySnapshot, _planned: readonly PlacedStructure[] = []): PlacedStructure[] {
     return [];
   }
 
@@ -57,6 +74,12 @@ export abstract class Operation {
    * Direct action, not arbitrated — executed as returned. The escape hatch for work that has no
    * arbiter. An operation never constructs a `spawn` or `placeSite` intent itself: those are demand,
    * and demand is plain data an arbiter decides on.
+   *
+   * **Runs every tick** (tier 1). Per-tick capabilities live here — link transfers, lab reactions,
+   * tower assist — and none of them survive being sampled every 50th tick. An operation whose work
+   * is genuinely periodic gates *itself*, using `colony.tick`; an operation whose intent is a
+   * no-op right now returns nothing rather than re-emitting an identical write. Both are the
+   * operation's decision, because only it knows which of its intents are idempotent.
    */
   public intents(_colony: ColonySnapshot): Intent[] {
     return [];

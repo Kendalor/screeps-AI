@@ -8,7 +8,7 @@ import type { Colony } from "../colony";
 import type { Intent } from "../intents/types";
 // Aliased: this file already has a DEFAULT_PRIORITY for structure types, which is unrelated.
 import { DEFAULT_PRIORITY as CREEP_PRIORITY, fillTo, opName, type CreepRequest } from "../spawn/request";
-import { buildableAtRcl } from "../layouts/goal";
+import { buildableAtRcl, plannedObstacles } from "../layouts/goal";
 import type { PlacedStructure } from "../layouts/stamp";
 import { stampLayout } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
@@ -66,8 +66,40 @@ export function planBuilding(colony: Colony): Intent[] {
   if (!colony.snapshot.anchor) return [];
   // Polled once and threaded through: an operation is asked what it wants exactly once per plan, so
   // placement and demolition cannot disagree about what was claimed this tick.
-  const claimed = colony.operations.flatMap(op => op.structures(colony.snapshot));
-  return planColony(colony.snapshot, claimed);
+  return planColony(colony.snapshot, claimsOf(colony));
+}
+
+/**
+ * Every operation's claim, gathered **sequentially** so each sees what the ones before it planned.
+ *
+ * Not a flatMap: an operation that paths must path around the layout *and* around its siblings'
+ * plans, or two operations heading for nearby targets lay two roads a tile apart instead of sharing
+ * one. Since a planned road sits at ROAD_COST in the cost matrix, simply making prior claims visible
+ * is enough — A* prefers the existing route on its own.
+ *
+ * The consequence is that `operationsFor()`'s order is now semantically load-bearing: the first
+ * operation paths freely, later ones converge onto what is already planned.
+ */
+export function claimsOf(colony: Colony): PlacedStructure[] {
+  const snap = colony.snapshot;
+  // The layout is the baseline plan every operation paths against — intended, not yet built.
+  //
+  // This level's buildable subset, *not* the full RCL8 goal. The goal is a solid 13x13 block of 132
+  // structures centred on the anchor, and buildCostMatrix marks every non-walkable type impassable:
+  // pathing outward from the anchor against the complete goal is impossible, because the anchor is
+  // sealed in by its own plan. The buildable subset is what the colony is actually committing to,
+  // and it grows as the bunker fills in.
+  const planned: PlacedStructure[] = stampLayout(
+    plannedObstacles(GOAL, snap.controllerLevel, snap.anchor!, snap.sources),
+    snap.anchor!
+  );
+  const claimed: PlacedStructure[] = [];
+  for (const op of colony.operations) {
+    const claim = op.structures(colony.snapshot, planned);
+    claimed.push(...claim);
+    planned.push(...claim);
+  }
+  return claimed;
 }
 
 // Exported because integration benchmarks seed a colony at one RCL and need this same derivation to know the next level's target set.

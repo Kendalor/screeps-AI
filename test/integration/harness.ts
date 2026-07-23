@@ -356,6 +356,7 @@ export class BootedColony {
     const controller = objects.find(o => o.type === "controller");
     return {
       name: this.room,
+      tick: 0,
       towers: [],
       hostiles: [],
       woundedFriendlies: [],
@@ -372,6 +373,7 @@ export class BootedColony {
       storageEnergy: 0,
       containers: [],
       anchor: await this.anchor(),
+      sourceMemory: {},
       structures: objects
         .filter(o => o.type !== "controller" && o.type !== "source" && o.type !== "mineral" && o.type !== "creep")
         .map(o => ({ x: o.x, y: o.y, type: o.type as BuildableStructureConstant })),

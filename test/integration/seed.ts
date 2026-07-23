@@ -9,7 +9,7 @@
 import type { PlacedStructure } from "../../src/layouts/stamp";
 import type { RoleName } from "../../src/memory/schema";
 import type { ColonySnapshot } from "../../src/snapshot/types";
-import { builderRequests, wantedStructures } from "../../src/systems/building";
+import { builderRequests, claimsOf, wantedStructures } from "../../src/systems/building";
 import { operationsFor } from "../../src/operations";
 import { bootstrapRequests } from "../../src/systems/spawning";
 import { upgraderRequests } from "../../src/systems/upgrading";
@@ -309,11 +309,11 @@ export async function seedColony(colony: BootedColony, opts: SeedOptions): Promi
     throw new Error("cannot seed: the colony has not cached a bunker anchor yet — run a few ticks after boot()");
   }
 
-  // Operations' claims are passed in, as planBuilding does — without them the seed builds the bunker
-  // stamp but none of mining's source containers.
+  // Operations' claims via the arbiter's own accumulating poll — a flatMap here would poll every
+  // operation blind, so their roads would not converge the way the running colony's do.
   const structures = wantedStructures(
     snapshot,
-    operationsFor(snapshot.name).flatMap(op => op.structures(snapshot))
+    claimsOf({ snapshot, operations: operationsFor(snapshot.name) })
   );
   await seedStructures(colony, structures);
 

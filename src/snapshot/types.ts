@@ -82,8 +82,20 @@ export interface SnapDrop extends XY {
   amount: number;
 }
 
+// What mining has already recorded for a source, so an operation can tell a write that would change
+// something from one that would rewrite the same values. Observed state — read back from Memory at
+// the snapshot boundary, exactly like a structure is read from the room.
+export interface SnapSourceMemory {
+  spot?: XY;
+  containerId?: Id<StructureContainer>;
+  linkId?: Id<StructureLink>;
+}
+
 export interface ColonySnapshot {
   name: string;
+  // Game.time, mirrored from the empire snapshot. Operations run every tick and gate themselves;
+  // without this an operation could only ask "what is true", never "is this my tick".
+  tick: number;
   towers: SnapTower[];
   hostiles: SnapUnit[];
   woundedFriendlies: SnapUnit[];
@@ -104,6 +116,9 @@ export interface ColonySnapshot {
   containers: SnapContainer[]; // empty until mining containers are built
   storageId?: Id<StructureStorage>; // absent until storage is built
   anchor: XY | null; // null until a bunker-fitting anchor is found in this room
+  // What mining recorded for each source last time it wrote. Keyed by source id; missing means
+  // nothing recorded yet.
+  sourceMemory: Partial<Record<Id<Source>, SnapSourceMemory>>;
   structures: SnapStructure[];
   sites: SnapStructure[];
   constructionProgress: number; // total work remaining across all sites in the room

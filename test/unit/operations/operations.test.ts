@@ -10,7 +10,8 @@ import { planBuilding, wantedStructures } from "../../../src/systems/building";
 import type { ColonySnapshot, SnapStructure } from "../../../src/snapshot/types";
 import type { CreepRequest } from "../../../src/spawn/request";
 import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
-import { buildableAtRcl } from "../../../src/layouts/goal";
+import { buildableAtRcl, plannedObstacles } from "../../../src/layouts/goal";
+import { Mining } from "../../../src/operations/mining";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import GOAL_JSON from "../../../src/layouts/Base_2.json";
 import { colonySnap, sourceAt, spawn } from "../../fixtures";
@@ -101,6 +102,10 @@ describe("planBuilding polls operations", () => {
     .filter(p => p.type !== "road")
     .map(p => ({ x: p.x, y: p.y, type: p.type }));
 
+  // The same baseline planBuilding seeds its poll with.
+  const plannedAt = (snap: ColonySnapshot) =>
+    stampLayout(plannedObstacles(GOAL_JSON as GoalLayout, snap.controllerLevel, anchor, snap.sources), anchor);
+
   it("places what an operation claims", () => {
     const snap = colonySnap({ anchor, controllerLevel: 3, structures: built, sites: [] });
     const intents = planBuilding(withOps(snap, new Stub("W1N1", [], [claim])));
@@ -135,6 +140,60 @@ describe("planBuilding polls operations", () => {
     const neighbour: PlacedStructure = { x: 6, y: 5, type: "road" };
     expect(roadsOf([outside, neighbour])).toContainEqual(neighbour);
     expect(roadsOf([neighbour])).not.toContainEqual(neighbour);
+  });
+
+  // The reason the poll is sequential rather than a flatMap. Two operations heading for nearby
+  // targets must converge onto one route instead of laying parallel roads a tile apart — a planned
+  // road sits at ROAD_COST, so A* prefers it once it is visible.
+  it("shows each operation what the ones before it planned", () => {
+    const seen: PlacedStructure[][] = [];
+    class Recorder extends Operation {
+      public readonly kind = "recorder";
+      public constructor(
+        room: string,
+        private readonly mine: PlacedStructure[]
+      ) {
+        super(room);
+      }
+      public override structures(_c: ColonySnapshot, planned: readonly PlacedStructure[] = []): PlacedStructure[] {
+        seen.push([...planned]);
+        return this.mine;
+      }
+    }
+
+    const first: PlacedStructure = { x: 5, y: 5, type: "container" };
+    const snap = colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] });
+    planBuilding(withOps(snap, new Recorder("W1N1", [first]), new Recorder("W1N1", [])));
+
+    // Both saw the layout baseline; only the second saw the first's claim.
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).not.toContainEqual(first);
+    expect(seen[1]).toContainEqual(first);
+    expect(seen[0].length).toBeGreaterThan(0);
+  });
+
+  // The payoff of the above: an operation that paths bends onto an existing planned route rather
+  // than laying its own a tile over.
+  it("lets a pathing operation reuse a road a sibling already planned", () => {
+    const source = sourceAt(40, 12);
+    const snap = colonySnap({ anchor, controllerLevel: 3, sources: [source], structures: [], sites: [] });
+
+    const alone = new Mining("W1N1").structures(snap, plannedAt(snap));
+    // A sibling that already planned the first half of the very route Mining would take. Derived
+    // from Mining's own solo claim rather than guessed, so the two genuinely overlap.
+    const soloRoads = alone.filter(p => p.type === "road");
+    const corridor = soloRoads.slice(0, Math.floor(soloRoads.length / 2));
+    expect(corridor.length).toBeGreaterThan(0);
+
+    const withCorridor = new Mining("W1N1").structures(snap, [...plannedAt(snap), ...corridor]);
+
+    const roadKeys = (s: PlacedStructure[]) => new Set(s.filter(p => p.type === "road").map(p => `${p.x},${p.y}`));
+    const corridorKeys = new Set(corridor.map(p => `${p.x},${p.y}`));
+
+    // With the corridor visible, Mining claims fewer new roads: the shared tiles are already planned.
+    expect(roadKeys(withCorridor).size).toBeLessThan(roadKeys(alone).size);
+    // And it never re-claims a tile the corridor already covers.
+    for (const k of roadKeys(withCorridor)) expect(corridorKeys.has(k)).toBe(false);
   });
 
   it("tears down a structure no operation claims any more", () => {

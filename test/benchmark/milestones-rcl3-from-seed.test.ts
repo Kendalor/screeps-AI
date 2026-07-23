@@ -13,7 +13,7 @@
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import type { PlacedStructure } from "../../src/layouts/stamp";
-import { wantedStructures } from "../../src/systems/building";
+import { claimsOf, wantedStructures } from "../../src/systems/building";
 import { operationsFor } from "../../src/operations";
 import { checkBenchmark, ECONOMY_SPEC, economyOf, recordBenchmark } from "./benchmarks";
 import { EnergyMetrics } from "../integration/energyMetrics";
@@ -62,7 +62,7 @@ beforeAll(async () => {
   rcl3Targets = outstanding(
     wantedStructures(
       snapshotAtRcl3,
-      operationsFor(snapshotAtRcl3.name).flatMap(op => op.structures(snapshotAtRcl3))
+      claimsOf({ snapshot: snapshotAtRcl3, operations: operationsFor(snapshotAtRcl3.name) })
     ),
     await colony.roomObjects(),
     TARGET_LEVEL

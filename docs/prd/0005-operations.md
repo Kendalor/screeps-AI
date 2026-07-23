@@ -461,6 +461,48 @@ Two details worth carrying forward:
   operations itself, keeping it a pure function of its arguments for the benchmark and seed
   call sites that were already using it.
 
+### Follow-up: per-tick intents and the planned/built distinction
+
+Two problems surfaced after the stage landed, both fixed in the same change.
+
+**`intents()` ran on the old mining system's `interval: 50`.** That interval was a property of
+that system's single idempotent write, not of the channel. Per-tick capabilities — link
+transfers, lab reactions — do not survive being sampled every 50th tick. `intents()` is now
+tier 1 with no interval, and the cadence rule inverted: an operation with genuinely periodic
+work gates *itself* off the new `ColonySnapshot.tick`, and an operation whose write would
+change nothing returns nothing. Mining now compares against `ColonySnapshot.sourceMemory`
+(what it previously recorded) and emits only when the write would actually change something —
+the "known inefficiency, ported as-is" noted in stage 3 is now fixed rather than hidden by a
+low sample rate.
+
+**`structures()` gained a `planned` parameter, and the poll became sequential.** Mining paths
+a road to its container, and it was pathing against *built* structures only — so the route ran
+through ground the layout will occupy and the container position shifted the tick that
+structure went up, which makes planBuilding demolish and re-place the container forever.
+`planBuilding` now seeds the poll with the layout and accumulates each operation's claim into
+it, so a later operation sees what earlier ones planned. Because a planned road sits at
+`ROAD_COST`, A* reuses a sibling's route instead of laying a parallel one a tile over — the
+convergence property, obtained without any operation knowing another exists.
+
+Three consequences worth carrying forward:
+
+1. **`operationsFor()`'s order is now semantically load-bearing.** The first operation paths
+   freely; later ones bend toward what is already planned.
+2. **"Planned" cannot mean the full RCL8 goal.** The goal is a solid 13×13 block of 132
+   structures centred on the anchor, and `buildCostMatrix` marks every non-walkable type
+   impassable — so pathing outward from the anchor against the complete goal *always fails*,
+   the anchor being sealed in by its own plan. `plannedObstacles()` (in `layouts/goal.ts`)
+   returns the buildable-at-RCL subset instead, shared by `building.ts` and Mining so the two
+   can never path against different plans.
+3. **A claim is a statement of what should exist, not a request to place a site.** Mining's
+   dedupe deliberately ignores *built* structures: dropping a claim because the structure was
+   finished would make the demolition pass tear down the container Mining just built. Only
+   *planned* tiles suppress a claim.
+
+Mining now also claims the road to its container, not just the container — the route is
+computed anyway to find where the container goes, and a container haulers cannot reach is not
+worth having.
+
 ---
 
 ## 11. What this PRD changed in ADR 0005

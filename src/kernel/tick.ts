@@ -39,9 +39,14 @@ export const SYSTEMS: System[] = [
   { name: "spawning", tier: 1, scope: "colony", run: planSpawning },
   { name: "creeps", tier: 1, scope: "empire", run: runCreepBehaviors },
   // Operations' direct intents — the channel that is not arbitrated. Their demand does not run here:
-  // desiredCreeps() is polled by spawning, structures() by building. Keeps the interval and tier the
-  // mining system had, so the benchmark stays comparable.
-  { name: "operations", tier: 2, scope: "colony", interval: 50, run: runOperations },
+  // desiredCreeps() is polled by spawning, structures() by building.
+  //
+  // Tier 1, no interval: this is where per-tick capabilities live (link transfers, lab reactions),
+  // and none of them survive being sampled every 50th tick. An operation with genuinely periodic
+  // work gates itself off `colony.tick`; one whose write would change nothing returns nothing. The
+  // interval this inherited from the old mining system was a property of that system's single
+  // idempotent intent, not of the channel.
+  { name: "operations", tier: 1, scope: "colony", run: runOperations },
   { name: "building", tier: 3, scope: "colony", interval: 100, run: planBuilding }
 ];
 

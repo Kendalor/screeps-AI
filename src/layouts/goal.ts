@@ -70,6 +70,23 @@ export interface RoomContext {
   sources: XY[];
 }
 
+/**
+ * The layout tiles an operation should treat as obstacles when pathing: what the colony is
+ * committing to at this RCL, stamped into room coordinates.
+ *
+ * Deliberately **not** the full RCL8 goal. That goal is a solid 13x13 block of 132 structures
+ * centred on the anchor, and `buildCostMatrix` marks every non-walkable type impassable — so
+ * pathing outward from the anchor against the complete goal always fails, the anchor being sealed
+ * in by its own plan. The buildable subset has gaps, grows as the bunker fills in, and is what the
+ * colony will actually build.
+ *
+ * Shared by `building.ts` (which seeds the operation poll with it) and any operation that needs the
+ * same baseline outside that poll, so the two can never path against different plans.
+ */
+export function plannedObstacles(goal: GoalLayout, rcl: number, anchor: XY, sources: XY[]): GoalPlacement[] {
+  return buildableAtRcl(goal, rcl, { anchor, sources });
+}
+
 export function buildableAtRcl(goal: GoalLayout, rcl: number, room?: RoomContext): GoalPlacement[] {
   // Bias BEFORE capping: capping keeps the lowest-ranked N, so biasing after would only
   // shuffle the already-capped subset instead of letting a better-aimed extension make the cut.

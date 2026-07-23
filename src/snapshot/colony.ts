@@ -14,7 +14,7 @@ export function buildEmpireSnapshot(): EmpireSnapshot {
   for (const name in Game.rooms) {
     const room = Game.rooms[name];
     if (!room.controller?.my) continue;
-    colonies.push(buildColonySnapshot(room, byColony[name] ?? []));
+    colonies.push(buildColonySnapshot(room, byColony[name] ?? [], Game.time));
   }
   return { tick: Game.time, colonies };
 }
@@ -35,11 +35,12 @@ function snapCreep(c: Creep): SnapCreep {
   };
 }
 
-function buildColonySnapshot(room: Room, creeps: SnapCreep[]): ColonySnapshot {
+function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number): ColonySnapshot {
   const controller = room.controller!;
   const myCreeps = room.find(FIND_MY_CREEPS);
   return {
     name: room.name,
+    tick,
     towers: room
       .find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER })
       .map(t => ({ id: t.id as Id<StructureTower>, x: t.pos.x, y: t.pos.y })),
@@ -72,6 +73,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[]): ColonySnapshot {
         storeCapacity: c.store.getCapacity()
       })),
     anchor: resolveAnchor(room),
+    sourceMemory: Memory.colonies[room.name]?.sources ?? {},
     structures: room
       .find(FIND_STRUCTURES)
       .filter((s): s is AnyStructure & { structureType: BuildableStructureConstant } => s.structureType !== STRUCTURE_CONTROLLER)
