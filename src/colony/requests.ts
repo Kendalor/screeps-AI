@@ -1,64 +1,15 @@
-// The arbiter: gathers every requester's demand, sorts by priority, pairs it with idle spawns and
-// spends the room's energy. It knows no role names and compares no counts — a requester decides
-// what is missing, how big its body is and what memory it carries. No persisted spawn queue: a
-// request not filled this tick is simply re-derived next tick from the live snapshot.
+// The demand a colony emits that no operation owns yet: recovery, bootstrap, and the builders that
+// serve construction. Each is a candidate operation — visible debt, ported straight from the old
+// systems/spawning.ts and systems/building.ts requesters, unchanged but for their home.
+//
+// Colony.requests() gathers these plus every operation's desiredCreeps(); the empire arbiter routes
+// and spawns them. Nothing here spawns — these are pure satisfaction checks returning demand.
 
+import { bodyContext } from "../behaviors/bodyContext";
 import { bodyCost, countPart, orderBody } from "../behaviors/body";
 import { roleDef } from "../behaviors/roles";
-import type { Colony } from "../colony";
-import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
 import { DEFAULT_PRIORITY, fillTo, opName, RECOVERY_PRIORITY, type CreepRequest } from "../spawn/request";
-import { builderRequests } from "./building";
-import { bodyContext } from "./spawnContext";
-import { upgraderRequests } from "./upgrading";
-
-// Demand now arrives from two sources: the colony's operations, and the roles no operation owns yet
-// (recovery, bootstrap, upgrader, builder). The latter are visible debt — each is a candidate
-// operation — and stay named here, the way they were when they were counts.
-//
-// A function rather than a module-level array: two of these are declared below and an array would
-// capture them at module-evaluation time, working only by function hoisting. Converting any one of
-// them to a `const` arrow — an ordinary refactor — would then throw at import and take down the
-// whole loop. Resolving them per call costs nothing and cannot break that way.
-function requesters(): ((colony: Colony) => CreepRequest[])[] {
-  return [recoveryRequests, bootstrapRequests, upgraderRequests, builderRequests];
-}
-
-export function planSpawning(colony: Colony): Intent[] {
-  // Concatenated, then flat-sorted: the arbiter treats an operation's request exactly like an
-  // unowned requester's, so priority alone decides. Nothing here knows which is which.
-  const requests = [
-    ...colony.operations.flatMap(op => op.desiredCreeps(colony.snapshot)),
-    ...requesters().flatMap(request => request(colony))
-  ].sort((a, b) => b.priority - a.priority);
-  if (requests.length === 0) return [];
-
-  const idle = colony.snapshot.spawns.filter(s => !s.busy);
-  // energyAvailable is a shared room pool, not per-spawn: two spawns each emitting an affordable
-  // 300 body in a 300 room would produce one success and one silent ERR_NOT_ENOUGH_ENERGY.
-  let budget = colony.snapshot.energyAvailable;
-
-  const out: Intent[] = [];
-  // An explicit take-from-the-list loop, not "for each spawn, find the best request" — the latter
-  // hands the same top-priority request to every idle spawn. Consuming each request at most once
-  // per tick is what closes the double-order window that a persisted queue would otherwise cover.
-  let next = 0;
-  for (const spawn of idle) {
-    const request = requests[next];
-    if (!request) break;
-    const cost = bodyCost(request.body);
-    // Stop rather than skip to a cheaper request lower down: filling with affordable creeps first
-    // means the colony's energy is permanently consumed by cheap ones and the expensive
-    // high-priority request never becomes affordable. That is a livelock, not priority inversion.
-    if (cost > budget) break;
-
-    out.push({ kind: "spawn", spawn: spawn.id, body: request.body, memory: request.memory });
-    budget -= cost;
-    next++;
-  }
-  return out;
-}
 
 // ---------------------------------------------------------------------------
 // Recovery
@@ -68,7 +19,7 @@ export function planSpawning(colony: Colony): Intent[] {
 // every normal quota evaluates to zero forever, so this detects a zero creep count directly rather
 // than by watching energy level over time. An ordinary request at a reserved top priority — not a
 // branch in the arbiter, since in total collapse there is no other request to override.
-export function recoveryRequests({ snapshot: colony }: Colony): CreepRequest[] {
+export function recoveryRequests(colony: ColonySnapshot): CreepRequest[] {
   if (colony.creeps.length > 0) return [];
 
   // Supply (not hauler, which moves energy the other way) withdraws from storage directly into extensions.
@@ -95,7 +46,8 @@ export function recoveryRequests({ snapshot: colony }: Colony): CreepRequest[] {
     {
       body,
       priority: RECOVERY_PRIORITY,
-      memory: { role, home: colony.name, op: opName("recovery", colony.name) }
+      memory: { role, home: colony.name, op: opName("recovery", colony.name) },
+      targetRoom: colony.name
     }
   ];
 }
@@ -129,7 +81,7 @@ function bootstrapWorkParts(energyCapacity: number): number {
   return Math.max(1, countPart(body, WORK));
 }
 
-export function bootstrapRequests({ snapshot: colony }: Colony): CreepRequest[] {
+export function bootstrapRequests(colony: ColonySnapshot): CreepRequest[] {
   // Capacity sizing, not availability: sizing from what happens to be in the room would make body
   // size depend on which tick the planner ran. Capacity is the room's persistent budget, and the
   // arbiter's guard turns "cannot pay yet" into "wait" rather than "spawn a runt".
@@ -140,5 +92,33 @@ export function bootstrapRequests({ snapshot: colony }: Colony): CreepRequest[] 
     orderBody(roleDef("bootstrap")?.body(colony.energyCapacity, bodyContext(colony)) ?? []),
     DEFAULT_PRIORITY.bootstrap,
     { role: "bootstrap", home: colony.name, op: opName("bootstrap", colony.name) }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Builders — construction's workforce
+// ---------------------------------------------------------------------------
+
+// One builder per 5k of outstanding work, never more than 4 — an uncapped quota would starve every other role of spawn capacity.
+const PROGRESS_PER_BUILDER = 5_000;
+const MAX_BUILDERS = 4;
+// Storage must clear this reserve plus the outstanding sites' cost before dedicated builders are affordable.
+const STORAGE_RESERVE = 50_000;
+
+function wantedBuilders(colony: ColonySnapshot): number {
+  if (colony.constructionProgress <= 0) return 0;
+  // Pre-storage, bootstrap already builds via its step loop, so a dedicated builder would only double-staff construction.
+  if (colony.storageEnergy <= 0) return 0;
+  if (colony.storageEnergy < STORAGE_RESERVE + colony.constructionProgress) return 0;
+  return Math.min(MAX_BUILDERS, Math.ceil(colony.constructionProgress / PROGRESS_PER_BUILDER));
+}
+
+export function builderRequests(colony: ColonySnapshot): CreepRequest[] {
+  return fillTo(
+    wantedBuilders(colony),
+    colony.creeps.filter(c => c.role === "builder").length,
+    orderBody(roleDef("builder")?.body(colony.energyCapacity, bodyContext(colony)) ?? []),
+    DEFAULT_PRIORITY.builder,
+    { role: "builder", home: colony.name, op: opName("building", colony.name) }
   );
 }

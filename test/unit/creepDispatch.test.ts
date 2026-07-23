@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ROLES } from "../../src/behaviors/roles";
-import { runCreepBehaviors } from "../../src/systems/creeps";
+import { runCreepBehaviors } from "../../src/empire/creeps";
 import { stubGame } from "../helpers";
-import type { EmpireSnapshot } from "../../src/snapshot/types";
 
 // Driven through runCreepBehaviors (the public entry point) rather than the private
 // runOne, so the test survives refactors of the dispatch internals.
-const EMPTY_SNAPSHOT = { tick: 0, colonies: [] } as EmpireSnapshot;
 
 function siteObj(id: string): object {
   return { id, pos: { x: 10, y: 10 }, progress: 0, progressTotal: 100 };
@@ -41,7 +39,7 @@ describe("creep dispatch target locking", () => {
     const creep = builder([site]);
     Game.creeps = { b1: creep };
 
-    runCreepBehaviors(EMPTY_SNAPSHOT);
+    runCreepBehaviors();
 
     expect(creep.memory.task?.target).toBe("siteA");
   });
@@ -53,11 +51,11 @@ describe("creep dispatch target locking", () => {
     const creep = builder([first]);
     Game.creeps = { b1: creep };
 
-    runCreepBehaviors(EMPTY_SNAPSHOT);
+    runCreepBehaviors();
     expect(creep.memory.task?.target).toBe("first");
 
     (creep as unknown as { room: { find: () => object[] } }).room.find = () => [nearer, first];
-    runCreepBehaviors(EMPTY_SNAPSHOT);
+    runCreepBehaviors();
 
     expect(creep.memory.task?.target).toBe("first");
   });
@@ -69,13 +67,13 @@ describe("creep dispatch target locking", () => {
     const creep = builder([first]);
     Game.creeps = { b1: creep };
 
-    runCreepBehaviors(EMPTY_SNAPSHOT);
+    runCreepBehaviors();
     expect(creep.memory.task?.target).toBe("first");
 
     // The site completed: it no longer resolves by id and is gone from the room.
     Game.getObjectById = ((id: string) => (id === "next" ? next : null)) as typeof Game.getObjectById;
     (creep as unknown as { room: { find: () => object[] } }).room.find = () => [next];
-    runCreepBehaviors(EMPTY_SNAPSHOT);
+    runCreepBehaviors();
 
     expect(creep.memory.task?.target).toBe("next");
   });

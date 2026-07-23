@@ -3,10 +3,10 @@
 // short-circuiting past it.
 
 import { describe, expect, it } from "vitest";
-import { colony } from "../../../src/colony";
+import { colony, type Colony } from "../../../src/colony";
+import { planBuilding, wantedStructures } from "../../../src/colony/building";
+import { planSpawning } from "../../../src/empire/spawning";
 import { Operation } from "../../../src/operations/operation";
-import { planSpawning } from "../../../src/systems/spawning";
-import { planBuilding, wantedStructures } from "../../../src/systems/building";
 import type { ColonySnapshot, SnapStructure } from "../../../src/snapshot/types";
 import type { CreepRequest } from "../../../src/spawn/request";
 import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
@@ -14,7 +14,7 @@ import { buildableAtRcl, plannedObstacles } from "../../../src/layouts/goal";
 import { Mining } from "../../../src/operations/mining";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import GOAL_JSON from "../../../src/layouts/Base_2.json";
-import { colonySnap, sourceAt, spawn } from "../../fixtures";
+import { colonySnap, roomDistance, sourceAt, spawn } from "../../fixtures";
 
 // A stand-in operation, so these assert the framework rather than Mining's formulas.
 class Stub extends Operation {
@@ -34,7 +34,19 @@ class Stub extends Operation {
   }
 }
 
-const withOps = (snap: ColonySnapshot, ...operations: Operation[]) => ({ ...colony(snap), operations });
+// A Colony carrying exactly the given operations. Colony.operations is readonly and built from a
+// registry, so this builds the real wrapper and swaps the array — the arbiters read it, and this is
+// how a test injects stand-in operations without touching operationsFor().
+function withOps(snap: ColonySnapshot, ...operations: Operation[]): Colony {
+  const c = colony(snap);
+  (c as { operations: Operation[] }).operations = operations;
+  return c;
+}
+
+// Spawning is empire-scoped now; every case here uses one colony, so this wraps it.
+const spawnFor = (c: Colony) => planSpawning([c], roomDistance);
+// Building takes the snapshot and the colony's operations directly.
+const buildFor = (c: Colony) => planBuilding(c.snapshot, c.operations);
 
 describe("Operation", () => {
   it("names itself by kind and room, so its creeps are identifiable next tick", () => {
@@ -69,12 +81,13 @@ describe("planSpawning polls operations", () => {
   const request = (role: "hauler" | "upgrader", priority: number): CreepRequest => ({
     body: [CARRY, MOVE],
     priority,
-    memory: { role, home: "W1N1", op: "stub:W1N1" }
+    memory: { role, home: "W1N1", op: "stub:W1N1" },
+    targetRoom: "W1N1"
   });
 
   it("spawns an operation's request", () => {
     const snap = colonySnap({ spawns: [spawn()], energyAvailable: 300, sources: [] });
-    const intents = planSpawning(withOps(snap, new Stub("W1N1", [request("hauler", 500)])));
+    const intents = spawnFor(withOps(snap, new Stub("W1N1", [request("hauler", 500)])));
 
     expect(intents).toHaveLength(1);
     expect(intents[0]).toMatchObject({ kind: "spawn", memory: { op: "stub:W1N1" } });
@@ -85,7 +98,7 @@ describe("planSpawning polls operations", () => {
   it("orders operation demand against unowned demand by priority alone", () => {
     // Bootstrap (priority 100) outranks this operation's request, and only one spawn is idle.
     const snap = colonySnap({ spawns: [spawn()], energyAvailable: 300, sources: [sourceAt(20, 10)] });
-    const intents = planSpawning(withOps(snap, new Stub("W1N1", [request("hauler", 1)])));
+    const intents = spawnFor(withOps(snap, new Stub("W1N1", [request("hauler", 1)])));
 
     expect(intents).toHaveLength(1);
     expect(intents[0]).toMatchObject({ kind: "spawn", memory: { role: "bootstrap" } });
@@ -108,7 +121,7 @@ describe("planBuilding polls operations", () => {
 
   it("places what an operation claims", () => {
     const snap = colonySnap({ anchor, controllerLevel: 3, structures: built, sites: [] });
-    const intents = planBuilding(withOps(snap, new Stub("W1N1", [], [claim])));
+    const intents = buildFor(withOps(snap, new Stub("W1N1", [], [claim])));
 
     expect(intents).toContainEqual({ kind: "placeSite", room: "W1N1", x: claim.x, y: claim.y, type: "container" });
   });
@@ -117,7 +130,7 @@ describe("planBuilding polls operations", () => {
   // still wants must survive it, or building demolishes what it just placed.
   it("does not tear down a structure an operation still claims", () => {
     const snap = colonySnap({ anchor, controllerLevel: 3, structures: [claim], sites: [] });
-    const intents = planBuilding(withOps(snap, new Stub("W1N1", [], [claim])));
+    const intents = buildFor(withOps(snap, new Stub("W1N1", [], [claim])));
 
     expect(intents).not.toContainEqual(
       expect.objectContaining({ kind: "removeStructure", x: claim.x, y: claim.y })
@@ -163,7 +176,7 @@ describe("planBuilding polls operations", () => {
 
     const first: PlacedStructure = { x: 5, y: 5, type: "container" };
     const snap = colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] });
-    planBuilding(withOps(snap, new Recorder("W1N1", [first]), new Recorder("W1N1", [])));
+    buildFor(withOps(snap, new Recorder("W1N1", [first]), new Recorder("W1N1", [])));
 
     // Both saw the layout baseline; only the second saw the first's claim.
     expect(seen).toHaveLength(2);
@@ -198,7 +211,7 @@ describe("planBuilding polls operations", () => {
 
   it("tears down a structure no operation claims any more", () => {
     const snap = colonySnap({ anchor, controllerLevel: 3, structures: [claim], sites: [] });
-    const intents = planBuilding(withOps(snap, new Stub("W1N1", [], [])));
+    const intents = buildFor(withOps(snap, new Stub("W1N1", [], [])));
 
     expect(intents).toContainEqual({
       kind: "removeStructure",

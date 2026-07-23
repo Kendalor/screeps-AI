@@ -6,11 +6,24 @@
  * One creep a requester found missing. Always exactly one — a requester short three haulers emits
  * three requests. There is no `role` field: `memory.role` is ground truth, and a second carrier
  * would have nothing enforcing agreement between them.
+ *
+ * Routing is a request field, not the arbiter's inference: only the requester knows where its creep
+ * is *needed* (`targetRoom`), and which is the colony that funds it defaults to that but a remote
+ * request may pin it (`spawnRoom`). This is legacy `SpawnEntry`'s `room`/`toPos` pair reduced to
+ * what the snapshot architecture actually needs — no persisted queue, no `pause`/`rebuild`.
  */
 export interface CreepRequest {
   body: BodyPartConstant[]; // the requester computed it, sized against the budget it chose
   priority: number; // absolute across the empire; higher wins
   memory: CreepMemory; // complete — role, home, op, and anything role-specific
+  // Where the creep is needed. The empire arbiter routes the spawn to the nearest spawn-capable
+  // colony to here. Defaults to the requesting colony (memory.home), which is every request today —
+  // remote/expansion requests will differ. Kept out of memory because it steers spawn *placement*,
+  // not the creep's behaviour, and behaviour reads memory.
+  targetRoom: string;
+  // Hard override: spawn in exactly this colony, skipping the nearest-to-target search. Legacy's
+  // manual room pin. Absent means "let the arbiter choose."
+  spawnRoom?: string;
 }
 
 // Reserved for the wipe restart. Nothing else may reach it: a colony with no creeps has no other
@@ -60,5 +73,12 @@ export function fillTo(
   const missing = wanted - have;
   // A role whose body formula yields nothing has no request to make, however short it is.
   if (missing <= 0 || body.length === 0) return [];
-  return Array.from({ length: missing }, () => ({ body: [...body], priority, memory: { ...memory } }));
+  // targetRoom defaults to the creep's home: a count-based requester wants its creeps in its own
+  // colony. The per-target requesters that don't (remote mining) don't use fillTo.
+  return Array.from({ length: missing }, () => ({
+    body: [...body],
+    priority,
+    memory: { ...memory },
+    targetRoom: memory.home
+  }));
 }

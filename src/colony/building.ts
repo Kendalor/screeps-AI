@@ -1,20 +1,19 @@
-// Construction: what to build (site placement from the bunker goal layout plus per-operation structures like mining's
-// source containers), and who builds it. Pure: reads the snapshot, returns plain data, never touches Game.*/Memory.
+// The construction arbiter — a Colony capability. It merges every operation's structures() claims
+// with the bunker layout, orders them, spends the focus-site budget, and tears down what no
+// operation claims. Pure: reads the snapshot, returns plain intents, never touches Game.*/Memory.
+//
+// Colony-scoped by nature: the claims are this colony's operations', the anchor and budget are this
+// room's. It takes the snapshot and operations rather than a Colony to keep the dependency
+// one-directional (colony/index.ts calls this; this never reaches back for the wrapper).
 
+import { plannedObstacles, buildableAtRcl } from "../layouts/goal";
 import GOAL_JSON from "../layouts/Base_2.json";
-import { orderBody } from "../behaviors/body";
-import { roleDef } from "../behaviors/roles";
-import type { Colony } from "../colony";
-import type { Intent } from "../intents/types";
-// Aliased: this file already has a DEFAULT_PRIORITY for structure types, which is unrelated.
-import { DEFAULT_PRIORITY as CREEP_PRIORITY, fillTo, opName, type CreepRequest } from "../spawn/request";
-import { buildableAtRcl, plannedObstacles } from "../layouts/goal";
-import type { PlacedStructure } from "../layouts/stamp";
-import { stampLayout } from "../layouts/stamp";
+import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
+import type { Intent } from "../intents/types";
+import type { Operation } from "../operations";
 import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
-import { bodyContext } from "./spawnContext";
 
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
@@ -30,43 +29,19 @@ const TYPE_PRIORITY: Partial<Record<BuildableStructureConstant, number>> = {
   container: 2,
   storage: 3
 };
-const DEFAULT_PRIORITY = 10;
+const DEFAULT_TYPE_PRIORITY = 10;
 const ROAD_PRIORITY = 99;
 
 function typePriority(type: BuildableStructureConstant): number {
   if (type === ROAD) return ROAD_PRIORITY;
-  return TYPE_PRIORITY[type] ?? DEFAULT_PRIORITY;
+  return TYPE_PRIORITY[type] ?? DEFAULT_TYPE_PRIORITY;
 }
 
-// One builder per 5k of outstanding work, never more than 4 — an uncapped quota would starve every other role of spawn capacity.
-const PROGRESS_PER_BUILDER = 5_000;
-const MAX_BUILDERS = 4;
-// Storage must clear this reserve plus the outstanding sites' cost before dedicated builders are affordable.
-const STORAGE_RESERVE = 50_000;
-
-function wantedBuilders(colony: ColonySnapshot): number {
-  if (colony.constructionProgress <= 0) return 0;
-  // Pre-storage, bootstrap already builds via its step loop, so a dedicated builder would only double-staff construction.
-  if (colony.storageEnergy <= 0) return 0;
-  if (colony.storageEnergy < STORAGE_RESERVE + colony.constructionProgress) return 0;
-  return Math.min(MAX_BUILDERS, Math.ceil(colony.constructionProgress / PROGRESS_PER_BUILDER));
-}
-
-export function builderRequests({ snapshot: colony }: Colony): CreepRequest[] {
-  return fillTo(
-    wantedBuilders(colony),
-    colony.creeps.filter(c => c.role === "builder").length,
-    orderBody(roleDef("builder")?.body(colony.energyCapacity, bodyContext(colony)) ?? []),
-    CREEP_PRIORITY.builder,
-    { role: "builder", home: colony.name, op: opName("building", colony.name) }
-  );
-}
-
-export function planBuilding(colony: Colony): Intent[] {
-  if (!colony.snapshot.anchor) return [];
+export function planBuilding(colony: ColonySnapshot, operations: Operation[]): Intent[] {
+  if (!colony.anchor) return [];
   // Polled once and threaded through: an operation is asked what it wants exactly once per plan, so
   // placement and demolition cannot disagree about what was claimed this tick.
-  return planColony(colony.snapshot, claimsOf(colony));
+  return placeAndDemolish(colony, claimsOf(colony, operations));
 }
 
 /**
@@ -80,8 +55,7 @@ export function planBuilding(colony: Colony): Intent[] {
  * The consequence is that `operationsFor()`'s order is now semantically load-bearing: the first
  * operation paths freely, later ones converge onto what is already planned.
  */
-export function claimsOf(colony: Colony): PlacedStructure[] {
-  const snap = colony.snapshot;
+export function claimsOf(colony: ColonySnapshot, operations: Operation[]): PlacedStructure[] {
   // The layout is the baseline plan every operation paths against — intended, not yet built.
   //
   // This level's buildable subset, *not* the full RCL8 goal. The goal is a solid 13x13 block of 132
@@ -90,12 +64,12 @@ export function claimsOf(colony: Colony): PlacedStructure[] {
   // sealed in by its own plan. The buildable subset is what the colony is actually committing to,
   // and it grows as the bunker fills in.
   const planned: PlacedStructure[] = stampLayout(
-    plannedObstacles(GOAL, snap.controllerLevel, snap.anchor!, snap.sources),
-    snap.anchor!
+    plannedObstacles(GOAL, colony.controllerLevel, colony.anchor!, colony.sources),
+    colony.anchor!
   );
   const claimed: PlacedStructure[] = [];
-  for (const op of colony.operations) {
-    const claim = op.structures(colony.snapshot, planned);
+  for (const op of operations) {
+    const claim = op.structures(colony, planned);
     claimed.push(...claim);
     planned.push(...claim);
   }
@@ -121,7 +95,7 @@ export function wantedStructures(colony: ColonySnapshot, claimed: PlacedStructur
     .map(e => e.p);
 }
 
-function planColony(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
+function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
   const anchor = colony.anchor!;
   // Full RCL8 goal, not just this RCL's buildable subset: a higher-tier structure already built (e.g. after a downgrade) is not stale.
   // Operations' claims join it, so demolition tears down exactly what no operation claims this tick.

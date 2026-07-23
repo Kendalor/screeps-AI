@@ -15,7 +15,7 @@ import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
 import { DEFAULT_PRIORITY, fillTo, type CreepRequest } from "../spawn/request";
-import { bodyContext } from "../systems/spawnContext";
+import { bodyContext } from "../behaviors/bodyContext";
 import { Operation } from "./operation";
 
 // Deliberately not gated on storage: the container-backed economy is what funds storage, so gating on it would deadlock the colony.
@@ -123,7 +123,9 @@ export class Mining extends Operation {
             home: colony.name,
             op: this.name,
             sourceId: source.id
-          }
+          },
+          // Home mining wants its miner in its own room. Remote mining will differ — the seam is here.
+          targetRoom: colony.name
         });
       }
     }

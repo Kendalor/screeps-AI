@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
-import { builderRequests, planBuilding } from "../../src/systems/building";
 import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
 import { colony } from "../../src/colony";
-import { colonySnap, snapCreeps, sourceAt, testColony } from "../fixtures";
+import { colonySnap, sourceAt } from "../fixtures";
 import { Mining } from "../../src/operations/mining";
 import { buildableAtRcl } from "../../src/layouts/goal";
 import { stampLayout } from "../../src/layouts/stamp";
@@ -32,7 +31,7 @@ describe("building planner", () => {
       colonySnap({ anchor, controllerLevel: 3, sources: [sourceAt(20, 10)], structures: built, sites: [] })
     );
 
-    const intents = planBuilding(snap);
+    const intents = snap.building();
 
     const [container] = minedStructures(snap.snapshot);
     expect(intents).toContainEqual({
@@ -55,7 +54,7 @@ describe("building planner", () => {
     const [container] = minedStructures(base);
     const snap = colony({ ...base, structures: [container] });
 
-    const intents = planBuilding(snap);
+    const intents = snap.building();
 
     expect(intents).not.toContainEqual(
       expect.objectContaining({ kind: "placeSite", x: container.x, y: container.y })
@@ -73,7 +72,7 @@ describe("building planner", () => {
     const [container] = minedStructures(base);
     const snap = colony({ ...base, structures: [container] });
 
-    const intents = planBuilding(snap);
+    const intents = snap.building();
 
     // Containers are absent from the bunker stamp by design; the teardown pass must
     // consult mining's declarations too, or it demolishes the container it just placed.
@@ -93,7 +92,7 @@ describe("building planner", () => {
       })
     );
 
-    const intents = planBuilding(snap);
+    const intents = snap.building();
 
     expect(intents.every(i => i.kind === "placeSite")).toBe(true);
     expect(intents).toHaveLength(2);
@@ -109,7 +108,7 @@ describe("building planner", () => {
     const base = colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [] });
     const containers: SnapStructure[] = minedStructures(base).map(c => ({ x: c.x, y: c.y, type: c.type }));
     const built = [...allNonRoadStructuresAt(anchor, 2), ...containers];
-    const rebuilt = planBuilding(colony({ ...base, structures: built }));
+    const rebuilt = colony({ ...base, structures: built }).building();
 
     expect(rebuilt.filter(i => i.kind === "placeSite")).toEqual([]);
   });
@@ -124,13 +123,13 @@ describe("building planner", () => {
       colonySnap({ anchor: { x: 25, y: 25 }, controllerLevel: 2, structures: [], sites })
     );
 
-    expect(planBuilding(snap).filter(i => i.kind === "placeSite")).toEqual([]);
+    expect(snap.building().filter(i => i.kind === "placeSite")).toEqual([]);
   });
 
   it("RCL-up unlocks the next tier's intents without re-requesting already-built structures", () => {
     const anchor = { x: 25, y: 25 };
     const structures = allNonRoadStructuresAt(anchor, 2);
-    const rcl3 = planBuilding(colony(colonySnap({ anchor, controllerLevel: 3, structures, sites: [] })));
+    const rcl3 = colony(colonySnap({ anchor, controllerLevel: 3, structures, sites: [] })).building();
 
     for (const s of structures) {
       expect(rcl3.some(i => i.kind === "placeSite" && i.x === s.x && i.y === s.y && i.type === s.type)).toBe(
@@ -146,7 +145,7 @@ describe("building planner", () => {
 
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [stale], sites: [] }));
 
-    const removals = planBuilding(snap).filter(i => i.kind === "removeStructure");
+    const removals = snap.building().filter(i => i.kind === "removeStructure");
     expect(removals).toEqual([{ kind: "removeStructure", room: "W1N1", x: 35, y: 35, type: "tower" }]);
   });
 
@@ -156,7 +155,7 @@ describe("building planner", () => {
 
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [staleSpawn], sites: [] }));
 
-    const removals = planBuilding(snap).filter(i => i.kind === "removeStructure");
+    const removals = snap.building().filter(i => i.kind === "removeStructure");
     expect(removals).toEqual([]);
   });
 });
@@ -171,20 +170,20 @@ describe("building planner focus policy", () => {
   it("places at most 2 construction sites at a time", () => {
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] }));
 
-    expect(placeSites(planBuilding(snap))).toHaveLength(2);
+    expect(placeSites(snap.building())).toHaveLength(2);
   });
 
   it("counts existing sites against the cap of 2", () => {
     const oneOpen: SnapStructure[] = [{ x: 10, y: 10, type: "road" }];
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: oneOpen }));
 
-    expect(placeSites(planBuilding(snap))).toHaveLength(1);
+    expect(placeSites(snap.building())).toHaveLength(1);
   });
 
   it("prioritises the tower ahead of extensions when both are buildable", () => {
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] }));
 
-    const placed = placeSites(planBuilding(snap));
+    const placed = placeSites(snap.building());
     expect(placed.some(i => i.type === "tower")).toBe(true);
   });
 
@@ -193,7 +192,7 @@ describe("building planner focus policy", () => {
       const snap = colony(
         colonySnap({ anchor, controllerLevel: rcl, sources: [sourceAt(20, 10)], structures: [], sites: [] })
       );
-      expect(placeSites(planBuilding(snap)).some(i => i.type === "container")).toBe(false);
+      expect(placeSites(snap.building()).some(i => i.type === "container")).toBe(false);
     }
   });
 
@@ -206,7 +205,7 @@ describe("building planner focus policy", () => {
       colonySnap({ anchor, controllerLevel: 3, sources: [sourceAt(20, 10)], structures: built, sites: [] })
     );
     void snap;
-    expect(placeSites(planBuilding(snap2)).some(i => i.type === "container")).toBe(true);
+    expect(placeSites(snap2.building()).some(i => i.type === "container")).toBe(true);
   });
 
   it("ranks containers below extensions in the focus slots", () => {
@@ -216,7 +215,7 @@ describe("building planner focus policy", () => {
     const snap = colony(
       colonySnap({ anchor, controllerLevel: 3, sources: [sourceAt(20, 10)], structures: withTower, sites: [] })
     );
-    const placed = placeSites(planBuilding(snap));
+    const placed = placeSites(snap.building());
     expect(placed.every(i => i.type === "extension")).toBe(true);
     expect(placed.some(i => i.type === "container")).toBe(false);
   });
@@ -224,56 +223,17 @@ describe("building planner focus policy", () => {
   it("places no roads before RCL4", () => {
     for (const rcl of [2, 3]) {
       const snap = colony(colonySnap({ anchor, controllerLevel: rcl, structures: [], sites: [] }));
-      expect(placeSites(planBuilding(snap)).some(i => i.type === "road")).toBe(false);
+      expect(placeSites(snap.building()).some(i => i.type === "road")).toBe(false);
     }
   });
 
   it("road gating at RCL4: paves near placed structures, not the far outer ring", () => {
     const builtStructures = allNonRoadStructuresAt(anchor, 4);
     const snap = colony(colonySnap({ anchor, controllerLevel: 4, structures: builtStructures, sites: [] }));
-    const placed = placeSites(planBuilding(snap));
+    const placed = placeSites(snap.building());
 
     expect(placed.some(i => i.type === "road" && i.x === 23 && i.y === 19)).toBe(false);
     expect(placed.some(i => i.type === "road")).toBe(true);
   });
 
-});
-
-// The quota formula is ported verbatim from the builder count this replaced, so each count assertion survives
-// as an assertion about how many requests come back.
-describe("builderRequests (ported BuildOperation builder quota)", () => {
-  it("asks for nothing when there is nothing left to build", () => {
-    expect(builderRequests(testColony({ constructionProgress: 0, storageEnergy: 200_000 }))).toEqual([]);
-  });
-
-  it("scales one builder per 5k of remaining work when storage can bankroll them", () => {
-    expect(builderRequests(testColony({ constructionProgress: 3_000, storageEnergy: 200_000 }))).toHaveLength(1);
-    expect(builderRequests(testColony({ constructionProgress: 8_000, storageEnergy: 200_000 }))).toHaveLength(2);
-  });
-
-  it("caps the quota so a full bunker rollout cannot swallow all spawn capacity", () => {
-    expect(builderRequests(testColony({ constructionProgress: 500_000, storageEnergy: 2_000_000 }))).toHaveLength(4);
-  });
-
-  it("holds the storage reserve back: no builders when storage cannot cover the reserve plus the build cost", () => {
-    // Reserve is 50k; a 10k backlog costs 10k energy, so storage must clear 60k first.
-    expect(builderRequests(testColony({ constructionProgress: 10_000, storageEnergy: 55_000 }))).toHaveLength(0);
-    expect(builderRequests(testColony({ constructionProgress: 10_000, storageEnergy: 65_000 }))).toHaveLength(2);
-  });
-
-  it("asks for no dedicated builders before storage exists — bootstrap's build step covers construction that early", () => {
-    expect(
-      builderRequests(testColony({ constructionProgress: 20_000, storageEnergy: 0, controllerLevel: 3 }))
-    ).toEqual([]);
-  });
-
-  it("returns nothing once the live builders meet the quota", () => {
-    const colony = testColony({
-      constructionProgress: 8_000,
-      storageEnergy: 200_000,
-      creeps: snapCreeps("builder", 2)
-    });
-
-    expect(builderRequests(colony)).toEqual([]);
-  });
 });

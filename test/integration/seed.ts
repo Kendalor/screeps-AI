@@ -6,13 +6,12 @@
 // (`wantedStructures` and the spawn requesters) rather than listing them here, so a scenario seeded
 // through here moves automatically with layout/quota/body changes.
 
+import { claimsOf, wantedStructures } from "../../src/colony/building";
+import { bootstrapRequests, builderRequests } from "../../src/colony/requests";
 import type { PlacedStructure } from "../../src/layouts/stamp";
 import type { RoleName } from "../../src/memory/schema";
-import type { ColonySnapshot } from "../../src/snapshot/types";
-import { builderRequests, claimsOf, wantedStructures } from "../../src/systems/building";
 import { operationsFor } from "../../src/operations";
-import { bootstrapRequests } from "../../src/systems/spawning";
-import { upgraderRequests } from "../../src/systems/upgrading";
+import type { ColonySnapshot } from "../../src/snapshot/types";
 import type { BootedColony } from "./harness";
 
 // Engine constants, taken from the same package the running server uses rather
@@ -155,13 +154,13 @@ export function spreadTtl(index: number, total: number): number {
 // the census-based version did too, so scenarios are unchanged; it is *not* the steady-state
 // workforce a running RCL3 colony fields.
 export function plannedWorkforce(colony: ColonySnapshot): SeededCreep[] {
-  const wrapped = { snapshot: colony, operations: operationsFor(colony.name) };
+  const operations = operationsFor(colony.name);
   const requests = [
-    ...bootstrapRequests(wrapped),
-    // The operations' own demand, polled exactly as planSpawning polls it.
-    ...wrapped.operations.flatMap(op => op.desiredCreeps(colony)),
-    ...upgraderRequests(wrapped),
-    ...builderRequests(wrapped)
+    ...bootstrapRequests(colony),
+    // The operations' own demand (mining's miners/haulers, upgrading's upgraders), polled exactly as
+    // the empire arbiter polls it. Recovery is excluded deliberately: seeding is the opposite of a wipe.
+    ...operations.flatMap(op => op.desiredCreeps(colony)),
+    ...builderRequests(colony)
   ].filter(r => r.body.length > 0);
 
   return requests.map((r, i) => ({
@@ -311,10 +310,7 @@ export async function seedColony(colony: BootedColony, opts: SeedOptions): Promi
 
   // Operations' claims via the arbiter's own accumulating poll — a flatMap here would poll every
   // operation blind, so their roads would not converge the way the running colony's do.
-  const structures = wantedStructures(
-    snapshot,
-    claimsOf({ snapshot, operations: operationsFor(snapshot.name) })
-  );
+  const structures = wantedStructures(snapshot, claimsOf(snapshot, operationsFor(snapshot.name)));
   await seedStructures(colony, structures);
 
   // Re-read after building so the workforce is sized against the seeded room, not the empty one.

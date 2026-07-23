@@ -43,6 +43,18 @@ export function testEmpire(...colonies: ColonySnapshot[]): Empire {
   return empire(empireSnap(...colonies));
 }
 
+// Stub room distance for spawn-routing tests: parses W<x>N<y> names and returns Chebyshev distance,
+// the same shape Game.map.getRoomLinearDistance has, with no Game involved.
+export function roomDistance(a: string, b: string): number {
+  const at = (n: string) => {
+    const m = /W(\d+)N(\d+)/.exec(n);
+    return m ? { x: +m[1], y: +m[2] } : { x: 0, y: 0 };
+  };
+  const pa = at(a);
+  const pb = at(b);
+  return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
+}
+
 export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
   return {
     name: "W1N1",

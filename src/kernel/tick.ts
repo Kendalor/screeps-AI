@@ -1,4 +1,8 @@
-// The tiered loop: systems are plain functions ordered in source; CPU guards measure against Game.cpu.limit so degradation is gradual.
+// The tiered loop. `systems/` is gone — its capabilities are methods on Colony and Empire now — but
+// the tiering machinery is not: it schedules those methods. Each entry names a capability and says
+// when it runs; the loop applies intervals and CPU guards uniformly, so degradation stays gradual
+// and stats keys stay comparable across the benchmark history. CPU guards measure against
+// Game.cpu.limit (steady state), not tickLimit.
 
 import type { Colony } from "../colony";
 import { empire, type Empire } from "../empire";
@@ -6,10 +10,6 @@ import { execute } from "../intents/execute";
 import type { Intent } from "../intents/types";
 import { log } from "../lib/log";
 import { buildEmpireSnapshot } from "../snapshot/colony";
-import { planBuilding } from "../systems/building";
-import { runCreepBehaviors } from "../systems/creeps";
-import { planDefense } from "../systems/defense";
-import { planSpawning } from "../systems/spawning";
 import { cleanCreepMemory } from "./creepMemory";
 import { stats } from "./stats";
 
@@ -19,8 +19,7 @@ interface SystemBase {
   interval?: number; // run every N ticks
 }
 
-// The scope discriminant is the cheapest thing that type-checks, deliberately: SYSTEMS is scaffolding being dismantled
-// into operations, not a shape worth designing. Colony-scoped systems get the loop from the tick rather than writing it.
+// The scope discriminant tells the loop whether to run once for the empire or once per colony.
 export interface ColonySystem extends SystemBase {
   scope: "colony";
   run(colony: Colony): Intent[];
@@ -33,25 +32,36 @@ export interface EmpireSystem extends SystemBase {
 
 export type System = ColonySystem | EmpireSystem;
 
+// Room distance for spawn routing — the arbiter's one Game.* input, injected so it stays pure.
+const roomDistance = (a: string, b: string): number => Game.map.getRoomLinearDistance(a, b);
+
 // tier 1: must run every tick even at 0 bucket. tier 2: economy planning, skipped under CPU pressure. tier 3: luxury, needs bucket headroom.
 export const SYSTEMS: System[] = [
-  { name: "defense", tier: 1, scope: "colony", run: planDefense },
-  { name: "spawning", tier: 1, scope: "colony", run: planSpawning },
-  { name: "creeps", tier: 1, scope: "empire", run: runCreepBehaviors },
   // Operations' direct intents — the channel that is not arbitrated. Their demand does not run here:
-  // desiredCreeps() is polled by spawning, structures() by building.
+  // desiredCreeps() is polled by spawning, structures() by building. Runs first among tier-1 work so
+  // Defense (an operation) fires its towers before anything else, as the old standalone defense
+  // system did.
   //
-  // Tier 1, no interval: this is where per-tick capabilities live (link transfers, lab reactions),
-  // and none of them survive being sampled every 50th tick. An operation with genuinely periodic
-  // work gates itself off `colony.tick`; one whose write would change nothing returns nothing. The
-  // interval this inherited from the old mining system was a property of that system's single
-  // idempotent intent, not of the channel.
+  // Tier 1, no interval: per-tick capabilities live here (tower fire, link transfers, lab reactions),
+  // none of which survive being sampled every 50th tick. An operation with genuinely periodic work
+  // gates itself off colony.snapshot.tick; one whose write would change nothing returns nothing.
   { name: "operations", tier: 1, scope: "colony", run: runOperations },
-  { name: "building", tier: 3, scope: "colony", interval: 100, run: planBuilding }
+  // Spawning is empire-scoped now: energy is per-room but spawn *routing* is cross-colony, so the
+  // arbiter sees every colony's demand and every colony's idle spawns at once.
+  { name: "spawning", tier: 1, scope: "empire", run: e => e.spawning(roomDistance) },
+  { name: "creeps", tier: 1, scope: "empire", run: runCreeps },
+  { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() }
 ];
 
 function runOperations(colony: Colony): Intent[] {
   return colony.operations.flatMap(op => op.intents(colony.snapshot));
+}
+
+// creeps() acts directly rather than returning intents; wrapped so it fits the Intent[]-returning
+// System shape and still runs under the same CPU accounting.
+function runCreeps(e: Empire): Intent[] {
+  e.creeps();
+  return [];
 }
 
 // `injected` exists for the same reason the `systems` parameter does: dispatch tests care about tiers, intervals and
