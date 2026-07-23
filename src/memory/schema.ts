@@ -12,6 +12,10 @@ declare global {
     scouting: ScoutingMemory;
     expansion: ExpansionMemory;
     stats: StatsMemory;
+    // Cross-tick metric state, keyed by colony room name. Only the little that a single tick's
+    // snapshot cannot recover lives here — the harvest-rate window. Everything else in a metrics
+    // report is derived fresh each tick and never persisted.
+    metrics: Record<string, ColonyMetricsMemory>;
   }
 
   interface CreepMemory {
@@ -81,4 +85,14 @@ export interface ExpansionMemory {
 
 export interface StatsMemory {
   version: number;
+}
+
+// The one piece of metric state a single tick cannot rederive: a short window of (tick, total
+// source energy) samples. Harvest rate is the drop in total source energy per tick, averaged over
+// the window — so we keep the oldest and newest samples and diff them. Storing a ring rather than a
+// single running total means a gap in vision (no snapshot for a stretch) self-heals: old samples
+// age out instead of poisoning the average forever.
+export interface ColonyMetricsMemory {
+  // (tick, total source energy) samples, oldest first, capped at HARVEST_WINDOW entries.
+  harvestSamples: { tick: number; sourceEnergy: number }[];
 }

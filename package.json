@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "bench": "node scripts/bench.mjs",
+    "bench:slow": "node scripts/bench-slow.mjs",
     "bench:legacy": "node scripts/bench-legacy.mjs",
     "bundle-legacy": "rollup -c rollup.legacy.config.mjs",
     "watch:integration": "vitest run --config vitest.watch.config.ts",

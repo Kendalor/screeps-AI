@@ -18,16 +18,26 @@ export type TargetSpec =
   | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share }
   | { find: "id"; id: Id<_HasId> };
 
-export type Step =
-  | { do: "harvest"; from: TargetSpec }
-  | { do: "withdraw"; from: TargetSpec; resource?: ResourceConstant }
-  | { do: "pickup"; from: TargetSpec }
-  | { do: "transfer"; to: TargetSpec; resource?: ResourceConstant }
-  | { do: "build"; at?: TargetSpec }
-  | { do: "repair"; at: TargetSpec; upTo?: number }
-  | { do: "upgrade" }
-  | { do: "moveToRoom"; room: string }
-  | { do: "sit"; pos: { x: number; y: number } }; // for the anchor logistics sitter
+// A precondition on the CREEP's own store, distinct from a target's `where`: the step only runs
+// when the actor's store is in this state. "empty" gates a gather step so a still-loaded hauler
+// skips picking up more and cycles back to deliver its current load first ("deliver until empty,
+// only pick up when empty"). Absent = the step runs whenever the interpreter's kind-logic allows.
+export type When = "empty";
+
+export type Step = ({
+  when?: When;
+}) &
+  (
+    | { do: "harvest"; from: TargetSpec }
+    | { do: "withdraw"; from: TargetSpec; resource?: ResourceConstant }
+    | { do: "pickup"; from: TargetSpec }
+    | { do: "transfer"; to: TargetSpec; resource?: ResourceConstant }
+    | { do: "build"; at?: TargetSpec }
+    | { do: "repair"; at: TargetSpec; upTo?: number }
+    | { do: "upgrade" }
+    | { do: "moveToRoom"; room: string }
+    | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
+  );
 
 export interface TaskState {
   step: number;

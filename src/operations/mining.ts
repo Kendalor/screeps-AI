@@ -59,6 +59,14 @@ const DEFAULT_HAUL_DISTANCE = 10;
 // into containers that hold the energy without it decaying.
 const MAX_HAULERS = 6;
 
+// Dropped energy the fleet is *already behind on*. The steady-state count is sized to keep pace with
+// income between visits; a pile this much larger than one hauler-load is a backlog that income alone
+// will never work down, so we field extra transport to clear it — the legacy HaulerOperation's
+// dropped-energy bump (its threshold was a flat 2000). Below this the pile is just the normal
+// in-flight energy between visits and must not inflate the count, or it oscillates whenever a hauler
+// is briefly late.
+const DROP_BACKLOG_THRESHOLD = 2000;
+
 function sourceStructureType(rcl: number): BuildableStructureConstant {
   return rcl >= LINK_RCL ? "link" : "container";
 }
@@ -107,10 +115,13 @@ function interleaveByPriority(
 // body automatically. Sized against the same context the request body uses: asking with a hardcoded
 // {hasContainer:false} while spawning a container-shaped body makes the per-source target disagree
 // with the creeps that fill it (a container miner carries up to 5 WORK, a drop miner 2).
-function minerWorkParts(colony: ColonySnapshot): number {
+function minerBodyWork(colony: ColonySnapshot): number {
   const body = roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony)) ?? [];
   return Math.max(1, countPart(body, WORK));
 }
+
+// Live WORK a miner contributes right now (spawning included — its parts already exist).
+const workOf = (c: SnapCreep): number => countPart(c.body, WORK);
 
 export class Mining extends Operation {
   public readonly kind = "mining";
@@ -138,47 +149,68 @@ export class Mining extends Operation {
   }
 
   /**
-   * One request per source that no live miner is assigned to. The per-source deficit replaces a
-   * colony-wide count: with the same formula the two produce the same spawn sequence, and they
-   * diverge only where the colony total is already wrong (one source double-staffed, one bare) —
-   * a case a count cannot see.
+   * Requests to bring each source up to its **WORK target**, sized in WORK parts rather than a
+   * miner headcount. A source needs WORK_PER_SOURCE WORK to drain and cover travel; the deficit is
+   * that target minus the WORK already assigned to it, filled by however many of *this capacity's*
+   * bodies it takes. Counting WORK not heads is the fix for the miner swarm: a headcount target
+   * derived from the current body size cannot see that three 2-WORK miners already saturate a
+   * source, so as bodies grew it kept fielding more — nine 3-WORK miners (27 WORK) on two sources
+   * that only ever needed ~12. WORK is the quantity the source actually rewards, so it is what the
+   * quota counts.
    *
-   * Miners lead the economy and are sized against the source alone (the per-source WORK target,
-   * clamped by open tiles) — no hauler-count ceiling. The old ceiling coupled miner headcount to
-   * live haulers, which is now backwards: hauler demand *derives from* miner output
-   * (`haulerRequests`), so making miners wait on haulers that wait on miners would deadlock the
-   * cold start. "Miners first, then a hauler" falls out of this directly — a source with no miner
-   * asks for one at priority 95, and only once that miner is producing does `haulerRequests` see
-   * the WORK to size a hauler at priority 90.
+   * The per-source deficit (rather than a colony total) still diverges from a count only where the
+   * total is already wrong — one source double-staffed, one bare — a case a colony-wide number
+   * cannot see. Clamped by open tiles so an enclosed source never asks for more miners than can
+   * physically stand on it.
+   *
+   * Miners lead the economy and are sized against the source alone — no hauler-count ceiling. Hauler
+   * demand *derives from* miner output (`haulerRequests`); making miners wait on haulers that wait
+   * on miners would deadlock the cold start. "Miners first, then a hauler" falls out directly — a
+   * source with no miner asks at priority 95, and only once that miner is producing does
+   * `haulerRequests` see the WORK to size a hauler at priority 90.
    */
   private minerRequests(colony: ColonySnapshot): CreepRequest[] {
-    const workPerBody = minerWorkParts(colony);
+    const bodyWork = minerBodyWork(colony);
     // This operation's miners, not the colony's: a second Mining/RemoteMining must not count these.
     const miners = this.owned(colony, "miner");
 
-    // Per-source want, from the same formula the colony-wide count used.
-    const perSource = (source: { openTiles: number }): number =>
-      Math.min(Math.ceil(WORK_PER_SOURCE / workPerBody), source.openTiles);
-
     // Miners that predate stage 2 carry no sourceId (PRD §6 — cleared by attrition, not migration).
     // They still mine, so they are spread across the sources as generic cover rather than left to
-    // look like they cover nothing: counting a bare source as bare when an unassigned miner is
-    // sitting on it would make the colony ask for a second miner it does not need.
-    let unassigned = miners.filter(c => c.memory.sourceId === undefined).length;
+    // look like they cover nothing: counting a bare source as bare when an unassigned miner sits on
+    // it would make the colony ask for a miner it does not need. Held as a queue consumed across
+    // sources — each is borrowed by at most one source, contributing both its WORK (toward the
+    // target) and its head (against the tile safeguard).
+    const unassigned = miners.filter(c => c.memory.sourceId === undefined);
+    let next = 0; // index of the first not-yet-borrowed miner
 
     const body = orderBody(roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
     const out: CreepRequest[] = [];
     for (const source of colony.sources) {
-      const wanted = perSource(source);
-      const assigned = miners.filter(c => c.memory.sourceId === source.id).length;
-      // Draw on the unassigned pool before asking for a new creep — an un-owned miner sitting on this
-      // source is cover the colony already paid for.
-      const borrowed = Math.min(unassigned, Math.max(0, wanted - assigned));
-      unassigned -= borrowed;
+      // WORK the source wants — a flat target; openTiles is a *headcount* safeguard (no more miners
+      // than can physically reach the source at once), applied to the body count below, not a cap on
+      // WORK (one big miner can meet the target on a one-tile source).
+      const wantedWork = WORK_PER_SOURCE;
+      const onSource = miners.filter(c => c.memory.sourceId === source.id);
+      const assignedWork = onSource.reduce((s, c) => s + workOf(c), 0);
+      // Draw on the unassigned pool before asking for a new creep — an un-owned miner already mining
+      // this source is WORK the colony already paid for. Borrow whole miners off the queue: enough to
+      // cover the WORK gap, and each one also occupies a tile.
+      const workGap = Math.max(0, wantedWork - assignedWork);
+      let borrowedWork = 0;
+      let borrowedHeads = 0;
+      while (next < unassigned.length && borrowedWork < workGap) {
+        borrowedWork += workOf(unassigned[next]);
+        borrowedHeads++;
+        next++;
+      }
 
-      // One request per missing miner on this source, not one per source: a source wanting three
-      // miners asks for three, exactly as the colony-wide count did.
-      for (let i = assigned + borrowed; i < wanted; i++) {
+      // One request per body it takes to cover the remaining WORK deficit — a source 6 WORK short
+      // asks for two 3-WORK miners, or three 2-WORK ones, but never overshoots into a swarm — clamped
+      // by the tiles still free after the miners already standing on the source.
+      const deficit = workGap - borrowedWork;
+      const freeTiles = Math.max(0, source.openTiles - onSource.length - borrowedHeads);
+      const wantedBodies = Math.min(freeTiles, Math.ceil(deficit / bodyWork));
+      for (let i = 0; i < wantedBodies; i++) {
         out.push({
           body,
           priority: DEFAULT_PRIORITY.miner,
@@ -231,16 +263,34 @@ export class Mining extends Operation {
   /**
    * How many haulers the miners' current output warrants, given the trip they must run. Zero with
    * no producing miners; otherwise at least one, capped at MAX_HAULERS.
+   *
+   * Two terms of carry capacity feed the count: the steady-state pile that income accumulates between
+   * a hauler's visits, plus any backlog of dropped energy the fleet is already behind on. Income
+   * keeps pace with production; the backlog term (ported from the legacy HaulerOperation) fields
+   * extra transport to work down a pile income alone never clears. Both are gated on a producing
+   * miner — a backlog with no miner is a leftover, not a reason to spawn a transport fleet.
    */
   private wantedHaulers(colony: ColonySnapshot, body: BodyPartConstant[]): number {
     const income = this.harvestIncome(colony);
     if (income <= 0) return 0;
 
     const roundTrip = 2 * this.haulDistance(colony);
-    const neededCarry = income * roundTrip;
+    const neededCarry = income * roundTrip + this.backlogCarry(colony);
     const perHauler = Math.max(1, countPart(body, CARRY)) * ENERGY_PER_CARRY;
 
     return Math.min(MAX_HAULERS, Math.max(1, Math.ceil(neededCarry / perHauler)));
+  }
+
+  /**
+   * Carry capacity owed to a backlog of dropped energy — zero until the pile is clearly more than the
+   * normal in-flight energy between visits (DROP_BACKLOG_THRESHOLD), then the whole pile, so the
+   * fleet scales with how far behind it is. Divided by one hauler's capacity in `wantedHaulers`, this
+   * is the legacy dropped-energy bump expressed as capacity rather than a flat headcount, and it
+   * composes with the income term and the MAX_HAULERS clamp instead of overriding them.
+   */
+  private backlogCarry(colony: ColonySnapshot): number {
+    const dropped = colony.drops.reduce((sum: number, d) => sum + d.amount, 0);
+    return dropped > DROP_BACKLOG_THRESHOLD ? dropped : 0;
   }
 
   /**

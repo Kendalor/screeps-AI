@@ -40,6 +40,28 @@ describe("interpreter step advancement", () => {
   });
 });
 
+// A `when: "empty"` gate makes a step a no-op while the creep still carries anything, so nextStep
+// treats it as already complete and cycles past it — the mechanism that keeps a loaded hauler
+// delivering (returning to an earlier spend step) instead of gathering more the moment a sink fills.
+describe("when: empty gate", () => {
+  // deliver STORAGE, then gather CONTAINER only-when-empty — a two-step loop mimicking the hauler.
+  const GATED: Step[] = [
+    { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
+    { do: "withdraw", when: "empty", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } }
+  ];
+
+  it("skips a when:empty gather while the creep still carries energy", () => {
+    // Landed on the gather step with a partial load: it is complete, so the loop wraps back to deliver.
+    expect(firstRunnableStep(GATED, 1, { free: 25, used: 25 })).toBe(0);
+    expect(nextStep(GATED, state({ step: 1, free: 25, used: 25 }))).toBe(0);
+  });
+
+  it("runs the when:empty gather once the creep is fully empty", () => {
+    expect(firstRunnableStep(GATED, 1, { free: 50, used: 0 })).toBe(1);
+    expect(nextStep(GATED, state({ step: 1, free: 50, used: 0 }))).toBe(1);
+  });
+});
+
 // Lets the dispatch skip a step that's already complete (e.g. landing on "upgrade"
 // with an empty store right after a transfer) instead of wasting a tick on a no-op.
 describe("firstRunnableStep", () => {

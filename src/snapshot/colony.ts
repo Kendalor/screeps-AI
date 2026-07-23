@@ -48,6 +48,8 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number): Col
     woundedFriendlies: myCreeps.filter(c => c.hits < c.hitsMax).map(snapUnit),
     safeModeAvailable:
       controller.safeModeAvailable > 0 && !controller.safeMode && !controller.safeModeCooldown,
+    safeModeActive: controller.safeMode ?? 0,
+    safeModeCount: controller.safeModeAvailable,
     creeps,
     spawns: room
       .find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_SPAWN })

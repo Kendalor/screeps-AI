@@ -45,6 +45,11 @@ export function firstRunnableStep(steps: Step[], from: number, store: { free: nu
 
 export function isComplete(step: Step, s: CreepState): boolean {
   if (s.targetGone) return true;
+  // A `when: "empty"` step is a no-op while the creep still carries anything, so it counts as
+  // already complete: nextStep advances past it and firstRunnableStep skips it. This is what makes
+  // a loaded hauler keep delivering (cycling to the next spend step) instead of returning to pick
+  // up more the moment one sink fills. The condition reads the creep's own store, never a target's.
+  if (step.when === "empty" && s.used > 0) return true;
   const kind = STEP_KIND[step.do];
   if (kind === "gather") return s.free === 0;
   return s.used === 0;

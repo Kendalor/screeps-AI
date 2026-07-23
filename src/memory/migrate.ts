@@ -6,4 +6,5 @@ export function migrateMemory(): void {
   if (!Memory.scouting) Memory.scouting = { version: 1 };
   if (!Memory.expansion) Memory.expansion = { version: 1 };
   if (!Memory.stats) Memory.stats = { version: 1 };
+  if (!Memory.metrics) Memory.metrics = {};
 }

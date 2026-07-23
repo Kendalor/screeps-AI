@@ -63,6 +63,8 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     hostiles: [],
     woundedFriendlies: [],
     safeModeAvailable: false,
+    safeModeActive: 0,
+    safeModeCount: 0,
     creeps: [],
     spawns: [],
     energyAvailable: 300,

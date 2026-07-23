@@ -61,6 +61,21 @@ function act(intent: Intent): ScreepsReturnCode {
       if (!structure) return ERR_NOT_FOUND;
       return structure.destroy();
     }
+    case "roomVisual": {
+      const visual = new RoomVisual(intent.room);
+      for (const o of intent.ops) {
+        if (o.op === "text") {
+          visual.text(o.text, o.x, o.y, {
+            color: o.color,
+            align: o.align,
+            font: o.size ? `${o.size} monospace` : "monospace"
+          });
+        } else {
+          visual.rect(o.x, o.y, o.w, o.h, { fill: o.fill, opacity: o.opacity });
+        }
+      }
+      return OK; // RoomVisual calls never fail with a return code
+    }
     case "recordSourceSpot": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
       const source = (mem.sources[intent.source] ??= {});

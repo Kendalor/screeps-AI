@@ -32,12 +32,22 @@ function bootstrapBody(energy: number): BodyPartConstant[] {
   return wholeSets(energy);
 }
 
-const builderBody = wholeSets;
+function builderBody(energy: number): BodyPartConstant[] {
+  const BASE_BODY = [WORK,WORK,CARRY,MOVE];
+  const sets = affordableSets(energy, BASE_BODY,1, 7)
+  let body: BodyPartConstant[] = [];
+  for (let i = 0; i < sets; i++) {
+    body = body.concat(BASE_BODY);
+  }
+  return body;
+}
 
-// Base WORK/CARRY/MOVE plus heavy-WORK sets (2:1 move ratio) bought from whatever the base leaves, up to the 50-part cap.
-const UPGRADER_BASE: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE];
+// A 2:1 weight:MOVE body — fast on roads at every size. The base needs two MOVE, not one: its two
+// WORK plus the CARRY are three weight parts, so a single MOVE leaves the creep at 3:1 and it crawls
+// (empty upgraders barely move). Each heavy-WORK set is already a clean 2:1.
+const UPGRADER_BASE: BodyPartConstant[] = [WORK, WORK, CARRY, MOVE, MOVE];
 const UPGRADER_SET: BodyPartConstant[] = [WORK, WORK, MOVE];
-const MAX_UPGRADER_SETS = 15;
+const MAX_UPGRADER_SETS = 7;
 
 function upgraderBody(energy: number): BodyPartConstant[] {
   const spare = Math.max(0, energy - bodyCost(UPGRADER_BASE));
@@ -78,9 +88,11 @@ function minerBody(energy: number, ctx: BodyContext): BodyPartConstant[] {
   return [...parts(WORK, work), ...parts(CARRY, carry), ...parts(MOVE, move)];
 }
 
-// 2:1 CARRY:MOVE keeps a loaded hauler at road speed.
-const HAULER_SET: BodyPartConstant[] = [CARRY, CARRY, MOVE];
-const MAX_HAULER_SETS = 16; // 16 sets = 48 parts, just under the 50-part cap
+// 1:1 CARRY:MOVE — a loaded hauler never fatigues, on or off road. Heavy carry capacity comes from
+// stacking many sets, not from a lean move ratio: the colony runs pre-road for a long stretch and a
+// 2:1 body would crawl off-road while loaded, so equal parts is the safe default at every RCL.
+const HAULER_SET: BodyPartConstant[] = [CARRY, MOVE];
+const MAX_HAULER_SETS = 25; // 25 sets = 50 parts, the hard body cap
 
 function haulerBody(energy: number): BodyPartConstant[] {
   const sets = affordableSets(energy, HAULER_SET, 1, MAX_HAULER_SETS);
@@ -121,20 +133,20 @@ export const ROLES = {
       { do: "build" }
     ]
   },
-  // Refill from the controller link, then storage, a mining container, then a hauler directly, then
-  // upgrade. The container and hauler steps are what let a pre-storage upgrader work at all: before
-  // storage there is no link or storage to draw from, so without them the upgrader would wander inert.
-  // Pulling from a hauler beats chasing scattered drops (haulers also push to upgraders — see the
-  // hauler role), and dedicated upgraders lead the RCL climb.
+  // Steps with no valid target are skipped, so the loop runs upgrade first and refills behind it:
+  // from a hauler directly, then a mining container, then storage, then the controller link, and a
+  // dropped pile as the last fallback. The container and hauler steps are what let a pre-storage
+  // upgrader work at all: before storage there is no link or storage to draw from, so without them
+  // the upgrader would wander inert. Dedicated upgraders lead the RCL climb.
   upgrader: {
     body: upgraderBody,
     steps: [
-      { do: "pickup", from: { find: "dropped" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "upgrade" },
       { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
-      { do: "upgrade" }
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
+      { do: "pickup", from: { find: "dropped" } }
     ]
   },
   // With a container underneath, the transfer steps mostly no-op since harvest overflow already lands in it.
@@ -150,10 +162,11 @@ export const ROLES = {
   supply: {
     body: haulerBody,
     steps: [
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } }
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } }
+
     ]
   },
   // Drains mining containers and drop piles into the colony's sinks. Source side: a container is a
@@ -168,14 +181,16 @@ export const ROLES = {
   hauler: {
     body: haulerBody,
     steps: [
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
-      { do: "pickup", from: { find: "dropped" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
-      // Fixed sinks full — hand the surplus directly to a consumer instead of holding or dropping it.
-      { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } }
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
+      { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } },
+      // Only gather once fully empty: a loaded hauler whose current sink filled cycles back to the
+      // next transfer step above and delivers the rest, rather than returning to pick up more. The
+      // `when` reads the hauler's own store; the target `where` still describes the source pile/container.
+      { do: "withdraw", when: "empty", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "pickup", when: "empty", from: { find: "dropped" } }
     ]
   }
 } satisfies Partial<Record<RoleName, RoleDef>>;

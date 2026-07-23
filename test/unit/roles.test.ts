@@ -63,13 +63,25 @@ describe("bootstrap body (ported Allrounder.getBody)", () => {
 describe("upgrader body (ported Upgrader.getBody)", () => {
   const body = (energy: number) => ROLES.upgrader.body(energy);
 
-  it("builds the minimal WORK/CARRY/MOVE base at the 300-energy floor", () => {
-    expect(body(300)).toEqual([WORK, CARRY, CARRY, MOVE, MOVE]);
-    expect(body(0)).toEqual([WORK, CARRY, CARRY, MOVE, MOVE]);
+  // The base carries two MOVE, not one: two WORK plus a CARRY are three weight parts, so a single
+  // MOVE would leave it at 3:1 and crawling. Two MOVE make it a clean 2:1, fast on roads.
+  it("builds the WORK,WORK,CARRY base with two MOVE (2:1) at the floor", () => {
+    expect(body(300)).toEqual([WORK, WORK, CARRY, MOVE, MOVE]);
+    expect(body(0)).toEqual([WORK, WORK, CARRY, MOVE, MOVE]);
   });
 
   it("adds WORK,WORK,MOVE sets (2 WORK : 1 MOVE) as energy grows", () => {
-    expect(body(550)).toEqual([WORK, CARRY, CARRY, MOVE, MOVE, WORK, WORK, MOVE]);
+    expect(body(800)).toEqual([WORK, WORK, CARRY, MOVE, MOVE, WORK, WORK, MOVE]);
+  });
+
+  // The whole body stays a true 2:1 weight:MOVE at every size, so it never fatigues on roads.
+  it("keeps one MOVE per two weight parts at every size", () => {
+    for (const e of [300, 550, 800, 1200, 5000]) {
+      const b = body(e);
+      const weight = b.filter(p => p === WORK || p === CARRY).length;
+      const moves = b.filter(p => p === MOVE).length;
+      expect(moves).toBe(Math.ceil(weight / 2));
+    }
   });
 });
 
@@ -154,24 +166,27 @@ describe("miner body", () => {
   });
 });
 
-describe("hauler body (ported HaulerOperation carry-parts math)", () => {
+describe("hauler body (1:1 carry:move — never fatigues, on or off road)", () => {
   const body = (energy: number) => ROLES.hauler.body(energy);
 
-  it("builds a single CARRY,CARRY,MOVE set at the 150-energy floor", () => {
-    expect(body(150)).toEqual([CARRY, CARRY, MOVE]);
-    expect(body(0)).toEqual([CARRY, CARRY, MOVE]);
+  it("builds a single CARRY,MOVE set at the 100-energy floor", () => {
+    expect(body(100)).toEqual([CARRY, MOVE]);
+    expect(body(0)).toEqual([CARRY, MOVE]);
   });
 
-  it("adds a CARRY,CARRY,MOVE set per 150 energy", () => {
-    expect(body(300)).toEqual([CARRY, CARRY, MOVE, CARRY, CARRY, MOVE]);
-    expect(body(450)).toHaveLength(9);
-    expect(body(440).filter(p => p === CARRY)).toHaveLength(4);
+  it("adds a CARRY,MOVE set per 100 energy, always equal carry and move", () => {
+    expect(body(300)).toEqual([CARRY, MOVE, CARRY, MOVE, CARRY, MOVE]);
+    const b = body(450);
+    expect(b.filter(p => p === CARRY)).toHaveLength(4);
+    expect(b.filter(p => p === MOVE)).toHaveLength(4);
   });
 
   it("caps the body at the 50-part limit", () => {
     const capped = body(10_000);
-    expect(capped.length).toBeLessThanOrEqual(50);
-    expect(capped).toEqual(body(2400));
+    expect(capped.length).toBe(50);
+    expect(capped.filter(p => p === CARRY)).toHaveLength(25);
+    expect(capped.filter(p => p === MOVE)).toHaveLength(25);
+    expect(capped).toEqual(body(2500));
   });
 });
 
@@ -189,18 +204,19 @@ describe("miner role", () => {
 });
 
 describe("hauler role", () => {
-  it("empties a container before drops, fills structures, then hands surplus to consumers", () => {
+  it("delivers to every sink then a consumer, and only gathers again once fully empty", () => {
     expect(roleDef("hauler")).toEqual({
       body: ROLES.hauler.body,
       steps: [
-        { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
-        { do: "pickup", from: { find: "dropped" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
-        { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
-        { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
-        // Last: with every fixed sink full, feed a consumer directly rather than hold or drop energy.
-        { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } }
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
+        // With every fixed sink full, feed a consumer directly rather than hold or drop energy.
+        { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } },
+        // Gather steps gated on the hauler being empty: it delivers its whole load before returning.
+        { do: "withdraw", when: "empty", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+        { do: "pickup", when: "empty", from: { find: "dropped" } }
       ]
     });
   });
@@ -222,24 +238,23 @@ describe("supply role", () => {
   });
 
   it("shares the hauler carry-parts body — it is the same job in reverse", () => {
-    expect(ROLES.supply.body(150)).toEqual([CARRY, CARRY, MOVE]);
+    expect(ROLES.supply.body(100)).toEqual([CARRY, MOVE]);
     expect(ROLES.supply.body(450)).toEqual(ROLES.hauler.body(450));
   });
 });
 
 describe("upgrader role", () => {
-  it("picks up a pile, withdraws from link/storage/container/hauler, then upgrades", () => {
+  it("upgrades first, then withdraws from hauler/container/storage/link, falling back to a pile", () => {
     expect(roleDef("upgrader")).toEqual({
       body: ROLES.upgrader.body,
       steps: [
-        { do: "pickup", from: { find: "dropped" } },
-        { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
-        { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+        { do: "upgrade" },
+        { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
         // The container step lets a pre-storage upgrader run off the mining economy.
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
-        // And pulling from a hauler directly beats chasing scattered drops.
-        { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
-        { do: "upgrade" }
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
+        { do: "pickup", from: { find: "dropped" } }
       ]
     });
   });

@@ -50,7 +50,11 @@ export const SYSTEMS: System[] = [
   // arbiter sees every colony's demand and every colony's idle spawns at once.
   { name: "spawning", tier: 1, scope: "empire", run: e => e.spawning(roomDistance) },
   { name: "creeps", tier: 1, scope: "empire", run: runCreeps },
-  { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() }
+  { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() },
+  // Metrics: collect and paint the room dashboard. Tier 3 (luxury — dropped first under CPU
+  // pressure) but every tick, so the panel and the harvest-rate window stay live rather than
+  // sampling every Nth tick. Its Memory write (the harvest window) is idempotent-per-tick.
+  { name: "metrics", tier: 3, scope: "colony", run: c => c.metrics() }
 ];
 
 function runOperations(colony: Colony): Intent[] {

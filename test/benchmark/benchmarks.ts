@@ -269,11 +269,23 @@ export function economyOf(report: EnergyReport): Record<string, number | null> {
   };
 }
 
-/** Print the run in full (the numbers are the point) and fail on any regression. */
-export function checkBenchmark(result: BenchResult): void {
+/** Print the run in full (the numbers are the point). No assertions — see assertNoRegression. */
+export function reportBenchmark(result: BenchResult): void {
   console.log(formatResult(result));
+}
+
+/** Fail if any measurement regressed against baseline. Kept separate from reportBenchmark so a test
+ * can record + print a run (which recordBenchmark already persisted to disk), run its own milestone
+ * assertions with clearer messages first, and only then assert on regressions last. */
+export function assertNoRegression(result: BenchResult): void {
   const bad = regressions(result);
   expect(bad.map(c => c.measurement), formatResult(result)).toEqual([]);
+}
+
+/** Print the run in full (the numbers are the point) and fail on any regression. */
+export function checkBenchmark(result: BenchResult): void {
+  reportBenchmark(result);
+  assertNoRegression(result);
 }
 
 function shortSha(): string | undefined {

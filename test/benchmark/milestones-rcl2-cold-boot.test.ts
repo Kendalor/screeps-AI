@@ -12,7 +12,7 @@
 // stubWorld()'s stock rooms cap clearance at 4 vs BUNKER_RADIUS=6, so no anchor would be found.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { checkBenchmark, ECONOMY_SPEC, economyOf, recordBenchmark } from "./benchmarks";
+import { assertNoRegression, ECONOMY_SPEC, economyOf, recordBenchmark, reportBenchmark } from "./benchmarks";
 import { EnergyMetrics } from "../integration/energyMetrics";
 import { BootedColony, bundleBot, CheckpointLadder } from "../integration/harness";
 
@@ -72,14 +72,18 @@ test(
       }
     );
 
+    // Record + print every run first — before any assertion can throw — so a run that missed the
+    // milestone still lands in the committed history (with ticks: null, which the recorder excludes
+    // from future baselines but keeps visible). Only then do the pass/fail assertions run.
+    const report = energy.report();
+    const result = recordBenchmark("rcl2", { ticks: rcl2Tick, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT);
+    reportBenchmark(result);
+
     expect(ladder.firstMissed(), `checkpoint ladder:\n${ladder.report()}`).toBeNull();
     expect(rcl2Tick, "RCL2 never reached within 1500 ticks").not.toBeNull();
-
-    const report = energy.report();
     // Without this floor a run that harvested nothing would record a 0 baseline and look stable forever.
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
-
-    checkBenchmark(recordBenchmark("rcl2", { ticks: rcl2Tick, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT));
+    assertNoRegression(result);
   },
   300_000
 );
@@ -87,28 +91,34 @@ test(
 test(
   "benchmark: RCL2 with all extensions built",
   async () => {
-    expect(rcl2Tick, "RCL2 was never reached — extension milestone cannot be measured").not.toBeNull();
-
     // Tick recorded is absolute (since cold boot), not relative to RCL2, so it stays comparable
-    // even if the RCL2 leg itself gets faster or slower.
+    // even if the RCL2 leg itself gets faster or slower. When RCL2 was never reached, this leg just
+    // times out to builtTick: null — still recorded, so every run lands in history.
     const builtTick = await colony.runUntil(
       async () => (await colony.structures("extension")).length >= EXTENSIONS_AT_RCL2,
       6000,
       () => colony.sampleEnergy(energy)
     );
 
+    // Record + print before asserting, so a missed milestone is recorded (ticks: null) rather than
+    // dropped when an assertion throws.
+    const report = energy.report();
+    const result = recordBenchmark(
+      "rcl2-extensions-built",
+      { ticks: builtTick, ...economyOf(report) },
+      ECONOMY_SPEC,
+      BENCH_OUT
+    );
+    reportBenchmark(result);
+
+    expect(rcl2Tick, "RCL2 was never reached — extension milestone cannot be measured").not.toBeNull();
     const built = (await colony.structures("extension")).length;
     expect(
       builtTick,
       `only ${built}/${EXTENSIONS_AT_RCL2} extensions finished within 6000 ticks of RCL2`
     ).not.toBeNull();
-
-    const report = energy.report();
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
-
-    checkBenchmark(
-      recordBenchmark("rcl2-extensions-built", { ticks: builtTick, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT)
-    );
+    assertNoRegression(result);
   },
   600_000
 );

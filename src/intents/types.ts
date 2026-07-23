@@ -24,4 +24,14 @@ export type Intent =
       link?: Id<StructureLink>;
     }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
-  | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number };
+  | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
+  // A batch of drawing primitives for one room's RoomVisual. The planner decides *what* the panel
+  // says and where; execute.ts is the only place a RoomVisual is touched, so metric collection stays
+  // pure and testable. Ops are drawn in order, so later ones paint over earlier ones.
+  | { kind: "roomVisual"; room: string; ops: VisualOp[] };
+
+// The subset of RoomVisual drawing a metrics panel needs. Plain data so a planner can emit it and a
+// test can assert on it without a live RoomVisual.
+export type VisualOp =
+  | { op: "text"; text: string; x: number; y: number; color?: string; align?: "left" | "center" | "right"; size?: number }
+  | { op: "rect"; x: number; y: number; w: number; h: number; fill?: string; opacity?: number };

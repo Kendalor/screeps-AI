@@ -100,6 +100,11 @@ export interface ColonySnapshot {
   hostiles: SnapUnit[];
   woundedFriendlies: SnapUnit[];
   safeModeAvailable: boolean;
+  // Ticks of safe mode remaining right now, 0 when not active. Distinct from safeModeAvailable
+  // (whether one *can* be triggered) — a colony can be mid-safe-mode with none left in reserve.
+  safeModeActive: number;
+  // How many safe-mode activations are banked for later use.
+  safeModeCount: number;
   // Alive + spawning creeps that call this colony home (by memory.home, not by which room they
   // stand in). Spawning ones are included so a request isn't filled twice while its creep is still
   // in the spawn.

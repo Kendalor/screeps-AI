@@ -15,7 +15,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import type { PlacedStructure } from "../../src/layouts/stamp";
 import { claimsOf, wantedStructures } from "../../src/colony/building";
 import { operationsFor } from "../../src/operations";
-import { checkBenchmark, ECONOMY_SPEC, economyOf, recordBenchmark } from "./benchmarks";
+import { assertNoRegression, ECONOMY_SPEC, economyOf, recordBenchmark, reportBenchmark } from "./benchmarks";
 import { EnergyMetrics } from "../integration/energyMetrics";
 import { BootedColony, bundleBot, CheckpointLadder } from "../integration/harness";
 import { outstanding, seedColony } from "../integration/seed";
@@ -106,15 +106,19 @@ test(
       }
     );
 
+    // Record + print every run first — before any assertion can throw — so a run that missed the
+    // milestone still lands in the committed history (with ticks: null, excluded from future baselines
+    // but kept visible). Only then do the pass/fail assertions run.
+    const report = energy.report();
+    const result = recordBenchmark("rcl3", { ticks: reached, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT);
+    reportBenchmark(result);
+
     expect(ladder.firstMissed(), `checkpoint ladder:\n${ladder.report()}`).toBeNull();
     expect(reached, "RCL3 never reached within 35000 ticks of a finished RCL2").not.toBeNull();
-
-    const report = energy.report();
     // Sanity floor before comparing rates: a run that harvested nothing would
     // otherwise record a 0 baseline and look stable forever.
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
-
-    checkBenchmark(recordBenchmark("rcl3", { ticks: reached, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT));
+    assertNoRegression(result);
   },
   900_000
 );
@@ -122,31 +126,36 @@ test(
 test(
   "benchmark: RCL3 with all required buildings built",
   async () => {
-    expect(
-      (await colony.controller()).level,
-      "RCL3 was never reached — the building milestone cannot be measured"
-    ).toBeGreaterThanOrEqual(TARGET_LEVEL);
-
     // Tick recorded is absolute (since the seeded RCL2 start), so it stays comparable
-    // even if the level-up leg itself gets faster or slower.
+    // even if the level-up leg itself gets faster or slower. When RCL3 was never reached this leg
+    // just times out to builtTick: null — still recorded, so every run lands in history.
     const builtTick = await colony.runUntil(
       async () => (await standing(rcl3Targets)) >= rcl3Targets.length,
       20_000,
       () => colony.sampleEnergy(energy)
     );
 
+    // Record + print before asserting, so a missed milestone is recorded (ticks: null) rather than dropped.
+    const report = energy.report();
+    const result = recordBenchmark(
+      "rcl3-buildings-built",
+      { ticks: builtTick, ...economyOf(report) },
+      ECONOMY_SPEC,
+      BENCH_OUT
+    );
+    reportBenchmark(result);
+
+    expect(
+      (await colony.controller()).level,
+      "RCL3 was never reached — the building milestone cannot be measured"
+    ).toBeGreaterThanOrEqual(TARGET_LEVEL);
     const built = await standing(rcl3Targets);
     expect(
       builtTick,
       `only ${built}/${rcl3Targets.length} RCL3 structures finished within 20000 ticks of RCL3`
     ).not.toBeNull();
-
-    const report = energy.report();
     expect(report.harvested, "no energy was harvested — the economy measurements are meaningless").toBeGreaterThan(0);
-
-    checkBenchmark(
-      recordBenchmark("rcl3-buildings-built", { ticks: builtTick, ...economyOf(report) }, ECONOMY_SPEC, BENCH_OUT)
-    );
+    assertNoRegression(result);
   },
   900_000
 );

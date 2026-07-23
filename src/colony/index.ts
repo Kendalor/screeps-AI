@@ -13,7 +13,9 @@ import type { Intent } from "../intents/types";
 import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
-import { planBuilding } from "./building";
+import { claimsOf, planBuilding, wantedStructures } from "./building";
+import { collectMetrics } from "./metrics";
+import { visualize } from "./metricsVisual";
 
 export class Colony {
   public readonly operations: Operation[];
@@ -41,6 +43,31 @@ export class Colony {
   /** The construction arbiter for this colony. */
   public building(): Intent[] {
     return planBuilding(this.snapshot, this.operations);
+  }
+
+  /**
+   * Collect this colony's metrics and render them to the room. The one capability that reaches into
+   * Memory to keep cross-tick state (the harvest-rate window) — collectMetrics folds this tick's
+   * sample in and reads the average back out. The report itself is derived, not stored.
+   *
+   * Returns the single roomVisual intent that paints the panel; execute.ts is the only place a live
+   * RoomVisual is touched, so collection stays pure.
+   */
+  public metrics(): Intent[] {
+    const mem = (Memory.metrics[this.name] ??= { harvestSamples: [] });
+    // The current-RCL structure target, derived exactly as the construction arbiter derives it:
+    // claimsOf() gives the operations' structure claims (containers &c.), wantedStructures() merges
+    // them with this level's bunker subset. Same call chain as building(), so "targeted" here can
+    // never disagree with what building actually places.
+    const targeted = wantedStructures(this.snapshot, claimsOf(this.snapshot, this.operations));
+    const report = collectMetrics(
+      this.snapshot,
+      this.requests(),
+      this.operations.map(op => op.name),
+      targeted,
+      mem
+    );
+    return [visualize(report)];
   }
 }
 

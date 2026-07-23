@@ -44,7 +44,7 @@ function wantedPreStorageUpgraders(colony: ColonySnapshot): number {
   // of energy sitting unspent. No cap — the controller is bottomless and the arbiter's affordability
   // guard is the real limit on headcount.
   const base = Math.max(MIN_PRE_STORAGE_UPGRADERS, colony.sources.length);
-  const surplusBonus = Math.floor((standingDrop + containerEnergy) / SURPLUS_PER_UPGRADER);
+  const surplusBonus = Math.ceil((standingDrop + containerEnergy) / SURPLUS_PER_UPGRADER);
   return base + surplusBonus;
 }
 
