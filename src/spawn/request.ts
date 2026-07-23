@@ -30,15 +30,20 @@ export interface CreepRequest {
 // way out, since every normal quota evaluates to zero.
 export const RECOVERY_PRIORITY = 1000;
 
-// Ports today's PRIORITY array order (bootstrap, miner, hauler, upgrader, builder) onto an absolute
-// scale — economy high, growth low. Gaps are deliberate so a future requester slots in without
-// renumbering. Relative order is byte-identical to the array it replaces.
+// Absolute priority scale — economy high, growth low. Gaps are deliberate so a future requester
+// slots in without renumbering.
+//
+// Builder now outranks upgrader (was the reverse): construction unlocks capacity — an extension lets
+// every future creep be bigger — so it compounds, while upgrading is a pure sink. Measured: with
+// upgraders ahead and uncapped, they ate every drop and two builders finished *zero* extensions in
+// 1500 ticks, freezing the room at 300 energy capacity. Feeding construction first breaks that. The
+// miner/hauler economy still leads both — nothing to build or upgrade without energy in hand.
 export const DEFAULT_PRIORITY = {
   bootstrap: 100,
   miner: 95,
   hauler: 90,
-  upgrader: 60,
-  builder: 50
+  builder: 65,
+  upgrader: 60
 } as const;
 
 /**

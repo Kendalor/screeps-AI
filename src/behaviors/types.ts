@@ -1,3 +1,5 @@
+import type { RoleName } from "../memory/schema";
+
 // How many creeps may share one resolved target: "allow"/absent = unlimited, "avoid" = exclusive (1), a number = that many.
 // Sources ignore this and use their open harvest-tile count as the cap instead.
 export type Share = "allow" | "avoid" | number;
@@ -9,6 +11,11 @@ export type TargetSpec =
   | { find: "source" }
   | { find: "constructionSite"; share?: Share }
   | { find: "controller" }
+  // A friendly creep, filtered by role. Lets haulers hand energy directly to consumers (upgraders,
+  // builders) when the fixed sinks are full, and lets those consumers pull from a hauler instead of
+  // chasing scattered drops. `where` reads the creep's store the same way it reads a structure's:
+  // "notFull" (has room to receive), "hasEnergy" (has energy to give).
+  | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share }
   | { find: "id"; id: Id<_HasId> };
 
 export type Step =

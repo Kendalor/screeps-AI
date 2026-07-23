@@ -34,7 +34,14 @@ export type TargetKind =
   | { kind: "source" }
   | { kind: "controller" }
   | { kind: "dropped" }
-  | { kind: "tombstone" };
+  | { kind: "tombstone" }
+  | { kind: "creep"; role?: string };
+
+// Role match for a creep spec: the spec names one role or a list, and the target must carry one of them.
+function roleMatches(role: string | undefined, spec: Extract<TargetSpec, { find: "creep" }>): boolean {
+  const wanted = Array.isArray(spec.role) ? spec.role : [spec.role];
+  return role !== undefined && wanted.includes(role as never);
+}
 
 export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
   switch (spec.find) {
@@ -43,6 +50,8 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
       return true;
     case "structure":
       return k.kind === "structure" && k.structureType === spec.type;
+    case "creep":
+      return k.kind === "creep" && roleMatches(k.role, spec);
     case "constructionSite":
     case "source":
     case "controller":
@@ -76,11 +85,15 @@ function toKind(obj: RoomObject): TargetKind | null {
     level?: number;
     resourceType?: ResourceConstant;
     deathTime?: number;
+    body?: unknown[];
+    memory?: { role?: string };
   };
   if (o.progressTotal !== undefined) return { kind: "constructionSite" };
   if (o.structureType !== undefined) return { kind: "structure", structureType: o.structureType };
   if (o.deathTime !== undefined) return { kind: "tombstone" };
   if (o.resourceType !== undefined) return { kind: "dropped" };
+  // A creep is the only positioned object with a body; read its role from memory for the spec filter.
+  if (o.body !== undefined) return { kind: "creep", role: o.memory?.role };
   if (o.energyCapacity !== undefined) return { kind: "source" };
   if (o.level !== undefined) return { kind: "controller" };
   return null;
@@ -91,7 +104,10 @@ function validLock(locked: Id<_HasId>, spec: TargetSpec): RoomObject | null {
   if (!obj) return null;
   const kind = toKind(obj);
   if (!kind || !fitsSpec(kind, spec)) return null;
-  if (kind.kind === "structure" && !matchesWhere(toCandidate(obj), spec.find === "structure" ? spec.where : undefined)) {
+  // Structures and creeps both carry a store-based `where`; re-check the lock still satisfies it
+  // (an extension that filled, a hauler that emptied) so the creep drops a stale target.
+  const where = spec.find === "structure" || spec.find === "creep" ? spec.where : undefined;
+  if ((kind.kind === "structure" || kind.kind === "creep") && !matchesWhere(toCandidate(obj), where)) {
     return null;
   }
   return obj;
@@ -109,8 +125,9 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
     return creep.room.controller ?? null;
   }
 
+  // Both structure and creep specs carry a `where` read off the target's store; apply it to either.
   const candidates = findCandidates(creep, spec).filter(
-    c => spec.find !== "structure" || matchesWhere(toCandidate(c), spec.where)
+    c => (spec.find !== "structure" && spec.find !== "creep") || matchesWhere(toCandidate(c), spec.where)
   );
   // A pile below the worthwhile floor is deprioritized, not excluded — falls back to the full
   // set below if nothing clears the bar, same as the share-cap fallback.
@@ -209,5 +226,12 @@ function findCandidates(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } |
       return room.find(FIND_MY_CONSTRUCTION_SITES);
     case "structure":
       return room.find(FIND_STRUCTURES).filter(s => s.structureType === spec.type);
+    case "creep": {
+      // Own creeps of the named role(s), never the actor itself — a creep transferring to itself is a no-op.
+      const wanted = Array.isArray(spec.role) ? spec.role : [spec.role];
+      return room
+        .find(FIND_MY_CREEPS)
+        .filter(c => c.id !== creep.id && c.memory.role !== undefined && wanted.includes(c.memory.role as never));
+    }
   }
 }

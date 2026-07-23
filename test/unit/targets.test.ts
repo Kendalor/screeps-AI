@@ -65,6 +65,20 @@ describe("locked target spec-fit", () => {
   it("an id spec fits whatever the id resolved to", () => {
     expect(fitsSpec({ kind: "source" }, { find: "id", id: "abc" as Id<_HasId> })).toBe(true);
   });
+
+  // A creep target is filtered by role — one role or a list. This is what keeps a hauler's
+  // consumer-feed step from targeting another hauler, and a builder's hauler-pull from targeting an
+  // upgrader.
+  it("a creep fits only a creep spec naming its role", () => {
+    const builder: TargetKind = { kind: "creep", role: "builder" };
+    expect(fitsSpec(builder, { find: "creep", role: "builder" })).toBe(true);
+    expect(fitsSpec(builder, { find: "creep", role: "hauler" })).toBe(false);
+    expect(fitsSpec(builder, { find: "creep", role: ["builder", "upgrader"] })).toBe(true);
+    expect(fitsSpec(builder, { find: "creep", role: ["hauler", "upgrader"] })).toBe(false);
+    // A structure never satisfies a creep spec and vice versa.
+    expect(fitsSpec({ kind: "structure", structureType: STRUCTURE_SPAWN }, { find: "creep", role: "builder" })).toBe(false);
+    expect(fitsSpec(builder, { find: "structure", type: STRUCTURE_SPAWN })).toBe(false);
+  });
 });
 
 // These tests assert the search never runs: the stub room's find() throws if
@@ -330,6 +344,74 @@ describe("openHarvestTiles", () => {
 
   it("excludes neighbors that fall off the room edge", () => {
     expect(openHarvestTiles({ pos: { x: 0, y: 0 }, room: plainRoom })).toBe(3);
+  });
+});
+
+// A creep candidate as room.find(FIND_MY_CREEPS) returns it: an id, a role in memory, and a store
+// the `where` filter reads. The acting creep carries its own id so findCandidates can exclude it.
+function fakeCreep(id: string, role: string, opts: { free?: number; used?: number } = {}): object {
+  return {
+    id,
+    pos: { x: 6, y: 6 },
+    body: [{ type: "carry" }],
+    memory: { role },
+    store: { getFreeCapacity: () => opts.free ?? 0, getUsedCapacity: () => opts.used ?? 0 }
+  };
+}
+
+// The actor: it never searches (findClosestByPath returns the first candidate), and room.find hands
+// back the fixed candidate list. Its own id is set so self-exclusion can be checked.
+function actorCreep(id: string, candidates: object[]): Creep {
+  return {
+    id,
+    pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+    room: { find: () => candidates }
+  } as unknown as Creep;
+}
+
+describe("resolveTarget creep targets", () => {
+  it("finds only creeps of the named role", () => {
+    const builder = fakeCreep("b1", "builder", { free: 50 });
+    const hauler = fakeCreep("h1", "hauler", { free: 50 });
+    stubGame({ objects: {} });
+
+    const got = resolveTarget(actorCreep("me", [builder, hauler]), { find: "creep", role: "builder", where: "notFull" });
+    expect((got as { id: string }).id).toBe("b1");
+  });
+
+  it("accepts a list of roles", () => {
+    const upgrader = fakeCreep("u1", "upgrader", { free: 50 });
+    stubGame({ objects: {} });
+
+    const got = resolveTarget(actorCreep("me", [upgrader]), {
+      find: "creep",
+      role: ["builder", "upgrader"],
+      where: "notFull"
+    });
+    expect((got as { id: string }).id).toBe("u1");
+  });
+
+  it("never targets the acting creep itself", () => {
+    // Only candidate is the actor — findCandidates must drop it, leaving nothing.
+    const me = fakeCreep("me", "hauler", { used: 50 });
+    stubGame({ objects: {} });
+
+    const got = resolveTarget(actorCreep("me", [me]), { find: "creep", role: "hauler", where: "hasEnergy" });
+    expect(got).toBeNull();
+  });
+
+  it("applies the where filter to the creep's store (hasEnergy / notFull)", () => {
+    const loaded = fakeCreep("full", "hauler", { used: 50, free: 0 });
+    const empty = fakeCreep("empty", "hauler", { used: 0, free: 50 });
+    stubGame({ objects: {} });
+
+    // A consumer pulling from a hauler wants one that HAS energy.
+    const pull = resolveTarget(actorCreep("me", [empty, loaded]), { find: "creep", role: "hauler", where: "hasEnergy" });
+    expect((pull as { id: string }).id).toBe("full");
+
+    // A hauler feeding a consumer wants one that is NOT full.
+    const feed = resolveTarget(actorCreep("me", [loaded, empty]), { find: "creep", role: "hauler", where: "notFull" });
+    expect((feed as { id: string }).id).toBe("empty");
   });
 });
 

@@ -13,6 +13,7 @@ import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { Mining } from "../../../src/operations/mining";
+import { DEFAULT_PRIORITY } from "../../../src/spawn/request";
 import { colonySnap, containerAt, openTerrain, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
 
 const GOAL = GOAL_JSON as GoalLayout;
@@ -312,42 +313,56 @@ describe("Mining.desiredCreeps — haulers", () => {
   });
 });
 
-// The arbiter spawns in flat priority order, so alternation is encoded in the priorities themselves:
-// each miner sits just above its paired hauler, each pair below the last. Sorting the whole demand by
-// priority must therefore yield miner, hauler, miner, hauler, ….
+// Alternation is encoded in the priorities: each request is ranked by what number-in-its-role it
+// would be (creeps already live of that role + its position in the deficit), and the roles interleave
+// on that global count. The point is that ranking must count *live* creeps, not this tick's request
+// index — otherwise every tick re-emits a top-priority miner and haulers never spawn (the measured
+// cold-start deadlock: 5 miners, 0 haulers, drops rotting, at tick 3000).
 describe("Mining.desiredCreeps — miner/hauler alternation", () => {
-  const roleOrder = (snap: Parameters<Mining["desiredCreeps"]>[0]) =>
+  const spawnOrder = (snap: Parameters<Mining["desiredCreeps"]>[0]) =>
     [...mining.desiredCreeps(snap)]
       .filter(r => r.memory.role === "miner" || r.memory.role === "hauler")
       .sort((a, b) => b.priority - a.priority)
       .map(r => r.memory.role);
 
-  it("interleaves miners and haulers rather than spawning every miner first", () => {
-    // Two saturated sources with live miners producing at the cap: several miners still wanted (the
-    // live ones don't fill the per-source target) and several haulers. The spawn order alternates.
+  // The deadlock this prevents: several miners already alive, none of them yet drained by a hauler.
+  // Ranking by request index alone would keep the remaining miners on top forever; ranking by live
+  // count puts the first haulers (hauler #1, #2) ahead of the next miners (miner #4, #5, …).
+  it("prioritises the first haulers over further miners once miners are already alive", () => {
     const snap = colonySnap({
       sources: [sourceAt(20, 10), sourceAt(20, 12)],
       anchor: { x: 10, y: 10 },
-      creeps: wnMiners(2, 5)
+      creeps: wnMiners(3, 5) // three miners live, no haulers — the stall case
     });
 
-    const order = roleOrder(snap);
-    expect(order[0]).toBe("miner"); // a miner always leads
-    // No two haulers spawn back-to-back before their miners: every hauler is preceded by a miner.
-    let miners = 0;
-    let haulers = 0;
-    for (const role of order) {
-      if (role === "miner") miners++;
-      else haulers++;
-      expect(haulers).toBeLessThanOrEqual(miners);
-    }
+    const order = spawnOrder(snap);
+    expect(order.filter(r => r === "hauler").length).toBeGreaterThan(0);
+    // Every hauler outranks every additional miner: no miner is spawned before the haulers the live
+    // miners already warrant.
+    const firstMinerIdx = order.indexOf("miner");
+    const lastHaulerIdx = order.lastIndexOf("hauler");
+    expect(lastHaulerIdx).toBeLessThan(firstMinerIdx);
   });
 
-  // "No haulers without miners" and "miners first": with nothing alive, only miners are asked for —
-  // hauler demand needs a producing miner first.
-  it("asks for miners only until one is producing", () => {
+  // Before any miner is alive, only miners are asked for and one leads — "miners first, no haulers
+  // without miners".
+  it("asks for miners only until one is producing, and a miner always leads", () => {
     const snap = colonySnap({ sources: [sourceAt(20, 10)], anchor: { x: 10, y: 10 } });
-    expect(new Set(roleOrder(snap))).toEqual(new Set(["miner"]));
+    const order = spawnOrder(snap);
+    expect(order[0]).toBe("miner");
+    expect(new Set(order)).toEqual(new Set(["miner"]));
+  });
+
+  // Priorities never dip into the upgrader tier (60), so a large fleet cannot invert against upgraders.
+  it("keeps miner/hauler priorities above the upgrader tier", () => {
+    const snap = colonySnap({
+      sources: [sourceAt(20, 10), sourceAt(20, 12)],
+      anchor: { x: 10, y: 10 },
+      creeps: wnMiners(3, 5)
+    });
+    for (const r of mining.desiredCreeps(snap)) {
+      expect(r.priority).toBeGreaterThan(DEFAULT_PRIORITY.upgrader);
+    }
   });
 });
 

@@ -51,7 +51,12 @@ const ENERGY_PER_CARRY = 50;
 // covers a short opening trip; the estimate self-corrects the moment an anchor is cached.
 const DEFAULT_HAUL_DISTANCE = 10;
 // The empire never fields fewer than one hauler once a miner is producing, nor an unbounded swarm.
-// The upper bound is a safety rail; the distance/income formula almost always lands well under it.
+// The upper bound is a safety rail; the distance/income formula sizes the fleet under it. Measured:
+// a *larger* fleet (9 haulers) does not clear the early-game drop backlog any better than 6, because
+// pre-container the bottleneck is the colony's small sink (a low-RCL room cannot consume 20
+// energy/tick over the haul distance), not carry capacity — so the cap earns its keep by not
+// over-spending body cost on haulers that would idle. The backlog clears at RCL3, when miners drop
+// into containers that hold the energy without it decaying.
 const MAX_HAULERS = 6;
 
 function sourceStructureType(rcl: number): BuildableStructureConstant {
@@ -59,29 +64,42 @@ function sourceStructureType(rcl: number): BuildableStructureConstant {
 }
 
 /**
- * Rewrite miner/hauler priorities so the arbiter's flat sort spawns them in alternation — miner,
- * hauler, miner, hauler — rather than draining the spawn budget on every miner before the first
- * hauler. Pair i puts the miner one step above its hauler, and each pair one step below the last:
+ * Rewrite miner/hauler priorities so the arbiter's flat sort *spawns* them in alternation — miner,
+ * hauler, miner, hauler — rather than every wanted miner before the first hauler.
  *
- *   miners:  95, 93, 91, ...   (DEFAULT_PRIORITY.miner - 2i)
- *   haulers: 94, 92, 90, ...   (one below the paired miner)
+ * The naive version (rank this tick's requests by their index) is a trap that deadlocks the cold
+ * start: each tick re-emits the whole remaining deficit, so the first miner request is *always* top
+ * priority and miners win every spawn until every source target is full — and because there is no
+ * hauler to fill the spawn, the room's spawn energy only trickles back at passive regen, so "every
+ * source full" never arrives and no hauler is ever spawned. Measured: a room stuck at 5 miners, 0
+ * haulers, drops rotting, after 3000 ticks.
  *
- * A flat descending sort over the result yields m0, h0, m1, h1, …. When one list is longer, its
- * surplus simply continues the descent past the last pair — miners stay ahead, haulers stay behind.
- * The step never carries the sequence below the upgrader tier (60) for any realistic fleet: even six
- * pairs bottoms out at 84.
+ * The rank has to count the creeps **already live**, not just this tick's requests. Each request is
+ * ranked by what number-in-its-role it would be (live of that role + its position in the deficit),
+ * and the two roles interleave on that global count:
  *
- * Priorities are absolute across the empire (PRD 0005 §3.5), so this reshuffles only *within* the
- * miner/hauler band the two roles already occupied — it does not reorder them against other roles.
+ *   the k-th miner  → DEFAULT_PRIORITY.miner - 2(k-1)     (95, 93, 91, …)
+ *   the k-th hauler → DEFAULT_PRIORITY.miner - 2(k-1) - 1 (94, 92, 90, …)
+ *
+ * With one miner already alive, the next hauler (k=1 → 94) outranks the *second* miner (k=2 → 93),
+ * so the arbiter spawns the first hauler before piling on more miners — the swap the demand owner
+ * makes when the balance calls for it. Priorities stay within the miner/hauler band (absolute across
+ * the empire, PRD 0005 §3.5), clamped so a large fleet never descends into the upgrader tier.
  */
-function interleaveByPriority(miners: CreepRequest[], haulers: CreepRequest[]): CreepRequest[] {
+function interleaveByPriority(
+  miners: CreepRequest[],
+  haulers: CreepRequest[],
+  liveMiners: number,
+  liveHaulers: number
+): CreepRequest[] {
+  const FLOOR = DEFAULT_PRIORITY.upgrader + 1; // never dip into the upgrader tier
+  const rank = (roleIndex: number, offset: 0 | 1): number =>
+    Math.max(FLOOR, DEFAULT_PRIORITY.miner - 2 * roleIndex - offset);
+
   const out: CreepRequest[] = [];
-  const pairs = Math.max(miners.length, haulers.length);
-  for (let i = 0; i < pairs; i++) {
-    const top = DEFAULT_PRIORITY.miner - 2 * i;
-    if (i < miners.length) out.push({ ...miners[i], priority: top });
-    if (i < haulers.length) out.push({ ...haulers[i], priority: top - 1 });
-  }
+  // The k-th miner is ranked against the k-th hauler, where k counts from the live headcount.
+  miners.forEach((m, i) => out.push({ ...m, priority: rank(liveMiners + i, 0) }));
+  haulers.forEach((h, i) => out.push({ ...h, priority: rank(liveHaulers + i, 1) }));
   return out;
 }
 
@@ -98,19 +116,25 @@ export class Mining extends Operation {
   public readonly kind = "mining";
 
   /**
-   * Miners and haulers, interleaved by priority so the arbiter spawns them miner, hauler, miner,
+   * Miners and haulers, interleaved by priority so the arbiter *spawns* them miner, hauler, miner,
    * hauler — not every miner first. The arbiter sorts on a flat absolute priority, so alternation
-   * has to be *encoded in the priorities themselves*: each miner sits one step above its paired
-   * hauler, each pair one step below the last. That way a room never spends its whole spawn budget
-   * standing up miners a lone hauler cannot keep drained, and it never over-provisions haulers ahead
-   * of the miners whose output justifies them.
+   * has to be encoded in the priorities themselves, ranked against the creeps already live so the
+   * balance is right across ticks rather than within one tick's deficit (see interleaveByPriority).
    *
-   * "Miners first, then a hauler" and "no haulers without miners" both still hold: the miner in each
-   * pair outranks its hauler, and hauler demand is zero until a live miner is producing
-   * (`haulerRequests`), so the very first spawn is always a miner.
+   * "Miners first, then a hauler" and "no haulers without miners" both hold: the first miner outranks
+   * the first hauler, and hauler demand is zero until a live miner is producing (`haulerRequests`),
+   * so the very first spawn is always a miner.
    */
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
-    return interleaveByPriority(this.minerRequests(colony), this.haulerRequests(colony));
+    // Live counts feed the interleave so a request is ranked by what number-in-its-role it would be,
+    // not its index within this tick's deficit — the difference between spawning a hauler after the
+    // first miner and never spawning one at all.
+    return interleaveByPriority(
+      this.minerRequests(colony),
+      this.haulerRequests(colony),
+      this.owned(colony, "miner").length,
+      this.owned(colony, "hauler").length
+    );
   }
 
   /**

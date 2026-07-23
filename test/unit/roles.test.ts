@@ -91,13 +91,15 @@ describe("bootstrap role", () => {
 });
 
 describe("builder role", () => {
-  it("resolves via roleDef and picks up a pile, then gathers from storage/container, falling back to harvest, before building", () => {
+  it("gathers from a drop, storage, container, then a hauler, falling back to harvest, before building", () => {
     expect(roleDef("builder")).toEqual({
       body: ROLES.builder.body,
       steps: [
         { do: "pickup", from: { find: "dropped" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+        // Pull a full load straight from a hauler before self-mining a trickle.
+        { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
         { do: "harvest", from: { find: "source" } },
         { do: "build" }
       ]
@@ -187,7 +189,7 @@ describe("miner role", () => {
 });
 
 describe("hauler role", () => {
-  it("empties a container before scattered drops, then fills storage before the spawning structures", () => {
+  it("empties a container before drops, fills structures, then hands surplus to consumers", () => {
     expect(roleDef("hauler")).toEqual({
       body: ROLES.hauler.body,
       steps: [
@@ -196,7 +198,9 @@ describe("hauler role", () => {
         { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
-        { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } }
+        { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
+        // Last: with every fixed sink full, feed a consumer directly rather than hold or drop energy.
+        { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } }
       ]
     });
   });
@@ -224,7 +228,7 @@ describe("supply role", () => {
 });
 
 describe("upgrader role", () => {
-  it("resolves via roleDef and picks up a pile, then withdraws from link/storage/container before upgrading", () => {
+  it("picks up a pile, withdraws from link/storage/container/hauler, then upgrades", () => {
     expect(roleDef("upgrader")).toEqual({
       body: ROLES.upgrader.body,
       steps: [
@@ -233,6 +237,8 @@ describe("upgrader role", () => {
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
         // The container step lets a pre-storage upgrader run off the mining economy.
         { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+        // And pulling from a hauler directly beats chasing scattered drops.
+        { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
         { do: "upgrade" }
       ]
     });

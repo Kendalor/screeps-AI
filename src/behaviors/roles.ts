@@ -105,21 +105,27 @@ export const ROLES = {
       { do: "upgrade" }
     ]
   },
-  // Refill from storage, then a container, then harvest directly; deliberately not bootstrapBody since a builder withdraws a full load in one tick, so the next WORK always beats extra CARRY.
+  // Refill from a drop, storage, a container, then a hauler directly, then harvest as a last resort.
+  // The hauler-withdraw step lets a builder pull a full load from a passing hauler instead of chasing
+  // scattered drops or harvesting a trickle itself — the fast way to keep a builder loaded pre-storage
+  // (haulers also push to builders, see the hauler role; the two meet in the middle). Harvest stays
+  // last: a builder self-mining is the slow fallback when no carried or stored energy is available.
   builder: {
     body: builderBody,
     steps: [
       { do: "pickup", from: { find: "dropped" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
       { do: "harvest", from: { find: "source" } },
       { do: "build" }
     ]
   },
-  // Refill from the controller link, then storage, then a mining container, then upgrade. The
-  // container step is what lets a pre-storage upgrader work at all: before storage there is no link
-  // and no storage to draw from, so without it the upgrader would wander inert — the container is
-  // the early-game economy's only standing energy store, and dedicated upgraders lead the RCL climb.
+  // Refill from the controller link, then storage, a mining container, then a hauler directly, then
+  // upgrade. The container and hauler steps are what let a pre-storage upgrader work at all: before
+  // storage there is no link or storage to draw from, so without them the upgrader would wander inert.
+  // Pulling from a hauler beats chasing scattered drops (haulers also push to upgraders — see the
+  // hauler role), and dedicated upgraders lead the RCL climb.
   upgrader: {
     body: upgraderBody,
     steps: [
@@ -127,6 +133,7 @@ export const ROLES = {
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
       { do: "upgrade" }
     ]
   },
@@ -152,10 +159,12 @@ export const ROLES = {
   // Drains mining containers and drop piles into the colony's sinks. Source side: a container is a
   // concentrated load a hauler empties in one visit, so it comes before scattered ground piles
   // (which are the pre-container fallback). Sink side: storage first when it exists (the steady-state
-  // sink), else keep the spawning structures topped up — spawn, extensions, towers — since with
-  // bootstrap gone the hauler is the *only* thing filling extensions, and an unfilled extension caps
-  // the room's spawn energy and stalls the climb. The upgrade/build sinks are served by those roles
-  // pulling from the drops/containers directly, not pushed here.
+  // sink), else keep the spawning structures topped up — spawn, extensions, towers. The *last* sink
+  // is the consumers themselves: once every structure is full, a hauler still holding energy hands it
+  // straight to a builder or upgrader rather than sitting on it or dropping it to decay. That step
+  // only fires when the structure sinks have no not-full target, so it never diverts energy the
+  // spawn/extensions still need. Consumers also pull from haulers themselves (see their roles), so
+  // the two meet in the middle — whichever acts first moves the load.
   hauler: {
     body: haulerBody,
     steps: [
@@ -164,7 +173,9 @@ export const ROLES = {
       { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } }
+      { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
+      // Fixed sinks full — hand the surplus directly to a consumer instead of holding or dropping it.
+      { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } }
     ]
   }
 } satisfies Partial<Record<RoleName, RoleDef>>;
