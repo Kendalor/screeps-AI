@@ -4,23 +4,23 @@ import type { RoleName } from "../memory/schema";
 // Sources ignore this and use their open harvest-tile count as the cap instead.
 export type Share = "allow" | "avoid" | number;
 
-// Breaks the tie deterministically when room.find()'s unspecified order would otherwise decide —
-// either as the pool[0] fallback (no reachable path) or among several candidates equidistant by path.
+// The selection strategy a step declares outright — there is no implicit fallback search.
+// "nearest" (the default when a spec omits `prefer`) asks the path engine for the closest candidate.
 // "largest" ranks a drop pile by its amount; "mostProgress" ranks a construction site closest to done.
-export type Prefer = "largest" | "mostProgress";
+export type Prefer = "nearest" | "largest" | "mostProgress";
 
 export type TargetSpec =
-  | { find: "structure"; type: StructureConstant; where?: "notFull" | "hasEnergy" | "damaged"; share?: Share }
-  | { find: "dropped"; share?: Share; prefer?: "largest" }
-  | { find: "tombstone"; share?: Share }
+  | { find: "structure"; type: StructureConstant; where?: "notFull" | "hasEnergy" | "damaged"; share?: Share; prefer?: Prefer }
+  | { find: "dropped"; share?: Share; prefer?: Prefer }
+  | { find: "tombstone"; share?: Share; prefer?: Prefer }
   | { find: "source" }
-  | { find: "constructionSite"; share?: Share; prefer?: "mostProgress" }
+  | { find: "constructionSite"; share?: Share; prefer?: Prefer }
   | { find: "controller" }
   // A friendly creep, filtered by role. Lets haulers hand energy directly to consumers (upgraders,
   // builders) when the fixed sinks are full, and lets those consumers pull from a hauler instead of
   // chasing scattered drops. `where` reads the creep's store the same way it reads a structure's:
   // "notFull" (has room to receive), "hasEnergy" (has energy to give).
-  | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share }
+  | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share; prefer?: Prefer }
   | { find: "id"; id: Id<_HasId> };
 
 // A precondition on the CREEP's own store, distinct from a target's `where`: the step only runs

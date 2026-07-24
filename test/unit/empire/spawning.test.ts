@@ -41,6 +41,35 @@ describe("spawn arbiter — single colony", () => {
     ).toEqual([]);
   });
 
+  // Regression: an RCL1 colony (300 capacity) with the economy staffed and energy on the ground wants
+  // a dedicated upgrader, but the upgrader body was sized to a fixed 350-cost base — more than a
+  // 300-capacity room can ever hold. The arbiter *silently skips* a body costing more than the room's
+  // full capacity (it can never afford it, so it never waits either), so the upgrader sat at 0/N with
+  // the spawn idle and full, forever. The body must degrade to something the room can pay for; the
+  // arbiter must then actually emit the spawn.
+  it("spawns a dedicated upgrader at the RCL1 floor rather than silently skipping an unaffordable body", () => {
+    const source = sourceAt(20, 10, "source_20_10", 1);
+    const intents = arbitrate({
+      spawns: [spawn()],
+      energyAvailable: 300,
+      energyCapacity: 300,
+      controllerLevel: 1,
+      sources: [source],
+      // Economy staffed so upgrading is the only outstanding demand.
+      creeps: [
+        snapCreep("miner", { memory: { sourceId: source.id, op: "mining:W1N1" } }),
+        ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } })
+      ],
+      // Energy on the ground gives the upgrader something to draw from, so upgrading asks for one.
+      drops: [dropAt(20, 10, 200)]
+    });
+
+    expect(intents).toHaveLength(1);
+    const spawnIntent = intents[0] as Extract<Intent, { kind: "spawn" }>;
+    expect(spawnIntent.memory.role).toBe("upgrader");
+    expect(bodyCost(spawnIntent.body)).toBeLessThanOrEqual(300);
+  });
+
   it("does not spawn from a busy spawn", () => {
     expect(arbitrate({ spawns: [spawn("spawn1", true)], sources: [sourceAt(20, 10)] })).toEqual([]);
   });

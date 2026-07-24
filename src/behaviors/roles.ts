@@ -45,11 +45,21 @@ function builderBody(energy: number): BodyPartConstant[] {
 // A 2:1 weight:MOVE body — fast on roads at every size. The base needs two MOVE, not one: its two
 // WORK plus the CARRY are three weight parts, so a single MOVE leaves the creep at 3:1 and it crawls
 // (empty upgraders barely move). Each heavy-WORK set is already a clean 2:1.
-const UPGRADER_BASE: BodyPartConstant[] = [WORK, WORK, CARRY, MOVE, MOVE];
+const UPGRADER_BASE: BodyPartConstant[] = [WORK, WORK, CARRY, MOVE, MOVE]; // 350
+// The RCL1 floor: a 300-capacity room (one spawn, no extensions) cannot pay the 350 base, and the
+// spawn arbiter *silently skips* a body costing more than the room's full energyCapacity — it can
+// never afford it, so it never waits on it either, leaving a dedicated upgrader stuck at 0/N with an
+// idle, full spawn. So below the base's cost we drop to this: one WORK to upgrade, a CARRY so it can
+// actually refill (a CARRY-less upgrader just sits inert at the controller), 1:1 MOVE so it never
+// crawls. Costs 250 — spawnable at the 300 floor.
+const UPGRADER_FLOOR: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE]; // 250
 const UPGRADER_SET: BodyPartConstant[] = [WORK, WORK, MOVE];
 const MAX_UPGRADER_SETS = 7;
 
 function upgraderBody(energy: number): BodyPartConstant[] {
+  // Below the base's cost, field the affordable floor rather than an unspawnable base.
+  if (energy < bodyCost(UPGRADER_BASE)) return [...UPGRADER_FLOOR];
+
   const spare = Math.max(0, energy - bodyCost(UPGRADER_BASE));
   const sets = affordableSets(spare, UPGRADER_SET, 0, MAX_UPGRADER_SETS);
   let body: BodyPartConstant[] = UPGRADER_BASE;
@@ -122,15 +132,19 @@ export const ROLES = {
   // scattered drops or harvesting a trickle itself — the fast way to keep a builder loaded pre-storage
   // (haulers also push to builders, see the hauler role; the two meet in the middle). Harvest stays
   // last: a builder self-mining is the slow fallback when no carried or stored energy is available.
+  // Each step names its own selection strategy explicitly, not an implicit search default: pickup
+  // takes the biggest pile (worth the detour), every withdraw takes the nearest source of energy
+  // (storage/container/hauler are interchangeable, so distance is what should decide), and build
+  // takes the site with the most progress (finish what's closest to done before starting more).
   builder: {
     body: builderBody,
     steps: [
       { do: "pickup", from: { find: "dropped", prefer: "largest" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy", prefer: "nearest" } },
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy", prefer: "nearest" } },
+      { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy", prefer: "nearest" } },
       { do: "harvest", from: { find: "source" } },
-      { do: "build" }
+      { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
     ]
   },
   // Steps with no valid target are skipped, so the loop runs upgrade first and refills behind it:

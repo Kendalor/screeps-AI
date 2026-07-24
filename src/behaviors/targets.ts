@@ -137,23 +137,30 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
   const uncrowded = consider.filter(c =>
     withinShareCap(creep, (c as unknown as { id: Id<_HasId> }).id, shareCap(spec, c))
   );
-  const pool = applyPrefer(spec, uncrowded.length > 0 ? uncrowded : consider);
+  const pool = uncrowded.length > 0 ? uncrowded : consider;
 
-  return creep.pos.findClosestByPath(pool as RoomObject[]) ?? pool[0] ?? null;
+  return pickByPrefer(creep, spec, pool);
 }
 
-// Orders the pool so the pool[0] fallback (and ties in findClosestByPath) resolve the same way
-// every time, instead of following room.find()'s unspecified order. Opt-in via spec.prefer — no
-// prefer means the step's existing (undetermined-order) behavior is unchanged.
-function applyPrefer(spec: TargetSpec, pool: RoomObject[]): RoomObject[] {
-  const prefer = (spec as { prefer?: Prefer }).prefer;
+// The step decides how a target is picked; there is no implicit fallback search. "nearest" (the
+// default when a spec omits `prefer`) is the only strategy that asks the path engine — "largest" and
+// "mostProgress" sort the pool themselves and take the winner outright, so they no longer get
+// silently overridden by proximity.
+function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomObject | null {
+  const prefer = (spec as { prefer?: Prefer }).prefer ?? "nearest";
   if (prefer === "largest") {
-    return [...pool].sort((a, b) => (b as unknown as { amount: number }).amount - (a as unknown as { amount: number }).amount);
+    const sorted = [...pool].sort(
+      (a, b) => (b as unknown as { amount: number }).amount - (a as unknown as { amount: number }).amount
+    );
+    return sorted[0] ?? null;
   }
   if (prefer === "mostProgress") {
-    return [...pool].sort((a, b) => (b as unknown as { progress: number }).progress - (a as unknown as { progress: number }).progress);
+    const sorted = [...pool].sort(
+      (a, b) => (b as unknown as { progress: number }).progress - (a as unknown as { progress: number }).progress
+    );
+    return sorted[0] ?? null;
   }
-  return pool;
+  return creep.pos.findClosestByPath(pool) ?? pool[0] ?? null;
 }
 
 // The minimum a drop pile must hold before a creep will walk to it: a fraction of the

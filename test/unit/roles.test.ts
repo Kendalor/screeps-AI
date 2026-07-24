@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ROLES, roleDef } from "../../src/behaviors/roles";
+import { bodyCost } from "../../src/behaviors/body";
 
 describe("bootstrap body (ported Allrounder.getBody)", () => {
   const body = (energy: number) => ROLES.bootstrap.body(energy);
@@ -65,18 +66,38 @@ describe("upgrader body (ported Upgrader.getBody)", () => {
 
   // The base carries two MOVE, not one: two WORK plus a CARRY are three weight parts, so a single
   // MOVE would leave it at 3:1 and crawling. Two MOVE make it a clean 2:1, fast on roads.
-  it("builds the WORK,WORK,CARRY base with two MOVE (2:1) at the floor", () => {
-    expect(body(300)).toEqual([WORK, WORK, CARRY, MOVE, MOVE]);
-    expect(body(0)).toEqual([WORK, WORK, CARRY, MOVE, MOVE]);
+  it("builds the WORK,WORK,CARRY base with two MOVE (2:1) once the room can afford it", () => {
+    expect(body(350)).toEqual([WORK, WORK, CARRY, MOVE, MOVE]);
+  });
+
+  // The full 350-cost base is unspawnable in a 300-capacity room (RCL1, no extensions), and the
+  // arbiter *silently skips* a body that costs more than the room's full energyCapacity — it can
+  // never afford it, so it never stops on it either. That left a dedicated upgrader stuck at 0/N,
+  // spawn idle and full, forever. So the base must degrade to something the floor can pay for, while
+  // keeping a CARRY (an upgrader with no CARRY cannot refill and just sits inert at the controller).
+  it("degrades to an affordable body at the RCL1 floor rather than an unspawnable base", () => {
+    const b = body(300);
+    expect(bodyCost(b)).toBeLessThanOrEqual(300);
+    expect(b).toContain(WORK);
+    expect(b).toContain(CARRY);
+    expect(b).toContain(MOVE);
+  });
+
+  it("never returns a body costing more than the energy it was sized against", () => {
+    for (const e of [0, 200, 250, 300, 349]) {
+      expect(bodyCost(body(e))).toBeLessThanOrEqual(Math.max(250, e));
+    }
   });
 
   it("adds WORK,WORK,MOVE sets (2 WORK : 1 MOVE) as energy grows", () => {
     expect(body(800)).toEqual([WORK, WORK, CARRY, MOVE, MOVE, WORK, WORK, MOVE]);
   });
 
-  // The whole body stays a true 2:1 weight:MOVE at every size, so it never fatigues on roads.
-  it("keeps one MOVE per two weight parts at every size", () => {
-    for (const e of [300, 550, 800, 1200, 5000]) {
+  // The whole body stays a true 2:1 weight:MOVE at every size the base is affordable at, so it never
+  // fatigues on roads. Below 350 it drops to the 1:1 floor rung (see the RCL1-floor test above),
+  // which is deliberately not 2:1 — a 2:1 body that small has too few WORK to be worth spawning.
+  it("keeps one MOVE per two weight parts at every size the base is affordable at", () => {
+    for (const e of [350, 550, 800, 1200, 5000]) {
       const b = body(e);
       const weight = b.filter(p => p === WORK || p === CARRY).length;
       const moves = b.filter(p => p === MOVE).length;
@@ -107,13 +128,13 @@ describe("builder role", () => {
     expect(roleDef("builder")).toEqual({
       body: ROLES.builder.body,
       steps: [
-        { do: "pickup", from: { find: "dropped" } },
-        { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
-        { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+        { do: "pickup", from: { find: "dropped", prefer: "largest" } },
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy", prefer: "nearest" } },
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy", prefer: "nearest" } },
         // Pull a full load straight from a hauler before self-mining a trickle.
-        { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
+        { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy", prefer: "nearest" } },
         { do: "harvest", from: { find: "source" } },
-        { do: "build" }
+        { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
       ]
     });
   });
