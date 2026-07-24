@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { bodyCost } from "../../../src/behaviors/body";
 import { planSpawning } from "../../../src/empire/spawning";
 import type { Intent } from "../../../src/intents/types";
-import { colonySnap, containerAt, roomDistance, snapCreep, snapCreeps, sourceAt, spawn, testEmpire } from "../../fixtures";
+import { colonySnap, containerAt, dropAt, roomDistance, snapCreep, snapCreeps, sourceAt, spawn, testEmpire } from "../../fixtures";
 
 // The arbiter takes colonies + a room-distance function. Every ported single-colony case wraps one
 // colony snapshot into an empire and reads back its colonies.
@@ -112,6 +112,63 @@ describe("spawn arbiter — single colony", () => {
         containers: [containerAt(10, 10, 500)]
       })
     ).toEqual([]);
+  });
+
+  // The bug: after a wipe recovers, the room's energy sits between the (capacity-sized) miner body
+  // cost and the cheaper upgrader body. Skipping the unaffordable miner to spawn the affordable
+  // upgrader inverts priority — the very report that motivated this. The colony must stop, not skip.
+  it("does not spawn a cheaper lower-priority creep when a higher-priority one is unaffordable", () => {
+    const source = sourceAt(20, 10);
+    const intents = arbitrate({
+      // One miner alive so recovery is silent; a source container makes the miner body capacity-sized
+      // (5 WORK + MOVE = 550) and the hauler 500, while the upgrader base is only 350 — so 350 energy
+      // buys the upgrader but neither of the higher-priority economy creeps.
+      creeps: snapCreeps("miner", 1),
+      spawns: [spawn()],
+      energyAvailable: 350,
+      energyCapacity: 550,
+      controllerLevel: 3,
+      sources: [source],
+      containers: [containerAt(source.x + 1, source.y, 500)],
+      // Standing energy so the upgrader quota is non-zero — the cheaper request that must NOT jump ahead.
+      drops: [dropAt(25, 25, 500)],
+      constructionProgress: 0
+    });
+
+    // Either nothing spawns (the colony stopped on the unaffordable miner) or a miner spawns — never
+    // an upgrader ahead of the miner.
+    const spawned = intents.filter(i => i.kind === "spawn") as Extract<Intent, { kind: "spawn" }>[];
+    expect(spawned.every(i => i.memory.role !== "upgrader")).toBe(true);
+  });
+
+  // The counterpart to the stop rule: a body the room can never pay for — cost above its full
+  // energyCapacity, not merely above what is available now — is skipped, not stopped, because
+  // waiting for a refill that can never reach it would freeze the colony's cheaper work forever.
+  it("skips a request whose body exceeds energy capacity and spawns the affordable one behind it", () => {
+    const empire = testEmpire(
+      colonySnap({ name: "W1N1", spawns: [spawn()], energyAvailable: 300, energyCapacity: 300, sources: [] })
+    );
+    // Two hand-built requests: an impossible one (600 > capacity 300) at top priority, and a cheap
+    // affordable one behind it. No requester emits an over-capacity body, so this drives the arbiter directly.
+    empire.colonies[0].requests = () => [
+      {
+        body: [WORK, WORK, WORK, WORK, WORK, WORK], // 600, over the 300 cap
+        priority: 500,
+        memory: { role: "upgrader", home: "W1N1", op: "toobig:W1N1" },
+        targetRoom: "W1N1"
+      },
+      {
+        body: [WORK, CARRY, MOVE], // 200, affordable
+        priority: 100,
+        memory: { role: "builder", home: "W1N1", op: "cheap:W1N1" },
+        targetRoom: "W1N1"
+      }
+    ];
+
+    const intents = planSpawning(empire.colonies, roomDistance);
+    const ops = intents.filter(i => i.kind === "spawn").map(i => (i as Extract<Intent, { kind: "spawn" }>).memory.op);
+    // The impossible request is skipped; the cheap one behind it still spawns.
+    expect(ops).toEqual(["cheap:W1N1"]);
   });
 
   it("does not block a lower-priority request an unaffordable recovery request cannot pay for", () => {

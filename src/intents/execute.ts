@@ -87,7 +87,9 @@ function act(intent: Intent): ScreepsReturnCode {
       // The scout must actually have vision for the observation to be real — the operation only emits
       // this for a room its scout stands in, but a lost creep between snapshot and execute is possible.
       if (!room) return ERR_NOT_FOUND;
-      const mem = (Memory.rooms[intent.room] ??= {} as RoomMemory);
+      // Memory.rooms may not exist yet on a fresh isolate; create the container before indexing it.
+      const rooms = (Memory.rooms ??= {});
+      const mem = (rooms[intent.room] ??= {} as RoomMemory);
       mem.scouted = observeRoom(room);
       return OK;
     }

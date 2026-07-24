@@ -141,6 +141,31 @@ export function bunkerTerrain(): TerrainMatrix {
   return terrain;
 }
 
+// Like bunkerTerrain() but with the home room's borders opened *exactly where stubWorld's neighbours
+// already have their exits*, so a scout can actually cross. bunkerTerrain() walls the whole perimeter
+// (right for a colony-in-a-box economy test, but it traps a scout); a room transition needs both
+// sides' border tiles walkable at matching coordinates, so the openings can't be arbitrary — they
+// must line up with the neighbour's own exit tiles.
+//
+// For the default room W0N1 in stubWorld, the aligned exits are: north (top x=25..27, into W0N2) and
+// west (left y=4..38, into W1N1). The south neighbour W0N0 has no facing exit, so there is
+// deliberately no south opening. The openings sit clear of the anchor region (interior wall bands at
+// x∈{6,7} and x∈34..45,y∈{40,41}), so clearance near centre is unchanged and pickAnchor still succeeds.
+export function scoutableTerrain(): TerrainMatrix {
+  const terrain = bunkerTerrain();
+  // North exit toward W0N2 — matches W0N2's bottom opening at x=25..27.
+  for (let x = 25; x <= 27; x++) terrain.set(x, 0, "plain");
+  // West exit toward W1N1 — a slice of W1N1's right opening (y=4..38). A few tiles is enough for the
+  // transition; keep it clear of the x∈{6,7} interior band's y-range (3..15) by opening lower down.
+  for (let y = 30; y <= 34; y++) terrain.set(0, y, "plain");
+  return terrain;
+}
+
+// The map neighbours of the default room W0N1 that scoutableTerrain() actually connects to (north
+// and west); the south neighbour W0N0 has no facing exit in stubWorld. Exposed so the scouting test
+// asserts against the reachable set rather than restating it.
+export const SCOUTABLE_NEIGHBOURS = ["W0N2", "W1N1"] as const;
+
 // ---------------------------------------------------------------------------
 // Predicting the bot's anchor before the bot exists
 // ---------------------------------------------------------------------------
@@ -378,7 +403,10 @@ export class BootedColony {
         .filter(o => o.type !== "controller" && o.type !== "source" && o.type !== "mineral" && o.type !== "creep")
         .map(o => ({ x: o.x, y: o.y, type: o.type as BuildableStructureConstant })),
       sites: [],
-      constructionProgress: 0
+      constructionProgress: 0,
+      // The layout planners this snapshot feeds never read scout targets; scouting demand is sized by
+      // the running bot in-engine, not seeded.
+      scoutTargets: []
     };
   }
 
@@ -386,6 +414,26 @@ export class BootedColony {
   async memory(): Promise<Record<string, unknown>> {
     const raw = await this.bot.memory;
     return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  }
+
+  // The rooms the bot has recorded a scout observation for — Memory.rooms[name].scouted, written by
+  // the recordScout intent. Keyed by room name; the value is the ScoutInfo the bot stored. Empty
+  // before any scout has entered a foreign room.
+  async scoutedRooms(): Promise<Record<string, { tick?: number; sources?: number; type?: string }>> {
+    const mem = (await this.memory()) as {
+      rooms?: Record<string, { scouted?: { tick?: number; sources?: number; type?: string } }>;
+    };
+    const out: Record<string, { tick?: number; sources?: number; type?: string }> = {};
+    for (const [name, room] of Object.entries(mem.rooms ?? {})) {
+      if (room.scouted) out[name] = room.scouted;
+    }
+    return out;
+  }
+
+  // The empire's current scouting radius (Memory.scouting.radius), or 1 before scouting has run.
+  async scoutRadius(): Promise<number> {
+    const mem = (await this.memory()) as { scouting?: { radius?: number } };
+    return mem.scouting?.radius ?? 1;
   }
 
   /**

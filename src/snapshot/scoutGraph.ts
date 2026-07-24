@@ -37,7 +37,9 @@ export function scoutCandidatesAround(origin: string, radius: number): ScoutCand
           room: neighbour,
           distance: roomLinearDistance(origin, neighbour),
           type: roomType(neighbour),
-          info: Memory.rooms[neighbour]?.scouted
+          // Memory.rooms is created lazily by the engine and can be undefined on a fresh isolate, so
+          // it is guarded rather than indexed blind — indexing undefined here crashes the whole tick.
+          info: Memory.rooms?.[neighbour]?.scouted
         });
       }
     }

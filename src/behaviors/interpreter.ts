@@ -115,9 +115,16 @@ function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" }): 
 
   // Follow the stored route if it still leads to this destination; otherwise a plain travelTo, which
   // also covers the static-room case and the route-computation-failed fallback.
+  //
+  // Head for the next room's centre. No `range` option: Traveler's early-out compares a *global*
+  // cross-room range against `range`, so a large range (the room's own radius) makes the creep stop
+  // one room short — on the near side of the border, never entering the target. Pathing to the centre
+  // costs a scout almost nothing and guarantees it actually crosses in, which is what arrival
+  // (creep.room.name === dest) is waiting for. A small range keeps it from fighting for the exact
+  // centre tile once inside.
   const route = creep.memory.route;
   const nextRoom = route && route.dest === dest ? advanceRoute(route, creep.room.name) : dest;
-  creep.travelTo(new RoomPosition(25, 25, nextRoom), { range: 20 });
+  creep.travelTo(new RoomPosition(25, 25, nextRoom), { range: 3 });
   return { acted: true };
 }
 
