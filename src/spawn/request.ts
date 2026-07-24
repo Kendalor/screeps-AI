@@ -30,25 +30,10 @@ export interface CreepRequest {
 // way out, since every normal quota evaluates to zero.
 export const RECOVERY_PRIORITY = 1000;
 
-// Absolute priority scale — economy high, growth low. Gaps are deliberate so a future requester
-// slots in without renumbering.
-//
-// Builder now outranks upgrader (was the reverse): construction unlocks capacity — an extension lets
-// every future creep be bigger — so it compounds, while upgrading is a pure sink. Measured: with
-// upgraders ahead and uncapped, they ate every drop and two builders finished *zero* extensions in
-// 1500 ticks, freezing the room at 300 energy capacity. Feeding construction first breaks that. The
-// miner/hauler economy still leads both — nothing to build or upgrade without energy in hand.
-export const DEFAULT_PRIORITY = {
-  bootstrap: 100,
-  miner: 95,
-  hauler: 90,
-  builder: 65,
-  upgrader: 60,
-  // Below the whole economy: a scout is a single cheap MOVE and pure future value (vision for remote
-  // mining/expansion), so it yields every spawn to a creep that produces or builds now. It still sits
-  // above the floor so a settled colony with spare energy does eventually field one.
-  scout: 30
-} as const;
+// The per-role default priority now lives on each role class (behaviors/roles/*.ts) as a static
+// `priority` field, read via roleDef(role).priority — see behaviors/roles/role.ts for the scale
+// this replaced (economy high, growth low; builder outranks upgrader since construction compounds
+// capacity while upgrading is a pure sink).
 
 /**
  * The name a requester stamps on `CreepMemory.op` to claim the creeps it ordered. In stage 2 the

@@ -9,10 +9,11 @@
 // route computation, moveToRoom does the walking, and this operation only *decides* — how many
 // scouts, and which room each records or heads for next.
 
+import { roleDef } from "../behaviors/roles";
 import { needsScouting, pickScoutTarget } from "../behaviors/scout";
 import type { Intent } from "../intents/types";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
-import { DEFAULT_PRIORITY, type CreepRequest } from "../spawn/request";
+import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
 // The staleness rules live in the behaviour's pure core (shared with the target picker); re-exported
@@ -43,7 +44,7 @@ export class Scouting extends Operation {
     if (todo.length === 0) return [];
 
     const wanted = Math.min(MAX_SCOUTS, Math.ceil(todo.length / ROOMS_PER_SCOUT));
-    return this.fillRole(colony, "scout", wanted, DEFAULT_PRIORITY.scout);
+    return this.fillRole(colony, "scout", wanted, roleDef("scout")!.priority);
   }
 
   /**

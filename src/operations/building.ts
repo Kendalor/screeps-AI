@@ -4,8 +4,9 @@
 //
 // Pure — reads the snapshot, returns plain requests, never touches Game.*.
 
+import { roleDef } from "../behaviors/roles";
 import type { ColonySnapshot } from "../snapshot/types";
-import { DEFAULT_PRIORITY, type CreepRequest } from "../spawn/request";
+import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
 // One builder per this much outstanding work. No cap — like upgraders, builders are a sink for
@@ -33,6 +34,6 @@ export class Building extends Operation {
   public readonly kind = "building";
 
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
-    return this.fillRole(colony, "builder", wantedBuilders(colony), DEFAULT_PRIORITY.builder);
+    return this.fillRole(colony, "builder", wantedBuilders(colony), roleDef("builder")!.priority);
   }
 }

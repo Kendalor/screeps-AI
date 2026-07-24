@@ -4,8 +4,9 @@
 //
 // Pure — reads the snapshot, returns plain requests, never touches Game.*.
 
+import { roleDef } from "../behaviors/roles";
 import type { ColonySnapshot } from "../snapshot/types";
-import { DEFAULT_PRIORITY, type CreepRequest } from "../spawn/request";
+import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
 // Below this, storage is reserved for other spending; above it, one extra upgrader per 40k stored.
@@ -59,6 +60,6 @@ export class Upgrading extends Operation {
   public readonly kind = "upgrading";
 
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
-    return this.fillRole(colony, "upgrader", wantedUpgraders(colony), DEFAULT_PRIORITY.upgrader);
+    return this.fillRole(colony, "upgrader", wantedUpgraders(colony), roleDef("upgrader")!.priority);
   }
 }

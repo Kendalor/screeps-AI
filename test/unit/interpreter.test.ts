@@ -11,7 +11,7 @@ const STEPS: Step[] = [
 ];
 
 function state(over: Partial<CreepState> = {}): CreepState {
-  return { step: 0, free: 50, used: 0, targetGone: false, acted: false, ...over };
+  return { step: 0, free: 50, used: 0, targetGone: false, didAct: false, ...over };
 }
 
 describe("advanceRoute", () => {
@@ -97,15 +97,15 @@ describe("oneShot gate", () => {
   ];
 
   it("stays on a oneShot step the tick it has not yet acted", () => {
-    expect(nextStep(ONE_SHOT, state({ step: 1, free: 0, used: 50, acted: false }))).toBe(1);
+    expect(nextStep(ONE_SHOT, state({ step: 1, free: 0, used: 50, didAct: false }))).toBe(1);
   });
 
   it("advances off a oneShot step the instant it acts, even while still carrying energy", () => {
-    expect(nextStep(ONE_SHOT, state({ step: 1, free: 25, used: 25, acted: true }))).toBe(0);
+    expect(nextStep(ONE_SHOT, state({ step: 1, free: 25, used: 25, didAct: true }))).toBe(0);
   });
 
-  it("a plain spend step (no oneShot) ignores acted and stays until the store is empty", () => {
-    expect(nextStep(ONE_SHOT, state({ step: 0, free: 25, used: 25, acted: true }))).toBe(0);
+  it("a plain spend step (no oneShot) ignores didAct and stays until the store is empty", () => {
+    expect(nextStep(ONE_SHOT, state({ step: 0, free: 25, used: 25, didAct: true }))).toBe(0);
   });
 });
 
@@ -157,13 +157,13 @@ describe("runStep target reporting", () => {
     const s = site("siteA");
     stubGame({ objects: { siteA: s } });
 
-    expect(runStep(siteCreep({ built: [s] }), { do: "build" })).toEqual({ acted: true, target: "siteA" });
+    expect(runStep(siteCreep({ built: [s] }), { do: "build" })).toEqual({ acted: true, didAct: true, target: "siteA" });
   });
 
   it("reports no action when no target resolves", () => {
     stubGame({ objects: {} });
 
-    expect(runStep(siteCreep({ built: [] }), { do: "build" })).toEqual({ acted: false });
+    expect(runStep(siteCreep({ built: [] }), { do: "build" })).toEqual({ acted: false, didAct: false });
   });
 
   it("acts on the locked target rather than the nearest one", () => {
@@ -174,7 +174,7 @@ describe("runStep target reporting", () => {
 
     const used = runStep(creep, { do: "build" }, "locked" as Id<_HasId>);
 
-    expect(used).toEqual({ acted: true, target: "locked" });
+    expect(used).toEqual({ acted: true, didAct: true, target: "locked" });
     expect((creep as unknown as { actedOn: string[] }).actedOn).toEqual(["locked"]);
   });
 });

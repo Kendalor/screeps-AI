@@ -71,4 +71,5 @@ export interface BodyContext {
 export interface RoleDef {
   body: (energy: number, ctx: BodyContext) => BodyPartConstant[];
   steps: Step[];
+  priority: number;
 }

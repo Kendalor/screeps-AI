@@ -12,8 +12,8 @@ import { plannedObstacles } from "../../../src/layouts/goal";
 import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import type { XY } from "../../../src/lib/geometry";
+import { roleDef } from "../../../src/behaviors/roles";
 import { Mining } from "../../../src/operations/mining";
-import { DEFAULT_PRIORITY } from "../../../src/spawn/request";
 import { colonySnap, containerAt, dropAt, openTerrain, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
 
 const GOAL = GOAL_JSON as GoalLayout;
@@ -465,7 +465,7 @@ describe("Mining.desiredCreeps — miner/hauler alternation", () => {
       creeps: wnMiners(3, 5)
     });
     for (const r of mining.desiredCreeps(snap)) {
-      expect(r.priority).toBeGreaterThan(DEFAULT_PRIORITY.upgrader);
+      expect(r.priority).toBeGreaterThan(roleDef("upgrader")!.priority);
     }
   });
 });

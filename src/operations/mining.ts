@@ -15,7 +15,7 @@ import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import { range, type XY } from "../lib/geometry";
 import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
-import { DEFAULT_PRIORITY, fillTo, type CreepRequest } from "../spawn/request";
+import { fillTo, type CreepRequest } from "../spawn/request";
 import { bodyContext } from "../behaviors/bodyContext";
 import { Operation } from "./operation";
 
@@ -78,8 +78,8 @@ function sourceStructureType(rcl: number): BuildableStructureConstant {
  * ranked by what number-in-its-role it would be (live count + position in the deficit), and the two
  * roles interleave on that global count:
  *
- *   the k-th miner  → DEFAULT_PRIORITY.miner - 2(k-1)     (95, 93, 91, …)
- *   the k-th hauler → DEFAULT_PRIORITY.miner - 2(k-1) - 1 (94, 92, 90, …)
+ *   the k-th miner  → Miner.priority - 2(k-1)     (95, 93, 91, …)
+ *   the k-th hauler → Miner.priority - 2(k-1) - 1 (94, 92, 90, …)
  *
  * With one miner already alive, the next hauler (k=1 → 94) outranks the *second* miner (k=2 → 93), so
  * the arbiter spawns a hauler before piling on more miners. Priorities stay within the miner/hauler
@@ -92,9 +92,10 @@ function interleaveByPriority(
   liveMiners: number,
   liveHaulers: number
 ): CreepRequest[] {
-  const FLOOR = DEFAULT_PRIORITY.upgrader + 1; // never dip into the upgrader tier
+  const minerPriority = roleDef("miner")!.priority;
+  const FLOOR = roleDef("upgrader")!.priority + 1; // never dip into the upgrader tier
   const rank = (roleIndex: number, offset: 0 | 1): number =>
-    Math.max(FLOOR, DEFAULT_PRIORITY.miner - 2 * roleIndex - offset);
+    Math.max(FLOOR, minerPriority - 2 * roleIndex - offset);
 
   const out: CreepRequest[] = [];
   // The k-th miner is ranked against the k-th hauler, where k counts from the live headcount.
@@ -188,7 +189,7 @@ export class Mining extends Operation {
       for (let i = 0; i < wantedBodies; i++) {
         out.push({
           body,
-          priority: DEFAULT_PRIORITY.miner,
+          priority: roleDef("miner")!.priority,
           memory: {
             role: "miner",
             home: colony.name,
@@ -224,7 +225,7 @@ export class Mining extends Operation {
     // fillRole — the one case where the shared helper's internal body derivation isn't reusable.
     const body = orderBody(roleDef("hauler")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
     const wanted = this.wantedHaulers(colony, body);
-    return fillTo(wanted, this.owned(colony, "hauler").length, body, DEFAULT_PRIORITY.hauler, {
+    return fillTo(wanted, this.owned(colony, "hauler").length, body, roleDef("hauler")!.priority, {
       role: "hauler",
       home: colony.name,
       op: this.name

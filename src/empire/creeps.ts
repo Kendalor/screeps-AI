@@ -17,6 +17,10 @@ export function runCreepBehaviors(): void {
   }
 }
 
+function storeOf(creep: Creep): { free: number; used: number } {
+  return { free: creep.store.getFreeCapacity(), used: creep.store.getUsedCapacity() };
+}
+
 function runOne(creep: Creep): void {
   const def = roleDef(creep.memory.role);
   if (!def || def.steps.length === 0) return;
@@ -25,24 +29,28 @@ function runOne(creep: Creep): void {
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us
 
   // Skip straight to a step with something to do, rather than wasting a tick on one already complete on arrival.
-  const runnable = firstRunnableStep(def.steps, task.step, {
-    free: creep.store.getFreeCapacity(),
-    used: creep.store.getUsedCapacity()
-  });
-  if (runnable !== task.step) task.target = undefined; // lock belonged to the skipped step
-  task.step = runnable;
+  let step = firstRunnableStep(def.steps, task.step, storeOf(creep));
+  if (step !== task.step) task.target = undefined; // lock belonged to the skipped step
 
-  const result = runStep(creep, def.steps[task.step], task.target);
+  // A dead target (resolveTarget found nothing) costs no game API call, so retry with the next step
+  // immediately rather than leaving the creep idle for a whole tick waiting for next tick's call.
+  // Bounded to one full pass: if nothing in the loop resolves anywhere, the creep is genuinely idle
+  // this tick, not stuck on a fixable failure.
+  for (let i = 0; i < def.steps.length; i++) {
+    const result = runStep(creep, def.steps[step], task.target);
 
-  const state: CreepState = {
-    step: task.step,
-    free: creep.store.getFreeCapacity(),
-    used: creep.store.getUsedCapacity(),
-    targetGone: !result.acted,
-    acted: result.acted
-  };
-  task.step = nextStep(def.steps, state);
+    if (result.acted) {
+      const state: CreepState = { step, ...storeOf(creep), targetGone: false, didAct: result.didAct };
+      task.step = nextStep(def.steps, state);
+      // Carried to next tick so the creep finishes what it started rather than re-picking nearest target every tick.
+      task.target = result.target;
+      return;
+    }
 
-  // Carried to next tick so the creep finishes what it started rather than re-picking nearest target every tick.
-  task.target = result.target;
+    step = (step + 1) % def.steps.length;
+    task.target = undefined;
+  }
+
+  // Every step in the loop came back with nothing to resolve — truly idle this tick.
+  task.step = step;
 }

@@ -121,7 +121,7 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResu
 // `memory.scoutTarget` (walked via `memory.route`).
 function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" }): StepResult {
   const dest = step.to === "scoutTarget" ? creep.memory.scoutTarget : step.room;
-  if (!dest) return { acted: false }; // nothing to move toward — step is a no-op, advance past it
+  if (!dest) return { acted: false, didAct: false }; // nothing to move toward — step is a no-op, advance past it
 
   if (creep.room.name === dest) {
     // Arrived. Clear a consumed dynamic target and its route so the next assignment starts clean.
@@ -129,7 +129,7 @@ function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" }): 
       creep.memory.scoutTarget = undefined;
       creep.memory.route = undefined;
     }
-    return { acted: false };
+    return { acted: false, didAct: false };
   }
 
   // Follow the stored route if it still leads to this destination; otherwise a plain travelTo, which
@@ -144,7 +144,7 @@ function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" }): 
   const route = creep.memory.route;
   const nextRoom = route && route.dest === dest ? advanceRoute(route, creep.room.name) : dest;
   creep.travelTo(new RoomPosition(25, 25, nextRoom), { range: 3 });
-  return { acted: true };
+  return { acted: true, didAct: false };
 }
 
 /**
@@ -168,11 +168,13 @@ function actOn(
   range = 1
 ): StepResult {
   const target = resolveTarget(creep, spec, locked);
-  if (!target) return { acted: false };
+  if (!target) return { acted: false, didAct: false };
+  let didAct = false;
   if (creep.pos.inRangeTo(target as { pos: RoomPosition }, range)) {
     action(target);
+    didAct = true;
   } else {
     creep.travelTo(target as { pos: RoomPosition });
   }
-  return { acted: true, target: (target as unknown as { id: Id<_HasId> }).id };
+  return { acted: true, didAct, target: (target as unknown as { id: Id<_HasId> }).id };
 }

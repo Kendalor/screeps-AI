@@ -78,3 +78,85 @@ describe("creep dispatch target locking", () => {
     expect(creep.memory.task?.target).toBe("next");
   });
 });
+
+// Steps 0-3 of the builder loop (pickup, withdraw x3) resolve nothing this tick; only the harvest
+// step (step 4) has a live source. A dead target costs no game API call, so the dispatch should
+// walk past every empty step and act on the source in the same tick rather than idling until the
+// next call finally lands on step 4.
+function builderWithOnlySource(source: object): Creep {
+  return {
+    name: "b1",
+    spawning: false,
+    memory: { role: "builder", task: { step: 0 } },
+    store: { getFreeCapacity: () => 50, getUsedCapacity: () => 0 },
+    pos: {
+      x: 5,
+      y: 5,
+      findClosestByPath: (list: object[]) => list[0] ?? null,
+      inRangeTo: () => true
+    },
+    room: {
+      find: (kind: FindConstant) => (kind === FIND_SOURCES ? [source] : [])
+    },
+    harvest: () => 0,
+    travelTo: () => undefined
+  } as unknown as Creep;
+}
+
+const OPEN_TERRAIN = { getTerrain: () => ({ get: () => 0 }) };
+
+describe("same-tick retry past dead targets", () => {
+  it("skips every step with nothing to resolve and acts on the first live one, same tick", () => {
+    const source = { id: "src", energy: 100, pos: { x: 5, y: 5 }, room: OPEN_TERRAIN };
+    stubGame({ objects: { src: source } });
+    const creep = builderWithOnlySource(source);
+    Game.creeps = { b1: creep };
+
+    runCreepBehaviors();
+
+    // Landed on and acted on the harvest step (index 4) this same tick, not left idling on step 0.
+    expect(creep.memory.task?.target).toBe("src");
+    expect(creep.memory.task?.step).toBe(4);
+  });
+
+  it("stays idle for the tick, without throwing, when nothing in the loop resolves anywhere", () => {
+    stubGame({ objects: {} });
+    const creep = builderWithOnlySource({ id: "src", energy: 100, pos: { x: 5, y: 5 }, room: OPEN_TERRAIN });
+    (creep as unknown as { room: { find: () => object[] } }).room.find = () => [];
+    Game.creeps = { b1: creep };
+
+    expect(() => runCreepBehaviors()).not.toThrow();
+    expect(creep.memory.task?.target).toBeUndefined();
+  });
+
+  it("still terminates after one successful act when the very first step resolves (no unnecessary looping)", () => {
+    const dropped = { id: "pile", amount: 100, resourceType: RESOURCE_ENERGY, pos: { x: 5, y: 5 } };
+    stubGame({ objects: { pile: dropped } });
+    const creep = {
+      name: "b1",
+      spawning: false,
+      memory: { role: "builder", task: { step: 0 } },
+      store: { getFreeCapacity: () => 50, getUsedCapacity: () => 0 },
+      pos: {
+        x: 5,
+        y: 5,
+        findClosestByPath: (list: object[]) => list[0] ?? null,
+        inRangeTo: () => true
+      },
+      room: {
+        find: (kind: FindConstant) => (kind === FIND_DROPPED_RESOURCES ? [dropped] : [])
+      },
+      pickup: () => 0,
+      travelTo: () => undefined
+    } as unknown as Creep;
+    Game.creeps = { b1: creep };
+
+    runCreepBehaviors();
+
+    expect(creep.memory.task?.target).toBe("pile");
+    // pickup (step 0) is a gather step: with the store still empty (used stays 0 in this stub),
+    // isComplete is false, so nextStep holds at step 0 rather than advancing — proof the loop
+    // exited on the first iteration's success rather than continuing to spin.
+    expect(creep.memory.task?.step).toBe(0);
+  });
+});
