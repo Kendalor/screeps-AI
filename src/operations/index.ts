@@ -16,17 +16,8 @@ export { Bootstrap } from "./bootstrap";
 export { Building } from "./building";
 export { Scouting } from "./scouting";
 
-/**
- * Every colony gets every operation kind, unconditionally. Whether an operation does anything is
- * *its own* decision, made against the snapshot it is handed — a colony with no sources gets a
- * `Mining` that returns `[]` from every channel. Hoisting that condition up here would split one
- * piece of knowledge across two files and let them drift.
- *
- * Order matters for one reason: the structures() poll is sequential, so an operation earlier in
- * this list paths its roads before later ones converge onto its routes. Defense, Upgrading,
- * Building and Bootstrap claim no structures, so their position is free; Mining is the only one
- * that paths today. A second pathing operation (RemoteMining) makes its order here a decision.
- */
+/** Every colony gets every operation kind unconditionally; each decides for itself whether to act.
+ * Order matters only for structures(): Mining paths first so later operations converge onto its routes. */
 export function operationsFor(room: string): Operation[] {
   return [
     new Mining(room),
@@ -34,8 +25,6 @@ export function operationsFor(room: string): Operation[] {
     new Upgrading(room),
     new Bootstrap(room),
     new Building(room),
-    // Scouting claims no structures and its demand is the lowest priority, so its position here is
-    // free — it neither paths ahead of Mining nor pre-empts any economy spawn.
     new Scouting(room)
   ];
 }

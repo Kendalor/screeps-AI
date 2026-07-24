@@ -161,7 +161,7 @@ describe("building planner", () => {
 });
 
 // Focused construction: at most 2 open sites at once, a type priority for which 2,
-// and no roads before RCL4.
+// and no roads before 800 energy capacity (RCL3 with all extensions).
 describe("building planner focus policy", () => {
   const anchor = { x: 25, y: 25 };
   const placeSites = (intents: Intent[]) =>
@@ -220,19 +220,39 @@ describe("building planner focus policy", () => {
     expect(placed.some(i => i.type === "container")).toBe(false);
   });
 
-  it("places no roads before RCL4", () => {
-    for (const rcl of [2, 3]) {
-      const snap = colony(colonySnap({ anchor, controllerLevel: rcl, structures: [], sites: [] }));
+  it("places no roads below 800 energy capacity", () => {
+    for (const capacity of [300, 550, 799]) {
+      const snap = colony(
+        colonySnap({ anchor, controllerLevel: 3, energyCapacity: capacity, structures: [], sites: [] })
+      );
       expect(placeSites(snap.building()).some(i => i.type === "road")).toBe(false);
     }
   });
 
-  it("road gating at RCL4: paves near placed structures, not the far outer ring", () => {
+  it("road gating at 800 energy capacity: paves near placed structures, not the far outer ring", () => {
     const builtStructures = allNonRoadStructuresAt(anchor, 4);
-    const snap = colony(colonySnap({ anchor, controllerLevel: 4, structures: builtStructures, sites: [] }));
+    const snap = colony(
+      colonySnap({ anchor, controllerLevel: 4, energyCapacity: 800, structures: builtStructures, sites: [] })
+    );
     const placed = placeSites(snap.building());
 
     expect(placed.some(i => i.type === "road" && i.x === 23 && i.y === 19)).toBe(false);
+    expect(placed.some(i => i.type === "road")).toBe(true);
+  });
+
+  it("mining's source-access roads are not capacity-gated, only adjacency-gated", () => {
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 300,
+        sources: [sourceAt(20, 10)],
+        structures: allNonRoadStructuresAt(anchor, 3),
+        sites: []
+      })
+    );
+    const placed = placeSites(snap.building());
+    expect(placed.some(i => i.type === "container")).toBe(true);
     expect(placed.some(i => i.type === "road")).toBe(true);
   });
 

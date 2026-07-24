@@ -35,6 +35,8 @@ Object.assign(globalThis, {
   FIND_MY_CONSTRUCTION_SITES: 114,
   FIND_TOMBSTONES: 118,
 
+  LOOK_CREEPS: "creep",
+
   TERRAIN_MASK_WALL: 1,
   TERRAIN_MASK_SWAMP: 2,
 

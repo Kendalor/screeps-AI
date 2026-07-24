@@ -4,7 +4,7 @@
 // when the arbiter was per-colony).
 
 import { describe, expect, it } from "vitest";
-import { bodyCost } from "../../../src/behaviors/body";
+import { bodyCost } from "../../../src/spawn/body";
 import { planSpawning } from "../../../src/empire/spawning";
 import type { Intent } from "../../../src/intents/types";
 import { colonySnap, containerAt, dropAt, roomDistance, snapCreep, snapCreeps, sourceAt, spawn, testEmpire } from "../../fixtures";
@@ -202,11 +202,12 @@ describe("spawn arbiter — single colony", () => {
 
   it("does not block a lower-priority request an unaffordable recovery request cannot pay for", () => {
     // Recovery sizes down to affordability and stands aside when it still cannot pay, rather than
-    // stopping the arbiter on request zero.
+    // stopping the arbiter on request zero. The cheapest possible supply body is one [CARRY, MOVE]
+    // set (100 energy), so energyAvailable must fall below that floor to stay unaffordable.
     expect(
       arbitrate({
         spawns: [spawn()],
-        energyAvailable: 100,
+        energyAvailable: 50,
         energyCapacity: 300,
         sources: [sourceAt(20, 10)],
         storageEnergy: 50_000

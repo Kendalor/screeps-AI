@@ -1,16 +1,10 @@
 // Derives the buildable subset of the RCL8 bunker goal at a given controller level: when a type's
-// cap is below the goal's count, the lowest-`order` placements win, so extensions fill as a tight
-// growing blob. Pure "what the RCL cap permits" filter — placement policy (e.g. gating roads to
-// only where needed) lives in building.ts.
+// cap is below the goal's count, the lowest-`order` placements win, so extensions fill as a tight blob.
 
 import { range, type XY } from "../lib/geometry";
 import type { GoalLayout, GoalPlacement } from "./sync";
 
-// Re-grows the extension blob for one room, biased toward sources for the tiebreak. Re-runs the
-// same greedy growth sync.ts bakes rather than patching `order` with a distance bonus — patching
-// can't work since `order` is a rank, not a distance, so no constant redirects growth safely
-// without letting a rim extension leap over ones hugging storage. Contiguity stays a hard
-// constraint; the source direction only breaks ties between equally-contiguous candidates.
+// Re-grows the extension blob for one room, biased toward sources as a tiebreak only; contiguity stays a hard constraint.
 export function biasTowardSources(
   placements: GoalPlacement[],
   anchor: XY,
@@ -42,8 +36,7 @@ export function biasTowardSources(
         const d = range(cand, b);
         if (d < nearest) nearest = d;
       }
-      // Contiguity first (hard), then tightness to storage, then source direction as tiebreak —
-      // reversing the last two would produce a 1-wide tendril creeping toward the source instead.
+      // Contiguity first (hard), then tightness to storage, then source direction as tiebreak.
       const key: [number, number, number] = [nearest, range(cand, seed), toSource(cand)];
       if (key[0] < bestKey[0] ||
           (key[0] === bestKey[0] && (key[1] < bestKey[1] ||
@@ -71,25 +64,15 @@ export interface RoomContext {
 }
 
 /**
- * The layout tiles an operation should treat as obstacles when pathing: what the colony is
- * committing to at this RCL, stamped into room coordinates.
- *
- * Deliberately **not** the full RCL8 goal. That goal is a solid 13x13 block of 132 structures
- * centred on the anchor, and `buildCostMatrix` marks every non-walkable type impassable — so
- * pathing outward from the anchor against the complete goal always fails, the anchor being sealed
- * in by its own plan. The buildable subset has gaps, grows as the bunker fills in, and is what the
- * colony will actually build.
- *
- * Shared by `building.ts` (which seeds the operation poll with it) and any operation that needs the
- * same baseline outside that poll, so the two can never path against different plans.
+ * Obstacle tiles for pathing: the buildable subset, not the full RCL8 goal (a solid 13x13 block
+ * that would seal the anchor in against its own plan). Shared with building.ts so both path against the same plan.
  */
 export function plannedObstacles(goal: GoalLayout, rcl: number, anchor: XY, sources: XY[]): GoalPlacement[] {
   return buildableAtRcl(goal, rcl, { anchor, sources });
 }
 
 export function buildableAtRcl(goal: GoalLayout, rcl: number, room?: RoomContext): GoalPlacement[] {
-  // Bias BEFORE capping: capping keeps the lowest-ranked N, so biasing after would only
-  // shuffle the already-capped subset instead of letting a better-aimed extension make the cut.
+  // Bias BEFORE capping, so a better-aimed extension can still make the cut.
   const ranked = room ? biasTowardSources(goal.placements, room.anchor, room.sources) : goal.placements;
   const rank = new Map(ranked.map((p, i) => [p, i]));
   const byRank = (a: GoalPlacement, b: GoalPlacement) => rank.get(a)! - rank.get(b)!;

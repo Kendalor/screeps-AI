@@ -1,5 +1,4 @@
-// Snapshot shapes handed to planners. Plain data only — no live game objects — so planner tests
-// are fixture objects and planners can never touch Game.*.
+// Snapshot shapes handed to planners: plain data only, so planners can never touch Game.*.
 
 export interface SnapUnit {
   id: Id<Creep>;
@@ -24,41 +23,23 @@ export interface SnapSpawn {
   busy: boolean; // spawning right now
 }
 
-// One live creep, as a requester's satisfaction check sees it. Counts are not carried: different
-// requesters want different projections of the same creeps (WORK per source, CARRY per remote, TTL
-// for pre-spawn), and an aggregate can only serve the one that was guessed at when it was written.
+// One live creep, as a requester's satisfaction check sees it. No counts carried — different requesters project the same creeps differently.
 export interface SnapCreep {
-  // From the live Creep — the only source for these.
   id: Id<Creep>;
   name: string;
-  // Live parts only (hits > 0): a dead part harvests nothing, so countPart() answers what the caller means.
-  body: BodyPartConstant[];
+  body: BodyPartConstant[]; // live parts only (hits > 0)
   ticksToLive?: number; // undefined while spawning
   spawning: boolean;
 
-  // Shortcuts to the two memory fields read constantly. Never independently authoritative — if one
-  // ever disagrees with memory, the snapshot builder is wrong.
   role: RoleName; // === memory.role
   home: string; // === memory.home
-  // The room the creep currently stands in (creep.pos.roomName) — distinct from `home`, which is the
-  // colony that funds it. A scout out on the frontier is in a room it does not call home; the
-  // Scouting operation needs this to decide whether the scout has arrived and what room to record.
-  room: string;
+  room: string; // creep.pos.roomName — may differ from home (e.g. a scout on the frontier)
 
-  // The whole memory object, live reference, deeply readonly. Not a deep copy: that would be a
-  // stringify-per-creep-per-tick, and stale by design since behaviours write `task` every tick.
-  // The readonly-ness costs nothing at runtime and makes a planner write to Memory a compile error,
-  // keeping the Intent -> execute.ts boundary the single answer to "what wrote this field".
-  //
-  // Deep, not `Readonly<CreepMemory>`: that is shallow, so it would still permit
-  // `memory.task.step = 3` — a mutation of live Memory through the exact nested field behaviours
-  // own, which is the one case the boundary most needs to forbid.
+  // Live reference, deeply readonly: writing through it to Memory is a compile error, keeping Intent -> execute.ts the sole write boundary.
   memory: DeepReadonly<CreepMemory>;
 }
 
-// Structural deep-readonly. Functions and primitives pass through untouched; arrays and plain
-// objects are frozen recursively at the type level only (no runtime Object.freeze — this is a
-// compile-time boundary, not a runtime one).
+// Compile-time-only deep readonly; no runtime Object.freeze.
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown
   ? T
   : T extends readonly (infer U)[]
@@ -87,10 +68,7 @@ export interface SnapDrop extends XY {
   amount: number;
 }
 
-// A room reachable within the current scouting radius, as the Scouting operation sees it: its name,
-// its map-grid distance from this colony (for ranking the nearest todo), its type, and whatever
-// scouting last recorded (`info`, absent if never seen). Built by walking the room graph at the
-// snapshot boundary — the one place describeExits is touched — so the operation stays pure.
+// A room within scouting radius, as the Scouting operation sees it, built by walking the room graph at the snapshot boundary.
 export interface ScoutCandidate {
   room: string;
   distance: number; // rooms from this colony (roomLinearDistance)
@@ -98,9 +76,7 @@ export interface ScoutCandidate {
   info?: ScoutInfo; // last recorded observation; absent means never scouted
 }
 
-// What mining has already recorded for a source, so an operation can tell a write that would change
-// something from one that would rewrite the same values. Observed state — read back from Memory at
-// the snapshot boundary, exactly like a structure is read from the room.
+// What mining last recorded for a source, so an operation can tell a real change from rewriting the same values.
 export interface SnapSourceMemory {
   spot?: XY;
   containerId?: Id<StructureContainer>;
@@ -109,22 +85,14 @@ export interface SnapSourceMemory {
 
 export interface ColonySnapshot {
   name: string;
-  // Game.time, mirrored from the empire snapshot. Operations run every tick and gate themselves;
-  // without this an operation could only ask "what is true", never "is this my tick".
-  tick: number;
+  tick: number; // mirrored Game.time, so operations can gate themselves to "is this my tick"
   towers: SnapTower[];
   hostiles: SnapUnit[];
   woundedFriendlies: SnapUnit[];
   safeModeAvailable: boolean;
-  // Ticks of safe mode remaining right now, 0 when not active. Distinct from safeModeAvailable
-  // (whether one *can* be triggered) — a colony can be mid-safe-mode with none left in reserve.
-  safeModeActive: number;
-  // How many safe-mode activations are banked for later use.
-  safeModeCount: number;
-  // Alive + spawning creeps that call this colony home (by memory.home, not by which room they
-  // stand in). Spawning ones are included so a request isn't filled twice while its creep is still
-  // in the spawn.
-  creeps: SnapCreep[];
+  safeModeActive: number; // ticks remaining right now, 0 when inactive
+  safeModeCount: number; // activations banked for later use
+  creeps: SnapCreep[]; // alive + spawning creeps with memory.home this colony
   spawns: SnapSpawn[];
   energyAvailable: number;
   energyCapacity: number;
@@ -137,15 +105,11 @@ export interface ColonySnapshot {
   containers: SnapContainer[]; // empty until mining containers are built
   storageId?: Id<StructureStorage>; // absent until storage is built
   anchor: XY | null; // null until a bunker-fitting anchor is found in this room
-  // What mining recorded for each source last time it wrote. Keyed by source id; missing means
-  // nothing recorded yet.
-  sourceMemory: Partial<Record<Id<Source>, SnapSourceMemory>>;
+  sourceMemory: Partial<Record<Id<Source>, SnapSourceMemory>>; // keyed by source id; missing means nothing recorded yet
   structures: SnapStructure[];
   sites: SnapStructure[];
   constructionProgress: number; // total work remaining across all sites in the room
-  // Rooms within the current scouting radius of this colony, each carrying its last observation.
-  // The Scouting operation ranks these into scout demand; empty until the frontier is walked.
-  scoutTargets: ScoutCandidate[];
+  scoutTargets: ScoutCandidate[]; // rooms within scouting radius; empty until the frontier is walked
 }
 
 export interface EmpireSnapshot {

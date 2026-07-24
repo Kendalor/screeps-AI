@@ -117,7 +117,7 @@ colony runs, only that it can answer "what do you want."
 `behaviors/roles/<role>.ts` exports one `{body, steps}` each; `roles/index.ts`
 assembles `ROLES` and `roleDef()`. Role-specific body math (e.g. `minerBody`'s
 container/link branching) lives with that role; only genuinely shared body-math
-utilities (`affordableSets`, `orderBody`) stay in `behaviors/body.ts`. Steps remain
+utilities (`affordableSets`, `orderBody`) stay in `spawn/body.ts`. Steps remain
 the existing declarative `TargetSpec`/`Step` vocabulary — that part already worked
 and isn't changing.
 

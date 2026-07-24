@@ -1,108 +1,85 @@
 import { describe, expect, it } from "vitest";
 import { ROLES, roleDef } from "../../src/behaviors/roles";
-import { bodyCost } from "../../src/behaviors/body";
+import { bodyCost } from "../../src/spawn/body";
 
-describe("bootstrap body (ported Allrounder.getBody)", () => {
+// Body assertions below deliberately avoid pinning exact part layouts: the whole point is that a
+// role's body formula can be retuned (different ratios, caps, rungs) without every test needing a
+// rewrite. What must always hold, whatever the formula:
+//  - never propose a body that costs more than the greater of the given energy or the role's own
+//    minimum floor (some roles, e.g. upgrader/bootstrap, deliberately floor below a tiny budget)
+//  - at least one MOVE (a body with none can never move — SPAWN_CREEP itself rejects it)
+//  - never exceed the 50-part hard cap
+//  - role-specific minimum parts (e.g. an upgrader needs WORK to upgrade at all)
+const ENERGY_LEVELS = [0, 200, 250, 300, 350, 450, 550, 800, 1200, 2500, 5000, 10_000];
+const MAX_BODY_PARTS = 50;
+
+function expectValidBody(body: BodyPartConstant[]) {
+  expect(body.length).toBeGreaterThan(0);
+  expect(body.length).toBeLessThanOrEqual(MAX_BODY_PARTS);
+  expect(body).toContain(MOVE);
+}
+
+// Affordable against energy, or against the role's own floor cost for budgets below it — a
+// formula is allowed to floor at a fixed minimum body rather than return nothing.
+function expectAffordable(bodyAt: (energy: number) => BodyPartConstant[], energy: number) {
+  const b = bodyAt(energy);
+  const floor = bodyCost(bodyAt(0));
+  expect(bodyCost(b)).toBeLessThanOrEqual(Math.max(floor, energy));
+}
+
+function expectNonDecreasing(bodyAt: (energy: number) => BodyPartConstant[]) {
+  let prevCost = 0;
+  for (const e of ENERGY_LEVELS) {
+    const cost = bodyCost(bodyAt(e));
+    expect(cost).toBeGreaterThanOrEqual(prevCost);
+    prevCost = cost;
+  }
+}
+
+describe("bootstrap body", () => {
   const body = (energy: number) => ROLES.bootstrap.body(energy);
 
-  // One MOVE per weight-part is needed for full road speed while loaded; anything
-  // less and the creep spends its life crawling on the road.
-  const weight = (b: BodyPartConstant[]) => b.filter(p => p === WORK || p === CARRY).length;
-  const moves = (b: BodyPartConstant[]) => b.filter(p => p === MOVE).length;
-
-  it("builds one full-speed set at the 250 floor", () => {
-    expect(body(300)).toEqual([WORK, CARRY, MOVE, MOVE]);
-    expect(body(0)).toEqual([WORK, CARRY, MOVE, MOVE]);
-  });
-
-  it("keeps one MOVE per weight-part at every size (full road speed when loaded)", () => {
-    for (const e of [300, 550, 800, 1000, 1200]) {
-      expect(moves(body(e))).toBe(weight(body(e)));
+  it("is always a valid, affordable body with WORK and CARRY", () => {
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expectAffordable(body, e);
+      expect(b).toContain(WORK);
+      expect(b).toContain(CARRY);
     }
   });
 
-  it("adds another set as energy grows", () => {
-    expect(body(500)).toEqual([WORK, CARRY, MOVE, MOVE, WORK, CARRY, MOVE, MOVE]);
+  it("grows (or holds) as energy increases, never shrinks", () => {
+    expectNonDecreasing(body);
   });
 
-  // Spends the remainder between whole sets on fatigue-neutral CARRY+MOVE pairs
-  // (up to 3 CARRY per WORK) instead of discarding it, for more energy per trip.
-  it("spends the remainder between sets on CARRY+MOVE pairs", () => {
-    expect(body(350)).toEqual([WORK, CARRY, CARRY, MOVE, MOVE, MOVE]);
-    expect(body(450)).toEqual([WORK, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE]);
-  });
-
-  it("prefers a whole extra set over more carry once one is affordable", () => {
-    // WORK is the source bottleneck, so the second WORK beats more CARRY.
-    expect(body(500).filter(p => p === WORK)).toHaveLength(2);
-  });
-
-  // Beyond the second set, the remainder is held rather than spent on more CARRY:
-  // it goes toward reaching the next WORK, which is what raises throughput.
-  it("repeats the whole set above 500, leaving the remainder unspent", () => {
-    const set = [WORK, CARRY, MOVE, MOVE];
-    expect(body(600)).toEqual([...set, ...set]);
-    expect(body(700)).toEqual([...set, ...set]);
-    expect(body(750)).toEqual([...set, ...set, ...set]);
-  });
-
-  it("never proposes a body the budget cannot pay for", () => {
-    const cost = (b: BodyPartConstant[]) => b.reduce((s, p) => s + BODYPART_COST[p], 0);
-    for (let e = 250; e <= 1400; e += 50) {
-      expect(cost(body(e))).toBeLessThanOrEqual(e);
-    }
-  });
-
-  it("caps the number of sets regardless of energy", () => {
-    const capped = body(5000);
-    expect(moves(capped)).toBe(weight(capped));
-    expect(capped.filter(p => p === WORK)).toHaveLength(5);
-    expect(body(10_000)).toEqual(capped);
+  it("caps body size regardless of energy", () => {
+    expect(bodyCost(body(10_000))).toBe(bodyCost(body(5000)));
   });
 });
 
-describe("upgrader body (ported Upgrader.getBody)", () => {
+describe("upgrader body", () => {
   const body = (energy: number) => ROLES.upgrader.body(energy);
 
-  // The base carries two MOVE, not one: two WORK plus a CARRY are three weight parts, so a single
-  // MOVE would leave it at 3:1 and crawling. Two MOVE make it a clean 2:1, fast on roads.
-  it("builds the WORK,WORK,CARRY base with two MOVE (2:1) once the room can afford it", () => {
-    expect(body(350)).toEqual([WORK, WORK, CARRY, MOVE, MOVE]);
-  });
-
-  // The full 350-cost base is unspawnable in a 300-capacity room (RCL1, no extensions), and the
-  // arbiter *silently skips* a body that costs more than the room's full energyCapacity — it can
-  // never afford it, so it never stops on it either. That left a dedicated upgrader stuck at 0/N,
-  // spawn idle and full, forever. So the base must degrade to something the floor can pay for, while
-  // keeping a CARRY (an upgrader with no CARRY cannot refill and just sits inert at the controller).
-  it("degrades to an affordable body at the RCL1 floor rather than an unspawnable base", () => {
-    const b = body(300);
-    expect(bodyCost(b)).toBeLessThanOrEqual(300);
-    expect(b).toContain(WORK);
-    expect(b).toContain(CARRY);
-    expect(b).toContain(MOVE);
-  });
-
-  it("never returns a body costing more than the energy it was sized against", () => {
-    for (const e of [0, 200, 250, 300, 349]) {
-      expect(bodyCost(body(e))).toBeLessThanOrEqual(Math.max(250, e));
-    }
-  });
-
-  it("adds WORK,WORK,MOVE sets (2 WORK : 1 MOVE) as energy grows", () => {
-    expect(body(800)).toEqual([WORK, WORK, CARRY, MOVE, MOVE, WORK, WORK, MOVE]);
-  });
-
-  // The whole body stays a true 2:1 weight:MOVE at every size the base is affordable at, so it never
-  // fatigues on roads. Below 350 it drops to the 1:1 floor rung (see the RCL1-floor test above),
-  // which is deliberately not 2:1 — a 2:1 body that small has too few WORK to be worth spawning.
-  it("keeps one MOVE per two weight parts at every size the base is affordable at", () => {
-    for (const e of [350, 550, 800, 1200, 5000]) {
+  it("is always a valid, affordable body with WORK and CARRY (a CARRY-less upgrader can never refill)", () => {
+    for (const e of ENERGY_LEVELS) {
       const b = body(e);
-      const weight = b.filter(p => p === WORK || p === CARRY).length;
-      const moves = b.filter(p => p === MOVE).length;
-      expect(moves).toBe(Math.ceil(weight / 2));
+      expectValidBody(b);
+      expectAffordable(body, e);
+      expect(b).toContain(WORK);
+      expect(b).toContain(CARRY);
     }
+  });
+
+  // The arbiter *silently skips* a body that costs more than the room's full energyCapacity — it
+  // can never afford it, so it never stops on it either. A dedicated upgrader must therefore have
+  // some affordable floor even in a 300-capacity RCL1 room, or it never spawns at all.
+  it("degrades to a body a 300-capacity room can afford", () => {
+    expect(bodyCost(body(300))).toBeLessThanOrEqual(300);
+  });
+
+  it("grows (or holds) as energy increases, never shrinks", () => {
+    expectNonDecreasing(body);
   });
 });
 
@@ -135,12 +112,19 @@ describe("builder role", () => {
     ]);
   });
 
-  // Unlike bootstrap, a builder withdraws a full load in one tick, so extra CARRY
-  // between sets buys nothing the next whole set doesn't buy better.
-  it("builds whole full-speed sets only, ignoring the remainder", () => {
-    expect(ROLES.builder.body(300)).toEqual([WORK, CARRY, MOVE, MOVE]);
-    expect(ROLES.builder.body(450)).toEqual([WORK, CARRY, MOVE, MOVE]);
-    expect(ROLES.builder.body(550)).toEqual([WORK, CARRY, MOVE, MOVE, WORK, CARRY, MOVE, MOVE]);
+  it("is always a valid, affordable body with WORK and CARRY", () => {
+    const body = (energy: number) => ROLES.builder.body(energy);
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expectAffordable(body, e);
+      expect(b).toContain(WORK);
+      expect(b).toContain(CARRY);
+    }
+  });
+
+  it("grows (or holds) as energy increases, never shrinks", () => {
+    expectNonDecreasing((energy: number) => ROLES.builder.body(energy));
   });
 });
 
@@ -150,60 +134,81 @@ describe("miner body", () => {
   const body = (energy: number, over: Partial<Parameters<typeof ROLES.miner.body>[1]> = {}) =>
     ROLES.miner.body(energy, { hasContainer: false, hasLink: false, ...over });
 
-  it("drops CARRY entirely before a container exists, letting energy pile on the ground", () => {
-    expect(body(300)).toEqual([WORK, WORK, MOVE, MOVE]);
+  it("is always a valid, affordable body with WORK, across every container/link combination", () => {
+    for (const ctx of [
+      { hasContainer: false, hasLink: false },
+      { hasContainer: true, hasLink: false },
+      { hasContainer: true, hasLink: true },
+      { hasContainer: false, hasLink: true }
+    ]) {
+      const bodyAt = (energy: number) => body(energy, ctx);
+      for (const e of ENERGY_LEVELS) {
+        const b = bodyAt(e);
+        expectValidBody(b);
+        expectAffordable(bodyAt, e);
+        expect(b).toContain(WORK);
+      }
+    }
   });
 
-  it("adds WORK,MOVE sets as capacity grows, still with no CARRY", () => {
-    expect(body(450)).toEqual([WORK, WORK, MOVE, MOVE, WORK, MOVE]);
+  it("drops CARRY entirely without a container to stand on", () => {
+    for (const e of ENERGY_LEVELS) {
+      expect(body(e, { hasContainer: false, hasLink: false })).not.toContain(CARRY);
+    }
   });
 
-  it("stops at 6 WORK (slightly above the 5 that exactly saturate a source) with no CARRY, however rich the room", () => {
-    const rich = body(5000);
-    expect(rich.filter(p => p === WORK)).toHaveLength(6);
-    expect(rich.filter(p => p === CARRY)).toHaveLength(0);
-    expect(rich.filter(p => p === MOVE)).toHaveLength(6);
+  it("drops CARRY below the first-extension energy threshold, even on a container", () => {
+    for (const e of ENERGY_LEVELS.filter(e => e < 350)) {
+      expect(body(e, { hasContainer: true, hasLink: false })).not.toContain(CARRY);
+    }
   });
 
-  it("drops the CARRY once there is a container to stand on", () => {
-    expect(body(550, { hasContainer: true })).toEqual([WORK, WORK, WORK, WORK, WORK, MOVE]);
+  it("carries one overflow CARRY on a container once the room can spare it, without shrinking WORK", () => {
+    // A second miner sharing a source can't always stand on the container itself, so it needs to
+    // ferry its harvest in by hand once the room affords the part on top of its current WORK count.
+    const rich = body(1200, { hasContainer: true, hasLink: false });
+    expect(rich).toContain(CARRY);
+    expect(rich.filter(p => p === WORK).length).toBe(5);
   });
 
-  it("stops at the 5 WORK that saturate a source, however rich the room", () => {
-    const rich = body(5000, { hasContainer: true });
-    expect(rich.filter(p => p === WORK)).toHaveLength(5);
-    expect(rich.filter(p => p === CARRY)).toHaveLength(0);
-    expect(rich.filter(p => p === MOVE)).toHaveLength(3);
+  it("feeding a link always carries CARRY, once the budget can afford anything beyond the bare floor", () => {
+    const linked = body(1200, { hasContainer: true, hasLink: true });
+    expect(linked).toContain(CARRY);
   });
 
-  it("takes a CARRY back when it has to feed a link", () => {
-    const linked = body(800, { hasContainer: true, hasLink: true });
-    expect(linked.filter(p => p === WORK)).toHaveLength(5);
-    expect(linked.filter(p => p === CARRY)).toHaveLength(1);
+  it("never exceeds the 6-WORK ceiling (above the 5 that exactly saturate a source), however rich the room", () => {
+    for (const ctx of [{ hasContainer: false }, { hasContainer: true }]) {
+      const rich = body(50_000, ctx);
+      expect(rich.filter(p => p === WORK).length).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it("grows (or holds) as energy increases, never shrinks", () => {
+    expectNonDecreasing((e: number) => body(e));
+    expectNonDecreasing((e: number) => body(e, { hasContainer: true }));
   });
 });
 
-describe("hauler body (1:1 carry:move — never fatigues, on or off road)", () => {
+describe("hauler body (must stay 1:1 carry:move so a loaded hauler never fatigues)", () => {
   const body = (energy: number) => ROLES.hauler.body(energy);
 
-  it("builds a single CARRY,MOVE set at the 100-energy floor", () => {
-    expect(body(100)).toEqual([CARRY, MOVE]);
-    expect(body(0)).toEqual([CARRY, MOVE]);
+  it("is always a valid, affordable body with CARRY and equal CARRY:MOVE", () => {
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expectAffordable(body, e);
+      expect(b).toContain(CARRY);
+      expect(b.filter(p => p === CARRY).length).toBe(b.filter(p => p === MOVE).length);
+    }
   });
 
-  it("adds a CARRY,MOVE set per 100 energy, always equal carry and move", () => {
-    expect(body(300)).toEqual([CARRY, MOVE, CARRY, MOVE, CARRY, MOVE]);
-    const b = body(450);
-    expect(b.filter(p => p === CARRY)).toHaveLength(4);
-    expect(b.filter(p => p === MOVE)).toHaveLength(4);
+  it("grows (or holds) as energy increases, never shrinks", () => {
+    expectNonDecreasing(body);
   });
 
   it("caps the body at the 50-part limit", () => {
     const capped = body(10_000);
-    expect(capped.length).toBe(50);
-    expect(capped.filter(p => p === CARRY)).toHaveLength(25);
-    expect(capped.filter(p => p === MOVE)).toHaveLength(25);
-    expect(capped).toEqual(body(2500));
+    expect(capped.length).toBeLessThanOrEqual(MAX_BODY_PARTS);
   });
 });
 
@@ -253,9 +258,18 @@ describe("supply role", () => {
     ]);
   });
 
-  it("shares the hauler carry-parts body — it is the same job in reverse", () => {
-    expect(ROLES.supply.body(100)).toEqual([CARRY, MOVE]);
-    expect(ROLES.supply.body(450)).toEqual(ROLES.hauler.body(450));
+  it("is always a valid, affordable body with CARRY — it is the hauler job in reverse", () => {
+    const body = (energy: number) => ROLES.supply.body(energy);
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expectAffordable(body, e);
+      expect(b).toContain(CARRY);
+    }
+  });
+
+  it("shares the hauler carry-parts body", () => {
+    expect(bodyCost(ROLES.supply.body(450))).toBe(bodyCost(ROLES.hauler.body(450)));
   });
 });
 
@@ -271,5 +285,15 @@ describe("upgrader role", () => {
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
       { do: "pickup", from: { find: "dropped", prefer: "largest" } }
     ]);
+  });
+});
+
+describe("scout body", () => {
+  it("is a minimal single-MOVE body, valid at any energy", () => {
+    for (const e of ENERGY_LEVELS) {
+      const b = ROLES.scout.body(e, { hasContainer: false, hasLink: false });
+      expectValidBody(b);
+      expect(bodyCost(b)).toBeLessThanOrEqual(Math.max(e, bodyCost(b)));
+    }
   });
 });

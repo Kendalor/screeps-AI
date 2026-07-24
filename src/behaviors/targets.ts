@@ -104,8 +104,7 @@ function validLock(locked: Id<_HasId>, spec: TargetSpec): RoomObject | null {
   if (!obj) return null;
   const kind = toKind(obj);
   if (!kind || !fitsSpec(kind, spec)) return null;
-  // Structures and creeps both carry a store-based `where`; re-check the lock still satisfies it
-  // (an extension that filled, a hauler that emptied) so the creep drops a stale target.
+  // Re-check the store-based `where` so a lock on a now-filled extension or emptied hauler is dropped.
   const where = spec.find === "structure" || spec.find === "creep" ? spec.where : undefined;
   if ((kind.kind === "structure" || kind.kind === "creep") && !matchesWhere(toCandidate(obj), where)) {
     return null;
@@ -129,8 +128,7 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
   const candidates = findCandidates(creep, spec).filter(
     c => (spec.find !== "structure" && spec.find !== "creep") || matchesWhere(toCandidate(c), spec.where)
   );
-  // A pile below the worthwhile floor is deprioritized, not excluded — falls back to the full
-  // set below if nothing clears the bar, same as the share-cap fallback.
+  // Below-floor piles are deprioritized, not excluded — falls back to the full set if nothing clears the bar.
   const worthwhile = spec.find !== "dropped" ? candidates : candidates.filter(c => isWorthwhile(creep, c));
   const consider = worthwhile.length > 0 ? worthwhile : candidates;
   // Fall back to the full set if every candidate is at its share cap — no target means the creep does nothing at all.
@@ -163,11 +161,8 @@ function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomO
   return creep.pos.findClosestByPath(pool) ?? pool[0] ?? null;
 }
 
-// The minimum a drop pile must hold before a creep will walk to it: a fraction of the
-// collector's own free capacity, plus a small absolute floor so a big creep doesn't ignore
-// every pile in an empty room. Scales from RCL1 to RCL8 with no retuning.
-const WORTHWHILE_FRACTION = 0.25;
-const WORTHWHILE_FLOOR = 50;
+const WORTHWHILE_FRACTION = 0.25; // fraction of the collector's free capacity a drop pile must hold
+const WORTHWHILE_FLOOR = 50; // absolute floor so a big creep doesn't ignore every pile in an empty room
 
 function isWorthwhile(creep: Creep, candidate: RoomObject): boolean {
   const amount = (candidate as unknown as { amount: number }).amount;
@@ -192,10 +187,7 @@ function claimCounts(): Record<string, number> {
   return counts;
 }
 
-// A reference collector's worth of capacity (a cheap 2-CARRY hauler set) — the unit a pile's
-// claim limit is measured against, so a large pile absorbs several collectors and a small one
-// locks to one.
-const REFERENCE_CLAIM_CAPACITY = 100;
+const REFERENCE_CLAIM_CAPACITY = 100; // a cheap 2-CARRY hauler's worth; unit a pile's claim limit is measured against
 
 // Unlimited by default; sources use their open-tile count and drop piles their size so the cap is physical, not arbitrary.
 function shareCap(spec: TargetSpec, candidate: RoomObject): number {
@@ -217,8 +209,7 @@ function withinShareCap(creep: Creep, id: Id<_HasId>, cap: number): boolean {
   return claimedByOthers < cap;
 }
 
-// Walkable tiles adjacent to a position, i.e. its share cap. Takes any positioned
-// object (not just Source) so the snapshot builder can reuse it for the same count.
+// Walkable tiles adjacent to a position, i.e. its share cap.
 export function openHarvestTiles(at: { pos: { x: number; y: number }; room: { getTerrain(): { get(x: number, y: number): number } } }): number {
   const terrain = at.room.getTerrain();
   let open = 0;
@@ -239,10 +230,7 @@ function findCandidates(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } |
   switch (spec.find) {
     case "source": {
       const sources = room.find(FIND_SOURCES).filter(s => s.energy > 0);
-      // A miner assigned to a specific source (memory.sourceId) must harvest only that one — Mining's
-      // per-source WORK accounting (mining.ts) assumes assigned miners stand on their assigned source,
-      // not wherever share-cap/proximity happens to route them. Unassigned creeps (no sourceId, e.g.
-      // pre-stage-2 miners) still see every source, as before.
+      // An assigned miner harvests only its source — mining.ts's per-source WORK accounting depends on it.
       const assigned = creep.memory.sourceId;
       if (assigned === undefined) return sources;
       return sources.filter(s => s.id === assigned);
@@ -256,7 +244,7 @@ function findCandidates(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } |
     case "structure":
       return room.find(FIND_STRUCTURES).filter(s => s.structureType === spec.type);
     case "creep": {
-      // Own creeps of the named role(s), never the actor itself — a creep transferring to itself is a no-op.
+      // Never the actor itself — a creep transferring to itself is a no-op.
       const wanted = Array.isArray(spec.role) ? spec.role : [spec.role];
       return room
         .find(FIND_MY_CREEPS)

@@ -20,9 +20,7 @@ export function buildEmpireSnapshot(): EmpireSnapshot {
   return { tick: Game.time, colonies };
 }
 
-// Body is filtered to living parts: a part at 0 hits is destroyed and harvests nothing, so a
-// requester counting WORK must not see it. Memory is passed by reference (typed Readonly upstream),
-// not copied — see SnapCreep.
+// Body is filtered to living parts: a part at 0 hits harvests nothing and must not be counted.
 function snapCreep(c: Creep): SnapCreep {
   return {
     id: c.id,
@@ -86,9 +84,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number): Col
     constructionProgress: room
       .find(FIND_CONSTRUCTION_SITES)
       .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0),
-    // The rooms within the current scouting radius, each with its last observation — walked from the
-    // room graph at this one boundary so the Scouting operation reads plain data. Radius grows as the
-    // frontier is exhausted (empire/creeps.ts advances it); default 1 before scouting has run.
+    // Rooms within the current scouting radius; radius grows as the frontier is exhausted.
     scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1)
   };
 }

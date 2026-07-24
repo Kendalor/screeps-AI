@@ -1,4 +1,4 @@
-import { affordableSets, bodyCost } from "../body";
+import { affordableSets, bodyCost } from "../../spawn/body";
 import type { Step } from "../types";
 import { Role } from "./role";
 

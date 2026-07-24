@@ -18,7 +18,7 @@ describe("Upgrading.desiredCreeps — pre-storage squad", () => {
       sources: [{ id: "s1" as Id<Source>, x: 20, y: 10, openTiles: 8 }],
       containers: [containerAt(21, 10, 500)]
     });
-    expect(one).toHaveLength(1);
+    expect(one).toHaveLength(2); // base 1 + ceil(500/1000)=1
 
     const two = upgraderRequests({
       storageEnergy: 0,
@@ -29,13 +29,13 @@ describe("Upgrading.desiredCreeps — pre-storage squad", () => {
       ],
       containers: [containerAt(21, 10, 500)]
     });
-    expect(two).toHaveLength(2);
+    expect(two).toHaveLength(3); // base 2 + ceil(500/1000)=1
   });
 
   it("also works off ground drops before any container is built", () => {
     expect(
       upgraderRequests({ storageEnergy: 0, controllerLevel: 2, drops: [dropAt(20, 10, 200)] })
-    ).toHaveLength(1);
+    ).toHaveLength(2); // base 1 + ceil(200/1000)=1
   });
 
   it("asks for nothing pre-storage with no container energy and no drops — nothing to withdraw from", () => {
@@ -45,17 +45,17 @@ describe("Upgrading.desiredCreeps — pre-storage squad", () => {
   it("is viable from RCL1 — it is what climbs the controller off room start", () => {
     expect(
       upgraderRequests({ storageEnergy: 0, controllerLevel: 1, drops: [dropAt(20, 10, 200)] })
-    ).toHaveLength(1);
+    ).toHaveLength(2); // base 1 + ceil(200/1000)=1
   });
 
   // The point of removing the cap: when energy piles up unspent, add consumers so it does not rot.
   // One extra upgrader per 1k of standing surplus (drops + container), on top of the per-source base.
   it("scales up, uncapped, with the standing energy surplus", () => {
     const oneSource = [{ id: "s1" as Id<Source>, x: 20, y: 10, openTiles: 8 }];
-    // base 1 + floor(3500/1000)=3 → 4 upgraders to burn down a 3.5k drop pile.
+    // base 1 + ceil(3500/1000)=4 → 5 upgraders to burn down a 3.5k drop pile.
     expect(
       upgraderRequests({ storageEnergy: 0, controllerLevel: 2, sources: oneSource, drops: [dropAt(20, 10, 3500)] })
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     // A big enough surplus asks for many — no cap.
     expect(
       upgraderRequests({ storageEnergy: 0, controllerLevel: 2, sources: oneSource, drops: [dropAt(20, 10, 9000)] })

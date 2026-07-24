@@ -3,9 +3,7 @@
 import { resolveTarget } from "./targets";
 import type { Step, TargetSpec } from "./types";
 
-// Gathering steps fill the store; spending steps drain it. Movement steps complete only on arrival,
-// never on store state — their completion is signalled by runStep returning acted:false (arrived),
-// which the dispatcher turns into targetGone.
+// Gathering steps fill the store; spending steps drain it; movement steps complete only on arrival (signalled by runStep returning acted:false).
 type StepKind = "gather" | "spend" | "move";
 
 const STEP_KIND: Record<Step["do"], StepKind> = {
@@ -16,9 +14,7 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   build: "spend",
   repair: "spend",
   upgrade: "spend",
-  // Movement steps never self-complete on store state: an empty scout on a moveToRoom must keep
-  // travelling, not be skipped as "already done". Arrival is the only completion, via targetGone.
-  moveToRoom: "move",
+  moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
   sit: "move"
 };
 
@@ -27,12 +23,7 @@ export interface CreepState {
   free: number;
   used: number;
   targetGone: boolean; // the locked target no longer resolves
-  // Whether the step's game-API call actually fired this tick — distinct from a target merely
-  // resolving (which can be true while still travelling toward it, out of range). Only meaningful for
-  // the post-action nextStep call; firstRunnableStep's pre-action scan always passes false since
-  // nothing has acted yet. Drives `oneShot` — see Step.oneShot and StepResult.didAct for why a
-  // creep-sink transfer needs "did it actually deliver" rather than "did a target resolve".
-  didAct: boolean;
+  didAct: boolean; // whether the step's game-API call actually fired this tick, distinct from a target merely resolving; drives oneShot
 }
 
 export function nextStep(steps: Step[], s: CreepState): number {
@@ -54,13 +45,9 @@ export function firstRunnableStep(steps: Step[], from: number, store: { free: nu
 
 export function isComplete(step: Step, s: CreepState): boolean {
   if (s.targetGone) return true;
-  // A `when: "empty"` step is a no-op while the creep still carries anything, so it counts as
-  // already complete: nextStep advances past it and firstRunnableStep skips it. This is what makes
-  // a loaded hauler keep delivering (cycling to the next spend step) instead of returning to pick
-  // up more the moment one sink fills. The condition reads the creep's own store, never a target's.
+  // "empty" steps no-op while the creep still carries anything, so a loaded hauler keeps delivering instead of returning early.
   if (step.when === "empty" && s.used > 0) return true;
-  // A oneShot step is done the moment its action actually fires (in range, API call made) —
-  // not merely when a target resolves and travelTo begins. See Step.oneShot.
+  // oneShot completes the moment the action fires, not merely when a target resolves and travelTo begins.
   if (step.oneShot && s.didAct) return true;
   const kind = STEP_KIND[step.do];
   if (kind === "move") return false; // completes only via targetGone (arrival), handled above
@@ -71,10 +58,7 @@ export function isComplete(step: Step, s: CreepState): boolean {
 // --- acting half (touches the live API) --------------------------------------
 // Resolves/validates the target then acts in range or travelTo. build/repair/upgrade act at range 3; everything else at range 1.
 
-// acted feeds CreepState.targetGone in the dispatcher so a step with nothing to do advances instead of
-// stalling — true whenever a target resolved, even if the creep is still travelling toward it. didAct
-// is the narrower signal: true only when the step's game-API call actually fired this tick (in range).
-// Feeds CreepState.didAct, which drives `oneShot` — see Step.oneShot for why the distinction matters.
+// acted: a target resolved (even mid-travel); didAct: the game-API call actually fired this tick (in range). Feeds oneShot.
 export interface StepResult {
   acted: boolean;
   didAct: boolean;
@@ -84,7 +68,7 @@ export interface StepResult {
 export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResult {
   switch (step.do) {
     case "harvest":
-      return actOn(creep, step.from, locked, t => creep.harvest(t as Source));
+      return harvestStep(creep, step.from, locked);
     case "withdraw":
       return actOn(creep, step.from, locked, t =>
         creep.withdraw(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY)
@@ -115,10 +99,7 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResu
   }
 }
 
-// Move toward a room, following a precomputed room-route when one is present. Returns acted:false on
-// arrival (destination reached, or no destination to go to) so the dispatcher advances past the step;
-// acted:true while still travelling. Two destinations: a static `step.room`, or the dynamic
-// `memory.scoutTarget` (walked via `memory.route`).
+// Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
 function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" }): StepResult {
   const dest = step.to === "scoutTarget" ? creep.memory.scoutTarget : step.room;
   if (!dest) return { acted: false, didAct: false }; // nothing to move toward — step is a no-op, advance past it
@@ -132,27 +113,14 @@ function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" }): 
     return { acted: false, didAct: false };
   }
 
-  // Follow the stored route if it still leads to this destination; otherwise a plain travelTo, which
-  // also covers the static-room case and the route-computation-failed fallback.
-  //
-  // Head for the next room's centre. No `range` option: Traveler's early-out compares a *global*
-  // cross-room range against `range`, so a large range (the room's own radius) makes the creep stop
-  // one room short — on the near side of the border, never entering the target. Pathing to the centre
-  // costs a scout almost nothing and guarantees it actually crosses in, which is what arrival
-  // (creep.room.name === dest) is waiting for. A small range keeps it from fighting for the exact
-  // centre tile once inside.
+  // Head for the next room's centre with a small range: Traveler's early-out compares global cross-room range, so a large range would stop the creep short of the border.
   const route = creep.memory.route;
   const nextRoom = route && route.dest === dest ? advanceRoute(route, creep.room.name) : dest;
   creep.travelTo(new RoomPosition(25, 25, nextRoom), { range: 3 });
   return { acted: true, didAct: false };
 }
 
-/**
- * The next room a creep should head for along a stored route, advancing the route's cursor as rooms
- * are entered. If the creep now stands in the room at `index`, the cursor steps forward; the returned
- * room is the one at the (possibly advanced) cursor, clamped to the last room so a creep that overran
- * still aims at the destination. Mutates `route.index` — the one persisted cursor the mover owns.
- */
+/** Next room along a stored route, advancing the cursor as rooms are entered; clamps to the last room if overrun. Mutates route.index. */
 export function advanceRoute(route: { rooms: string[]; index: number }, currentRoom: string): string {
   if (route.rooms[route.index] === currentRoom && route.index < route.rooms.length - 1) {
     route.index++;
@@ -177,4 +145,39 @@ function actOn(
     creep.travelTo(target as { pos: RoomPosition });
   }
   return { acted: true, didAct, target: (target as unknown as { id: Id<_HasId> }).id };
+}
+
+// A container's tile is a mining spot: harvesting from on top of it drops overflow straight in, no
+// transfer step needed. Steer there when it's free; a creep already parked on it (including this one)
+// just keeps harvesting in place. If another creep holds the tile, fall back to plain range-1 harvesting
+// — the role's own "transfer to container" step moves the carried energy instead.
+function harvestStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefined): StepResult {
+  const target = resolveTarget(creep, spec, locked);
+  if (!target) return { acted: false, didAct: false };
+
+  const source = target as Source;
+  const container = source.pos
+    .findInRange(FIND_STRUCTURES, 1, { filter: s => s.structureType === STRUCTURE_CONTAINER })[0] as
+    | StructureContainer
+    | undefined;
+
+  const standTarget = container && isFreeForCreep(container.pos, creep) ? container.pos : undefined;
+
+  let didAct = false;
+  if (creep.pos.inRangeTo(source.pos, 1)) {
+    creep.harvest(source);
+    didAct = true;
+    // Nudge onto the container tile if not already there; with no (free) container, staying put is correct.
+    if (standTarget && !creep.pos.isEqualTo(standTarget)) creep.travelTo(standTarget);
+  } else {
+    creep.travelTo(standTarget ?? source.pos);
+  }
+  return { acted: true, didAct, target: source.id };
+}
+
+// A tile is free for this creep if nothing else is standing there — a creep already on it (this one
+// included) never blocks itself from staying put.
+function isFreeForCreep(pos: RoomPosition, creep: Creep): boolean {
+  const occupant = pos.lookFor(LOOK_CREEPS)[0];
+  return !occupant || occupant.id === creep.id;
 }

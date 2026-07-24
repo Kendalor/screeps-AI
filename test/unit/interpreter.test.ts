@@ -178,3 +178,129 @@ describe("runStep target reporting", () => {
     expect((creep as unknown as { actedOn: string[] }).actedOn).toEqual(["locked"]);
   });
 });
+
+// A container sits on the source's mining tile: a drop miner should stand on it directly so overflow
+// lands in the container without a separate transfer step, rather than parking on any other adjacent tile.
+function harvestCreep(over: {
+  pos: { x: number; y: number };
+  containerPos?: { x: number; y: number };
+  containerOccupant?: string; // creep id currently on the container tile, if any
+} & Partial<{ inRange: boolean }>): { creep: Creep; harvested: string[]; traveled: { x: number; y: number }[] } {
+  const harvested: string[] = [];
+  const traveled: { x: number; y: number }[] = [];
+  const HARVEST_RANGE = 1;
+  const containerPos = over.containerPos;
+
+  const source = {
+    id: "source1",
+    energy: 3000,
+    room: { getTerrain: () => ({ get: () => 0 }) },
+    pos: {
+      x: 25,
+      y: 25,
+      findInRange: (_type: unknown, _range: number, opts: { filter: (s: { structureType: string }) => boolean }) => {
+        if (!containerPos) return [];
+        const container = { structureType: STRUCTURE_CONTAINER, id: "container1", pos: makePos(containerPos) };
+        return opts.filter(container) ? [container] : [];
+      }
+    }
+  };
+
+  function makePos(p: { x: number; y: number }) {
+    return {
+      x: p.x,
+      y: p.y,
+      lookFor: (_look: unknown) => (over.containerOccupant ? [{ id: over.containerOccupant }] : []),
+      isEqualTo: (other: { x: number; y: number }) => other.x === p.x && other.y === p.y
+    };
+  }
+
+  const creepPos = {
+    x: over.pos.x,
+    y: over.pos.y,
+    findClosestByPath: (list: object[]) => list[0] ?? null,
+    inRangeTo: (p: { x: number; y: number }, range: number) =>
+      Math.max(Math.abs(p.x - over.pos.x), Math.abs(p.y - over.pos.y)) <= range,
+    isEqualTo: (other: { x: number; y: number }) => other.x === over.pos.x && other.y === over.pos.y
+  };
+  void HARVEST_RANGE;
+
+  const creep = {
+    id: "me",
+    pos: creepPos,
+    room: { find: () => [source] },
+    memory: { task: { step: 0 } },
+    harvest: (t: { id: string }) => harvested.push(t.id),
+    travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+  };
+  return { creep: creep as unknown as Creep, harvested, traveled };
+}
+
+describe("harvest step: standing on a source container", () => {
+  it("heads for the container tile, not just any tile adjacent to the source, when out of range", () => {
+    const { creep, traveled, harvested } = harvestCreep({
+      pos: { x: 20, y: 20 },
+      containerPos: { x: 25, y: 26 }
+    });
+
+    const result = runStep(creep, { do: "harvest", from: { find: "source" } });
+
+    expect(traveled).toEqual([{ x: 25, y: 26 }]);
+    expect(harvested).toEqual([]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "source1" });
+  });
+
+  it("harvests and steps onto the free container tile in the same tick it comes into source range", () => {
+    // Already in range 1 of the source but standing one tile off the container itself.
+    const { creep, traveled, harvested } = harvestCreep({
+      pos: { x: 25, y: 26 },
+      containerPos: { x: 26, y: 26 }
+    });
+
+    const result = runStep(creep, { do: "harvest", from: { find: "source" } });
+
+    expect(harvested).toEqual(["source1"]);
+    expect(traveled).toEqual([{ x: 26, y: 26 }]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "source1" });
+  });
+
+  it("stays put and keeps harvesting once parked on the container, without re-pathing every tick", () => {
+    const { creep, traveled, harvested } = harvestCreep({
+      pos: { x: 26, y: 26 },
+      containerPos: { x: 26, y: 26 }
+    });
+
+    const result = runStep(creep, { do: "harvest", from: { find: "source" } });
+
+    expect(harvested).toEqual(["source1"]);
+    expect(traveled).toEqual([]); // no travelTo call once already on the target tile
+    expect(result).toEqual({ acted: true, didAct: true, target: "source1" });
+  });
+
+  it("falls back to plain range-1 harvesting when another creep already holds the container tile", () => {
+    const { creep, traveled, harvested } = harvestCreep({
+      pos: { x: 25, y: 26 },
+      containerPos: { x: 26, y: 26 },
+      containerOccupant: "otherMiner"
+    });
+
+    const result = runStep(creep, { do: "harvest", from: { find: "source" } });
+
+    // Already in range of the source itself, so it harvests without moving toward the occupied container.
+    expect(harvested).toEqual(["source1"]);
+    expect(traveled).toEqual([]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "source1" });
+  });
+
+  it("still walks toward (and eventually harvests from) the source when there is no container at all", () => {
+    const { creep, traveled, harvested } = runStepNoContainer();
+    expect(traveled).toEqual([{ x: 25, y: 25 }]);
+    expect(harvested).toEqual([]);
+  });
+});
+
+function runStepNoContainer(): { creep: Creep; traveled: { x: number; y: number }[]; harvested: string[] } {
+  const { creep, traveled, harvested } = harvestCreep({ pos: { x: 20, y: 20 } });
+  runStep(creep, { do: "harvest", from: { find: "source" } });
+  return { creep, traveled, harvested };
+}

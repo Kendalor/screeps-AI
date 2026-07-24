@@ -5,7 +5,7 @@
 // in test/unit/empire/spawning.test.ts.
 
 import { describe, expect, it } from "vitest";
-import { bodyCost } from "../../../src/behaviors/body";
+import { bodyCost } from "../../../src/spawn/body";
 import { Bootstrap } from "../../../src/operations/bootstrap";
 import { RECOVERY_PRIORITY } from "../../../src/spawn/request";
 import type { ColonySnapshot } from "../../../src/snapshot/types";

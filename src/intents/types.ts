@@ -23,27 +23,18 @@ export type Intent =
       container?: Id<StructureContainer>;
       link?: Id<StructureLink>;
     }
-  // Record what a scout currently stands in. The planner decides *that* a room is worth recording
-  // (its scout is there and the room is stale); execute.ts reads the live room to build the
-  // observation, so no live-room read leaks into the pure operation.
+  // Planner decides a room is worth recording; execute.ts reads the live room to build the observation.
   | { kind: "recordScout"; room: string }
-  // Assign a scout its next target room. The planner picks *which* room (nearest unscouted, from the
-  // snapshot); execute.ts computes the room-by-room route (Game.map.findRoute) and writes both the
-  // target and the route into the creep's memory for the moveToRoom behaviour to walk.
+  // Planner picks the target room; execute.ts computes the route and writes it into creep memory.
   | { kind: "setScoutTarget"; creep: Id<Creep>; targetRoom: string }
-  // Push the scouting frontier one ring outward, up to a cap. Emitted when the current radius is
-  // fully surveyed so next tick's snapshot reaches farther. execute.ts owns the Memory write and the
-  // cap so the operation stays pure.
+  // Emitted when the current scouting radius is fully surveyed; execute.ts owns the Memory write and cap.
   | { kind: "advanceScoutRadius" }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
-  // A batch of drawing primitives for one room's RoomVisual. The planner decides *what* the panel
-  // says and where; execute.ts is the only place a RoomVisual is touched, so metric collection stays
-  // pure and testable. Ops are drawn in order, so later ones paint over earlier ones.
+  // Drawing primitives for one room's RoomVisual; drawn in order so later ops paint over earlier ones.
   | { kind: "roomVisual"; room: string; ops: VisualOp[] };
 
-// The subset of RoomVisual drawing a metrics panel needs. Plain data so a planner can emit it and a
-// test can assert on it without a live RoomVisual.
+// The subset of RoomVisual drawing a metrics panel needs, as plain testable data.
 export type VisualOp =
   | { op: "text"; text: string; x: number; y: number; color?: string; align?: "left" | "center" | "right"; size?: number }
   | { op: "rect"; x: number; y: number; w: number; h: number; fill?: string; opacity?: number };

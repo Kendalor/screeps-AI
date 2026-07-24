@@ -7,12 +7,10 @@ export interface PlacedStructure extends XY {
   type: BuildableStructureConstant;
 }
 
-// Largest bunker footprint across all RCL layouts; anchors must fit this even at low RCL so the
-// bunker never needs re-anchoring on expansion.
+// Largest bunker footprint across all RCL layouts, so anchors never need re-anchoring on expansion.
 export const BUNKER_RADIUS = 6;
 
-// Reads real room terrain into the walkability grid distanceTransform expects. The only function
-// here that touches Game — exercised via integration tests, not unit tests.
+// The only function here that touches Game — exercised via integration tests, not unit tests.
 export function walkablePixelsForRoom(roomName: string): Uint8Array {
   const array = new Uint8Array(2500);
   const terrain = Game.map.getRoomTerrain(roomName);
@@ -83,8 +81,7 @@ export function distanceTransform(array: Uint8Array, oob = -1): Uint8Array {
   return array;
 }
 
-// Every tile whose distance-to-wall is at least bunkerRadius: the footprint fits flush against
-// the nearest wall there, so `>=` (not `>`) is the correct boundary.
+// Every tile whose distance-to-wall is at least bunkerRadius (footprint fits flush against the wall).
 export function findAnchorCandidates(terrain: Uint8Array, bunkerRadius = BUNKER_RADIUS): XY[] {
   const dt = distanceTransform(terrain.slice());
   const out: XY[] = [];
@@ -101,9 +98,7 @@ export interface AnchorRoom {
   sources: XY[];
 }
 
-// Controller path dominates anchor scoring: upgraders walk it every tick, while sources are
-// served by dedicated haulers on roads.
-export const CONTROLLER_WEIGHT = 2;
+export const CONTROLLER_WEIGHT = 2; // controller path dominates scoring: upgraders walk it every tick
 
 // Picks the bunker-fitting candidate minimizing weighted distance to the controller (heavily) plus the sources.
 export function pickAnchor(candidates: XY[], room: AnchorRoom): XY | null {

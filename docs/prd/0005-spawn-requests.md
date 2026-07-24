@@ -120,7 +120,7 @@ nothing. `SnapCreep.body` must be filtered to `hits > 0` and mapped to
 means.
 
 Raw array, **not** a pre-counted `work: number`. `countPart` already exists in
-[`behaviors/body.ts`](../../src/behaviors/body.ts), and a pre-counted field guesses that
+[`spawn/body.ts`](../../src/spawn/body.ts), and a pre-counted field guesses that
 WORK is the only part anyone counts — a hauler quota wants CARRY.
 
 #### 3.2.2 `memory` is a live reference typed `Readonly` (decided)

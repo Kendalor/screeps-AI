@@ -1,13 +1,10 @@
-// Renders a ColonyMetrics report into a roomVisual intent: a text panel drawn in the top-left of the
-// room. Pure — it produces plain VisualOps and never touches a live RoomVisual (execute.ts does the
-// drawing). Kept separate from collection so the two concerns test independently: metrics.ts proves
-// the numbers, this proves the layout.
+// Renders a ColonyMetrics report into a roomVisual intent. Pure — produces plain VisualOps only;
+// execute.ts does the actual drawing.
 
 import type { Intent, VisualOp } from "../intents/types";
 import type { ColonyMetrics } from "./metrics";
 
-// Panel geometry, in room-tile coordinates (0..49). A half-transparent backdrop keeps the text
-// legible over terrain.
+// Panel geometry, in room-tile coordinates (0..49).
 const PANEL_X = 0.5;
 const PANEL_TOP = 0.5;
 const LINE_H = 0.8; // vertical step between lines

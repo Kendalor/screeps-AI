@@ -1,13 +1,5 @@
-// A Colony is one owned room: its snapshot, the operations it runs, and the colony-scoped
-// capabilities that arbitrate over them. Constructed fresh every tick — snapshot and operations
-// both rebuilt from scratch, no state carried across ticks.
-//
-// A class with methods, amending ADR 0005 stage 1's "Colony is `{snapshot}` and nothing else, no
-// methods." That constraint was about not baking per-system dispatch into a premature `plan()`;
-// stage 3 always intended capabilities to land here. `building()` and `requests()` are those
-// capabilities — the construction arbiter and the demand this colony emits. What does NOT live here
-// is spawning: energy and spawns are per-room but spawn *routing* is cross-colony, so the arbiter
-// is the Empire's (see empire/spawning.ts). A colony only states what it wants.
+// One owned room: its snapshot, operations, and colony-scoped capabilities. Rebuilt fresh every tick.
+// Spawning is NOT here — spawn routing is cross-colony, owned by the Empire (see empire/spawning.ts).
 
 import type { Intent } from "../intents/types";
 import { operationsFor, type Operation } from "../operations";
@@ -28,14 +20,7 @@ export class Colony {
     return this.snapshot.name;
   }
 
-  /**
-   * Everything this colony wants spawned: its operations' demand. The empire arbiter collects this
-   * across all colonies, sorts by priority and routes. Nothing here spawns — a colony states demand,
-   * it does not decide.
-   *
-   * A colony-wide priority sort is deliberately NOT done here: merging happens in the arbiter, which
-   * sees every colony's requests at once, so one colony cannot pre-empt another's ordering.
-   */
+  /** This colony's spawn demand; the empire arbiter sorts and routes across all colonies. Not sorted here. */
   public requests(): CreepRequest[] {
     return this.operations.flatMap(op => op.desiredCreeps(this.snapshot));
   }
@@ -45,20 +30,10 @@ export class Colony {
     return planBuilding(this.snapshot, this.operations);
   }
 
-  /**
-   * Collect this colony's metrics and render them to the room. The one capability that reaches into
-   * Memory to keep cross-tick state (the harvest-rate window) — collectMetrics folds this tick's
-   * sample in and reads the average back out. The report itself is derived, not stored.
-   *
-   * Returns the single roomVisual intent that paints the panel; execute.ts is the only place a live
-   * RoomVisual is touched, so collection stays pure.
-   */
+  /** Collects metrics and returns the roomVisual intent that paints the panel; the only stateful capability (harvest-rate window in Memory). */
   public metrics(): Intent[] {
     const mem = (Memory.metrics[this.name] ??= { harvestSamples: [] });
-    // The current-RCL structure target, derived exactly as the construction arbiter derives it:
-    // claimsOf() gives the operations' structure claims (containers &c.), wantedStructures() merges
-    // them with this level's bunker subset. Same call chain as building(), so "targeted" here can
-    // never disagree with what building actually places.
+    // Same derivation as building(), so "targeted" never disagrees with what's actually placed.
     const targeted = wantedStructures(this.snapshot, claimsOf(this.snapshot, this.operations));
     const report = collectMetrics(
       this.snapshot,

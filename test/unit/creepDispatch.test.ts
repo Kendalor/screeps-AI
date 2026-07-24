@@ -105,9 +105,18 @@ function builderWithOnlySource(source: object): Creep {
 
 const OPEN_TERRAIN = { getTerrain: () => ({ get: () => 0 }) };
 
+function sourcePos(x: number, y: number) {
+  return {
+    x,
+    y,
+    findInRange: () => [],
+    isEqualTo: (other: { x: number; y: number }) => other.x === x && other.y === y
+  };
+}
+
 describe("same-tick retry past dead targets", () => {
   it("skips every step with nothing to resolve and acts on the first live one, same tick", () => {
-    const source = { id: "src", energy: 100, pos: { x: 5, y: 5 }, room: OPEN_TERRAIN };
+    const source = { id: "src", energy: 100, pos: sourcePos(5, 5), room: OPEN_TERRAIN };
     stubGame({ objects: { src: source } });
     const creep = builderWithOnlySource(source);
     Game.creeps = { b1: creep };
@@ -121,7 +130,7 @@ describe("same-tick retry past dead targets", () => {
 
   it("stays idle for the tick, without throwing, when nothing in the loop resolves anywhere", () => {
     stubGame({ objects: {} });
-    const creep = builderWithOnlySource({ id: "src", energy: 100, pos: { x: 5, y: 5 }, room: OPEN_TERRAIN });
+    const creep = builderWithOnlySource({ id: "src", energy: 100, pos: sourcePos(5, 5), room: OPEN_TERRAIN });
     (creep as unknown as { room: { find: () => object[] } }).room.find = () => [];
     Game.creeps = { b1: creep };
 

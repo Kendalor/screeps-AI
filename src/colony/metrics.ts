@@ -1,14 +1,6 @@
 // The metrics capability: what a colony looks like right now, collected into one plain report.
-//
-// Pure over its inputs — a ColonySnapshot, the colony's own spawn demand, and the persisted
-// harvest window — so the whole thing is unit-testable without Game. It reads no live objects and
-// makes no game calls; rendering the report to the room is a separate, execute-side concern
-// (see metricsVisual.ts + the roomVisual intent).
-//
-// Almost everything here is derived fresh from the snapshot each tick and never stored. The one
-// exception is harvest rate: a rate needs two points in time, so a short window of samples is kept
-// in Memory (ColonyMetricsMemory) and folded here. See harvestRate() for why a window, not a
-// running total.
+// Pure over its inputs, unit-testable without Game; rendering is a separate concern (metricsVisual.ts).
+// Harvest rate is the one stored exception — see harvestRate() for why a window, not a running total.
 
 import type { PlacedStructure } from "../layouts/stamp";
 import type { RoleName } from "../memory/schema";
@@ -16,10 +8,7 @@ import type { ColonyMetricsMemory } from "../memory/schema";
 import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 
-// How many ticks of source-energy history to keep. Wide enough that the rate averages over a full
-// source drain/regen swing rather than jittering tick to tick; short enough that a stale sample
-// (e.g. after a vision gap) ages out within a source's regen period. ENERGY_REGEN_TIME is 300.
-export const HARVEST_WINDOW = 300;
+export const HARVEST_WINDOW = 300; // ticks of source-energy history kept; matches ENERGY_REGEN_TIME
 
 /** One role's staffing: how many are alive now versus how many the colony's operations asked for. */
 export interface CensusRow {
@@ -38,23 +27,15 @@ export interface BuildingRow {
 export interface ColonyMetrics {
   room: string;
   tick: number;
-  // Per-role staffing, only for roles that are either present or wanted — a role at 0/0 is noise.
-  census: CensusRow[];
-  // The operations this colony owns, by their `name` (kind:room). The list the goal asks to see.
-  operations: string[];
-  // Per structure-type build progress at the current RCL: how many are up vs. how many the plan
-  // wants. Types with a nonzero target *or* something built are shown; a type not yet unlocked and
-  // not built is omitted.
-  buildings: BuildingRow[];
+  census: CensusRow[]; // roles present or wanted; a role at 0/0 is noise, omitted
+  operations: string[]; // this colony's operations, by name (kind:room)
+  buildings: BuildingRow[]; // build progress at current RCL; unlocked-and-unbuilt types omitted
   energy: {
-    // In the spawn/extension network right now, and its cap — the "can I afford a body" number.
-    available: number;
-    capacity: number;
+    available: number; // in the spawn/extension network right now
+    capacity: number; // the "can I afford a body" ceiling
     storage: number; // 0 before storage is built
-    dropped: number; // total energy sitting on the ground (drop-mining piles, spillage)
-    // Average energy harvested per tick over the persisted window, or undefined until there are two
-    // samples to diff. This is realized income — source energy that actually left the sources.
-    harvestPerTick?: number;
+    dropped: number; // total energy sitting on the ground
+    harvestPerTick?: number; // realized income over the persisted window; undefined until 2 samples exist
   };
   controller: {
     level: number;
@@ -63,12 +44,10 @@ export interface ColonyMetrics {
   construction: {
     remaining: number; // total work left across all sites; 0 when nothing is building
   };
-  // Ticks of safe mode left if active; 0 when not in safe mode. Whether one is available to trigger
-  // is a separate flag the snapshot already carries.
   safeMode: {
-    active: number; // ticks of safe mode left; 0 when not active
-    count: number; // activations banked for later use
-    available: boolean; // whether one can be triggered right now
+    active: number; // ticks remaining, 0 when not active
+    count: number; // activations banked for later
+    available: boolean;
   };
   spawns: {
     total: number;
@@ -76,9 +55,7 @@ export interface ColonyMetrics {
   };
 }
 
-// Desired staffing per role = who is alive now + who the operations still want. requests() reports
-// the *deficit* (missing creeps), not a target, so the target is current + deficit. This is exact:
-// an operation that is fully staffed emits no requests and desired collapses to current.
+// Desired = alive now + deficit from requests() (requests report the deficit, not a target).
 function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[]): CensusRow[] {
   const current: Partial<Record<RoleName, number>> = {};
   for (const c of snapshot.creeps) current[c.role] = (current[c.role] ?? 0) + 1;
@@ -99,11 +76,7 @@ function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[]): CensusRo
     .sort((a, b) => b.desired - a.desired || a.role.localeCompare(b.role));
 }
 
-// Built vs. targeted, per structure type. `built` is what stands in the room now; `targeted` is the
-// current-RCL plan (colony/building.ts's wantedStructures). A type appears if either count is > 0,
-// so an unbuilt-but-planned type shows 0/N (the backlog) and a built-but-no-longer-planned type
-// shows N/0 (e.g. a structure kept past its RCL). Sorted most-remaining first so the panel leads
-// with what still needs building.
+// Built vs. targeted per structure type; a type appears if either count is > 0. Sorted most-remaining first.
 export function buildingsFor(built: readonly SnapStructure[], targeted: readonly PlacedStructure[]): BuildingRow[] {
   const builtBy = countByType(built);
   const targetBy = countByType(targeted);
@@ -129,34 +102,21 @@ function countByType(structures: readonly { type: BuildableStructureConstant }[]
   return counts;
 }
 
-// The total energy standing in the room's sources this tick — the quantity whose fall over time is
-// harvest. Summed here so both the sampler and any test speak in the same terms.
+// SnapSource carries no live energy, so harvest is measured at the destination: containers + storage + drops.
 function totalSourceEnergy(snapshot: ColonySnapshot): number {
-  // The snapshot does not carry live source energy (SnapSource is position + open tiles only), so
-  // harvest rate is measured at the *destination* instead: containers plus storage plus ground
-  // drops. Their combined rise is energy that entered the economy — i.e. was harvested — before any
-  // sink spent it. See harvestRate() for how the diff becomes a rate.
   const containers = snapshot.containers.reduce((sum, c) => sum + c.storeEnergy, 0);
   const dropped = snapshot.drops.reduce((sum, d) => sum + d.amount, 0);
   return containers + dropped + snapshot.storageEnergy;
 }
 
-// Fold this tick's sample into the persisted window and return the resulting average harvest/tick.
-//
-// Rate = (newest stored energy − oldest) / (newest tick − oldest tick), but with sinks netted out
-// this would read *net* accumulation, not gross harvest. So we clamp per-step: only ticks where the
-// stored total rose count toward harvest; ticks where it fell (a sink drained it) contribute zero,
-// not negative. Averaged over the window's tick span, that is a stable income estimate that does not
-// swing negative every time an upgrader empties a container.
+// Folds this tick's sample into the window and returns the average. Per-step clamped to >=0 so a
+// sink draining the pile (net decrease) reads as zero harvest, not negative.
 function harvestRate(mem: ColonyMetricsMemory, tick: number, sourceEnergy: number): number | undefined {
   const samples = mem.harvestSamples;
   const last = samples[samples.length - 1];
 
-  // Only record forward-moving, distinct ticks. A re-run of the same tick (or a clock that went
-  // backwards under some replay) must not create a zero-span sample that divides by zero below.
-  if (!last || tick > last.tick) {
+  if (!last || tick > last.tick) { // skip replays/backwards clocks — avoids a zero-span sample
     samples.push({ tick, sourceEnergy });
-    // Drop anything older than the window relative to the newest sample.
     const cutoff = tick - HARVEST_WINDOW;
     while (samples.length > 1 && samples[0].tick < cutoff) samples.shift();
   }
@@ -171,13 +131,7 @@ function harvestRate(mem: ColonyMetricsMemory, tick: number, sourceEnergy: numbe
   return span > 0 ? gained / span : undefined;
 }
 
-/**
- * Collect one colony's metrics. `requests` is the colony's own spawn demand (colony.requests()),
- * used to turn "who is alive" into "who is wanted". `operationNames` is colony.operations mapped to
- * their names. `targeted` is the current-RCL structure plan (colony.building's wantedStructures),
- * computed by the caller so this stays pure. `mem` is the persisted harvest window, mutated in place
- * (the only side effect).
- */
+/** Collect one colony's metrics. `mem` is the persisted harvest window, mutated in place (the only side effect). */
 export function collectMetrics(
   snapshot: ColonySnapshot,
   requests: CreepRequest[],

@@ -1,10 +1,5 @@
-// The creep behaviour runner — an Empire capability. Unlike the arbiters it acts directly rather
-// than returning intents: travelTo keeps internal path state, so purity is enforced at room-level
-// decisions, not per-creep pathfinding.
-//
-// Empire-scoped because it iterates Game.creeps directly rather than a snapshot, so it has no single
-// colony to be scoped to. That is debt — creep behaviour is per-colony work that never got
-// snapshot-ified — but it is the Empire's debt, not a system's.
+// The creep behaviour runner. Acts directly rather than returning intents, since travelTo keeps
+// internal path state. Empire-scoped because it iterates Game.creeps directly, not a snapshot.
 
 import { firstRunnableStep, nextStep, runStep, type CreepState } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
@@ -32,10 +27,7 @@ function runOne(creep: Creep): void {
   let step = firstRunnableStep(def.steps, task.step, storeOf(creep));
   if (step !== task.step) task.target = undefined; // lock belonged to the skipped step
 
-  // A dead target (resolveTarget found nothing) costs no game API call, so retry with the next step
-  // immediately rather than leaving the creep idle for a whole tick waiting for next tick's call.
-  // Bounded to one full pass: if nothing in the loop resolves anywhere, the creep is genuinely idle
-  // this tick, not stuck on a fixable failure.
+  // A dead target costs no API call, so retry the next step immediately; bounded to one full pass.
   for (let i = 0; i < def.steps.length; i++) {
     const result = runStep(creep, def.steps[step], task.target);
 

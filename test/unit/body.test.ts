@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { affordableSets, bodyCost, countPart, orderBody, parts } from "../../src/behaviors/body";
+import { affordableSets, bodyCost, countPart, orderBody, parts } from "../../src/spawn/body";
 
 describe("bodyCost", () => {
   it("sums the game's BODYPART_COST table", () => {

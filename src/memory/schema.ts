@@ -1,7 +1,4 @@
-// ALL memory interfaces — single source of truth. Each field is owned by exactly one system; other
-// systems read it through the snapshot, never write it. Store Id<T> — the snapshot builder
-// resolves them and clears fields whose ids no longer resolve. No spawn queue in memory — desired
-// census is recomputed every tick.
+// ALL memory interfaces. Each field is owned by exactly one system; others read it via the snapshot, never write it.
 
 import type { RoomType } from "../lib/roomName";
 import type { TaskState } from "../behaviors/types";
@@ -13,29 +10,17 @@ declare global {
     scouting: ScoutingMemory;
     expansion: ExpansionMemory;
     stats: StatsMemory;
-    // Cross-tick metric state, keyed by colony room name. Only the little that a single tick's
-    // snapshot cannot recover lives here — the harvest-rate window. Everything else in a metrics
-    // report is derived fresh each tick and never persisted.
-    metrics: Record<string, ColonyMetricsMemory>;
+    metrics: Record<string, ColonyMetricsMemory>; // cross-tick harvest-rate window; everything else in a report is derived fresh
   }
 
   interface CreepMemory {
     home: string; // colony room name
     role: RoleName;
-    // The requester that ordered this creep, as `kind:room` (see opName). Absent means unowned —
-    // a creep that predates its requester, cleared by attrition rather than migration.
-    op?: string;
-    // Singular: an RCL7+ two-source miner does not exist here, so the honest port is one assignment.
-    sourceId?: Id<Source>;
+    op?: string; // requester that ordered this creep, as `kind:room`; absent means unowned (predates its requester)
+    sourceId?: Id<Source>; // singular — no multi-source miner assignment
     task?: TaskState; // current behavior progress — owned by behaviors/interpreter.ts
-    // The room a scout is currently assigned to reach. Written by the setScoutTarget intent (the
-    // Scouting operation decides which room, execute.ts fills it in with `route`); read by the
-    // moveToRoom behaviour, which clears it on arrival so the operation assigns the next one.
-    scoutTarget?: string;
-    // A precomputed room-by-room route to a distant target, so the mover crosses large distances the
-    // way Game.map.findRoute plans rather than one greedy travelTo. Written by setScoutTarget, walked
-    // and advanced by the moveToRoom behaviour. General-purpose — any long-haul role can reuse it.
-    route?: RouteMemory;
+    scoutTarget?: string; // room a scout is assigned to reach; cleared by moveToRoom on arrival
+    route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
   }
 
   interface RoomMemory {
@@ -63,12 +48,10 @@ export interface ColonyMemory {
   danger: number; // owned by defense
 }
 
-// A room-by-room route and how far along it the creep is. `rooms` is the ordered sequence *from the
-// creep's room at planning time to the destination*, exclusive of the start; `index` is the next room
-// to enter. The mover advances `index` as each room is reached and is done when it runs out.
+// A room-by-room route and how far along it the creep is; `index` is the next room to enter.
 export interface RouteMemory {
-  dest: string; // the room this route leads to — a guard against walking a stale route to elsewhere
-  rooms: string[]; // ordered rooms to pass through, next-to-enter at `index`
+  dest: string; // guard against walking a stale route to elsewhere
+  rooms: string[]; // ordered rooms to pass through, excluding the start
   index: number;
 }
 
@@ -84,11 +67,8 @@ export interface LinkNetworkMemory {
   sources: Id<StructureLink>[];
 }
 
-// One room as scouting last observed it. Written only by the scout behaviour recording what it stood
-// in (execute.ts's recordScout), read by remote-mining and expansion to decide what is worth
-// claiming. The room *type* is stored even though it is derivable from the name — it is the cheap
-// filter a reader applies before touching the rest, and storing it means an unvisited room already
-// carries its type (set from the name) with `tick` absent to mark it never actually seen.
+// One room as scouting last observed it. `type` is stored despite being derivable from the name, as a cheap pre-filter;
+// an unvisited room carries its type with `tick` absent to mark it never actually seen.
 export interface ScoutInfo {
   tick?: number; // Game.time when last physically seen; absent means classified-but-unvisited
   type: RoomType;
@@ -98,11 +78,8 @@ export interface ScoutInfo {
   hostile: boolean; // owned by someone other than us
 }
 
-// The one piece of scouting state a single tick cannot rederive: how far out the frontier has
-// pushed. Legacy grew the radius outward as rooms in the current ring were exhausted (todo empty ->
-// radius+1). The todo list itself is NOT stored — it is recomputed every tick from the room graph
-// and RoomMemory (the rewrite rejects legacy's persisted, drift-prone Operation.data.todo). Only the
-// radius survives, so the frontier does not reset to 1 every restart.
+// How far out the frontier has pushed — the one piece of scouting state a tick cannot rederive. The todo list itself
+// is recomputed every tick from the room graph, never stored.
 export interface ScoutingMemory {
   radius: number; // current scouting radius in rooms; grows toward MAX_SCOUT_RANGE
 }
@@ -115,12 +92,8 @@ export interface StatsMemory {
   version: number;
 }
 
-// The one piece of metric state a single tick cannot rederive: a short window of (tick, total
-// source energy) samples. Harvest rate is the drop in total source energy per tick, averaged over
-// the window — so we keep the oldest and newest samples and diff them. Storing a ring rather than a
-// single running total means a gap in vision (no snapshot for a stretch) self-heals: old samples
-// age out instead of poisoning the average forever.
+// A short window of (tick, total source energy) samples; harvest rate is diffed oldest-vs-newest. A ring rather than a
+// running total so a gap in vision self-heals instead of poisoning the average forever.
 export interface ColonyMetricsMemory {
-  // (tick, total source energy) samples, oldest first, capped at HARVEST_WINDOW entries.
-  harvestSamples: { tick: number; sourceEnergy: number }[];
+  harvestSamples: { tick: number; sourceEnergy: number }[]; // oldest first, capped at HARVEST_WINDOW entries
 }

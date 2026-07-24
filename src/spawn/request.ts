@@ -1,62 +1,25 @@
-// The vocabulary demand is expressed in: a request, its priority scale, and the name a requester
-// stamps on the creeps it owns. Types and constants only — the request *functions* deliberately stay
-// beside the quota they replaced (see PRD 0005 §7), so nothing here centralises demand.
+// Vocabulary for expressing demand: a request, its priority scale, and the name a requester stamps on creeps it owns.
 
-/**
- * One creep a requester found missing. Always exactly one — a requester short three haulers emits
- * three requests. There is no `role` field: `memory.role` is ground truth, and a second carrier
- * would have nothing enforcing agreement between them.
- *
- * Routing is a request field, not the arbiter's inference: only the requester knows where its creep
- * is *needed* (`targetRoom`), and which is the colony that funds it defaults to that but a remote
- * request may pin it (`spawnRoom`). This is legacy `SpawnEntry`'s `room`/`toPos` pair reduced to
- * what the snapshot architecture actually needs — no persisted queue, no `pause`/`rebuild`.
- */
+/** One creep a requester found missing (always exactly one; no `role` field since `memory.role` is ground truth). */
 export interface CreepRequest {
-  body: BodyPartConstant[]; // the requester computed it, sized against the budget it chose
+  body: BodyPartConstant[]; // sized against the requester's chosen budget
   priority: number; // absolute across the empire; higher wins
   memory: CreepMemory; // complete — role, home, op, and anything role-specific
-  // Where the creep is needed. The empire arbiter routes the spawn to the nearest spawn-capable
-  // colony to here. Defaults to the requesting colony (memory.home), which is every request today —
-  // remote/expansion requests will differ. Kept out of memory because it steers spawn *placement*,
-  // not the creep's behaviour, and behaviour reads memory.
-  targetRoom: string;
-  // Hard override: spawn in exactly this colony, skipping the nearest-to-target search. Legacy's
-  // manual room pin. Absent means "let the arbiter choose."
-  spawnRoom?: string;
+  targetRoom: string; // where the creep is needed; arbiter routes to nearest spawn-capable colony, defaults to memory.home
+  spawnRoom?: string; // hard override: spawn in exactly this colony; absent means "let the arbiter choose"
 }
 
-// Reserved for the wipe restart. Nothing else may reach it: a colony with no creeps has no other
-// way out, since every normal quota evaluates to zero.
+// Reserved for the wipe restart — a colony with no creeps has no other way out, since every normal quota evaluates to zero.
 export const RECOVERY_PRIORITY = 1000;
 
-// The per-role default priority now lives on each role class (behaviors/roles/*.ts) as a static
-// `priority` field, read via roleDef(role).priority — see behaviors/roles/role.ts for the scale
-// this replaced (economy high, growth low; builder outranks upgrader since construction compounds
-// capacity while upgrading is a pure sink).
+// Per-role default priority lives on each role class (behaviors/roles/*.ts) as a static `priority` field, read via roleDef(role).priority.
 
-/**
- * The name a requester stamps on `CreepMemory.op` to claim the creeps it ordered. In stage 2 the
- * value is a string literal with no object behind it; in stage 3 it becomes an operation's own name.
- * Both call this so the two can never drift.
- *
- * Known limit: `kind:room` is unique only while there is at most one operation of a kind per room.
- * Remote mining breaks that, and widening it is stage 3+'s problem.
- */
+/** Name a requester stamps on `CreepMemory.op` to claim the creeps it ordered; both stage 2 and 3 call this so they can't drift. */
 export function opName(kind: string, room: string): string {
   return `${kind}:${room}`;
 }
 
-/**
- * The plain-count satisfaction check, shared by every requester whose demand is "N of this role,
- * and I have M". Emits one request per missing creep, or none when the quota is already met.
- *
- * Each request gets its own copy of the body: they are otherwise one array shared by every request
- * a call produces, so anything that later resizes a body in place would corrupt its siblings.
- *
- * Miner demand deliberately does not use this — its deficit is per source, not a count, which is
- * the whole reason requests replaced counts.
- */
+/** Plain-count satisfaction check: emits one request per missing creep. Miner demand doesn't use this — its deficit is per source. */
 export function fillTo(
   wanted: number,
   have: number,
@@ -65,10 +28,8 @@ export function fillTo(
   memory: CreepMemory
 ): CreepRequest[] {
   const missing = wanted - have;
-  // A role whose body formula yields nothing has no request to make, however short it is.
-  if (missing <= 0 || body.length === 0) return [];
-  // targetRoom defaults to the creep's home: a count-based requester wants its creeps in its own
-  // colony. The per-target requesters that don't (remote mining) don't use fillTo.
+  if (missing <= 0 || body.length === 0) return []; // no body formula, no request
+  // targetRoom defaults to the creep's home; per-target requesters (remote mining) don't use fillTo.
   return Array.from({ length: missing }, () => ({
     body: [...body],
     priority,

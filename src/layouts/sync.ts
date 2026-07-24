@@ -62,11 +62,8 @@ export function flattenGoal(source: PlannerLayout): GoalLayout {
   return { anchor, placements };
 }
 
-// Greedy nearest-to-blob, seeded on storage (a filler's round trip is storage -> extension ->
-// storage) and grown through extensions only — including the rest of the bunker core would make
-// "nearest to the blob" true of almost every candidate at once, turning the cluster into an even
-// ring instead. Ties break on distance to the seed. Source-independent by construction (baked at
-// codegen time); layouts/goal.ts biases toward sources at runtime instead.
+// Greedy nearest-to-blob, seeded on storage and grown through extensions only, so the cluster forms
+// instead of an even ring. Ties break on distance to seed; source bias happens at runtime in layouts/goal.ts.
 function orderExtensions(extensions: XY[], seed: XY): GoalPlacement[] {
   const remaining = [...extensions];
   const blob: XY[] = [seed];

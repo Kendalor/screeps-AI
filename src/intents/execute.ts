@@ -120,10 +120,7 @@ function act(intent: Intent): ScreepsReturnCode {
   }
 }
 
-// What a scout sees of the room it stands in, distilled to the ScoutInfo that remote mining and
-// expansion read. Lives here, not in a planner, because it reads a live Room; `tick` stamps when it
-// was seen so staleAfter() can age it out. Owner is the controller's owner or reserver; the room is
-// hostile if that owner is someone other than us.
+// What a scout sees, distilled to ScoutInfo. Lives here (not a planner) since it reads a live Room.
 function observeRoom(room: Room): ScoutInfo {
   const c = room.controller;
   const owner = c?.owner?.username ?? c?.reservation?.username;
@@ -138,10 +135,7 @@ function observeRoom(room: Room): ScoutInfo {
   };
 }
 
-// A room-by-room route from `from` to `dest`, ready for a creep to walk one room at a time. Uses
-// Game.map.findRoute so a long haul follows planned exits rather than a single greedy travelTo across
-// unknown terrain. On failure (no route) the route is just the destination, and the mover falls back
-// to travelTo — better a best-effort walk than a stranded creep.
+// Room-by-room route via Game.map.findRoute; on failure, falls back to just the destination.
 function routeTo(from: string, dest: string): RouteMemory {
   const route = Game.map.findRoute(from, dest);
   const rooms = route === ERR_NO_PATH ? [dest] : route.map(step => step.room);
