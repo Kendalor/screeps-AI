@@ -38,7 +38,8 @@ function runOne(creep: Creep): void {
     step: task.step,
     free: creep.store.getFreeCapacity(),
     used: creep.store.getUsedCapacity(),
-    targetGone: !result.acted
+    targetGone: !result.acted,
+    acted: result.acted
   };
   task.step = nextStep(def.steps, state);
 

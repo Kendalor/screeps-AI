@@ -11,7 +11,7 @@ const STEPS: Step[] = [
 ];
 
 function state(over: Partial<CreepState> = {}): CreepState {
-  return { step: 0, free: 50, used: 0, targetGone: false, ...over };
+  return { step: 0, free: 50, used: 0, targetGone: false, acted: false, ...over };
 }
 
 describe("advanceRoute", () => {
@@ -82,6 +82,30 @@ describe("when: empty gate", () => {
   it("runs the when:empty gather once the creep is fully empty", () => {
     expect(firstRunnableStep(GATED, 1, { free: 50, used: 0 })).toBe(1);
     expect(nextStep(GATED, state({ step: 1, free: 50, used: 0 }))).toBe(1);
+  });
+});
+
+// A `oneShot` spend step completes the instant it acts, regardless of remaining store — unlike a
+// plain spend step (complete only at used===0). This is for a creep target that keeps re-validating
+// as a legal sink every tick (an actively-upgrading creep drains its own carry, so it's forever
+// "notFull"): without oneShot the hauler would lock on and dump its entire load into one consumer,
+// never re-checking a structure sink upstream that freed up mid-trip.
+describe("oneShot gate", () => {
+  const ONE_SHOT: Step[] = [
+    { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
+    { do: "transfer", to: { find: "creep", role: "upgrader", where: "notFull" }, oneShot: true }
+  ];
+
+  it("stays on a oneShot step the tick it has not yet acted", () => {
+    expect(nextStep(ONE_SHOT, state({ step: 1, free: 0, used: 50, acted: false }))).toBe(1);
+  });
+
+  it("advances off a oneShot step the instant it acts, even while still carrying energy", () => {
+    expect(nextStep(ONE_SHOT, state({ step: 1, free: 25, used: 25, acted: true }))).toBe(0);
+  });
+
+  it("a plain spend step (no oneShot) ignores acted and stays until the store is empty", () => {
+    expect(nextStep(ONE_SHOT, state({ step: 0, free: 25, used: 25, acted: true }))).toBe(0);
   });
 });
 

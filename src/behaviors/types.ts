@@ -31,6 +31,15 @@ export type When = "empty";
 
 export type Step = ({
   when?: When;
+  // A spend step normally completes only once the actor's own store is empty (isComplete: s.used
+  // === 0) — right for a bounded structure sink, which fills and goes targetGone within a couple of
+  // ticks anyway. Wrong for a creep sink: an actively-working consumer (e.g. an upgrader) keeps
+  // draining its own carry, so it re-validates as `notFull` every tick and the lock never breaks —
+  // one consumer can then absorb an entire hauler load while closer, still-open structure sinks
+  // upstream (extensions) never get re-checked. `oneShot: true` makes the step complete the instant
+  // it acts, regardless of remaining `used`, so the loop wraps back to step 0 and re-scans sinks in
+  // priority order on the same trip instead of pinning to one bottomless target.
+  oneShot?: boolean;
 }) &
   (
     | { do: "harvest"; from: TargetSpec }

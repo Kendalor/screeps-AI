@@ -240,7 +240,9 @@ describe("hauler role", () => {
         { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
         // With every fixed sink full, feed a consumer directly rather than hold or drop energy.
-        { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } }
+        // oneShot: an actively-working consumer never truly goes not-full, so one transfer is enough
+        // before the loop re-scans every sink from the top instead of pinning to this one target.
+        { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" }, oneShot: true }
       ]
     });
   });

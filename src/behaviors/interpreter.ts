@@ -27,6 +27,12 @@ export interface CreepState {
   free: number;
   used: number;
   targetGone: boolean; // the locked target no longer resolves
+  // Whether the step's game-API call actually fired this tick — distinct from a target merely
+  // resolving (which can be true while still travelling toward it, out of range). Only meaningful for
+  // the post-action nextStep call; firstRunnableStep's pre-action scan always passes false since
+  // nothing has acted yet. Drives `oneShot` — see Step.oneShot and StepResult.didAct for why a
+  // creep-sink transfer needs "did it actually deliver" rather than "did a target resolve".
+  didAct: boolean;
 }
 
 export function nextStep(steps: Step[], s: CreepState): number {
@@ -41,7 +47,7 @@ export function nextStep(steps: Step[], s: CreepState): number {
 export function firstRunnableStep(steps: Step[], from: number, store: { free: number; used: number }): number {
   for (let i = 0; i < steps.length; i++) {
     const idx = (from + i) % steps.length;
-    if (!isComplete(steps[idx], { step: idx, ...store, targetGone: false })) return idx;
+    if (!isComplete(steps[idx], { step: idx, ...store, targetGone: false, didAct: false })) return idx;
   }
   return from;
 }
@@ -53,6 +59,9 @@ export function isComplete(step: Step, s: CreepState): boolean {
   // a loaded hauler keep delivering (cycling to the next spend step) instead of returning to pick
   // up more the moment one sink fills. The condition reads the creep's own store, never a target's.
   if (step.when === "empty" && s.used > 0) return true;
+  // A oneShot step is done the moment its action actually fires (in range, API call made) —
+  // not merely when a target resolves and travelTo begins. See Step.oneShot.
+  if (step.oneShot && s.didAct) return true;
   const kind = STEP_KIND[step.do];
   if (kind === "move") return false; // completes only via targetGone (arrival), handled above
   if (kind === "gather") return s.free === 0;
@@ -62,9 +71,13 @@ export function isComplete(step: Step, s: CreepState): boolean {
 // --- acting half (touches the live API) --------------------------------------
 // Resolves/validates the target then acts in range or travelTo. build/repair/upgrade act at range 3; everything else at range 1.
 
-// acted feeds CreepState.targetGone in the dispatcher so a step with nothing to do advances instead of stalling.
+// acted feeds CreepState.targetGone in the dispatcher so a step with nothing to do advances instead of
+// stalling — true whenever a target resolved, even if the creep is still travelling toward it. didAct
+// is the narrower signal: true only when the step's game-API call actually fired this tick (in range).
+// Feeds CreepState.didAct, which drives `oneShot` — see Step.oneShot for why the distinction matters.
 export interface StepResult {
   acted: boolean;
+  didAct: boolean;
   target?: Id<_HasId>;
 }
 
@@ -98,7 +111,7 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResu
       return moveToRoom(creep, step);
     case "sit":
       creep.travelTo(new RoomPosition(step.pos.x, step.pos.y, creep.room.name));
-      return { acted: true };
+      return { acted: true, didAct: false };
   }
 }
 

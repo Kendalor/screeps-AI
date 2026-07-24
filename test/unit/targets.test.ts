@@ -357,12 +357,15 @@ function fakeSource(id: string, x: number, y: number): object {
   return { id, pos: { x, y }, energy: 3000, room: plainRoom };
 }
 
-function sourceCreep(name: string, sources: object[], lockedTarget?: string): Creep {
+function sourceCreep(name: string, sources: object[], lockedTarget?: string, sourceId?: string): Creep {
   return {
     name,
     pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
     room: { find: () => sources },
-    memory: { task: lockedTarget ? { step: 0, target: lockedTarget } : { step: 0 } }
+    memory: {
+      task: lockedTarget ? { step: 0, target: lockedTarget } : { step: 0 },
+      ...(sourceId ? { sourceId } : {})
+    }
   } as unknown as Creep;
 }
 
@@ -478,5 +481,47 @@ describe("resolveTarget source spreading", () => {
     const got = resolveTarget(sourceCreep("me", [a]), { find: "source" });
 
     expect((got as { id: string }).id).toBe("a");
+  });
+});
+
+// A miner assigned a source (memory.sourceId, written by Mining's per-source requests) must stick to
+// that source rather than drift to whichever is nearest or least-claimed — otherwise Mining's own
+// per-source WORK accounting (which counts miners by sourceId) disagrees with where miners actually
+// stand, letting one source get overstaffed while another sits under its target.
+describe("resolveTarget source pinning", () => {
+  it("sends an assigned miner to its own source even when a closer one is offered first", () => {
+    const near = fakeSource("near", 10, 10);
+    const assigned = fakeSource("assigned", 40, 40);
+    stubGame({ objects: { near, assigned } });
+
+    const got = resolveTarget(sourceCreep("me", [near, assigned], undefined, "assigned"), { find: "source" });
+
+    expect((got as { id: string }).id).toBe("assigned");
+  });
+
+  it("ignores an assigned source's own share cap being full — no other source is a legal fallback", () => {
+    const assigned = fakeSource("assigned", 10, 10);
+    const other = fakeSource("other", 40, 40);
+    stubGame({ objects: { assigned, other } });
+    const claims: Record<string, string> = {};
+    for (let i = 0; i < 10; i++) claims["h" + i] = "assigned";
+    withClaims(claims);
+
+    const got = resolveTarget(sourceCreep("me", [assigned, other], undefined, "assigned"), { find: "source" });
+
+    expect((got as { id: string }).id).toBe("assigned");
+  });
+
+  it("an unassigned creep (no sourceId) still sees every source, spreading as before", () => {
+    const near = fakeSource("near", 10, 10);
+    const far = fakeSource("far", 40, 40);
+    stubGame({ objects: { near, far } });
+    const claims: Record<string, string> = {};
+    for (let i = 0; i < 8; i++) claims["h" + i] = "near";
+    withClaims(claims);
+
+    const got = resolveTarget(sourceCreep("me", [near, far]), { find: "source" });
+
+    expect((got as { id: string }).id).toBe("far");
   });
 });

@@ -237,8 +237,16 @@ export function openHarvestTiles(at: { pos: { x: number; y: number }; room: { ge
 function findCandidates(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find: "controller" }>): RoomObject[] {
   const room = creep.room;
   switch (spec.find) {
-    case "source":
-      return room.find(FIND_SOURCES).filter(s => s.energy > 0);
+    case "source": {
+      const sources = room.find(FIND_SOURCES).filter(s => s.energy > 0);
+      // A miner assigned to a specific source (memory.sourceId) must harvest only that one — Mining's
+      // per-source WORK accounting (mining.ts) assumes assigned miners stand on their assigned source,
+      // not wherever share-cap/proximity happens to route them. Unassigned creeps (no sourceId, e.g.
+      // pre-stage-2 miners) still see every source, as before.
+      const assigned = creep.memory.sourceId;
+      if (assigned === undefined) return sources;
+      return sources.filter(s => s.id === assigned);
+    }
     case "dropped":
       return room.find(FIND_DROPPED_RESOURCES);
     case "tombstone":

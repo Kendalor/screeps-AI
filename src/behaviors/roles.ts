@@ -216,7 +216,12 @@ export const ROLES = {
       { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
-      { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } }
+      // oneShot: an actively-working consumer keeps draining its own carry, so it re-validates as
+      // notFull practically forever — without oneShot the hauler would lock on and dump its whole
+      // load into one upgrader/builder, never re-checking extensions that free up mid-trip. One
+      // transfer, then the loop wraps to step 0 and re-scans every sink in priority order with
+      // whatever energy remains, instead of pinning to this bottomless last resort.
+      { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull", prefer: "nearest" }, oneShot: true }
     ]
   }
 } satisfies Partial<Record<RoleName, RoleDef>>;
