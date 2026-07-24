@@ -1,6 +1,6 @@
 // resolveTarget(spec) is the one place that searches for targets.
 
-import type { TargetSpec } from "./types";
+import type { Prefer, TargetSpec } from "./types";
 
 export type Where = "notFull" | "hasEnergy" | "damaged";
 
@@ -137,9 +137,23 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
   const uncrowded = consider.filter(c =>
     withinShareCap(creep, (c as unknown as { id: Id<_HasId> }).id, shareCap(spec, c))
   );
-  const pool = uncrowded.length > 0 ? uncrowded : consider;
+  const pool = applyPrefer(spec, uncrowded.length > 0 ? uncrowded : consider);
 
   return creep.pos.findClosestByPath(pool as RoomObject[]) ?? pool[0] ?? null;
+}
+
+// Orders the pool so the pool[0] fallback (and ties in findClosestByPath) resolve the same way
+// every time, instead of following room.find()'s unspecified order. Opt-in via spec.prefer — no
+// prefer means the step's existing (undetermined-order) behavior is unchanged.
+function applyPrefer(spec: TargetSpec, pool: RoomObject[]): RoomObject[] {
+  const prefer = (spec as { prefer?: Prefer }).prefer;
+  if (prefer === "largest") {
+    return [...pool].sort((a, b) => (b as unknown as { amount: number }).amount - (a as unknown as { amount: number }).amount);
+  }
+  if (prefer === "mostProgress") {
+    return [...pool].sort((a, b) => (b as unknown as { progress: number }).progress - (a as unknown as { progress: number }).progress);
+  }
+  return pool;
 }
 
 // The minimum a drop pile must hold before a creep will walk to it: a fraction of the

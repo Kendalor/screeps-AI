@@ -290,6 +290,45 @@ describe("resolveTarget worthwhile-amount filter for drop piles", () => {
   });
 });
 
+// prefer is opt-in per spec: it only reorders the pool the step already asked for, so a step
+// that omits it keeps whatever order room.find() (here, the fixture's candidate array) returned.
+describe("resolveTarget prefer ordering", () => {
+  it("without prefer, the fallback keeps room.find()'s order (first candidate)", () => {
+    const small = fakeDrop("small", 500);
+    const big = fakeDrop("big", 1000);
+    stubGame({ objects: { small, big } });
+
+    // Both clear the worthwhile floor; findClosestByPath here always returns list[0], so
+    // whichever the fixture lists first wins when prefer is absent.
+    const got = resolveTarget(collectorCreep("me", 200, [small, big]), { find: "dropped" });
+
+    expect((got as { id: string }).id).toBe("small");
+  });
+
+  it("prefer: largest picks the biggest pile regardless of room.find() order", () => {
+    const small = fakeDrop("small", 500);
+    const big = fakeDrop("big", 1000);
+    stubGame({ objects: { small, big } });
+
+    const got = resolveTarget(collectorCreep("me", 200, [small, big]), { find: "dropped", prefer: "largest" });
+
+    expect((got as { id: string }).id).toBe("big");
+  });
+
+  it("prefer: mostProgress picks the nearest-to-complete construction site", () => {
+    const fresh = { id: "fresh", pos: { x: 5, y: 5 }, progress: 10, progressTotal: 100 };
+    const almostDone = { id: "almostDone", pos: { x: 5, y: 5 }, progress: 90, progressTotal: 100 };
+    stubGame({ objects: { fresh, almostDone } });
+
+    const got = resolveTarget(collectorCreep("me", 200, [fresh, almostDone]), {
+      find: "constructionSite",
+      prefer: "mostProgress"
+    });
+
+    expect((got as { id: string }).id).toBe("almostDone");
+  });
+});
+
 describe("resolveTarget pile claim limits", () => {
   it("locks a small pile to a single claimant", () => {
     const small = fakeDrop("small", 80); // under the 100-energy reference capacity -> cap of 1

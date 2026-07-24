@@ -4,12 +4,17 @@ import type { RoleName } from "../memory/schema";
 // Sources ignore this and use their open harvest-tile count as the cap instead.
 export type Share = "allow" | "avoid" | number;
 
+// Breaks the tie deterministically when room.find()'s unspecified order would otherwise decide —
+// either as the pool[0] fallback (no reachable path) or among several candidates equidistant by path.
+// "largest" ranks a drop pile by its amount; "mostProgress" ranks a construction site closest to done.
+export type Prefer = "largest" | "mostProgress";
+
 export type TargetSpec =
   | { find: "structure"; type: StructureConstant; where?: "notFull" | "hasEnergy" | "damaged"; share?: Share }
-  | { find: "dropped"; share?: Share }
+  | { find: "dropped"; share?: Share; prefer?: "largest" }
   | { find: "tombstone"; share?: Share }
   | { find: "source" }
-  | { find: "constructionSite"; share?: Share }
+  | { find: "constructionSite"; share?: Share; prefer?: "mostProgress" }
   | { find: "controller" }
   // A friendly creep, filtered by role. Lets haulers hand energy directly to consumers (upgraders,
   // builders) when the fixed sinks are full, and lets those consumers pull from a hauler instead of

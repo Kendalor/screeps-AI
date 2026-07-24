@@ -83,7 +83,13 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResu
         creep.transfer(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY)
       );
     case "build":
-      return actOn(creep, step.at ?? { find: "constructionSite" }, locked, t => creep.build(t as ConstructionSite), 3);
+      return actOn(
+        creep,
+        step.at ?? { find: "constructionSite", prefer: "mostProgress" },
+        locked,
+        t => creep.build(t as ConstructionSite),
+        3
+      );
     case "repair":
       return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3);
     case "upgrade":

@@ -108,7 +108,7 @@ export const ROLES = {
   bootstrap: {
     body: bootstrapBody,
     steps: [
-      { do: "pickup", from: { find: "dropped" } },
+      { do: "pickup", from: { find: "dropped", prefer: "largest" } },
       { do: "harvest", from: { find: "source" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
@@ -125,7 +125,7 @@ export const ROLES = {
   builder: {
     body: builderBody,
     steps: [
-      { do: "pickup", from: { find: "dropped" } },
+      { do: "pickup", from: { find: "dropped", prefer: "largest" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
@@ -146,7 +146,7 @@ export const ROLES = {
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
-      { do: "pickup", from: { find: "dropped" } }
+      { do: "pickup", from: { find: "dropped", prefer: "largest" } }
     ]
   },
   // With a container underneath, the transfer steps mostly no-op since harvest overflow already lands in it.
@@ -198,7 +198,7 @@ export const ROLES = {
       // next transfer step above and delivers the rest, rather than returning to pick up more. The
       // `when` reads the hauler's own store; the target `where` still describes the source pile/container.
       { do: "withdraw", when: "empty", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
-      { do: "pickup", when: "empty", from: { find: "dropped" } }
+      { do: "pickup", when: "empty", from: { find: "dropped", prefer: "largest" } }
     ]
   }
 } satisfies Partial<Record<RoleName, RoleDef>>;
