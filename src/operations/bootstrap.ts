@@ -2,10 +2,9 @@
 //
 // It once also fielded an early-game "bootstrapper" all-rounder that harvested, filled, built and
 // upgraded until storage existed. That workforce is gone: a room now stands up on the real economy
-// from the first tick (drop-miners → haulers → upgraders/builders, all viable at 300 energy), so a
-// self-manufacturing all-rounder would only compete with the miners for source tiles and slow the
-// climb. Recovery is the one thing that still needs a role that needs no infrastructure, so the
-// bootstrap *body* survives here even though the workforce does not.
+// from the first tick (drop-miners → haulers → upgraders/builders, all viable at 300 energy), so an
+// all-rounder would only compete with miners for source tiles and slow the climb. Recovery still
+// needs a role with no infrastructure requirement, so the bootstrap *body* survives here.
 //
 // Pure — reads the snapshot, returns plain requests, never touches Game.*.
 
@@ -16,8 +15,6 @@ import { RECOVERY_PRIORITY, opName, type CreepRequest } from "../spawn/request";
 import { bodyContext } from "../behaviors/bodyContext";
 import { Operation } from "./operation";
 
-// Recovery: total creep loss
-
 // Total creep loss: with nothing alive, energyAvailable only climbs to the spawn's own regen and
 // every normal quota evaluates to zero forever, so this detects a zero creep count directly rather
 // than by watching energy level over time. An ordinary request at a reserved top priority — not a
@@ -25,8 +22,8 @@ import { Operation } from "./operation";
 function recoveryRequests(colony: ColonySnapshot): CreepRequest[] {
   if (colony.creeps.length > 0) return [];
 
-  // Supply (not hauler, which moves energy the other way) withdraws from storage directly into extensions.
-  // Bootstrap needs no infrastructure, but still needs a source; with neither, there is no way back.
+  // Supply (not hauler, which moves energy the other way) withdraws from storage into extensions.
+  // Bootstrap needs no infrastructure but still needs a source; with neither, there's no way back.
   const role = colony.storageEnergy > 0 ? "supply" : colony.sources.length > 0 ? "bootstrap" : undefined;
   if (!role) return [];
 
@@ -38,11 +35,10 @@ function recoveryRequests(colony: ColonySnapshot): CreepRequest[] {
   const body = orderBody(def.body(colony.energyAvailable, bodyContext(colony)));
   if (body.length === 0) return [];
 
-  // Sizing against available energy still does not guarantee affordability: every body formula
-  // clamps to at least one whole set, so below that floor (250 for bootstrap, 150 for supply) it
-  // hands back a body the room cannot pay for. Withhold it rather than emit it — at
-  // RECOVERY_PRIORITY it sorts first, so an unaffordable recovery request would trip the arbiter's
-  // stop and block every other request behind it while the room refills.
+  // Every body formula clamps to at least one whole set, so below that floor (250 for bootstrap, 150
+  // for supply) it hands back a body the room can't pay for. Withhold it rather than emit it — at
+  // RECOVERY_PRIORITY it sorts first, so an unaffordable request would trip the arbiter's stop and
+  // block everything behind it while the room refills.
   if (bodyCost(body) > colony.energyAvailable) return [];
 
   return [
