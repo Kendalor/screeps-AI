@@ -188,17 +188,21 @@ export const ROLES = {
   },
   hauler: {
     body: haulerBody,
+    // Gather-first, then deliver: fill the store completely before delivering, then deliver until
+    // empty before gathering again. The plain wrap-around loop gives this for free — a gather step is
+    // complete only at free===0, so the hauler stays on the collect phase (topping off from container
+    // then drops) until full; a spend step is complete only at used===0, so it stays on the deliver
+    // phase until empty. No `when` gate is needed: gates were only there to invert this into the old
+    // "deliver on any load" behaviour. Deliver steps resolve to the closest matching sink already
+    // (resolveTarget uses findClosestByPath); pickup prefers the largest drop pile.
     steps: [
+      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "pickup", from: { find: "dropped", prefer: "largest" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
-      { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } },
-      // Only gather once fully empty: a loaded hauler whose current sink filled cycles back to the
-      // next transfer step above and delivers the rest, rather than returning to pick up more. The
-      // `when` reads the hauler's own store; the target `where` still describes the source pile/container.
-      { do: "withdraw", when: "empty", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
-      { do: "pickup", when: "empty", from: { find: "dropped", prefer: "largest" } }
+      { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } }
     ]
   }
 } satisfies Partial<Record<RoleName, RoleDef>>;

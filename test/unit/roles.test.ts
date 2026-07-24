@@ -204,19 +204,22 @@ describe("miner role", () => {
 });
 
 describe("hauler role", () => {
-  it("delivers to every sink then a consumer, and only gathers again once fully empty", () => {
+  it("collects until full, then delivers to every sink and finally a consumer until empty", () => {
     expect(roleDef("hauler")).toEqual({
       body: ROLES.hauler.body,
       steps: [
+        // Collect phase: top off from a container then the largest drop until full (no when-gate — a
+        // gather step is complete only at free===0, so the loop stays here until the store is full).
+        { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+        { do: "pickup", from: { find: "dropped", prefer: "largest" } },
+        // Deliver phase: closest matching sink each step (resolveTarget picks the nearest by path),
+        // running until empty before the loop wraps back to the collect phase.
         { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
         { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
         // With every fixed sink full, feed a consumer directly rather than hold or drop energy.
-        { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } },
-        // Gather steps gated on the hauler being empty: it delivers its whole load before returning.
-        { do: "withdraw", when: "empty", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
-        { do: "pickup", when: "empty", from: { find: "dropped" } }
+        { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull" } }
       ]
     });
   });

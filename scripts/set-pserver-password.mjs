@@ -64,12 +64,33 @@ function runCliCommand(command) {
   });
 }
 
+let result;
 try {
-  const result = await runCliCommand(`auth.setPassword('${username}', '${password}')`);
+  result = await runCliCommand(`auth.setPassword('${username}', '${password}')`);
   console.log(result.trim());
 } catch (err) {
   console.error(`Could not reach the server CLI on ${CLI_HOST}:${CLI_PORT} — is \`npm run watch:server\` running?`);
   console.error(err.message);
+  process.exit(1);
+}
+
+// The CLI resolves every command — including failed ones — into a "< "-prefixed
+// reply, so a bad command looks like a successful round-trip at the socket
+// level. Detect the two ways setPassword can fail so we don't cheerfully write
+// mismatched credentials into screeps.json:
+//   - `auth` undefined  => screepsmod-auth isn't loaded (check server/mods.json)
+//   - any other Error    => e.g. the account doesn't exist yet
+if (/\bauth is not defined\b/.test(result)) {
+  console.error(
+    "\nThe server CLI reports `auth` is not defined — screepsmod-auth is not loaded.\n" +
+      "Check that server/mods.json points at an installed mod path (e.g.\n" +
+      '  "node_modules/screepsmod-auth") and that it exists under server/node_modules,\n' +
+      "then restart `npm run watch:server` and retry."
+  );
+  process.exit(1);
+}
+if (/\b(Error|ReferenceError|TypeError)\b/.test(result)) {
+  console.error("\nThe server CLI returned an error (see above); screeps.json was left unchanged.");
   process.exit(1);
 }
 

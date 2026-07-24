@@ -456,6 +456,14 @@ export class Traveler {
             matrix.set(site.pos.x, site.pos.y, 0xff);
         }
 
+        // A mineral (with no extractor) is an impassable object, not a structure, so FIND_STRUCTURES
+        // above never sees it. Without this the pathfinder routes straight through the mineral tile and
+        // any creep whose path clips it (e.g. spawn→source past the bunker's mineral) stalls there
+        // forever, issuing a move into the blocked tile every tick. It cold-starts the colony to death.
+        for (const mineral of room.find(FIND_MINERALS)) {
+            matrix.set(mineral.pos.x, mineral.pos.y, 0xff);
+        }
+
         for (const structure of impassibleStructures) {
             matrix.set(structure.pos.x, structure.pos.y, 0xff);
         }
