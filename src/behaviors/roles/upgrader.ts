@@ -29,9 +29,9 @@ export class Upgrader extends Role {
   // Upgrade first, then refill from hauler, container, storage, link, or a dropped pile as fallback.
   static override readonly steps: Step[] = [
     { do: "upgrade" },
-    { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
-    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
     { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
+    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
+    { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } }, 
     { do: "withdraw", from: { find: "structure", type: [STRUCTURE_LINK], where: "hasEnergy" } },
     { do: "pickup", from: { find: "dropped", prefer: "largest" } }
   ];

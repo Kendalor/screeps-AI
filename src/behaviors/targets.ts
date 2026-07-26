@@ -200,9 +200,7 @@ function poolFor(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find
 function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomObject | null {
   const prefer = (spec as { prefer?: Prefer }).prefer ?? "nearest";
   if (prefer === "largest") {
-    const sorted = [...pool].sort(
-      (a, b) => (b as unknown as { amount: number }).amount - (a as unknown as { amount: number }).amount
-    );
+    const sorted = [...pool].sort((a, b) => energyAmount(b) - energyAmount(a));
     return sorted[0] ?? null;
   }
   if (prefer === "mostProgress") {
@@ -212,6 +210,16 @@ function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomO
     return sorted[0] ?? null;
   }
   return creep.pos.findClosestByPath(pool) ?? pool[0] ?? null;
+}
+
+// Energy a candidate holds, across the two shapes a gather pool mixes: dropped Resources expose
+// `.amount`, store-holders (containers, tombstones) expose `.store`. Used to rank a "largest" pool
+// uniformly — reading `.amount` off a store-holder would yield undefined and poison the sort.
+function energyAmount(o: RoomObject): number {
+  const amount = (o as unknown as { amount?: number }).amount;
+  if (amount !== undefined) return amount;
+  const store = (o as unknown as { store?: Store<ResourceConstant, false> }).store;
+  return store?.getUsedCapacity(RESOURCE_ENERGY) ?? 0;
 }
 
 const WORTHWHILE_FRACTION = 0.25; // fraction of the collector's free capacity a drop pile must hold

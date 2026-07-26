@@ -20,10 +20,20 @@ export class Hauler extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return haulerBody(energy);
   }
-  // Container before drops (concentrated load), storage/spawn/extensions/towers before consumers (last-resort sink).
+  // Container and drops pooled into one gather, ranked by largest load; storage/spawn/extensions/towers before consumers (last-resort sink).
   static override readonly steps: Step[] = [
-    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
-    { do: "pickup", from: { find: "dropped", prefer: "largest" } },
+    {
+      do: "gather",
+      from: {
+        find: "any",
+        of: [
+          { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" },
+          { find: "dropped" },
+          { find: "tombstone" }
+        ],
+        prefer: "largest"
+      }
+    },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_STORAGE], where: "notFull" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },

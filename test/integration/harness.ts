@@ -11,7 +11,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ScreepsServer, TerrainMatrix } from "screeps-server-mockup";
-import { EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY } from "@screeps/common/lib/constants";
+import { CONTROLLER_LEVELS, EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY } from "@screeps/common/lib/constants";
 import goalLayout from "../../src/layouts/Base_2.json";
 import { buildableAtRcl } from "../../src/layouts/goal";
 import { findAnchorCandidates, pickAnchor, stampLayout } from "../../src/layouts/stamp";
@@ -81,6 +81,8 @@ export interface RoomObject {
 export interface ControllerState {
   level: number;
   progress: number;
+  /** Progress needed to advance from the current level (CONTROLLER_LEVELS[level]); 0 at max level. */
+  progressTotal: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +254,10 @@ export class BootedColony {
 
   async controller(): Promise<ControllerState> {
     const c = (await this.roomObjects()).find(o => o.type === "controller");
-    return { level: c?.level ?? 0, progress: c?.progress ?? 0 };
+    const level = c?.level ?? 0;
+    // progressTotal is a derived Game-API getter (see @screeps/engine structures.js), not a stored
+    // DB field, so roomObjects() never carries it — derive it from CONTROLLER_LEVELS as the engine does.
+    return { level, progress: c?.progress ?? 0, progressTotal: (CONTROLLER_LEVELS as Record<number, number>)[level] ?? 0 };
   }
 
   // Skips the natural upgrade grind. Call between boot() and the first runTicks/runUntil.

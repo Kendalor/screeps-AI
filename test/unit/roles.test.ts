@@ -99,14 +99,21 @@ describe("bootstrap role", () => {
 });
 
 describe("builder role", () => {
-  it("gathers from a drop, storage, container, then a hauler, falling back to harvest, before building", () => {
+  it("gathers from the nearest of drop/storage/container/hauler, falling back to harvest, before building", () => {
     expect(roleDef("builder")).toBe(ROLES.builder);
     expect(roleDef("builder")?.steps).toEqual([
-      { do: "pickup", from: { find: "dropped", prefer: "largest" } },
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy", prefer: "nearest" } },
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", prefer: "nearest" } },
-      // Pull a full load straight from a hauler before self-mining a trickle.
-      { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy", prefer: "nearest" } },
+      {
+        do: "gather",
+        from: {
+          find: "any",
+          of: [
+            { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
+            { find: "dropped" },
+            { find: "creep", role: "hauler", where: "hasEnergy" }
+          ],
+          prefer: "nearest"
+        }
+      },
       { do: "harvest", from: { find: "source" } },
       { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
     ]);
@@ -227,10 +234,21 @@ describe("hauler role", () => {
   it("collects until full, then delivers to every sink and finally a consumer until empty", () => {
     expect(roleDef("hauler")).toBe(ROLES.hauler);
     expect(roleDef("hauler")?.steps).toEqual([
-      // Collect phase: top off from a container then the largest drop until full (no when-gate — a
-      // gather step is complete only at free===0, so the loop stays here until the store is full).
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
-      { do: "pickup", from: { find: "dropped", prefer: "largest" } },
+      // Collect phase: one pooled gather over containers, drops and tombstones, ranked by largest
+      // load, until full (no when-gate — a gather step is complete only at free===0, so the loop
+      // stays here until the store is full).
+      {
+        do: "gather",
+        from: {
+          find: "any",
+          of: [
+            { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" },
+            { find: "dropped" },
+            { find: "tombstone" }
+          ],
+          prefer: "largest"
+        }
+      },
       // Deliver phase: closest matching sink each step (resolveTarget picks the nearest by path),
       // running until empty before the loop wraps back to the collect phase.
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_STORAGE], where: "notFull" } },
@@ -278,10 +296,10 @@ describe("upgrader role", () => {
     expect(roleDef("upgrader")).toBe(ROLES.upgrader);
     expect(roleDef("upgrader")?.steps).toEqual([
       { do: "upgrade" },
-      { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
       // The container step lets a pre-storage upgrader run off the mining economy.
       { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
       { do: "withdraw", from: { find: "structure", type: [STRUCTURE_LINK], where: "hasEnergy" } },
       { do: "pickup", from: { find: "dropped", prefer: "largest" } }
     ]);

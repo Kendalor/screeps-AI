@@ -90,6 +90,11 @@ export interface StepResult {
 export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTravel = true): StepResult {
   switch (step.do) {
     case "harvest":
+      // No free-capacity guard here (unlike withdraw/pickup): the engine lets a full miner keep
+      // harvesting, dropping the overflow to the ground. A container miner whose CARRY has filled
+      // because its container is full must NOT stop mining — its surplus spills onto (or beside) the
+      // container for a hauler to collect, and it resumes filling the container the instant space frees.
+      // Only an empty source (ERR_NOT_ENOUGH_RESOURCES from harvest) legitimately idles a miner.
       return harvestStep(creep, step.from, locked, allowTravel);
     case "withdraw":
       if (creep.store.getFreeCapacity() === 0) return { acted: false, didAct: false };

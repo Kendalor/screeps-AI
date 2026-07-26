@@ -24,6 +24,7 @@
 // stubWorld()'s stock rooms cap clearance at 4 vs BUNKER_RADIUS=6, so no anchor would be found.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
+import { CONTROLLER_LEVELS } from "@screeps/common/lib/constants";
 import { claimsOf, wantedStructures } from "../../../src/colony/building";
 import type { RoleName } from "../../../src/memory/schema";
 import { operationsFor } from "../../../src/operations";
@@ -72,9 +73,25 @@ const { ticks: _unused, ...ECONOMY_ONLY } = ECONOMY_SPEC;
 // Where the run actually stood when the tick budget ran out — a rung the run never reached (RCL5,
 // say) tells you it stalled; these tell you *how far* it got instead. All "higher is better" —
 // finalBuildingsWanted has no direction since it's a denominator, not an outcome.
+// Cumulative controller upgrade points across every level reached: the sum of the progress needed to
+// clear each completed level (CONTROLLER_LEVELS[1..level-1]) plus progress into the current one. Unlike
+// finalControllerProgress (which resets to ~0 at each level-up), this only ever climbs, so it's a single
+// monotonic "total upgrade work done" figure that stays comparable across runs regardless of which RCL
+// each one stalled at.
+function totalControllerProgress(level: number, progress: number): number {
+  const levels = CONTROLLER_LEVELS as Record<number, number>;
+  let total = progress;
+  for (let l = 1; l < level; l++) total += levels[l] ?? 0;
+  return total;
+}
+
 const FINAL_SNAPSHOT_SPEC: BenchmarkSpec = {
   finalRcl: { direction: "higher", unit: "level" },
+  // Progress into the current level and how much that level needs — together the "current RCL progress".
   finalControllerProgress: { direction: "higher", unit: "progress" },
+  finalControllerProgressTotal: { unit: "progress" },
+  // Monotonic cumulative upgrade points across all levels; comparable regardless of the RCL reached.
+  finalTotalControllerProgress: { direction: "higher", unit: "progress" },
   finalCreepCount: { direction: "higher", unit: "creeps" },
   ...Object.fromEntries(
     ROLES.map(role => [`finalCreeps_${role}`, { direction: "higher", unit: "creeps" } as const])
@@ -121,6 +138,8 @@ async function finalSnapshotOf(colony: BootedColony): Promise<Record<string, num
   return {
     finalRcl: ctrl.level,
     finalControllerProgress: ctrl.progress,
+    finalControllerProgressTotal: ctrl.progressTotal,
+    finalTotalControllerProgress: totalControllerProgress(ctrl.level, ctrl.progress),
     finalCreepCount: rolesAlive.length,
     ...Object.fromEntries(ROLES.map(role => [`finalCreeps_${role}`, roleCounts[role] ?? 0])),
     finalEnergyAvailable: energyAvailable,

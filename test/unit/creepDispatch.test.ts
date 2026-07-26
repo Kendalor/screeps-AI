@@ -130,9 +130,9 @@ describe("same-tick retry past dead targets", () => {
 
     runCreepBehaviors();
 
-    // Landed on and acted on the harvest step (index 4) this same tick, not left idling on step 0.
+    // Landed on and acted on the harvest step (index 1) this same tick, not left idling on step 0.
     expect(creep.memory.task?.target).toBe("src");
-    expect(creep.memory.task?.step).toBe(4);
+    expect(creep.memory.task?.step).toBe(1);
   });
 
   it("stays idle for the tick, without throwing, when nothing in the loop resolves anywhere", () => {

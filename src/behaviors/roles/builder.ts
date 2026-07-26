@@ -17,12 +17,20 @@ export class Builder extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return builderBody(energy);
   }
-  // Refill from drop, storage, container, then hauler; self-harvest is the slow last resort.
+  // Refill from the nearest of drop / storage / container / hauler in one step; self-harvest is the slow last resort.
   static override readonly steps: Step[] = [
-    { do: "pickup", from: { find: "dropped", prefer: "largest" } },
-    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy", prefer: "nearest" } },
-    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", prefer: "nearest" } },
-    { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy", prefer: "nearest" } },
+    {
+      do: "gather",
+      from: {
+        find: "any",
+        of: [
+          { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
+          { find: "dropped" },
+          { find: "creep", role: "hauler", where: "hasEnergy" }
+        ],
+        prefer: "nearest"
+      }
+    },
     { do: "harvest", from: { find: "source" } },
     { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
   ];

@@ -391,6 +391,7 @@ function harvestCreep(over: {
     pos: creepPos,
     room: { find: () => [source] },
     memory: { task: { step: 0 } },
+    store: { getFreeCapacity: () => 50 }, // room to harvest into
     harvest: (t: { id: string }) => harvested.push(t.id),
     travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
   };
@@ -457,6 +458,23 @@ describe("harvest step: standing on a source container", () => {
     const { creep, traveled, harvested } = runStepNoContainer();
     expect(traveled).toEqual([{ x: 25, y: 25 }]);
     expect(harvested).toEqual([]);
+  });
+
+  it("keeps harvesting even when the creep's store is full — overflow drops to the ground/container", () => {
+    // A container miner whose CARRY has filled (because the container is full) must not stop mining:
+    // the engine spills the surplus, and it resumes topping up the container the moment space frees.
+    // Only an empty source idles a miner, and that's the engine's ERR_NOT_ENOUGH_RESOURCES, not our guard.
+    const { creep, traveled, harvested } = harvestCreep({
+      pos: { x: 26, y: 26 },
+      containerPos: { x: 26, y: 26 }
+    });
+    (creep as unknown as { store: { getFreeCapacity: () => number } }).store.getFreeCapacity = () => 0;
+
+    const result = runStep(creep, { do: "harvest", from: { find: "source" } });
+
+    expect(harvested).toEqual(["source1"]);
+    expect(traveled).toEqual([]); // already parked on the container tile, no re-path
+    expect(result).toEqual({ acted: true, didAct: true, target: "source1" });
   });
 });
 
