@@ -26,7 +26,10 @@ function builder(sites: object[]): Creep {
       findClosestByPath: (list: object[]) => list[0] ?? null,
       inRangeTo: () => false
     },
-    room: { find: () => sites },
+    // Only construction sites resolve; every other find-type (dropped energy, structures, other
+    // creeps) comes back empty, so co-fire's scan through builder's other steps finds nothing to
+    // act on rather than misreading `sites` as candidates for a different find-type.
+    room: { find: (kind: FindConstant) => (kind === FIND_MY_CONSTRUCTION_SITES ? sites : []) },
     build: () => 0,
     travelTo: () => undefined
   } as unknown as Creep;
@@ -54,7 +57,8 @@ describe("creep dispatch target locking", () => {
     runCreepBehaviors();
     expect(creep.memory.task?.target).toBe("first");
 
-    (creep as unknown as { room: { find: () => object[] } }).room.find = () => [nearer, first];
+    (creep as unknown as { room: { find: (kind: FindConstant) => object[] } }).room.find = kind =>
+      kind === FIND_MY_CONSTRUCTION_SITES ? [nearer, first] : [];
     runCreepBehaviors();
 
     expect(creep.memory.task?.target).toBe("first");
@@ -72,7 +76,8 @@ describe("creep dispatch target locking", () => {
 
     // The site completed: it no longer resolves by id and is gone from the room.
     Game.getObjectById = ((id: string) => (id === "next" ? next : null)) as typeof Game.getObjectById;
-    (creep as unknown as { room: { find: () => object[] } }).room.find = () => [next];
+    (creep as unknown as { room: { find: (kind: FindConstant) => object[] } }).room.find = kind =>
+      kind === FIND_MY_CONSTRUCTION_SITES ? [next] : [];
     runCreepBehaviors();
 
     expect(creep.memory.task?.target).toBe("next");
@@ -110,7 +115,9 @@ function sourcePos(x: number, y: number) {
     x,
     y,
     findInRange: () => [],
-    isEqualTo: (other: { x: number; y: number }) => other.x === x && other.y === y
+    isEqualTo: (other: { x: number; y: number }) => other.x === x && other.y === y,
+    inRangeTo: (other: { x: number; y: number }, range: number) =>
+      Math.max(Math.abs(other.x - x), Math.abs(other.y - y)) <= range
   };
 }
 
@@ -180,7 +187,7 @@ describe("same-tick co-fire: miner harvest + transfer", () => {
     const creep = {
       name: "m1",
       spawning: false,
-      memory: { role: "miner", task: { step: 0 } },
+      memory: { role: "miner", task: { step: 0 }, sourceId: "src" },
       store: { getFreeCapacity: () => 0, getUsedCapacity: () => 50 }, // already carrying from a prior tick
       pos: {
         x: 5,
@@ -202,10 +209,11 @@ describe("same-tick co-fire: miner harvest + transfer", () => {
     const container = {
       id: "cont",
       structureType: STRUCTURE_CONTAINER,
-      pos: { x: 5, y: 5 },
+      pos: sourcePos(5, 5),
       store: { getFreeCapacity: () => 50, getUsedCapacity: () => 0 }
     };
-    stubGame({ objects: { src: { id: "src" }, cont: container } });
+    const source = { id: "src", energy: 100, pos: sourcePos(5, 5), room: OPEN_TERRAIN };
+    stubGame({ objects: { src: source, cont: container } });
     const { creep, transferred } = minerWithContainer(container);
     Game.creeps = { m1: creep };
 
@@ -221,5 +229,56 @@ describe("same-tick co-fire: miner harvest + transfer", () => {
 
     expect(() => runCreepBehaviors()).not.toThrow();
     expect(transferred).toEqual([]);
+  });
+});
+
+// Regression for a live-reported bug: empty-carry upgraders looping near a moving hauler instead of
+// ever reaching the controller. travelTo keeps one _trav slot per creep, not one per pipeline, so a
+// co-fired step that's out of range must never call travelTo — only the primary step may move the
+// creep this tick, or its in-flight path gets silently overwritten by the co-fire step's own
+// destination, every tick, forever (src/empire/creeps.ts's coFireBonusStep gates on didAct, not acted,
+// specifically to prevent this).
+describe("co-fire never steals movement from the primary step", () => {
+  it("an out-of-range upgrade step travels toward the controller, not toward an also-out-of-range hauler", () => {
+    const controller = { id: "ctrl", pos: sourcePos(40, 40) };
+    const hauler = {
+      id: "haul",
+      body: [],
+      memory: { role: "hauler" },
+      pos: sourcePos(5, 40),
+      store: { getUsedCapacity: () => 50, getFreeCapacity: () => 0 }
+    };
+    stubGame({ objects: { ctrl: controller, haul: hauler } });
+
+    const travelTargets: string[] = [];
+    const creep = {
+      name: "u1",
+      spawning: false,
+      memory: { role: "upgrader", task: { step: 0 } },
+      store: { getFreeCapacity: () => 25, getUsedCapacity: () => 25 },
+      pos: {
+        x: 5,
+        y: 5,
+        findClosestByPath: (list: { id: string }[]) => list[0] ?? null,
+        inRangeTo: () => false // never in range of anything — controller or hauler
+      },
+      room: {
+        controller,
+        find: (kind: FindConstant) => (kind === FIND_MY_CREEPS ? [hauler] : [])
+      },
+      upgradeController: () => 0,
+      withdraw: () => 0,
+      travelTo: (dest: { id?: string }) => {
+        travelTargets.push(dest.id ?? "unknown");
+      }
+    } as unknown as Creep;
+    Game.creeps = { u1: creep };
+
+    runCreepBehaviors();
+
+    // Only the primary (upgrade) step's travelTo call should land — the co-fired withdraw-from-hauler
+    // step found a real target (hauler has energy) but must not also call travelTo, since it's out of
+    // range too and would overwrite the controller-bound path with the hauler's position instead.
+    expect(travelTargets).toEqual(["ctrl"]);
   });
 });

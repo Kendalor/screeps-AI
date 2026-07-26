@@ -4,8 +4,9 @@ import { Role } from "./role";
 
 // A source yields 10 energy/tick and one WORK harvests 2/tick (5 WORK is exact); provisioned
 // slightly above that to absorb the walk to the source and the gap between a miner dying and
-// its replacement arriving.
-const SOURCE_SATURATING_WORK = 6;
+// its replacement arriving. Exported so mining.ts's per-source WORK target can't drift from what
+// a single body can actually carry.
+export const SOURCE_SATURATING_WORK = 6;
 
 const DROP_MINER_BASE: BodyPartConstant[] = [WORK, WORK, MOVE, MOVE];
 const DROP_MINER_SET: BodyPartConstant[] = [WORK, MOVE];
@@ -23,10 +24,10 @@ function minerBody(energy: number, ctx: BodyContext): BodyPartConstant[] {
     return body;
   }
 
-  // 5 WORK drains a source completely (10 energy/tick, 2/WORK); anything past that wastes parts the room paid for.
+  // Capped at SOURCE_SATURATING_WORK like the drop-miner path — same target, one source, one body.
   // WORK is sized off energy alone (MOVE reserved up front) so an overflow CARRY never costs a WORK part.
   const workBudget = energy - BODYPART_COST[MOVE];
-  let work = Math.min(5, Math.max(1, Math.floor(workBudget / BODYPART_COST[WORK])));
+  let work = Math.min(SOURCE_SATURATING_WORK, Math.max(1, Math.floor(workBudget / BODYPART_COST[WORK])));
   const affordsCarryOnTop = (w: number) => energy >= w * BODYPART_COST[WORK] + BODYPART_COST[MOVE] + BODYPART_COST[CARRY];
 
   let carry: 0 | 1;
@@ -59,7 +60,7 @@ export class Miner extends Role {
   // harvest — transfer is its own engine pipeline, independent of harvest's WORK pipeline.
   static override readonly steps: Step[] = [
     { do: "harvest", from: { find: "source" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_LINK, where: "notFull" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_CONTAINER, where: "notFull" } }
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_LINK], where: "notFull", near: "assignedSource" } },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_CONTAINER], where: "notFull", near: "assignedSource" } }
   ];
 }

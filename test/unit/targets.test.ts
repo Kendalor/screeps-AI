@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  energySinkGroup,
+  energySourceGroup,
   fitsSpec,
   matchesWhere,
   openHarvestTiles,
@@ -354,7 +356,12 @@ describe("resolveTarget pile claim limits", () => {
 
 // A source's share cap is its open harvest-tile count, computed from terrain.
 function fakeSource(id: string, x: number, y: number): object {
-  return { id, pos: { x, y }, energy: 3000, room: plainRoom };
+  return {
+    id,
+    pos: { x, y, inRangeTo: (o: { x: number; y: number }, r: number) => Math.max(Math.abs(o.x - x), Math.abs(o.y - y)) <= r },
+    energy: 3000,
+    room: plainRoom
+  };
 }
 
 function sourceCreep(name: string, sources: object[], lockedTarget?: string, sourceId?: string): Creep {
@@ -523,5 +530,195 @@ describe("resolveTarget source pinning", () => {
     const got = resolveTarget(sourceCreep("me", [near, far]), { find: "source" });
 
     expect((got as { id: string }).id).toBe("far");
+  });
+});
+
+// A miner on a containerless source must never dump into a sibling source's container just because
+// it's nearest by path — that would send it walking clear across the room every time its (single, if
+// any) CARRY part fills, instead of staying parked and harvesting. `near: "assignedSource"` restricts
+// a structure spec to range 1 of the creep's own memory.sourceId.
+describe("resolveTarget near:assignedSource", () => {
+  function structureCreep(sourceId: string, sources: object[], structures: object[], lockedTarget?: string): Creep {
+    return {
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: {
+        find: (kind: FindConstant) => (kind === FIND_SOURCES ? sources : structures)
+      },
+      memory: {
+        task: lockedTarget ? { step: 0, target: lockedTarget } : { step: 0 },
+        sourceId
+      }
+    } as unknown as Creep;
+  }
+
+  function fakeContainer(id: string, x: number, y: number): object {
+    return {
+      id,
+      structureType: STRUCTURE_CONTAINER,
+      pos: { x, y, inRangeTo: (o: { x: number; y: number }, r: number) => Math.max(Math.abs(o.x - x), Math.abs(o.y - y)) <= r },
+      store: { getFreeCapacity: () => 50, getUsedCapacity: () => 0 }
+    };
+  }
+
+  it("ignores a sibling source's nearer container and finds nothing for a containerless source", () => {
+    const mine = fakeSource("mine", 40, 40);
+    const sibling = fakeSource("sibling", 10, 10);
+    const siblingContainer = fakeContainer("siblingCont", 10, 11);
+    stubGame({ objects: { mine, sibling, siblingCont: siblingContainer } });
+
+    const got = resolveTarget(structureCreep("mine", [mine, sibling], [siblingContainer]), {
+      find: "structure",
+      type: STRUCTURE_CONTAINER,
+      where: "notFull",
+      near: "assignedSource"
+    });
+
+    expect(got).toBeNull();
+  });
+
+  it("finds its own source's container when one exists", () => {
+    const mine = fakeSource("mine", 40, 40);
+    const myContainer = fakeContainer("myCont", 40, 41);
+    stubGame({ objects: { mine, myCont: myContainer } });
+
+    const got = resolveTarget(structureCreep("mine", [mine], [myContainer]), {
+      find: "structure",
+      type: STRUCTURE_CONTAINER,
+      where: "notFull",
+      near: "assignedSource"
+    });
+
+    expect((got as { id: string }).id).toBe("myCont");
+  });
+
+  it("drops a stale lock on a sibling source's container once resolved fresh", () => {
+    const mine = fakeSource("mine", 40, 40);
+    const siblingContainer = fakeContainer("siblingCont", 10, 11);
+    stubGame({ objects: { mine, siblingCont: siblingContainer } });
+
+    // Locked target predates sourceId-aware filtering (or was mis-locked) — must not survive re-validation.
+    const got = resolveTarget(
+      structureCreep("mine", [mine], [siblingContainer], "siblingCont"),
+      { find: "structure", type: STRUCTURE_CONTAINER, where: "notFull", near: "assignedSource" }
+    );
+
+    expect(got).toBeNull();
+  });
+});
+
+// A structure spec's `type` may be one constant or a list; a list pools every matching
+// structureType into a single candidate set, same as room.find(FIND_STRUCTURES) filtered by an OR.
+describe("resolveTarget structure type lists", () => {
+  it("matches any structureType in the list", () => {
+    const spawn = fakeSite("spawn1", { structureType: STRUCTURE_SPAWN, free: 50 });
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    const storage = fakeSite("storage1", { structureType: STRUCTURE_STORAGE, free: 50 });
+    stubGame({ objects: { spawn1: spawn, tower1: tower, storage1: storage } });
+
+    const got = resolveTarget(creepFinding([spawn, tower, storage]), {
+      find: "structure",
+      type: [STRUCTURE_SPAWN, STRUCTURE_TOWER],
+      where: "notFull"
+    });
+
+    // creepFinding's findClosestByPath returns list[0]; room.find is unfiltered by the fixture, so the
+    // real work under test is the type-list filter happening before that pick.
+    expect((got as { id: string }).id).toBe("spawn1");
+  });
+
+  it("a locked target fits only if its structureType is in the list", () => {
+    const spawn = fakeSite("spawn1", { structureType: STRUCTURE_SPAWN, free: 50 });
+    expect(fitsSpec({ kind: "structure", structureType: STRUCTURE_SPAWN }, { find: "structure", type: [STRUCTURE_SPAWN, STRUCTURE_TOWER] })).toBe(true);
+    expect(fitsSpec({ kind: "structure", structureType: STRUCTURE_STORAGE }, { find: "structure", type: [STRUCTURE_SPAWN, STRUCTURE_TOWER] })).toBe(false);
+    void spawn;
+  });
+});
+
+// "any" merges several specs' candidate pools into one before ranking, so the step never commits to
+// a worse match from an earlier-listed kind just because that kind's search happened to find something
+// first — the exact failure mode a priority-ordered chain of single-kind steps has.
+describe("resolveTarget grouped (any) specs", () => {
+  // Dispatches room.find by FIND_* constant so a merged spec can pull dropped piles, tombstones, and
+  // structures from the same fixture room.
+  function roomWithKinds(byKind: Partial<Record<FindConstant, object[]>>): { find: (k: FindConstant) => object[] } {
+    return { find: (k: FindConstant) => byKind[k] ?? [] };
+  }
+
+  function groupCreep(
+    byKind: Partial<Record<FindConstant, object[]>>,
+    nearest: object,
+    lockedTarget?: string
+  ): Creep {
+    return {
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => (list.includes(nearest) ? nearest : list[0] ?? null) },
+      room: roomWithKinds(byKind),
+      store: { getFreeCapacity: () => 200 },
+      memory: { task: lockedTarget ? { step: 0, target: lockedTarget } : { step: 0 } }
+    } as unknown as Creep;
+  }
+
+  it("picks the nearest candidate across kinds, not just the first-listed kind's own nearest", () => {
+    const farContainer = fakeSite("cont1", { structureType: STRUCTURE_CONTAINER, used: 100 });
+    const nearTombstone = { id: "tomb1", pos: { x: 5, y: 5 }, deathTime: 1, store: { getUsedCapacity: () => 100 } };
+    stubGame({ objects: { cont1: farContainer, tomb1: nearTombstone } });
+
+    const got = resolveTarget(
+      groupCreep({ [FIND_STRUCTURES]: [farContainer], [FIND_TOMBSTONES]: [nearTombstone] }, nearTombstone),
+      energySourceGroup()
+    );
+
+    expect((got as { id: string }).id).toBe("tomb1");
+  });
+
+  it("applies each member's own where filter within the merged pool", () => {
+    const emptyContainer = fakeSite("cont1", { structureType: STRUCTURE_CONTAINER, used: 0, free: 100 });
+    const fullExtension = fakeSite("ext1", { structureType: STRUCTURE_EXTENSION, free: 0 });
+    const openExtension = fakeSite("ext2", { structureType: STRUCTURE_EXTENSION, free: 50 });
+    stubGame({ objects: { cont1: emptyContainer, ext1: fullExtension, ext2: openExtension } });
+
+    // energySinkGroup wants notFull — the empty (0 used) container is irrelevant here since sink
+    // members only carry structure types, and the full extension must be excluded despite matching type.
+    const got = resolveTarget(
+      groupCreep({ [FIND_STRUCTURES]: [emptyContainer, fullExtension, openExtension] }, openExtension),
+      energySinkGroup()
+    );
+
+    expect((got as { id: string }).id).toBe("ext2");
+  });
+
+  it("re-validates a lock against whichever member spec the object still fits", () => {
+    const tombstone = {
+      id: "tomb1",
+      pos: { x: 5, y: 5 },
+      deathTime: 1,
+      store: { getUsedCapacity: () => 100, getFreeCapacity: () => 0 }
+    };
+    stubGame({ objects: { tomb1: tombstone } });
+
+    const got = resolveTarget(groupCreep({}, tombstone, "tomb1"), energySourceGroup(), "tomb1" as Id<_HasId>);
+
+    expect(got).toBe(tombstone);
+  });
+
+  it("drops a lock once the held object no longer resolves and picks a fresh member's candidate", () => {
+    const dropped = { id: "drop1", pos: { x: 5, y: 5 }, amount: 100 };
+    stubGame({ objects: { drop1: dropped } }); // "tomb1" is gone — consumed or decayed away
+
+    const got = resolveTarget(
+      groupCreep({ [FIND_DROPPED_RESOURCES]: [dropped] }, dropped, "tomb1"),
+      energySourceGroup(),
+      "tomb1" as Id<_HasId>
+    );
+
+    expect((got as { id: string }).id).toBe("drop1");
+  });
+
+  it("energySinkGroup pools extension/spawn/storage/container behind one notFull filter", () => {
+    const spawn = fakeSite("spawn1", { structureType: STRUCTURE_SPAWN, free: 50 });
+    stubGame({ objects: { spawn1: spawn } });
+
+    const got = resolveTarget(groupCreep({ [FIND_STRUCTURES]: [spawn] }, spawn), energySinkGroup());
+
+    expect((got as { id: string }).id).toBe("spawn1");
   });
 });

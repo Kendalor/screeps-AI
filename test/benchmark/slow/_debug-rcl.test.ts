@@ -12,23 +12,21 @@ afterAll(() => {
 });
 
 test(
-  "debug: print controller/drop/container state over time",
+  "debug: print controller/spawn state over time",
   async () => {
     await colony.runUntil(
       async () => false,
-      2000,
+      1500,
       async tick => {
-        if (tick % 100 === 0) {
+        if (tick % 50 === 0) {
           const ctrl = await colony.controller();
-          const creeps = await colony.creepCount();
           const roles = await colony.rolesAlive();
-          const containers = await colony.structures("container");
           const objects = await colony.roomObjects();
-          const types = [...new Set(objects.map(o => o.type))].sort();
+          const spawn = objects.find(o => o.type === "spawn") as any;
+          const cap = await colony.energyCapacity();
           console.log(
-            `tick ${tick}: rcl=${ctrl.level} progress=${ctrl.progress} creeps=${creeps} roles=${roles.join(",")} containers=${containers.length} types=${types.join(",")}`
+            `tick ${tick}: rcl=${ctrl.level} progress=${ctrl.progress} roles=${roles.join(",")} spawnEnergy=${spawn?.store?.energy}/${spawn?.storeCapacityResource?.energy} energyCapacity=${cap} spawning=${JSON.stringify(spawn?.spawning)}`
           );
-          if (tick === 1000) console.log("SAMPLE OBJECTS:", JSON.stringify(objects.filter(o => o.type !== "creep"), null, 2));
         }
       }
     );

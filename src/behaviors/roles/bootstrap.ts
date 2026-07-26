@@ -39,9 +39,9 @@ export class Bootstrap extends Role {
   static override readonly steps: Step[] = [
     { do: "pickup", from: { find: "dropped", prefer: "largest" } },
     { do: "harvest", from: { find: "source" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
     { do: "build" },
     { do: "upgrade" }
   ];

@@ -181,6 +181,138 @@ function site(id: string): object {
   return { id, pos: { x: 10, y: 10 }, progress: 0, progressTotal: 100 };
 }
 
+// A full creep must not "act" on a withdraw/pickup step even when a valid target resolves (e.g. a
+// non-full storage) — otherwise the dispatch loop in creeps.ts locks onto it, travels there, and calls
+// withdraw() every tick even though it returns ERR_FULL and moves zero energy: the creep just shuttles
+// between structures forever without ever delivering. Symmetrically for transfer on an empty creep.
+describe("capacity guards on withdraw/pickup/transfer", () => {
+  function storeCreep(free: number, used: number): Creep {
+    return {
+      store: { getFreeCapacity: () => free, getUsedCapacity: () => used },
+      pos: { inRangeTo: () => true, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { find: () => [{ id: "target1", structureType: STRUCTURE_STORAGE, store: { getFreeCapacity: () => 100, getUsedCapacity: () => 100 } }] },
+      withdraw: () => ERR_FULL,
+      pickup: () => ERR_FULL,
+      transfer: () => ERR_NOT_ENOUGH_RESOURCES,
+      travelTo: () => undefined
+    } as unknown as Creep;
+  }
+
+  it("does not act on a withdraw step when the creep has no free capacity", () => {
+    const creep = storeCreep(0, 50);
+    const result = runStep(creep, { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } });
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("does not act on a pickup step when the creep has no free capacity", () => {
+    const creep = storeCreep(0, 50);
+    const result = runStep(creep, { do: "pickup", from: { find: "dropped" } });
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("does not act on a transfer step when the creep has nothing to give", () => {
+    const creep = storeCreep(50, 0);
+    const result = runStep(creep, { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } });
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("does not act on a gather step when the creep has no free capacity", () => {
+    const creep = storeCreep(0, 50);
+    const result = runStep(creep, { do: "gather", from: { find: "dropped" } });
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+});
+
+// "gather" covers a "from" spec that may resolve to either a dropped Resource (pickup-shaped) or a
+// store-holder like a structure/tombstone (withdraw-shaped) — e.g. energySourceGroup(). Unlike
+// "withdraw"/"pickup", which each always call one fixed API, "gather" must pick the right one per
+// resolved target so a single mixed-kind "any" spec works in one step.
+describe("gather step verb dispatch", () => {
+  function gatherCreep(target: object, calls: { withdraw: number; pickup: number }): Creep {
+    return {
+      store: { getFreeCapacity: () => 50, getUsedCapacity: () => 0 },
+      pos: { inRangeTo: () => true, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { find: () => [target] },
+      memory: { task: { step: 0 } },
+      withdraw: () => {
+        calls.withdraw++;
+        return OK;
+      },
+      pickup: () => {
+        calls.pickup++;
+        return OK;
+      },
+      travelTo: () => undefined
+    } as unknown as Creep;
+  }
+
+  it("calls pickup when the resolved target is a dropped resource", () => {
+    const drop = { id: "drop1", pos: { x: 5, y: 5 }, amount: 100, resourceType: RESOURCE_ENERGY };
+    stubGame({ objects: { drop1: drop } });
+    const calls = { withdraw: 0, pickup: 0 };
+
+    const result = runStep(gatherCreep(drop, calls), { do: "gather", from: { find: "dropped" } });
+
+    expect(calls).toEqual({ withdraw: 0, pickup: 1 });
+    expect(result).toEqual({ acted: true, didAct: true, target: "drop1" });
+  });
+
+  it("calls withdraw when the resolved target is a store-holder (structure or tombstone)", () => {
+    const container = {
+      id: "cont1",
+      pos: { x: 5, y: 5 },
+      structureType: STRUCTURE_CONTAINER,
+      store: { getFreeCapacity: () => 50, getUsedCapacity: () => 100 }
+    };
+    stubGame({ objects: { cont1: container } });
+    const calls = { withdraw: 0, pickup: 0 };
+
+    const result = runStep(gatherCreep(container, calls), {
+      do: "gather",
+      from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" }
+    });
+
+    expect(calls).toEqual({ withdraw: 1, pickup: 0 });
+    expect(result).toEqual({ acted: true, didAct: true, target: "cont1" });
+  });
+
+  it("dispatches correctly within a single mixed any-group spec (energySourceGroup-shaped)", () => {
+    const drop = { id: "drop1", pos: { x: 5, y: 5 }, amount: 100, resourceType: RESOURCE_ENERGY };
+    stubGame({ objects: { drop1: drop } });
+    const calls = { withdraw: 0, pickup: 0 };
+    const creep = {
+      store: { getFreeCapacity: () => 50, getUsedCapacity: () => 0 },
+      pos: { inRangeTo: () => true, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { find: (k: FindConstant) => (k === FIND_DROPPED_RESOURCES ? [drop] : []) },
+      memory: { task: { step: 0 } },
+      withdraw: () => {
+        calls.withdraw++;
+        return OK;
+      },
+      pickup: () => {
+        calls.pickup++;
+        return OK;
+      },
+      travelTo: () => undefined
+    } as unknown as Creep;
+
+    const result = runStep(creep, {
+      do: "gather",
+      from: {
+        find: "any",
+        of: [
+          { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
+          { find: "dropped" },
+          { find: "tombstone" }
+        ]
+      }
+    });
+
+    expect(calls).toEqual({ withdraw: 0, pickup: 1 });
+    expect(result).toEqual({ acted: true, didAct: true, target: "drop1" });
+  });
+});
+
 describe("runStep target reporting", () => {
   it("reports the id of the target it acted on", () => {
     const s = site("siteA");

@@ -89,9 +89,9 @@ describe("bootstrap role", () => {
     expect(roleDef("bootstrap")?.steps).toEqual([
       { do: "pickup", from: { find: "dropped", prefer: "largest" } },
       { do: "harvest", from: { find: "source" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
       { do: "build" },
       { do: "upgrade" }
     ]);
@@ -103,8 +103,8 @@ describe("builder role", () => {
     expect(roleDef("builder")).toBe(ROLES.builder);
     expect(roleDef("builder")?.steps).toEqual([
       { do: "pickup", from: { find: "dropped", prefer: "largest" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy", prefer: "nearest" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy", prefer: "nearest" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy", prefer: "nearest" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", prefer: "nearest" } },
       // Pull a full load straight from a hauler before self-mining a trickle.
       { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy", prefer: "nearest" } },
       { do: "harvest", from: { find: "source" } },
@@ -168,7 +168,7 @@ describe("miner body", () => {
     // ferry its harvest in by hand once the room affords the part on top of its current WORK count.
     const rich = body(1200, { hasContainer: true, hasLink: false });
     expect(rich).toContain(CARRY);
-    expect(rich.filter(p => p === WORK).length).toBe(5);
+    expect(rich.filter(p => p === WORK).length).toBe(6);
   });
 
   it("feeding a link always carries CARRY, once the budget can afford anything beyond the bare floor", () => {
@@ -217,8 +217,8 @@ describe("miner role", () => {
     expect(roleDef("miner")).toBe(ROLES.miner);
     expect(roleDef("miner")?.steps).toEqual([
       { do: "harvest", from: { find: "source" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_LINK, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_CONTAINER, where: "notFull" } }
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_LINK], where: "notFull", near: "assignedSource" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_CONTAINER], where: "notFull", near: "assignedSource" } }
     ]);
   });
 });
@@ -229,14 +229,14 @@ describe("hauler role", () => {
     expect(roleDef("hauler")?.steps).toEqual([
       // Collect phase: top off from a container then the largest drop until full (no when-gate — a
       // gather step is complete only at free===0, so the loop stays here until the store is full).
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
       { do: "pickup", from: { find: "dropped", prefer: "largest" } },
       // Deliver phase: closest matching sink each step (resolveTarget picks the nearest by path),
       // running until empty before the loop wraps back to the collect phase.
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_STORAGE], where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
       // With every fixed sink full, feed a consumer directly rather than hold or drop energy.
       // oneShot: an actively-working consumer never truly goes not-full, so one transfer is enough
       // before the loop re-scans every sink from the top instead of pinning to this one target.
@@ -251,10 +251,10 @@ describe("supply role", () => {
   it("withdraws from storage, then fills extensions before the spawn", () => {
     expect(roleDef("supply")).toBe(ROLES.supply);
     expect(roleDef("supply")?.steps).toEqual([
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } }
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } }
     ]);
   });
 
@@ -280,9 +280,9 @@ describe("upgrader role", () => {
       { do: "upgrade" },
       { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
       // The container step lets a pre-storage upgrader run off the mining economy.
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: STRUCTURE_LINK, where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_LINK], where: "hasEnergy" } },
       { do: "pickup", from: { find: "dropped", prefer: "largest" } }
     ]);
   });

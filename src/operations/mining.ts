@@ -3,6 +3,7 @@
 
 import { countPart, orderBody } from "../spawn/body";
 import { roleDef } from "../behaviors/roles";
+import { SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
 import type { Intent } from "../intents/types";
 import GOAL_JSON from "../layouts/Base_2.json";
 import { plannedObstacles } from "../layouts/goal";
@@ -20,7 +21,7 @@ const config = {
   linkRcl: 7, // link beats container: miner drops straight in, no hauler round trip
   containersFromRcl: 3, // a container before miners exist is 5000 energy starving extensions
   minHaulerEnergy: 150, // one CARRY,CARRY,MOVE set — cheapest body
-  workPerSource: 6, // 5 WORK exactly saturates a source; a bit of slack for travel/replacement gap
+  workPerSource: SOURCE_SATURATING_WORK, // shared with miner.ts's body cap so the two can't drift apart
   sourceRegenPerTick: 10, // caps income so surplus miners can't ask for haulers to carry nonexistent energy
   roomIncomeCap: 20, // room ceiling on harvestable income (two sources)
   energyPerCarry: 50, // one CARRY part

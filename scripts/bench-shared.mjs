@@ -17,6 +17,9 @@ import { fileURLToPath } from "node:url";
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.join(HERE, "..");
 export const HISTORY = path.join(REPO, "test", "benchmark", "benchmarks.json");
+// The slow (test/benchmark/slow/) benchmarks keep their own history file — a 20k-tick cold boot
+// isn't comparable to the fast milestones and shouldn't crowd the same committed file.
+export const HISTORY_SLOW = path.join(REPO, "test", "benchmark", "slow", "benchmarks-slow.json");
 
 // Keep in step with MAX_RUNS in test/benchmark/benchmarks.ts.
 export const MAX_RUNS = 10;
@@ -46,12 +49,12 @@ export function buildBundleOnce(shardDir) {
  * omitted), recording into its own shard so concurrent workers never collide
  * on the committed history file.
  */
-export function runWorker({ id, testFile, shard, botBundle }) {
+export function runWorker({ id, testFile, shard, botBundle, history = HISTORY }) {
   // Seed the shard with the committed history so recordBenchmark's baseline
   // lookup — which only ever reads BENCH_FILE — sees real prior runs instead
   // of reporting "no baseline yet" on every single run. The seeded counts are
   // remembered so mergeIntoHistory can tell seed from new entry afterwards.
-  const seed = load(HISTORY);
+  const seed = load(history);
   writeFileSync(shard, JSON.stringify(seed), "utf8");
   const seedCounts = Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.length]));
 
@@ -96,8 +99,8 @@ export function runWorker({ id, testFile, shard, botBundle }) {
 }
 
 /** Merge every worker's shard into the committed history, applying MAX_RUNS. */
-export function mergeIntoHistory(results) {
-  const merged = load(HISTORY);
+export function mergeIntoHistory(results, history = HISTORY) {
+  const merged = load(history);
   let added = 0;
   for (const { runs } of results) {
     for (const [benchmark, entries] of Object.entries(runs)) {
@@ -108,9 +111,9 @@ export function mergeIntoHistory(results) {
 
   const ordered = {};
   for (const key of Object.keys(merged).sort()) ordered[key] = merged[key];
-  writeFileSync(HISTORY, JSON.stringify(ordered, null, 2) + "\n", "utf8");
+  writeFileSync(history, JSON.stringify(ordered, null, 2) + "\n", "utf8");
 
-  console.log(`merged ${added} entries into ${path.relative(REPO, HISTORY)}`);
+  console.log(`merged ${added} entries into ${path.relative(REPO, history)}`);
   for (const [benchmark, runs] of Object.entries(ordered)) {
     const ticks = runs.map(r => r.ticks).filter(t => typeof t === "number");
     console.log(`  ${benchmark}: ${runs.length} run(s), ticks ${ticks.join(", ")}`);

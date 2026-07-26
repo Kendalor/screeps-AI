@@ -10,6 +10,7 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   harvest: "gather",
   withdraw: "gather",
   pickup: "gather",
+  gather: "gather",
   transfer: "spend",
   build: "spend",
   repair: "spend",
@@ -82,19 +83,49 @@ export interface StepResult {
   target?: Id<_HasId>;
 }
 
-export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResult {
+// allowTravel: false for a co-fired bonus step (empire/creeps.ts's coFireBonusStep) — travelTo keeps
+// one _trav slot per creep, not one per pipeline, so a bonus step that's out of range must never call
+// it: doing so would silently overwrite the primary step's own in-flight destination, every tick,
+// forever. An out-of-range bonus step under allowTravel:false simply does nothing this tick.
+export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTravel = true): StepResult {
   switch (step.do) {
     case "harvest":
-      return harvestStep(creep, step.from, locked);
+      return harvestStep(creep, step.from, locked, allowTravel);
     case "withdraw":
-      return actOn(creep, step.from, locked, t =>
-        creep.withdraw(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY)
+      if (creep.store.getFreeCapacity() === 0) return { acted: false, didAct: false };
+      return actOn(
+        creep,
+        step.from,
+        locked,
+        t => creep.withdraw(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY),
+        1,
+        allowTravel
       );
     case "pickup":
-      return actOn(creep, step.from, locked, t => creep.pickup(t as Resource));
+      if (creep.store.getFreeCapacity() === 0) return { acted: false, didAct: false };
+      return actOn(creep, step.from, locked, t => creep.pickup(t as Resource), 1, allowTravel);
+    case "gather":
+      if (creep.store.getFreeCapacity() === 0) return { acted: false, didAct: false };
+      return actOn(
+        creep,
+        step.from,
+        locked,
+        t =>
+          isResource(t)
+            ? creep.pickup(t)
+            : creep.withdraw(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY),
+        1,
+        allowTravel
+      );
     case "transfer":
-      return actOn(creep, step.to, locked, t =>
-        creep.transfer(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY)
+      if (creep.store.getUsedCapacity() === 0) return { acted: false, didAct: false };
+      return actOn(
+        creep,
+        step.to,
+        locked,
+        t => creep.transfer(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY),
+        1,
+        allowTravel
       );
     case "build":
       return actOn(
@@ -102,15 +133,24 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>): StepResu
         step.at ?? { find: "constructionSite", prefer: "mostProgress" },
         locked,
         t => creep.build(t as ConstructionSite),
-        3
+        3,
+        allowTravel
       );
     case "repair":
-      return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3);
+      return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3, allowTravel);
     case "upgrade":
-      return actOn(creep, { find: "controller" }, locked, t => creep.upgradeController(t as StructureController), 3);
+      return actOn(
+        creep,
+        { find: "controller" },
+        locked,
+        t => creep.upgradeController(t as StructureController),
+        3,
+        allowTravel
+      );
     case "moveToRoom":
-      return moveToRoom(creep, step);
+      return allowTravel ? moveToRoom(creep, step) : { acted: false, didAct: false };
     case "sit":
+      if (!allowTravel) return { acted: false, didAct: false };
       creep.travelTo(new RoomPosition(step.pos.x, step.pos.y, creep.room.name));
       return { acted: true, didAct: false };
   }
@@ -150,25 +190,32 @@ function actOn(
   spec: TargetSpec,
   locked: Id<_HasId> | undefined,
   action: (t: RoomObject) => number,
-  range = 1
+  range = 1,
+  allowTravel = true
 ): StepResult {
   const target = resolveTarget(creep, spec, locked);
   if (!target) return { acted: false, didAct: false };
-  let didAct = false;
   if (creep.pos.inRangeTo(target as { pos: RoomPosition }, range)) {
     action(target);
-    didAct = true;
-  } else {
-    creep.travelTo(target as { pos: RoomPosition });
+    return { acted: true, didAct: true, target: (target as unknown as { id: Id<_HasId> }).id };
   }
-  return { acted: true, didAct, target: (target as unknown as { id: Id<_HasId> }).id };
+  // Out of range: a co-fired bonus step must not travel (see runStep's allowTravel doc) — resolving a
+  // target it can't reach this tick counts as not having acted at all.
+  if (!allowTravel) return { acted: false, didAct: false };
+  creep.travelTo(target as { pos: RoomPosition });
+  return { acted: true, didAct: false, target: (target as unknown as { id: Id<_HasId> }).id };
 }
 
 // A container's tile is a mining spot: harvesting from on top of it drops overflow straight in, no
 // transfer step needed. Steer there when it's free; a creep already parked on it (including this one)
 // just keeps harvesting in place. If another creep holds the tile, fall back to plain range-1 harvesting
 // — the role's own "transfer to container" step moves the carried energy instead.
-function harvestStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefined): StepResult {
+function harvestStep(
+  creep: Creep,
+  spec: TargetSpec,
+  locked: Id<_HasId> | undefined,
+  allowTravel = true
+): StepResult {
   const target = resolveTarget(creep, spec, locked);
   if (!target) return { acted: false, didAct: false };
 
@@ -180,16 +227,16 @@ function harvestStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefi
 
   const standTarget = container && isFreeForCreep(container.pos, creep) ? container.pos : undefined;
 
-  let didAct = false;
   if (creep.pos.inRangeTo(source.pos, 1)) {
     creep.harvest(source);
-    didAct = true;
     // Nudge onto the container tile if not already there; with no (free) container, staying put is correct.
-    if (standTarget && !creep.pos.isEqualTo(standTarget)) creep.travelTo(standTarget);
-  } else {
-    creep.travelTo(standTarget ?? source.pos);
+    if (allowTravel && standTarget && !creep.pos.isEqualTo(standTarget)) creep.travelTo(standTarget);
+    return { acted: true, didAct: true, target: source.id };
   }
-  return { acted: true, didAct, target: source.id };
+  // Out of range: a co-fired bonus step must not travel (see runStep's allowTravel doc).
+  if (!allowTravel) return { acted: false, didAct: false };
+  creep.travelTo(standTarget ?? source.pos);
+  return { acted: true, didAct: false, target: source.id };
 }
 
 // A tile is free for this creep if nothing else is standing there — a creep already on it (this one
@@ -197,4 +244,11 @@ function harvestStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefi
 function isFreeForCreep(pos: RoomPosition, creep: Creep): boolean {
   const occupant = pos.lookFor(LOOK_CREEPS)[0];
   return !occupant || occupant.id === creep.id;
+}
+
+// A dropped resource pile needs creep.pickup(); everything else a "gather" spec can resolve to
+// (structure, tombstone, ruin) carries a .store and needs creep.withdraw() instead. Same discriminator
+// targets.ts's toKind() uses to classify a dropped pile.
+function isResource(obj: RoomObject): obj is Resource {
+  return (obj as { resourceType?: ResourceConstant }).resourceType !== undefined;
 }

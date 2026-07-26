@@ -178,9 +178,8 @@ describe("Mining.desiredCreeps — miners", () => {
   });
 
   // The per-source WORK target and the body that fills it must be sized against the same context.
-  // At 1000 energy the two disagree: a drop-miner body carries 6 WORK (target: 1 miner) but the
-  // container-miner body actually sent carries 5 (target: 2). Sizing the target off the wrong body
-  // under-staffs the source by a whole miner.
+  // At 1000 energy a container-miner body affords the full 6-WORK ceiling, so one miner alone
+  // saturates the source's target instead of needing a second body to cover the gap.
   it("sizes the per-source target against the same body it actually requests", () => {
     const snap = colonySnap({
       sources: [sourceAt(20, 10)],
@@ -190,8 +189,8 @@ describe("Mining.desiredCreeps — miners", () => {
     });
 
     const requests = minerRequests(snap);
-    expect(requests[0].body.filter(p => p === WORK)).toHaveLength(5);
-    expect(requests).toHaveLength(2);
+    expect(requests[0].body.filter(p => p === WORK)).toHaveLength(6);
+    expect(requests).toHaveLength(1);
   });
 
   it("stamps the requesting op on every request, so its creeps are identifiable next tick", () => {

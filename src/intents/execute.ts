@@ -44,9 +44,12 @@ function act(intent: Intent): ScreepsReturnCode {
       // Dry run first so a failure never leaves a half-spawned state.
       const dry = spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: true });
       if (dry !== OK) return dry;
-      const dir = intent.dir ?? directionToAdjacentRoad(spawn);
-      return dir !== undefined
-        ? spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: false, directions: [dir] })
+      // Directions are a *preference*, never a lock: pass every walkable exit, road-adjacent first,
+      // so a newborn creep still emerges even when its preferred tile is occupied (e.g. an idling
+      // supply creep). A single-direction list would strand the creep at 100% progress.
+      const dirs = intent.dir !== undefined ? [intent.dir] : spawnExitDirections(spawn);
+      return dirs.length > 0
+        ? spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: false, directions: dirs })
         : spawn.spawnCreep(intent.body, name, { memory: intent.memory, dryRun: false });
     }
     case "placeSite": {
@@ -151,10 +154,43 @@ function routeTo(from: string, dest: string): RouteMemory {
   return { dest, rooms, index: 0 };
 }
 
-// Spawn toward an adjacent road so the newborn creep doesn't block the spawn.
-function directionToAdjacentRoad(spawn: StructureSpawn): DirectionConstant | undefined {
-  const road = spawn.pos
-    .findInRange(FIND_STRUCTURES, 1)
-    .find(str => str.structureType === STRUCTURE_ROAD);
-  return road ? spawn.pos.getDirectionTo(road) : undefined;
+// All walkable exits around the spawn, ordered as a preference: road tiles first (so the newborn
+// lands on a road and doesn't block the spawn), then other open tiles as fallbacks. Passing every
+// viable direction — not just one — means an occupied preferred tile can't strand a finished creep.
+const ALL_DIRECTIONS: DirectionConstant[] = [TOP, TOP_RIGHT, RIGHT, BOTTOM_RIGHT, BOTTOM, BOTTOM_LEFT, LEFT, TOP_LEFT];
+
+function spawnExitDirections(spawn: StructureSpawn): DirectionConstant[] {
+  const terrain = spawn.room.getTerrain();
+  const walkable: { dir: DirectionConstant; road: boolean }[] = [];
+  for (const dir of ALL_DIRECTIONS) {
+    const pos = posInDirection(spawn.pos, dir);
+    if (!pos) continue; // off the edge of the room
+    if (terrain.get(pos.x, pos.y) === TERRAIN_MASK_WALL) continue;
+    const structures = pos.lookFor(LOOK_STRUCTURES);
+    const blocked = structures.some(
+      s => s.structureType !== STRUCTURE_ROAD && s.structureType !== STRUCTURE_CONTAINER && s.structureType !== STRUCTURE_RAMPART
+    );
+    if (blocked) continue;
+    walkable.push({ dir, road: structures.some(s => s.structureType === STRUCTURE_ROAD) });
+  }
+  // Stable sort keeping the clockwise ALL_DIRECTIONS order within each group; road tiles float to the front.
+  return walkable.sort((a, b) => Number(b.road) - Number(a.road)).map(w => w.dir);
+}
+
+function posInDirection(pos: RoomPosition, dir: DirectionConstant): RoomPosition | undefined {
+  const deltas: Record<DirectionConstant, [number, number]> = {
+    [TOP]: [0, -1],
+    [TOP_RIGHT]: [1, -1],
+    [RIGHT]: [1, 0],
+    [BOTTOM_RIGHT]: [1, 1],
+    [BOTTOM]: [0, 1],
+    [BOTTOM_LEFT]: [-1, 1],
+    [LEFT]: [-1, 0],
+    [TOP_LEFT]: [-1, -1]
+  };
+  const [dx, dy] = deltas[dir];
+  const x = pos.x + dx;
+  const y = pos.y + dy;
+  if (x < 0 || x > 49 || y < 0 || y > 49) return undefined;
+  return new RoomPosition(x, y, pos.roomName);
 }

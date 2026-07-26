@@ -22,12 +22,12 @@ export class Hauler extends Role {
   }
   // Container before drops (concentrated load), storage/spawn/extensions/towers before consumers (last-resort sink).
   static override readonly steps: Step[] = [
-    { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy" } },
+    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
     { do: "pickup", from: { find: "dropped", prefer: "largest" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_STORAGE, where: "notFull" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_TOWER, where: "notFull" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_EXTENSION, where: "notFull" } },
-    { do: "transfer", to: { find: "structure", type: STRUCTURE_SPAWN, where: "notFull" } },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_STORAGE], where: "notFull" } },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
     // oneShot: a working consumer re-validates as notFull forever, so cap this to one transfer per visit.
     { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull", prefer: "nearest" }, oneShot: true }
   ];

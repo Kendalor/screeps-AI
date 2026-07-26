@@ -16,6 +16,11 @@ import type { EnergyReport } from "../integration/energyMetrics";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const BENCH_FILE = path.join(HERE, "benchmarks.json");
+// test/benchmark/slow/*.test.ts default to this instead — a 20k-tick cold boot isn't comparable to
+// the fast milestones and shouldn't crowd the same committed history. scripts/bench-slow.mjs and
+// bench-parallel.mjs already route explicitly to the same file via BENCH_FILE; this is the fallback
+// for running a slow test file directly through vitest, without going through a driver script.
+export const SLOW_BENCH_FILE = path.join(HERE, "slow", "benchmarks-slow.json");
 
 /** How many runs of history to keep per benchmark. Older runs are dropped. */
 export const MAX_RUNS = 100;

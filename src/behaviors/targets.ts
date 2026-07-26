@@ -4,6 +4,34 @@ import type { Prefer, TargetSpec } from "./types";
 
 export type Where = "notFull" | "hasEnergy" | "damaged";
 
+// Ready-made "any" groups for the two directions energy moves: gathering it up (storage/containers
+// with energy, dropped piles, tombstones) and spending it down (extensions/spawn/storage/containers
+// with room to take more). Pooling these into one "any" spec — rather than a priority-ordered chain of
+// single-kind steps — means a nearer candidate of the *second* kind in the chain is never passed over
+// just because the first kind's search happened to find something.
+// energySourceGroup mixes a pickup-shaped kind (dropped) with withdraw-shaped kinds (structure,
+// tombstone) — pair it with a "gather" step, not "withdraw"/"pickup", which each call one fixed API
+// regardless of what the spec resolves to.
+export function energySourceGroup(prefer?: Prefer): TargetSpec {
+  return {
+    find: "any",
+    prefer,
+    of: [
+      { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
+      { find: "dropped" },
+      { find: "tombstone" }
+    ]
+  };
+}
+
+export function energySinkGroup(prefer?: Prefer): TargetSpec {
+  return {
+    find: "any",
+    prefer,
+    of: [{ find: "structure", type: [STRUCTURE_EXTENSION, STRUCTURE_SPAWN, STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "notFull" }]
+  };
+}
+
 // Live game objects satisfy this shape via their store/hits; tests pass plain objects.
 export interface TargetCandidate {
   freeCapacity: number;
@@ -49,7 +77,10 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
     case "id":
       return true;
     case "structure":
-      return k.kind === "structure" && k.structureType === spec.type;
+      return (
+        k.kind === "structure" &&
+        (Array.isArray(spec.type) ? spec.type.includes(k.structureType) : k.structureType === spec.type)
+      );
     case "creep":
       return k.kind === "creep" && roleMatches(k.role, spec);
     case "constructionSite":
@@ -58,6 +89,8 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
     case "dropped":
     case "tombstone":
       return k.kind === spec.find;
+    case "any":
+      return spec.of.some(member => fitsSpec(k, member));
   }
 }
 
@@ -99,22 +132,32 @@ function toKind(obj: RoomObject): TargetKind | null {
   return null;
 }
 
-function validLock(locked: Id<_HasId>, spec: TargetSpec): RoomObject | null {
+function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObject | null {
   const obj = Game.getObjectById(locked) as RoomObject | null;
   if (!obj) return null;
   const kind = toKind(obj);
   if (!kind || !fitsSpec(kind, spec)) return null;
+  // An "any" lock re-validates against whichever member spec the object actually fits, so its own
+  // where/near rules (not some other member's) govern whether the lock survives.
+  const memberSpec = spec.find === "any" ? spec.of.find(m => fitsSpec(kind, m)) : spec;
+  if (!memberSpec) return null;
   // Re-check the store-based `where` so a lock on a now-filled extension or emptied hauler is dropped.
-  const where = spec.find === "structure" || spec.find === "creep" ? spec.where : undefined;
+  const where = memberSpec.find === "structure" || memberSpec.find === "creep" ? memberSpec.where : undefined;
   if ((kind.kind === "structure" || kind.kind === "creep") && !matchesWhere(toCandidate(obj), where)) {
     return null;
+  }
+  // A locked container/link must stay the assigned source's own — a sibling source's, even if it
+  // resolved once (e.g. before sourceId was set), must be dropped the moment we can tell them apart.
+  if (memberSpec.find === "structure" && memberSpec.near === "assignedSource") {
+    const source = creep.memory.sourceId && (Game.getObjectById(creep.memory.sourceId) as Source | null);
+    if (!source || !(obj as unknown as { pos: RoomPosition }).pos.inRangeTo(source.pos, 1)) return null;
   }
   return obj;
 }
 
 export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId>): RoomObject | null {
   if (locked) {
-    const held = validLock(locked, spec);
+    const held = validLock(creep, locked, spec);
     if (held) return held;
   }
   if (spec.find === "id") {
@@ -123,7 +166,19 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
   if (spec.find === "controller") {
     return creep.room.controller ?? null;
   }
+  if (spec.find === "any") {
+    // Each member resolves its own pool under its own where/worthwhile/share rules; only the final
+    // nearest-vs-largest-vs-mostProgress ranking is shared across the merged set.
+    const pool = spec.of.flatMap(member => poolFor(creep, member));
+    return pickByPrefer(creep, spec, pool);
+  }
 
+  return pickByPrefer(creep, spec, poolFor(creep, spec));
+}
+
+// Candidate pool for one non-"any", non-"id", non-"controller" spec: found, where-filtered,
+// worthwhile-filtered (drops only), then share-capped with fallback to the full set at each stage.
+function poolFor(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find: "controller" } | { find: "any" }>): RoomObject[] {
   // Both structure and creep specs carry a `where` read off the target's store; apply it to either.
   const candidates = findCandidates(creep, spec).filter(
     c => (spec.find !== "structure" && spec.find !== "creep") || matchesWhere(toCandidate(c), spec.where)
@@ -135,9 +190,7 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
   const uncrowded = consider.filter(c =>
     withinShareCap(creep, (c as unknown as { id: Id<_HasId> }).id, shareCap(spec, c))
   );
-  const pool = uncrowded.length > 0 ? uncrowded : consider;
-
-  return pickByPrefer(creep, spec, pool);
+  return uncrowded.length > 0 ? uncrowded : consider;
 }
 
 // The step decides how a target is picked; there is no implicit fallback search. "nearest" (the
@@ -225,7 +278,10 @@ export function openHarvestTiles(at: { pos: { x: number; y: number }; room: { ge
   return open;
 }
 
-function findCandidates(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find: "controller" }>): RoomObject[] {
+function findCandidates(
+  creep: Creep,
+  spec: Exclude<TargetSpec, { find: "id" } | { find: "controller" } | { find: "any" }>
+): RoomObject[] {
   const room = creep.room;
   switch (spec.find) {
     case "source": {
@@ -241,8 +297,14 @@ function findCandidates(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } |
       return room.find(FIND_TOMBSTONES).filter(t => t.store.getUsedCapacity() > 0);
     case "constructionSite":
       return room.find(FIND_MY_CONSTRUCTION_SITES);
-    case "structure":
-      return room.find(FIND_STRUCTURES).filter(s => s.structureType === spec.type);
+    case "structure": {
+      const wantedTypes = Array.isArray(spec.type) ? spec.type : [spec.type];
+      const structures = room.find(FIND_STRUCTURES).filter(s => wantedTypes.includes(s.structureType));
+      if (spec.near !== "assignedSource") return structures;
+      const source = creep.memory.sourceId && (Game.getObjectById(creep.memory.sourceId) as Source | null);
+      if (!source) return [];
+      return structures.filter(s => s.pos.inRangeTo(source.pos, 1));
+    }
     case "creep": {
       // Never the actor itself — a creep transferring to itself is a no-op.
       const wanted = Array.isArray(spec.role) ? spec.role : [spec.role];

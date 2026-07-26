@@ -16,10 +16,15 @@
 // point. The recorder compares against the median of prior runs, and a median
 // needs several samples before it means anything.
 
-import { buildBundleOnce, cleanupShardDir, makeShardDir, mergeIntoHistory, runWorker } from "./bench-shared.mjs";
+import path from "node:path";
+import { buildBundleOnce, cleanupShardDir, HISTORY_SLOW, makeShardDir, mergeIntoHistory, runWorker } from "./bench-shared.mjs";
 
 const RUNS = Number(process.argv[2] ?? 4);
 const TEST_FILE = process.argv[3];
+
+// A target under test/benchmark/slow/ records into its own history file (see bench-slow.mjs) —
+// keep that true here too, or a parallel batch of a slow target would pollute the fast history.
+const history = TEST_FILE?.split(path.sep).includes("slow") ? HISTORY_SLOW : undefined;
 
 const shardDir = makeShardDir();
 const botBundle = buildBundleOnce(shardDir);
@@ -32,12 +37,13 @@ const results = await Promise.all(
       id: `worker ${i}`,
       testFile: TEST_FILE,
       shard: `${shardDir}/shard-${i}.json`,
-      botBundle
+      botBundle,
+      history
     })
   )
 );
 
-mergeIntoHistory(results);
+mergeIntoHistory(results, history);
 cleanupShardDir(shardDir);
 
 // Exit nonzero if any worker produced no data at all, so a half-empty batch

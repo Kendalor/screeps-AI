@@ -1,8 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { execute } from "../../src/intents/execute";
+import { clearTiles, stubTile } from "../constants";
 import { stubGame } from "../helpers";
 
+// A spawn whose room reports all-open terrain (no walls), so spawnExitDirections sees every
+// neighbour as potentially walkable unless a tile is explicitly stubbed occupied via stubTile().
+function openSpawn(spawnCreep: () => ScreepsReturnCode, x = 25, y = 25, roomName = "W1N1"): Record<string, unknown> {
+  return {
+    spawnCreep,
+    pos: new RoomPosition(x, y, roomName),
+    room: { getTerrain: () => ({ get: () => 0 }) }
+  };
+}
+
 describe("actuator", () => {
+  beforeEach(clearTiles);
+
   it("activates safemode on the intent's room controller", () => {
     const activateSafeMode = vi.fn(() => OK);
     stubGame({ rooms: { W1N1: { controller: { activateSafeMode } } } });
@@ -14,7 +27,7 @@ describe("actuator", () => {
 
   it("spawns with a deterministic name after a successful dry run", () => {
     const spawnCreep = vi.fn(() => OK);
-    stubGame({ time: 1234567, objects: { spawn1: { spawnCreep, pos: { findInRange: () => [] } } } });
+    stubGame({ time: 1234567, objects: { spawn1: openSpawn(spawnCreep) } });
     const memory: CreepMemory = { home: "W1N1", role: "bootstrap" };
 
     execute([{ kind: "spawn", spawn: "spawn1" as Id<StructureSpawn>, body: [WORK, CARRY, MOVE], memory }]);
@@ -24,15 +37,17 @@ describe("actuator", () => {
       memory,
       dryRun: true
     });
+    // On open terrain every neighbour is a viable exit, so the real call offers all 8 directions.
     expect(spawnCreep).toHaveBeenNthCalledWith(2, [WORK, CARRY, MOVE], "bootstrap_W1N1_1234567", {
       memory,
-      dryRun: false
+      dryRun: false,
+      directions: expect.arrayContaining([TOP, TOP_RIGHT, RIGHT, BOTTOM_RIGHT, BOTTOM, BOTTOM_LEFT, LEFT, TOP_LEFT])
     });
   });
 
   it("does not spawn for real when the dry run fails", () => {
     const spawnCreep = vi.fn(() => ERR_NOT_ENOUGH_ENERGY);
-    stubGame({ objects: { spawn1: { spawnCreep, pos: { findInRange: () => [] } } } });
+    stubGame({ objects: { spawn1: openSpawn(spawnCreep) } });
 
     execute([
       {
@@ -49,7 +64,7 @@ describe("actuator", () => {
 
   it("passes an explicit spawn direction through to the real spawn call", () => {
     const spawnCreep = vi.fn(() => OK);
-    stubGame({ objects: { spawn1: { spawnCreep, pos: { findInRange: () => [] } } } });
+    stubGame({ objects: { spawn1: openSpawn(spawnCreep) } });
 
     execute([
       {
@@ -62,6 +77,35 @@ describe("actuator", () => {
     ]);
 
     expect(spawnCreep.mock.calls[1][2]).toMatchObject({ dryRun: false, directions: [3] });
+  });
+
+  it("offers every open exit but the one an idling creep occupies — never a single locked direction", () => {
+    // Reproduces the live pserver deadlock: a supply creep idles on the spawn's road-adjacent tile.
+    // The finished creep must still be released through another free tile.
+    const spawnCreep = vi.fn(() => OK);
+    const spawn = openSpawn(spawnCreep, 17, 36, "W8N3");
+    // The road sits TOP_RIGHT of the spawn (18,35) — but a creep is parked on it.
+    stubTile("W8N3", 18, 35, { structure: [{ structureType: STRUCTURE_ROAD }], creep: [{}] });
+    // Block the tile with a real structure too, to prove non-road blockers are excluded.
+    stubTile("W8N3", 16, 36, { structure: [{ structureType: STRUCTURE_TOWER }] });
+    stubGame({ objects: { spawn1: spawn } });
+
+    execute([
+      {
+        kind: "spawn",
+        spawn: "spawn1" as Id<StructureSpawn>,
+        body: [WORK, MOVE],
+        memory: { home: "W8N3", role: "miner" }
+      }
+    ]);
+
+    const dirs = (spawnCreep.mock.calls[1][2] as { directions: DirectionConstant[] }).directions;
+    // More than one option, so an occupied preferred tile can never strand the creep.
+    expect(dirs.length).toBeGreaterThan(1);
+    // The tower tile (LEFT) is excluded; the occupied road tile (TOP_RIGHT) is still walkable (creeps
+    // don't block spawning), so it remains offered — just no longer the *only* option.
+    expect(dirs).not.toContain(LEFT);
+    expect(dirs).toContain(BOTTOM);
   });
 
   it("persists a source's mining spot and container into colony memory", () => {

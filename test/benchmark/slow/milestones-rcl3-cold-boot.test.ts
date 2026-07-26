@@ -8,9 +8,11 @@
 //
 // scripts/bench.mjs reads test/benchmark/ non-recursively, so a file in this subdirectory is
 // already excluded from the standard run; scripts/bench-slow.mjs points a worker at this
-// subdirectory explicitly. Both share the same benchmarks.json history, measurement set and
-// median-baseline machinery (checkBenchmark/economyOf, see ../benchmarks.ts) as every other
-// milestone — only the starting conditions (a genuine cold boot) and tick budgets differ.
+// subdirectory explicitly. Every file under slow/ shares its own committed history
+// (benchmarks-slow.json, kept separate from the fast suite's benchmarks.json — see
+// SLOW_BENCH_FILE in ../benchmarks.ts) plus the same measurement set and median-baseline
+// machinery (checkBenchmark/economyOf) as every other milestone — only the starting conditions
+// (a genuine cold boot) and tick budgets differ.
 //
 //   rcl3-cold-boot            — cold boot from an empty room to controller level 3. Distinct from
 //                               the seeded `rcl3` key: this figure includes the entire RCL0->2 leg,
@@ -26,7 +28,14 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import type { PlacedStructure } from "../../../src/layouts/stamp";
 import { claimsOf, wantedStructures } from "../../../src/colony/building";
 import { operationsFor } from "../../../src/operations";
-import { assertNoRegression, ECONOMY_SPEC, economyOf, recordBenchmark, reportBenchmark } from "../benchmarks";
+import {
+  assertNoRegression,
+  ECONOMY_SPEC,
+  economyOf,
+  recordBenchmark,
+  reportBenchmark,
+  SLOW_BENCH_FILE
+} from "../benchmarks";
 import { EnergyMetrics } from "../../integration/energyMetrics";
 import { BootedColony, bundleBot, CheckpointLadder } from "../../integration/harness";
 import { outstanding } from "../../integration/seed";
@@ -35,8 +44,9 @@ const TARGET_LEVEL = 3;
 
 // Overridable so parallel/driver runs (scripts/bench-slow.mjs, bench-parallel.mjs) can shard to
 // separate files — recordBenchmark is an unlocked read-modify-write and concurrent runs sharing
-// one file would collide.
-const BENCH_OUT = process.env.BENCH_FILE;
+// one file would collide. Falls back to the slow suite's own committed history (not the fast
+// suite's benchmarks.json) when run directly through vitest, outside a driver script.
+const BENCH_OUT = process.env.BENCH_FILE ?? SLOW_BENCH_FILE;
 
 let colony: BootedColony;
 

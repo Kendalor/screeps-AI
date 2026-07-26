@@ -20,8 +20,8 @@ export class Builder extends Role {
   // Refill from drop, storage, container, then hauler; self-harvest is the slow last resort.
   static override readonly steps: Step[] = [
     { do: "pickup", from: { find: "dropped", prefer: "largest" } },
-    { do: "withdraw", from: { find: "structure", type: STRUCTURE_STORAGE, where: "hasEnergy", prefer: "nearest" } },
-    { do: "withdraw", from: { find: "structure", type: STRUCTURE_CONTAINER, where: "hasEnergy", prefer: "nearest" } },
+    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy", prefer: "nearest" } },
+    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", prefer: "nearest" } },
     { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy", prefer: "nearest" } },
     { do: "harvest", from: { find: "source" } },
     { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }

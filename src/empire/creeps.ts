@@ -54,11 +54,20 @@ function runOne(creep: Creep): void {
 // different pipeline than the one just run can also act this same tick (e.g. a miner harvesting and
 // transferring in one tick). Unlocked deliberately: it re-resolves its target fresh every tick rather than
 // persisting into `task`, which would fight the primary step's own lock/progression bookkeeping.
+//
+// allowTravel:false (runStep's last argument): travelTo keeps one piece of state per creep
+// (Memory._trav), not one per pipeline, so letting a bonus step travel would call travelTo a second
+// time this same tick and silently overwrite the primary step's own in-flight destination — every
+// tick, forever, since the primary step never gets to keep a path long enough to make progress.
+// Observed live: upgraders with an empty carry looping near a moving hauler instead of ever reaching
+// the controller, because "withdraw from hauler" co-fired every tick and its travelTo call always won
+// (last move() intent issued is the only one the engine honours). A bonus step whose target is out of
+// range now simply does nothing this tick instead of chasing it.
 function coFireBonusStep(creep: Creep, steps: Step[], primaryStep: number): void {
   for (let i = 1; i < steps.length; i++) {
     const idx = (primaryStep + i) % steps.length;
     const step = steps[idx];
     if (!canCoFire(steps[primaryStep], step)) continue;
-    if (runStep(creep, step).acted) return;
+    if (runStep(creep, step, undefined, false).acted) return;
   }
 }

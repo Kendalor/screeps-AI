@@ -1,7 +1,32 @@
 // Stubs the Screeps global constants for unit tests; @types/screeps declares them as
 // ambient globals normally provided by the game engine at runtime. Add as src/ needs more.
 
+// A per-tile registry the RoomPosition stub reads for lookFor(). Tests populate it via
+// stubTile(); it's cleared each stubGame() so state never leaks between tests.
+const tileLooks = new Map<string, Record<string, unknown[]>>();
+
+export function stubTile(roomName: string, x: number, y: number, looks: Record<string, unknown[]>): void {
+  tileLooks.set(`${roomName}:${x}:${y}`, looks);
+}
+
+export function clearTiles(): void {
+  tileLooks.clear();
+}
+
+class RoomPositionStub {
+  constructor(
+    public x: number,
+    public y: number,
+    public roomName: string
+  ) {}
+  lookFor(type: string): unknown[] {
+    return tileLooks.get(`${this.roomName}:${this.x}:${this.y}`)?.[type] ?? [];
+  }
+}
+
 Object.assign(globalThis, {
+  RoomPosition: RoomPositionStub,
+
   OK: 0,
   ERR_NOT_OWNER: -1,
   ERR_NO_PATH: -2,
@@ -36,6 +61,16 @@ Object.assign(globalThis, {
   FIND_TOMBSTONES: 118,
 
   LOOK_CREEPS: "creep",
+  LOOK_STRUCTURES: "structure",
+
+  TOP: 1,
+  TOP_RIGHT: 2,
+  RIGHT: 3,
+  BOTTOM_RIGHT: 4,
+  BOTTOM: 5,
+  BOTTOM_LEFT: 6,
+  LEFT: 7,
+  TOP_LEFT: 8,
 
   TERRAIN_MASK_WALL: 1,
   TERRAIN_MASK_SWAMP: 2,
@@ -53,6 +88,9 @@ Object.assign(globalThis, {
   STRUCTURE_TERMINAL: "terminal",
 
   MAX_CONSTRUCTION_SITES: 100,
+
+  // Ticks to spawn one body part, from screeps/common constants.
+  CREEP_SPAWN_TIME: 3,
 
   // A WORK part harvests this much energy per tick, from screeps/common constants.
   HARVEST_POWER: 2,

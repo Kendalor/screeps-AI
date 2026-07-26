@@ -14,10 +14,22 @@
 // See scripts/bench-shared.mjs for why a driver is needed at all: the bundle build and the
 // committed history file are both unsafe to touch from more than one process at once, and both
 // fail silently rather than erroring.
+//
+// The slow benchmarks record into their own history file (test/benchmark/slow/benchmarks-slow.json)
+// rather than the fast suite's benchmarks.json — a 20k-tick cold boot isn't a comparable run to the
+// fast milestones and shouldn't crowd the same committed history.
 
 import { readdirSync } from "node:fs";
 import path from "node:path";
-import { buildBundleOnce, cleanupShardDir, makeShardDir, mergeIntoHistory, REPO, runWorker } from "./bench-shared.mjs";
+import {
+  buildBundleOnce,
+  cleanupShardDir,
+  HISTORY_SLOW,
+  makeShardDir,
+  mergeIntoHistory,
+  REPO,
+  runWorker
+} from "./bench-shared.mjs";
 
 const SLOW_DIR = path.join(REPO, "test", "benchmark", "slow");
 const files = readdirSync(SLOW_DIR)
@@ -41,12 +53,13 @@ const results = await Promise.all(
       id: testFile,
       testFile,
       shard: path.join(shardDir, `shard-${i}.json`),
-      botBundle
+      botBundle,
+      history: HISTORY_SLOW
     })
   )
 );
 
-mergeIntoHistory(results);
+mergeIntoHistory(results, HISTORY_SLOW);
 cleanupShardDir(shardDir);
 
 const barren = results.filter(r => !r.ok).length;
