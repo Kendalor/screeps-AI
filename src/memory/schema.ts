@@ -20,6 +20,7 @@ declare global {
     sourceId?: Id<Source>; // singular — no multi-source miner assignment
     task?: TaskState; // current behavior progress — owned by behaviors/interpreter.ts
     scoutTarget?: string; // room a scout is assigned to reach; cleared by moveToRoom on arrival
+    lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
   }
 
@@ -72,10 +73,17 @@ export interface LinkNetworkMemory {
 export interface ScoutInfo {
   tick?: number; // Game.time when last physically seen; absent means classified-but-unvisited
   type: RoomType;
-  sources: number; // source count — the headline remote-mining input
+  sources: ScoutedSource[]; // the headline remote-mining input — id and position of each source
   mineral?: MineralConstant; // the room's mineral, if any (normal/keeper rooms)
   owner?: string; // controller owner's username, if owned/reserved
   hostile: boolean; // owned by someone other than us
+}
+
+// A source as seen from outside its room, before any colony claims it for mining.
+export interface ScoutedSource {
+  id: Id<Source>;
+  x: number;
+  y: number;
 }
 
 // How far out the frontier has pushed — the one piece of scouting state a tick cannot rederive. The todo list itself

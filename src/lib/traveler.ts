@@ -476,17 +476,21 @@ export class Traveler {
         return matrix;
     }
 
-    // Returns a string of directions.
+    // Returns a string of directions. getDirectionTo works fine across a room border for two positions
+    // that are still grid-adjacent (crossing an exit tile) — skipping the step there, as this used to,
+    // silently drops the border-crossing move from the path. Every later direction is then walked from
+    // the creep's real (pre-crossing) position instead of where the path assumed, so the creep executes
+    // moves meant for the far side of the border while still standing on the near side: it never
+    // actually crosses and instead drifts back and forth near the exit tile, forever re-triggering the
+    // stuck/repath logic on the same broken path. Only same-room adjacency is skip-worthy (PathFinder
+    // never emits a genuine same-room duplicate/teleport, so this should be unreachable in practice).
     public static serializePath(startPos: RoomPosition, path: RoomPosition[], color = "orange"): string {
         let serializedPath = "";
         let lastPosition = startPos;
         this.circle(startPos, color);
         for (const position of path) {
-            if (position.roomName === lastPosition.roomName) {
-                new RoomVisual(position.roomName)
-                    .line(position, lastPosition, { color, lineStyle: "dashed" });
-                serializedPath += lastPosition.getDirectionTo(position);
-            }
+            new RoomVisual(position.roomName).line(position, lastPosition, { color, lineStyle: "dashed" });
+            serializedPath += lastPosition.getDirectionTo(position);
             lastPosition = position;
         }
         return serializedPath;

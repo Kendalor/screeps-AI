@@ -4,8 +4,22 @@
 // verified in integration.
 
 import { describe, expect, it } from "vitest";
-import { pickScoutTarget } from "../../src/behaviors/scout";
+import { needsPassiveRecording, pickScoutTarget } from "../../src/behaviors/scout";
 import { scouted, scoutTarget } from "../fixtures";
+
+describe("needsPassiveRecording", () => {
+  it("wants a room never observed", () => {
+    expect(needsPassiveRecording(undefined, 100)).toBe(true);
+  });
+
+  it("skips a room seen within the passive interval", () => {
+    expect(needsPassiveRecording(scouted({ tick: 0 }), 1499)).toBe(false);
+  });
+
+  it("wants a room whose observation has gone stale, well before active staleAfter would trigger", () => {
+    expect(needsPassiveRecording(scouted({ tick: 0 }), 1500)).toBe(true);
+  });
+});
 
 describe("pickScoutTarget", () => {
   it("returns nothing when every reachable room is fresh", () => {
@@ -37,5 +51,17 @@ describe("pickScoutTarget", () => {
     const first = pickScoutTarget(todo, "W1N1", 0);
     expect(first).toBe(pickScoutTarget(todo, "W1N1", 0));
     expect(["W1N2", "W2N1"]).toContain(first);
+  });
+
+  it("avoids sending the scout straight back to the room it just left when another stale room exists", () => {
+    // Standing in W1N2, both W1N1 (just left) and W1N3 are stale; without avoidance W1N1 would win
+    // (tied distance, name sort) and the scout would ping-pong between two mutually-nearest rooms forever.
+    const todo = [scoutTarget("W1N1"), scoutTarget("W1N3")];
+    expect(pickScoutTarget(todo, "W1N2", 0, "W1N1")).toBe("W1N3");
+  });
+
+  it("falls back to the avoided room when it's the only stale candidate left", () => {
+    const todo = [scoutTarget("W1N1")];
+    expect(pickScoutTarget(todo, "W1N2", 0, "W1N1")).toBe("W1N1");
   });
 });

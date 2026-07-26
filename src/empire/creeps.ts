@@ -1,8 +1,9 @@
 // The creep behaviour runner. Acts directly rather than returning intents, since travelTo keeps
 // internal path state. Empire-scoped because it iterates Game.creeps directly, not a snapshot.
 
-import { firstRunnableStep, nextStep, runStep, type CreepState } from "../behaviors/interpreter";
+import { canCoFire, firstRunnableStep, nextStep, runStep, type CreepState } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
+import type { Step } from "../behaviors/types";
 
 export function runCreepBehaviors(): void {
   for (const name in Game.creeps) {
@@ -36,6 +37,7 @@ function runOne(creep: Creep): void {
       task.step = nextStep(def.steps, state);
       // Carried to next tick so the creep finishes what it started rather than re-picking nearest target every tick.
       task.target = result.target;
+      coFireBonusStep(creep, def.steps, step);
       return;
     }
 
@@ -45,4 +47,18 @@ function runOne(creep: Creep): void {
 
   // Every step in the loop came back with nothing to resolve — truly idle this tick.
   task.step = step;
+}
+
+// The engine runs harvest/build/repair/upgrade (one WORK-part pipeline, mutually exclusive) independently
+// of transfer/withdraw/pickup (each its own CARRY-part pipeline) and of movement — so a second step from a
+// different pipeline than the one just run can also act this same tick (e.g. a miner harvesting and
+// transferring in one tick). Unlocked deliberately: it re-resolves its target fresh every tick rather than
+// persisting into `task`, which would fight the primary step's own lock/progression bookkeeping.
+function coFireBonusStep(creep: Creep, steps: Step[], primaryStep: number): void {
+  for (let i = 1; i < steps.length; i++) {
+    const idx = (primaryStep + i) % steps.length;
+    const step = steps[idx];
+    if (!canCoFire(steps[primaryStep], step)) continue;
+    if (runStep(creep, step).acted) return;
+  }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceRoute, firstRunnableStep, nextStep, runStep, type CreepState } from "../../src/behaviors/interpreter";
+import { advanceRoute, canCoFire, firstRunnableStep, nextStep, runStep, type CreepState } from "../../src/behaviors/interpreter";
 import type { Step } from "../../src/behaviors/types";
 import { stubGame } from "../helpers";
 
@@ -34,6 +34,35 @@ describe("advanceRoute", () => {
     // In the last room already — cursor does not run past the end, aim stays on the destination.
     expect(advanceRoute(route, "W1N4")).toBe("W1N4");
     expect(route.index).toBe(2);
+  });
+});
+
+// Per docs.screeps.com/simultaneous-actions.html: harvest/build/repair/upgrade share one WORK-part
+// pipeline (mutually exclusive), while transfer/withdraw/pickup are each an independent CARRY-part
+// pipeline — so a miner can harvest and transfer in the same tick, but not harvest and build.
+describe("canCoFire", () => {
+  it("allows harvest alongside transfer — different pipelines (WORK vs CARRY)", () => {
+    expect(canCoFire({ do: "harvest", from: { find: "source" } }, { do: "transfer", to: { find: "source" } })).toBe(
+      true
+    );
+  });
+
+  it("allows transfer alongside withdraw — each CARRY method is its own independent pipeline", () => {
+    expect(canCoFire({ do: "transfer", to: { find: "source" } }, { do: "withdraw", from: { find: "source" } })).toBe(
+      true
+    );
+  });
+
+  it("blocks harvest alongside build — both share the WORK pipeline", () => {
+    expect(canCoFire({ do: "harvest", from: { find: "source" } }, { do: "build" })).toBe(false);
+  });
+
+  it("blocks build alongside upgrade — both share the WORK pipeline", () => {
+    expect(canCoFire({ do: "build" }, { do: "upgrade" })).toBe(false);
+  });
+
+  it("allows a move step alongside a work step — movement never blocks or is blocked", () => {
+    expect(canCoFire({ do: "moveToRoom" }, { do: "harvest", from: { find: "source" } })).toBe(true);
   });
 });
 

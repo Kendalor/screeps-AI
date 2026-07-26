@@ -107,7 +107,7 @@ test(
     for (const room of SCOUTABLE_NEIGHBOURS) {
       const info = scouted[room];
       expect(info, `${room} was never recorded`).toBeDefined();
-      expect(info.sources, `${room} recorded no sources`).toBeGreaterThan(0);
+      expect(info.sources?.length, `${room} recorded no sources`).toBeGreaterThan(0);
       expect(info.type, `${room} misclassified`).toBe(roomType(room));
       expect(info.tick, `${room} has no observation tick`).toBeGreaterThan(0);
     }

@@ -65,10 +65,10 @@ export function wantedStructures(colony: ColonySnapshot, claimed: PlacedStructur
   const stamped = stampLayout(atRcl, anchor);
   const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
   // Bunker roads wait for the capacity gate; an operation's claimed roads (e.g. Mining's source
-  // access) are never capacity-gated, only adjacency-gated below.
+  // access) are never capacity- or adjacency-gated — claimed is the gate.
   const rawBuildable = [...(roadReady ? stamped : stamped.filter(p => p.type !== ROAD)), ...claimed];
   // Roads are gated after the merge, so a road adjacent to an operation's container counts as served.
-  const buildable = gateRoads(rawBuildable, colony);
+  const buildable = gateRoads(rawBuildable, colony, claimed);
   // Ties within a type keep buildableAtRcl's original build-sequence order, so extension growth stays contiguous.
   return buildable
     .map((p, i) => ({ p, i }))
@@ -103,13 +103,18 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
   return out;
 }
 
-// buildableAtRcl permits the full bunker road grid from RCL2 (permitted, not wanted); only keep roads that neighbour a served structure.
-function gateRoads(buildable: PlacedStructure[], colony: ColonySnapshot): PlacedStructure[] {
+// buildableAtRcl permits the full bunker road grid from RCL2 (permitted, not wanted); only keep roads that neighbour
+// a served structure. An operation's own claimed roads (e.g. Mining's multi-tile source access path) bypass this —
+// most of a path's tiles sit between structures, not next to one, so adjacency alone would strip the middle out.
+function gateRoads(buildable: PlacedStructure[], colony: ColonySnapshot, claimed: PlacedStructure[]): PlacedStructure[] {
+  const claimedRoads = new Set(claimed.filter(p => p.type === ROAD).map(p => `${p.x},${p.y}`));
   const servedTiles = [
     ...colony.structures.filter(s => s.type !== ROAD),
     ...buildable.filter(s => s.type !== ROAD)
   ];
-  return buildable.filter(p => p.type !== ROAD || servedTiles.some(s => range(p, s) === 1));
+  return buildable.filter(
+    p => p.type !== ROAD || claimedRoads.has(`${p.x},${p.y}`) || servedTiles.some(s => range(p, s) === 1)
+  );
 }
 
 function sameSpot(a: PlacedStructure) {

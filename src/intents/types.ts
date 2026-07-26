@@ -24,7 +24,9 @@ export type Intent =
       link?: Id<StructureLink>;
     }
   // Planner decides a room is worth recording; execute.ts reads the live room to build the observation.
-  | { kind: "recordScout"; room: string }
+  // `passive`: recorded from ambient vision, not a scout's assigned survey — execute.ts skips re-finding
+  // static data (sources/mineral) already on record, refreshing only tick/owner/hostile.
+  | { kind: "recordScout"; room: string; passive?: boolean }
   // Planner picks the target room; execute.ts computes the route and writes it into creep memory.
   | { kind: "setScoutTarget"; creep: Id<Creep>; targetRoom: string }
   // Emitted when the current scouting radius is fully surveyed; execute.ts owns the Memory write and cap.

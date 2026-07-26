@@ -84,18 +84,21 @@ function act(intent: Intent): ScreepsReturnCode {
     }
     case "recordScout": {
       const room = Game.rooms[intent.room];
-      // The scout must actually have vision for the observation to be real — the operation only emits
-      // this for a room its scout stands in, but a lost creep between snapshot and execute is possible.
+      // Vision must actually be present for the observation to be real — the operation only emits this
+      // for a room with vision in the snapshot, but a tick-boundary loss (creep died, moved on) is possible.
       if (!room) return ERR_NOT_FOUND;
       // Memory.rooms may not exist yet on a fresh isolate; create the container before indexing it.
       const rooms = (Memory.rooms ??= {});
       const mem = (rooms[intent.room] ??= {} as RoomMemory);
-      mem.scouted = observeRoom(room);
+      mem.scouted = observeRoom(room, intent.passive ? mem.scouted : undefined);
       return OK;
     }
     case "setScoutTarget": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
+      // Recorded before overwriting scoutTarget so the next pick can avoid sending the scout straight
+      // back here — without it, two rooms mutually nearest each other ping-pong a scout forever.
+      creep.memory.lastRoom = creep.room.name;
       creep.memory.scoutTarget = intent.targetRoom;
       creep.memory.route = routeTo(creep.room.name, intent.targetRoom);
       return OK;
@@ -120,15 +123,21 @@ function act(intent: Intent): ScreepsReturnCode {
   }
 }
 
-// What a scout sees, distilled to ScoutInfo. Lives here (not a planner) since it reads a live Room.
-function observeRoom(room: Room): ScoutInfo {
+// What a room's vision shows, distilled to ScoutInfo. Lives here (not a planner) since it reads a live Room.
+// `previous`: a passive observation's prior record, if any — its static fields (sources/mineral never
+// move) are reused instead of re-running FIND_SOURCES/FIND_MINERALS, so ambient vision refreshing many
+// rooms every tick stays cheap. An active (non-passive) observation always re-finds everything, since a
+// scout's arrival is comparatively rare and correctness of a first-ever survey matters more than cost.
+function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
   const c = room.controller;
   const owner = c?.owner?.username ?? c?.reservation?.username;
-  const mineral = room.find(FIND_MINERALS)[0]?.mineralType;
+  const staticKnown = previous?.sources !== undefined;
+  const mineral = staticKnown ? previous.mineral : room.find(FIND_MINERALS)[0]?.mineralType;
+  const sources = staticKnown ? previous.sources : room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y }));
   return {
     tick: Game.time,
     type: roomType(room.name),
-    sources: room.find(FIND_SOURCES).length,
+    sources,
     ...(mineral ? { mineral } : {}),
     ...(owner ? { owner } : {}),
     hostile: owner !== undefined && !c?.my

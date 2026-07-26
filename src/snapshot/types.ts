@@ -76,6 +76,14 @@ export interface ScoutCandidate {
   info?: ScoutInfo; // last recorded observation; absent means never scouted
 }
 
+// A room with vision this tick for any reason (owned, remote, a passing creep, a claimer) — not
+// necessarily within scouting radius. Lets Scouting passively refresh sources/owner/tick on rooms no
+// scout was ever dispatched to, without operations touching Game.rooms directly.
+export interface VisibleRoom {
+  room: string;
+  info?: ScoutInfo; // last recorded observation; absent means never scouted
+}
+
 // What mining last recorded for a source, so an operation can tell a real change from rewriting the same values.
 export interface SnapSourceMemory {
   spot?: XY;
@@ -110,6 +118,7 @@ export interface ColonySnapshot {
   sites: SnapStructure[];
   constructionProgress: number; // total work remaining across all sites in the room
   scoutTargets: ScoutCandidate[]; // rooms within scouting radius; empty until the frontier is walked
+  visibleRooms: VisibleRoom[]; // every room with vision this tick, regardless of scouting radius
 }
 
 export interface EmpireSnapshot {

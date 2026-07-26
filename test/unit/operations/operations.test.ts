@@ -153,7 +153,19 @@ describe("planBuilding polls operations", () => {
     // A road neighbouring the claim is kept; without the claim that same tile has nothing to serve.
     const neighbour: PlacedStructure = { x: 6, y: 5, type: "road" };
     expect(roadsOf([outside, neighbour])).toContainEqual(neighbour);
-    expect(roadsOf([neighbour])).not.toContainEqual(neighbour);
+    expect(roadsOf([])).not.toContainEqual(neighbour);
+  });
+
+  // Mining's source-access path claims a chain of road tiles; most sit between the container and
+  // the anchor, not next to any structure. Without this, gateRoads would strip the chain's middle
+  // out and only the tile touching the container would ever get built.
+  it("keeps an operation's claimed road even with nothing else served nearby", () => {
+    const snap = colonySnap({ anchor, controllerLevel: 4, structures: [], sites: [] });
+    const roadsOf = (claimed: PlacedStructure[]) =>
+      wantedStructures(snap, claimed).filter(p => p.type === "road");
+
+    const isolatedRoad: PlacedStructure = { x: 6, y: 5, type: "road" };
+    expect(roadsOf([isolatedRoad])).toContainEqual(isolatedRoad);
   });
 
   // The reason the poll is sequential rather than a flatMap. Two operations heading for nearby

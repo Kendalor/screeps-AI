@@ -406,7 +406,8 @@ export class BootedColony {
       constructionProgress: 0,
       // The layout planners this snapshot feeds never read scout targets; scouting demand is sized by
       // the running bot in-engine, not seeded.
-      scoutTargets: []
+      scoutTargets: [],
+      visibleRooms: []
     };
   }
 
@@ -419,11 +420,16 @@ export class BootedColony {
   // The rooms the bot has recorded a scout observation for — Memory.rooms[name].scouted, written by
   // the recordScout intent. Keyed by room name; the value is the ScoutInfo the bot stored. Empty
   // before any scout has entered a foreign room.
-  async scoutedRooms(): Promise<Record<string, { tick?: number; sources?: number; type?: string }>> {
+  async scoutedRooms(): Promise<
+    Record<string, { tick?: number; sources?: { id: string; x: number; y: number }[]; type?: string }>
+  > {
     const mem = (await this.memory()) as {
-      rooms?: Record<string, { scouted?: { tick?: number; sources?: number; type?: string } }>;
+      rooms?: Record<
+        string,
+        { scouted?: { tick?: number; sources?: { id: string; x: number; y: number }[]; type?: string } }
+      >;
     };
-    const out: Record<string, { tick?: number; sources?: number; type?: string }> = {};
+    const out: Record<string, { tick?: number; sources?: { id: string; x: number; y: number }[]; type?: string }> = {};
     for (const [name, room] of Object.entries(mem.rooms ?? {})) {
       if (room.scouted) out[name] = room.scouted;
     }

@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { needsScouting, Scouting, staleAfter } from "../../../src/operations/scouting";
-import { colonySnap, scouted, scoutTarget, snapCreep, snapCreeps } from "../../fixtures";
+import { colonySnap, scouted, scoutTarget, snapCreep, snapCreeps, visibleRoom } from "../../fixtures";
 
 const scouting = new Scouting("W1N1");
 const scoutRequests = (snap: Parameters<Scouting["desiredCreeps"]>[0]) =>
@@ -81,6 +81,13 @@ describe("Scouting demand", () => {
   it("wants nothing when there are no rooms in range yet", () => {
     expect(scouting.desiredCreeps(colonySnap({ scoutTargets: [] }))).toEqual([]);
   });
+
+  // The home room is a distance-0 scoutTargets entry (for passive recording), not real frontier work —
+  // it must never inflate fleet demand on its own.
+  it("does not count the home room toward scout demand", () => {
+    const snap = colonySnap({ name: "W1N1", scoutTargets: [scoutTarget("W1N1")] });
+    expect(scouting.desiredCreeps(snap)).toEqual([]);
+  });
 });
 
 // The operation drives its scouts through intents rather than the creep acting on its own: it reads
@@ -131,6 +138,25 @@ describe("Scouting intents", () => {
     });
   });
 
+  // Two adjacent rooms, each other's nearest stale candidate (e.g. two highways restaling faster than
+  // the rest of the frontier), must not trap the scout in an infinite back-and-forth: having just
+  // arrived from W1N2, it should push on to a third stale room rather than bouncing straight back.
+  it("does not send a scout back to the room it just came from while another stale room exists", () => {
+    const scout = snapCreep("scout", {
+      room: "W1N3",
+      memory: { op: "scouting:W1N1", scoutTarget: "W1N3", lastRoom: "W1N2" }
+    });
+    const snap = colonySnap({
+      creeps: [scout],
+      scoutTargets: [scoutTarget("W1N2"), scoutTarget("W1N3"), scoutTarget("W1N4")]
+    });
+    expect(scouting.intents(snap)).toContainEqual({
+      kind: "setScoutTarget",
+      creep: scout.id,
+      targetRoom: "W1N4"
+    });
+  });
+
   // A scout still en route to a target it hasn't reached is left alone — no reassignment churn.
   it("leaves a scout travelling to an unreached target undisturbed", () => {
     const scout = snapCreep("scout", {
@@ -169,5 +195,60 @@ describe("Scouting intents", () => {
   it("does not advance the radius with no scouts to use it", () => {
     const snap = colonySnap({ scoutTargets: [scoutTarget("W1N2", scouted())] });
     expect(scouting.intents(snap)).not.toContainEqual({ kind: "advanceScoutRadius" });
+  });
+
+  // A scout is never sent to sit in the colony's own home room — it already has permanent vision —
+  // even though the home room is a (distance-0) scoutTargets entry for passive-recording purposes.
+  it("never assigns a scout to travel to the colony's own home room", () => {
+    const scout = snapCreep("scout", { room: "W1N1", memory: { op: "scouting:W1N1" } });
+    const snap = colonySnap({
+      name: "W1N1",
+      creeps: [scout],
+      scoutTargets: [scoutTarget("W1N1"), scoutTarget("W1N2")]
+    });
+    expect(scouting.intents(snap)).toContainEqual({
+      kind: "setScoutTarget",
+      creep: scout.id,
+      targetRoom: "W1N2"
+    });
+  });
+});
+
+// Passive recording: any currently-visible room (not necessarily a scout's target, not necessarily
+// even within scouting radius) gets its record refreshed once stale, via ambient vision rather than a
+// dispatched scout — see needsPassiveRecording's flat 1500-tick threshold.
+describe("Scouting passive recording", () => {
+  it("records a visible room that has never been scouted", () => {
+    const snap = colonySnap({ visibleRooms: [visibleRoom("W2N5")] });
+    expect(scouting.intents(snap)).toContainEqual({ kind: "recordScout", room: "W2N5", passive: true });
+  });
+
+  it("records a visible room whose observation has gone stale past the passive interval", () => {
+    const snap = colonySnap({
+      tick: 2000,
+      visibleRooms: [visibleRoom("W2N5", scouted({ tick: 0 }))] // 2000 - 0 >= 1500
+    });
+    expect(scouting.intents(snap)).toContainEqual({ kind: "recordScout", room: "W2N5", passive: true });
+  });
+
+  it("does not record a visible room seen recently enough", () => {
+    const snap = colonySnap({
+      tick: 1000,
+      visibleRooms: [visibleRoom("W2N5", scouted({ tick: 0 }))] // 1000 - 0 < 1500
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ room: "W2N5" }));
+  });
+
+  it("does not double-record a room already recorded by the active pass this tick", () => {
+    const scout = snapCreep("scout", { room: "W1N2", memory: { op: "scouting:W1N1" } });
+    const snap = colonySnap({
+      creeps: [scout],
+      scoutTargets: [scoutTarget("W1N2")],
+      visibleRooms: [visibleRoom("W1N2")]
+    });
+    const intents = scouting.intents(snap);
+    const records = intents.filter(i => i.kind === "recordScout" && i.room === "W1N2");
+    expect(records).toHaveLength(1);
+    expect(records[0]).toEqual({ kind: "recordScout", room: "W1N2" }); // active wins, no passive flag
   });
 });

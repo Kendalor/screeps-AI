@@ -5,17 +5,22 @@ import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layo
 import type { XY } from "../lib/geometry";
 import { censusByColony } from "./census";
 import { scoutCandidatesAround } from "./scoutGraph";
-import type { ColonySnapshot, EmpireSnapshot, SnapCreep, SnapStructure, SnapUnit } from "./types";
+import type { ColonySnapshot, EmpireSnapshot, SnapCreep, SnapStructure, SnapUnit, VisibleRoom } from "./types";
 
 export function buildEmpireSnapshot(): EmpireSnapshot {
   // One pass over all creeps -> grouped by home colony.
   const byColony = censusByColony(Object.values(Game.creeps).map(snapCreep));
+  // Shared across colonies: every room with vision this tick, regardless of which colony (if any) owns it.
+  const visibleRooms: VisibleRoom[] = Object.keys(Game.rooms).map(name => ({
+    room: name,
+    info: Memory.rooms?.[name]?.scouted
+  }));
 
   const colonies: ColonySnapshot[] = [];
   for (const name in Game.rooms) {
     const room = Game.rooms[name];
     if (!room.controller?.my) continue;
-    colonies.push(buildColonySnapshot(room, byColony[name] ?? [], Game.time));
+    colonies.push(buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms));
   }
   return { tick: Game.time, colonies };
 }
@@ -35,7 +40,7 @@ function snapCreep(c: Creep): SnapCreep {
   };
 }
 
-function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number): ColonySnapshot {
+function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visibleRooms: VisibleRoom[]): ColonySnapshot {
   const controller = room.controller!;
   const myCreeps = room.find(FIND_MY_CREEPS);
   return {
@@ -85,7 +90,8 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number): Col
       .find(FIND_CONSTRUCTION_SITES)
       .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0),
     // Rooms within the current scouting radius; radius grows as the frontier is exhausted.
-    scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1)
+    scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1),
+    visibleRooms
   };
 }
 

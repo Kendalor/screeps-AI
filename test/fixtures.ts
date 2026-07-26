@@ -13,7 +13,8 @@ import type {
   SnapSource,
   SnapSpawn,
   SnapTower,
-  SnapUnit
+  SnapUnit,
+  VisibleRoom
 } from "../src/snapshot/types";
 import type { ScoutInfo } from "../src/memory/schema";
 import { roomType, roomLinearDistance } from "../src/lib/roomName";
@@ -85,6 +86,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     sites: [],
     constructionProgress: 0,
     scoutTargets: [],
+    visibleRooms: [],
     ...over
   };
 }
@@ -95,10 +97,25 @@ export function scoutTarget(room: string, info?: ScoutInfo, origin = "W1N1"): Sc
   return { room, distance: roomLinearDistance(origin, room), type: roomType(room), info };
 }
 
+// A room with ambient vision this tick — Scouting's passive-recording input. Only a name and what
+// was last observed; no distance/type, since passive recording doesn't care where the room sits.
+export function visibleRoom(room: string, info?: ScoutInfo): VisibleRoom {
+  return { room, info };
+}
+
 // A recorded observation, seen `tick` ticks ago (Game.time in tests defaults to 0, so pass an
 // absolute tick). Sources/hostility default to a plain surveyed normal room.
 export function scouted(over: Partial<ScoutInfo> = {}): ScoutInfo {
-  return { tick: 0, type: "normal", sources: 2, hostile: false, ...over };
+  return {
+    tick: 0,
+    type: "normal",
+    sources: [
+      { id: "scouted_src_0" as Id<Source>, x: 10, y: 10 },
+      { id: "scouted_src_1" as Id<Source>, x: 40, y: 40 }
+    ],
+    hostile: false,
+    ...over
+  };
 }
 
 export function hostileAt(x: number, y: number, id = `hostile_${x}_${y}`): SnapUnit {

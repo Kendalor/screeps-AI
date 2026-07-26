@@ -104,7 +104,7 @@ function stubScoutRoom(
   name: string,
   over: { sources?: number; mineral?: string; controller?: unknown } = {}
 ): unknown {
-  const sources = Array.from({ length: over.sources ?? 2 }, (_, i) => ({ id: `s${i}` }));
+  const sources = Array.from({ length: over.sources ?? 2 }, (_, i) => ({ id: `s${i}`, pos: { x: i, y: i } }));
   const minerals = over.mineral ? [{ mineralType: over.mineral }] : [];
   return {
     name,
@@ -121,7 +121,16 @@ describe("actuator — scouting", () => {
     execute([{ kind: "recordScout", room: "W1N2" }]);
 
     const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: unknown }> } }).Memory.rooms.W1N2;
-    expect(mem.scouted).toEqual({ tick: 500, type: "normal", sources: 2, mineral: RESOURCE_OXYGEN, hostile: false });
+    expect(mem.scouted).toEqual({
+      tick: 500,
+      type: "normal",
+      sources: [
+        { id: "s0", x: 0, y: 0 },
+        { id: "s1", x: 1, y: 1 }
+      ],
+      mineral: RESOURCE_OXYGEN,
+      hostile: false
+    });
   });
 
   it("marks a room hostile when its controller is owned by someone else", () => {
@@ -141,6 +150,58 @@ describe("actuator — scouting", () => {
     (globalThis as Record<string, unknown>).Memory = { rooms: {} };
     execute([{ kind: "recordScout", room: "W9N9" }]);
     expect((globalThis as { Memory: { rooms: Record<string, unknown> } }).Memory.rooms.W9N9).toBeUndefined();
+  });
+
+  it("a passive recording reuses the previously recorded sources/mineral instead of re-finding them", () => {
+    const room = stubScoutRoom("W1N2", { sources: 2, mineral: RESOURCE_OXYGEN });
+    const find = vi.spyOn(room as { find: unknown } as { find: (...a: unknown[]) => unknown }, "find");
+    stubGame({ time: 1000, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: {
+        W1N2: {
+          scouted: {
+            tick: 10,
+            type: "normal",
+            sources: [{ id: "old0", x: 5, y: 5 }],
+            mineral: "H" as MineralConstant,
+            hostile: false
+          }
+        }
+      }
+    };
+
+    execute([{ kind: "recordScout", room: "W1N2", passive: true }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: unknown }> } }).Memory.rooms.W1N2;
+    // tick refreshed, but the stale-static-safe fields (sources/mineral) carried over from the old record.
+    expect(mem.scouted).toEqual({
+      tick: 1000,
+      type: "normal",
+      sources: [{ id: "old0", x: 5, y: 5 }],
+      mineral: "H" as MineralConstant,
+      hostile: false
+    });
+    expect(find).not.toHaveBeenCalledWith(FIND_SOURCES);
+    expect(find).not.toHaveBeenCalledWith(FIND_MINERALS);
+  });
+
+  it("a passive recording still does a full observe when the room was never scouted before", () => {
+    stubGame({ time: 1000, rooms: { W1N2: stubScoutRoom("W1N2", { sources: 2, mineral: RESOURCE_OXYGEN }) } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+    execute([{ kind: "recordScout", room: "W1N2", passive: true }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: unknown }> } }).Memory.rooms.W1N2;
+    expect(mem.scouted).toEqual({
+      tick: 1000,
+      type: "normal",
+      sources: [
+        { id: "s0", x: 0, y: 0 },
+        { id: "s1", x: 1, y: 1 }
+      ],
+      mineral: RESOURCE_OXYGEN,
+      hostile: false
+    });
   });
 
   it("assigns a scout its target and a route computed by findRoute", () => {

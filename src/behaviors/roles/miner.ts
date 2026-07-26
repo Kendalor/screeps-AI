@@ -54,7 +54,9 @@ export class Miner extends Role {
   static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
     return minerBody(energy, ctx);
   }
-  // With a container underneath, the transfer steps mostly no-op since harvest overflow already lands in it.
+  // Standing on the container, harvest overflow already lands in it and these transfer steps no-op;
+  // otherwise (an overflow CARRY miner sharing a source, or feeding a link) they fire the same tick as
+  // harvest — transfer is its own engine pipeline, independent of harvest's WORK pipeline.
   static override readonly steps: Step[] = [
     { do: "harvest", from: { find: "source" } },
     { do: "transfer", to: { find: "structure", type: STRUCTURE_LINK, where: "notFull" } },

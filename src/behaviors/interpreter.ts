@@ -18,6 +18,23 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   sit: "move"
 };
 
+// The engine's per-tick action pipelines (docs.screeps.com/simultaneous-actions.html): harvest/build/
+// repair/upgrade share one WORK-part pipeline and block each other. Every other method — each CARRY-part
+// method (transfer/withdraw/pickup) and movement — is its own independent pipeline: none of them block
+// the WORK pipeline or each other. (transfer reads the creep's store as it stood at the start of the
+// tick, not energy the same tick's harvest just added.) Two steps from different pipelines may act in
+// the same tick; "work" is the one pipeline name shared by more than one step type.
+const WORK_PIPELINE = new Set<Step["do"]>(["harvest", "build", "repair", "upgrade"]);
+
+function pipelineOf(step: Step["do"]): string {
+  return WORK_PIPELINE.has(step) ? "work" : step; // non-work methods are each their own pipeline
+}
+
+/** Whether two steps may both act on the same creep in the same tick per the engine's pipeline rules. */
+export function canCoFire(a: Step, b: Step): boolean {
+  return pipelineOf(a.do) !== pipelineOf(b.do);
+}
+
 export interface CreepState {
   step: number;
   free: number;

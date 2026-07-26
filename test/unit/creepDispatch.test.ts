@@ -169,3 +169,57 @@ describe("same-tick retry past dead targets", () => {
     expect(creep.memory.task?.step).toBe(0);
   });
 });
+
+// harvest (WORK pipeline) and transfer (its own CARRY pipeline) are independent per-tick engine
+// actions (docs.screeps.com/simultaneous-actions.html), so a miner standing at a source with a
+// container in reach should fire both in the same tick rather than waiting a tick per action.
+describe("same-tick co-fire: miner harvest + transfer", () => {
+  function minerWithContainer(container: object | undefined): { creep: Creep; transferred: string[] } {
+    const transferred: string[] = [];
+    const source = { id: "src", energy: 100, pos: sourcePos(5, 5), room: OPEN_TERRAIN };
+    const creep = {
+      name: "m1",
+      spawning: false,
+      memory: { role: "miner", task: { step: 0 } },
+      store: { getFreeCapacity: () => 0, getUsedCapacity: () => 50 }, // already carrying from a prior tick
+      pos: {
+        x: 5,
+        y: 5,
+        findClosestByPath: (list: object[]) => list[0] ?? null,
+        inRangeTo: () => true
+      },
+      room: {
+        find: (kind: FindConstant) => (kind === FIND_STRUCTURES && container ? [container] : [])
+      },
+      harvest: () => 0,
+      transfer: (t: { id: string }) => transferred.push(t.id),
+      travelTo: () => undefined
+    } as unknown as Creep;
+    return { creep, transferred };
+  }
+
+  it("acts on harvest and also transfers into the container in the same call", () => {
+    const container = {
+      id: "cont",
+      structureType: STRUCTURE_CONTAINER,
+      pos: { x: 5, y: 5 },
+      store: { getFreeCapacity: () => 50, getUsedCapacity: () => 0 }
+    };
+    stubGame({ objects: { src: { id: "src" }, cont: container } });
+    const { creep, transferred } = minerWithContainer(container);
+    Game.creeps = { m1: creep };
+
+    runCreepBehaviors();
+
+    expect(transferred).toEqual(["cont"]);
+  });
+
+  it("does not attempt a transfer when no container is in reach — no error, no spurious call", () => {
+    stubGame({ objects: { src: { id: "src" } } });
+    const { creep, transferred } = minerWithContainer(undefined);
+    Game.creeps = { m1: creep };
+
+    expect(() => runCreepBehaviors()).not.toThrow();
+    expect(transferred).toEqual([]);
+  });
+});
