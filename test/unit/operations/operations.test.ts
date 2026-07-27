@@ -205,7 +205,7 @@ describe("planBuilding polls operations", () => {
     const snap = colonySnap({
       anchor,
       controllerLevel: 3,
-      energyCapacity: 550,
+      energyCapacity: 800,
       sources: [source],
       structures: [],
       sites: []

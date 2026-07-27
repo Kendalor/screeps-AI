@@ -131,9 +131,9 @@ describe("Upgrading.desiredCreeps — with storage (ported getMaxUpgraders)", ()
 describe("Upgrading.structures — controller container + road", () => {
   const anchor: XY = { x: 25, y: 25 };
   const controller: XY = { x: 25, y: 40 };
-  // A room that has just reached the gate: RCL2 with every extension, capacity 550.
+  // A room that has just reached the gate: RCL3 with every extension, capacity 800.
   const gated = (over: Parameters<typeof colonySnap>[0] = {}) =>
-    colonySnap({ anchor, controller, controllerLevel: 2, energyCapacity: 550, ...over });
+    colonySnap({ anchor, controller, controllerLevel: 3, energyCapacity: 800, ...over });
 
   it("claims exactly one container within range 2 of the controller", () => {
     const containers = upgrading.structures(gated()).filter(s => s.type === "container");

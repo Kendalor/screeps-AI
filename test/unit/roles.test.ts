@@ -129,7 +129,7 @@ describe("bootstrap role", () => {
 });
 
 describe("builder role", () => {
-  it("gathers from the nearest of drop/storage/container/hauler, falling back to harvest, before building", () => {
+  it("gathers from the nearest of drop/storage/container, falling back to harvest, before building — never from haulers", () => {
     expect(roleDef("builder")).toBe(ROLES.builder);
     expect(roleDef("builder")?.steps).toEqual([
       {
@@ -138,8 +138,7 @@ describe("builder role", () => {
           find: "any",
           of: [
             { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
-            { find: "dropped" },
-            { find: "creep", role: "hauler", where: "hasEnergy" }
+            { find: "dropped" }
           ],
           prefer: "nearest"
         }
@@ -147,6 +146,11 @@ describe("builder role", () => {
       { do: "harvest", from: { find: "source" } },
       { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
     ]);
+    // A hauler drained mid-run can't deliver its load to the spawn/extensions, so the builder must
+    // never steal from it — the same rule the upgrader follows.
+    const gatherSpec = roleDef("builder")?.steps.find(s => s.do === "gather");
+    const members = gatherSpec?.from.find === "any" ? gatherSpec.from.of : [];
+    expect(members).not.toContainEqual({ find: "creep", role: "hauler", where: "hasEnergy" });
   });
 
   it("is always a valid, affordable body with WORK and CARRY", () => {
@@ -282,7 +286,7 @@ describe("miner role", () => {
 });
 
 describe("hauler role", () => {
-  it("collects until full, then delivers to every sink and finally a consumer until empty", () => {
+  it("collects until full, then delivers spawn/extensions first, controller container, storage, tower, and finally a consumer until empty", () => {
     expect(roleDef("hauler")).toBe(ROLES.hauler);
     expect(roleDef("hauler")?.steps).toEqual([
       // Collect phase: one pooled gather over containers, drops and tombstones, ranked by largest
@@ -302,13 +306,15 @@ describe("hauler role", () => {
         }
       },
       // Deliver phase: closest matching sink each step (resolveTarget picks the nearest by path),
-      // running until empty before the loop wraps back to the collect phase. The controller container is
-      // topped to a 70% floor ahead of storage so the upgraders never starve; once at floor it drops out.
+      // running until empty before the loop wraps back to the collect phase. Spawn + extensions come
+      // FIRST — a room that can't spawn is dead, and pre-storage the hauler is the only thing filling
+      // them (no supply unit exists yet). Post-storage the supply unit keeps them full, so this step
+      // finds nothing and the hauler falls through to the controller container (topped to a 70% floor so
+      // upgraders stay fed) and then storage — the phase switch is pure step ordering.
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN, STRUCTURE_EXTENSION], where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_CONTAINER], where: "notFull", near: "controller", fillTo: 0.7 } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_STORAGE], where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
       // With every fixed sink full, feed a consumer directly rather than hold or drop energy.
       // oneShot: an actively-working consumer never truly goes not-full, so one transfer is enough
       // before the loop re-scans every sink from the top instead of pinning to this one target.

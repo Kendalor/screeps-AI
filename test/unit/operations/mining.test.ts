@@ -473,7 +473,7 @@ describe("Mining.structures", () => {
   it("declares a container on the last road tile next to each source", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 550 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
     const spot = expectedSpot(anchor, source);
     expect(mining.structures(snap)).toContainEqual({ x: spot.x, y: spot.y, type: "container" });
@@ -484,7 +484,7 @@ describe("Mining.structures", () => {
       anchor: { x: 25, y: 25 },
       sources: [sourceAt(20, 10), sourceAt(30, 40)],
       controllerLevel: 3,
-      energyCapacity: 550
+      energyCapacity: 800
     });
 
     expect(mining.structures(snap).filter(s => s.type === "container")).toHaveLength(2);
@@ -519,7 +519,7 @@ describe("Mining.structures", () => {
   it("declares a link instead of a container at RCL7", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7, energyCapacity: 550 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7, energyCapacity: 800 });
 
     const spot = expectedSpot(anchor, source);
     expect(mining.structures(snap).filter(s => s.type !== "road")).toEqual([
@@ -532,7 +532,7 @@ describe("Mining.structures", () => {
   it("claims the road leading to its container, not just the container", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 550 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
     const route = expectedRoute(anchor, source);
     // Handed the same baseline expectedRoute paths against, as planBuilding's poll does.
@@ -550,7 +550,7 @@ describe("Mining.structures", () => {
   it("never claims a tile the layout or a sibling already planned", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 550 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
     const planned = plannedAt(anchor, 3, [source]);
     const claimed = mining.structures(snap, planned);
@@ -568,7 +568,7 @@ describe("Mining.structures", () => {
   it("paths around planned structures, not only built ones", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 550 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
     const planned = plannedAt(anchor, 3, [source]);
     const withPlan = mining.structures(snap, planned);
@@ -577,7 +577,7 @@ describe("Mining.structures", () => {
       anchor,
       sources: [source],
       controllerLevel: 3,
-      energyCapacity: 550,
+      energyCapacity: 800,
       structures: planned.map(p => ({ x: p.x, y: p.y, type: p.type }))
     });
 
@@ -592,7 +592,7 @@ describe("Mining.structures", () => {
       anchor: { x: 10, y: 10 },
       sources: [sourceAt(20, 10)],
       controllerLevel: 3,
-      energyCapacity: 550
+      energyCapacity: 800
     });
 
     const containerOf = (snap: typeof base) =>

@@ -9,7 +9,13 @@ const UPGRADER_FLOOR: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE]; // 250
 const UPGRADER_SET: BodyPartConstant[] = [WORK, WORK, MOVE];
 const MAX_UPGRADER_SETS = 7;
 
+// At a 300-capacity room, use a 2-CARRY body (WORK,CARRY,CARRY,MOVE,MOVE = 300) instead of the
+// WORK,CARRY,MOVE,MOVE floor — trades a MOVE for a CARRY at RCL1. A/B slow-bench: ~4.5% faster to
+// RCL3, ~6% faster to full RCL3 build-out, slightly less energy wasted, no reliable downside.
+const B_300_BODY: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE]; // 300
+
 function upgraderBody(energy: number): BodyPartConstant[] {
+  if (energy === 300) return [...B_300_BODY];
   if (energy < bodyCost(UPGRADER_BASE)) return [...UPGRADER_FLOOR];
 
   const spare = Math.max(0, energy - bodyCost(UPGRADER_BASE));

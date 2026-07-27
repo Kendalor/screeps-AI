@@ -19,7 +19,7 @@ import { Operation } from "./operation";
 const config = {
   // A container/road claim waits on energy capacity, not RCL: RCL2 + all five extensions = 550.
   // Capacity, not level, is what proves the extension economy exists to fund the container.
-  structuresFromEnergyCapacity: 550,
+  structuresFromEnergyCapacity: 800,
   linkRcl: 7, // link beats container: miner drops straight in, no hauler round trip
   minHaulerEnergy: 150, // one CARRY,CARRY,MOVE set — cheapest body
   workPerSource: SOURCE_SATURATING_WORK, // shared with miner.ts's body cap so the two can't drift apart

@@ -31,7 +31,7 @@ describe("building planner", () => {
       colonySnap({
         anchor,
         controllerLevel: 3,
-        energyCapacity: 550,
+        energyCapacity: 800,
         sources: [sourceAt(20, 10)],
         structures: built,
         sites: []
@@ -54,7 +54,7 @@ describe("building planner", () => {
     const base = colonySnap({
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
-      energyCapacity: 550,
+      energyCapacity: 800,
       sources: [sourceAt(20, 10)],
       structures: [],
       sites: []
@@ -73,7 +73,7 @@ describe("building planner", () => {
     const base = colonySnap({
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
-      energyCapacity: 550,
+      energyCapacity: 800,
       sources: [sourceAt(20, 10)],
       structures: [],
       sites: []
@@ -199,7 +199,7 @@ describe("building planner focus policy", () => {
   });
 
   it("places no container sites below the container energy-capacity gate", () => {
-    for (const capacity of [300, 549]) {
+    for (const capacity of [300, 799]) {
       const snap = colony(
         colonySnap({
           anchor,
@@ -220,7 +220,7 @@ describe("building planner focus policy", () => {
       colonySnap({
         anchor,
         controllerLevel: 3,
-        energyCapacity: 550,
+        energyCapacity: 800,
         sources: [sourceAt(20, 10)],
         structures: built,
         sites: []
@@ -237,7 +237,7 @@ describe("building planner focus policy", () => {
       colonySnap({
         anchor,
         controllerLevel: 3,
-        energyCapacity: 550,
+        energyCapacity: 800,
         sources: [sourceAt(20, 10)],
         structures: withTower,
         sites: []
@@ -268,13 +268,14 @@ describe("building planner focus policy", () => {
     expect(placed.some(i => i.type === "road")).toBe(true);
   });
 
-  // Once Mining claims (at its 550 container gate), building.ts places the claimed source-access
-  // roads without also holding them behind its own 800 bunker-road gate — claimed is the gate.
-  it("mining's source-access roads bypass building.ts's 800 road gate", () => {
+  // Once Mining claims (at its 800 container gate), building.ts places the claimed source-access roads
+  // via gateRoads' claimed-bypass — a claimed road is kept even where it doesn't neighbour a served
+  // structure, which the plain adjacency gate would strip out. claimed is the gate.
+  it("mining's source-access roads bypass building.ts's road adjacency gate", () => {
     const base = colonySnap({
       anchor,
       controllerLevel: 3,
-      energyCapacity: 550, // at Mining's container gate, still below building.ts's 800 road gate
+      energyCapacity: 800,
       sources: [sourceAt(20, 10)],
       structures: allNonRoadStructuresAt(anchor, 3),
       sites: []

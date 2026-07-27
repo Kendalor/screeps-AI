@@ -251,6 +251,7 @@ export const ECONOMY_SPEC: BenchmarkSpec = {
   energyHarvestedPerTick: { direction: "higher", unit: "energy/tick" },
   energyWasteFraction: { unit: "fraction of available income" },
   energyDecayed: { unit: "energy" },
+  wastedDecayedPercentage: { unit: "% of total harvested" },
   sinkUpgrading: { direction: "higher", unit: "fraction of spend" },
   sinkConstruction: { unit: "fraction of spend" },
   sinkCreeps: { unit: "fraction of spend" }
@@ -268,6 +269,8 @@ export function economyOf(report: EnergyReport): Record<string, number | null> {
     energyHarvestedPerTick: report.perTick.harvested,
     energyWasteFraction: available ? report.wasted / available : null,
     energyDecayed: report.decayed,
+    // Decay expressed against what was actually harvested, so the absolute figure has a reference.
+    wastedDecayedPercentage: report.harvested ? (report.decayed / report.harvested) * 100 : null,
     sinkUpgrading: spent ? upgrading / spent : null,
     sinkConstruction: spent ? construction / spent : null,
     sinkCreeps: spent ? creeps / spent : null

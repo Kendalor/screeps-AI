@@ -23,10 +23,17 @@ export class Hauler extends Role {
     return haulerBody(energy);
   }
   // Source containers (near: "notController" — never the controller container, which the hauler FILLS
-  // rather than drains) and drops pooled into one gather, ranked by largest load. Deliver order:
-  // top the controller container to its 70% floor (fillTo) before storage, so the upgraders stay fed;
-  // once it's at floor that step finds nothing and energy banks in storage instead. Then the spawning
-  // structures, then a consumer creep (last-resort sink).
+  // rather than drains) and drops pooled into one gather, ranked by largest load.
+  //
+  // Deliver order is a pre-/post-storage phase switch achieved purely by ordering (the interpreter runs
+  // the first step whose target resolves, skipping the rest): spawn + extensions come FIRST, because a
+  // room that can't spawn is dead. Pre-storage there is no supply unit, so the hauler is the only thing
+  // that fills them — putting the controller container ahead of them (its old position) let that 2000-cap
+  // sink soak the whole load and the spawn structures never filled, stalling replacements into a wipe.
+  // Post-storage the supply unit keeps spawn+extensions full, so those steps find nothing (notFull) and
+  // the hauler falls straight through to the controller container (topped to a 0.7 floor so upgraders
+  // stay fed) and then storage — exactly the intended post-storage behaviour. Tower, then a consumer
+  // creep (last-resort sink), come last in both phases.
   static override readonly steps: Step[] = [
     {
       do: "gather",
@@ -40,11 +47,10 @@ export class Hauler extends Role {
         prefer: "largest"
       }
     },
+    { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN, STRUCTURE_EXTENSION], where: "notFull" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_CONTAINER], where: "notFull", near: "controller", fillTo: 0.7 } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_STORAGE], where: "notFull" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
-    { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
-    { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
     // oneShot: a working consumer re-validates as notFull forever, so cap this to one transfer per visit.
     { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull", prefer: "nearest" }, oneShot: true }
   ];
