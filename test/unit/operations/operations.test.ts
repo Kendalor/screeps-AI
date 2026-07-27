@@ -202,7 +202,14 @@ describe("planBuilding polls operations", () => {
   // than laying its own a tile over.
   it("lets a pathing operation reuse a road a sibling already planned", () => {
     const source = sourceAt(40, 12);
-    const snap = colonySnap({ anchor, controllerLevel: 3, sources: [source], structures: [], sites: [] });
+    const snap = colonySnap({
+      anchor,
+      controllerLevel: 3,
+      energyCapacity: 550,
+      sources: [source],
+      structures: [],
+      sites: []
+    });
 
     const alone = new Mining("W1N1").structures(snap, plannedAt(snap));
     // A sibling that already planned the first half of the very route Mining would take. Derived

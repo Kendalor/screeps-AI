@@ -473,7 +473,7 @@ describe("Mining.structures", () => {
   it("declares a container on the last road tile next to each source", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 550 });
 
     const spot = expectedSpot(anchor, source);
     expect(mining.structures(snap)).toContainEqual({ x: spot.x, y: spot.y, type: "container" });
@@ -483,19 +483,21 @@ describe("Mining.structures", () => {
     const snap = colonySnap({
       anchor: { x: 25, y: 25 },
       sources: [sourceAt(20, 10), sourceAt(30, 40)],
-      controllerLevel: 3
+      controllerLevel: 3,
+      energyCapacity: 550
     });
 
     expect(mining.structures(snap).filter(s => s.type === "container")).toHaveLength(2);
   });
 
-  // The gate moved out of building.ts and into the operation: an operation that cannot afford a
-  // container does not ask for one, exactly as its creep demand is gated by current state.
-  it("withholds its container below CONTAINERS_FROM_RCL", () => {
+  // The gate is on energy capacity, not RCL: an operation that cannot afford a container does not
+  // ask for one, exactly as its creep demand is gated by current state. 549 = one short of the gate.
+  it("withholds its container below CONTAINERS_FROM_ENERGY_CAPACITY", () => {
     const snap = colonySnap({
       anchor: { x: 10, y: 10 },
       sources: [sourceAt(20, 10)],
-      controllerLevel: 2,
+      controllerLevel: 3,
+      energyCapacity: 549,
       storageEnergy: 0,
       storageId: undefined
     });
@@ -503,11 +505,12 @@ describe("Mining.structures", () => {
     expect(mining.structures(snap)).toEqual([]);
   });
 
-  it("declares nothing at RCL1, when the miner economy cannot be afforded yet", () => {
+  it("declares nothing at RCL3 while capacity is still bootstrap-low", () => {
     const snap = colonySnap({
       anchor: { x: 10, y: 10 },
       sources: [sourceAt(20, 10)],
-      controllerLevel: 1
+      controllerLevel: 3,
+      energyCapacity: 300
     });
 
     expect(mining.structures(snap)).toEqual([]);
@@ -516,7 +519,7 @@ describe("Mining.structures", () => {
   it("declares a link instead of a container at RCL7", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7, energyCapacity: 550 });
 
     const spot = expectedSpot(anchor, source);
     expect(mining.structures(snap).filter(s => s.type !== "road")).toEqual([
@@ -529,7 +532,7 @@ describe("Mining.structures", () => {
   it("claims the road leading to its container, not just the container", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 550 });
 
     const route = expectedRoute(anchor, source);
     // Handed the same baseline expectedRoute paths against, as planBuilding's poll does.
@@ -547,7 +550,7 @@ describe("Mining.structures", () => {
   it("never claims a tile the layout or a sibling already planned", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 550 });
 
     const planned = plannedAt(anchor, 3, [source]);
     const claimed = mining.structures(snap, planned);
@@ -565,7 +568,7 @@ describe("Mining.structures", () => {
   it("paths around planned structures, not only built ones", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3 });
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 550 });
 
     const planned = plannedAt(anchor, 3, [source]);
     const withPlan = mining.structures(snap, planned);
@@ -574,6 +577,7 @@ describe("Mining.structures", () => {
       anchor,
       sources: [source],
       controllerLevel: 3,
+      energyCapacity: 550,
       structures: planned.map(p => ({ x: p.x, y: p.y, type: p.type }))
     });
 
@@ -587,7 +591,8 @@ describe("Mining.structures", () => {
     const base = colonySnap({
       anchor: { x: 10, y: 10 },
       sources: [sourceAt(20, 10)],
-      controllerLevel: 3
+      controllerLevel: 3,
+      energyCapacity: 550
     });
 
     const containerOf = (snap: typeof base) =>

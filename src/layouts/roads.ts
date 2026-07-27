@@ -129,6 +129,15 @@ export function controllerRoadPath(anchor: XY, controller: XY, costMatrix: RoadC
   return roadPathTo(anchor, controller, UPGRADE_CONTROLLER_RANGE, costMatrix);
 }
 
+// The upgrade container sits one tile inside upgrade range (range 2, not 3) so an upgrader standing
+// on it is still in range of the controller. Pathed from `from` (the storage tile) so the returned
+// path's road tiles connect the container back toward storage; the last tile is the container.
+const UPGRADE_CONTAINER_RANGE = 2;
+
+export function controllerContainerPath(from: XY, controller: XY, costMatrix: RoadCostMatrix): RoadPathResult {
+  return roadPathTo(from, controller, UPGRADE_CONTAINER_RANGE, costMatrix);
+}
+
 export function buildCostMatrix(room: RoomFixture): RoadCostMatrix {
   const cm = new RoadCostMatrix();
   for (let x = 0; x < 50; x++) {

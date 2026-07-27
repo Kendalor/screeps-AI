@@ -64,6 +64,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
     drops: room.find(FIND_DROPPED_RESOURCES).map(d => ({ id: d.id, x: d.pos.x, y: d.pos.y, amount: d.amount })),
     terrain: walkablePixelsForRoom(room.name),
+    controller: { x: controller.pos.x, y: controller.pos.y },
     controllerLevel: controller.level,
     controllerProgress: controller.progress,
     storageEnergy: room.storage?.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0,

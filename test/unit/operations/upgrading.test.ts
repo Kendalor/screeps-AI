@@ -3,11 +3,18 @@
 // directly and hands it a snapshot: no Game mock, no Colony.
 
 import { describe, expect, it } from "vitest";
+import GOAL_JSON from "../../../src/layouts/Base_2.json";
+import type { GoalLayout } from "../../../src/layouts/sync";
+import type { XY } from "../../../src/lib/geometry";
 import { Upgrading } from "../../../src/operations/upgrading";
 import { colonySnap, containerAt, dropAt, snapCreeps } from "../../fixtures";
 
 const upgrading = new Upgrading("W1N1");
 const upgraderRequests = (over: Parameters<typeof colonySnap>[0]) => upgrading.desiredCreeps(colonySnap(over));
+
+const chebyshev = (a: XY, b: XY): number => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+const storageOffset = (GOAL_JSON as GoalLayout).placements.find(p => p.type === "storage")!;
+const storageTileFor = (anchor: XY): XY => ({ x: storageOffset.x + anchor.x, y: storageOffset.y + anchor.y });
 
 describe("Upgrading.desiredCreeps — pre-storage squad", () => {
   it("fields a base squad (one per source) once there is energy to draw from, no surplus", () => {
@@ -118,5 +125,63 @@ describe("Upgrading.desiredCreeps — with storage (ported getMaxUpgraders)", ()
     const [request] = upgraderRequests({ storageEnergy: 140_000, controllerLevel: 4 });
 
     expect(request.memory).toMatchObject({ role: "upgrader", home: "W1N1", op: "upgrading:W1N1" });
+  });
+});
+
+describe("Upgrading.structures — controller container + road", () => {
+  const anchor: XY = { x: 25, y: 25 };
+  const controller: XY = { x: 25, y: 40 };
+  // A room that has just reached the gate: RCL2 with every extension, capacity 550.
+  const gated = (over: Parameters<typeof colonySnap>[0] = {}) =>
+    colonySnap({ anchor, controller, controllerLevel: 2, energyCapacity: 550, ...over });
+
+  it("claims exactly one container within range 2 of the controller", () => {
+    const containers = upgrading.structures(gated()).filter(s => s.type === "container");
+
+    expect(containers).toHaveLength(1);
+    expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(2);
+  });
+
+  it("stays in upgrade range: the container is never further than range 3 from the controller", () => {
+    const [container] = upgrading.structures(gated()).filter(s => s.type === "container");
+
+    // Range 2 is the target, but the load-bearing property is "an upgrader on it can still upgrade".
+    expect(chebyshev(container, controller)).toBeLessThanOrEqual(3);
+  });
+
+  it("claims a road linking the container back toward the storage tile", () => {
+    const claimed = upgrading.structures(gated());
+    const roads = claimed.filter(s => s.type === "road");
+    const [container] = claimed.filter(s => s.type === "container");
+
+    expect(roads.length).toBeGreaterThan(0);
+    // The road nearest storage is adjacent to where storage will sit; the road nearest the
+    // controller is adjacent to the container — i.e. a connected run from storage to the container.
+    const storage = storageTileFor(anchor);
+    expect(roads.some(r => chebyshev(r, storage) === 1)).toBe(true);
+    expect(roads.some(r => chebyshev(r, container) === 1)).toBe(true);
+    // The container tile itself is never also claimed as road.
+    expect(roads).not.toContainEqual({ x: container.x, y: container.y, type: "road" });
+  });
+
+  // Capacity, not level, is the gate: 549 is one short. A room that cannot fund the container asks
+  // for nothing, exactly as its creep demand is gated by current state.
+  it("withholds the container below the energyCapacity gate", () => {
+    expect(upgrading.structures(gated({ energyCapacity: 549 }))).toEqual([]);
+  });
+
+  it("claims nothing before an anchor exists", () => {
+    expect(upgrading.structures(gated({ anchor: null }))).toEqual([]);
+  });
+
+  // Two structures on one tile is not a plan planBuilding can execute.
+  it("never claims a tile a sibling already planned", () => {
+    const claimed = upgrading.structures(gated());
+    // Feed its own claim back as the planned set: nothing new may be claimed on those tiles.
+    const planned = claimed.map(c => ({ x: c.x, y: c.y, type: c.type }));
+    const second = upgrading.structures(gated(), planned);
+
+    const taken = new Set(planned.map(p => `${p.x},${p.y}`));
+    for (const c of second) expect(taken.has(`${c.x},${c.y}`)).toBe(false);
   });
 });

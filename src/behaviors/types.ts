@@ -72,4 +72,6 @@ export interface RoleDef {
   body: (energy: number, ctx: BodyContext) => BodyPartConstant[];
   steps: Step[];
   priority: number;
+  // Opt in to opportunistic en-route pickup while travelling to a gather target (behaviors/sweep.ts).
+  sweep?: boolean;
 }

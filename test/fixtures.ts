@@ -76,6 +76,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     sources: [sourceAt(20, 10)],
     drops: [],
     terrain: openTerrain(),
+    controller: { x: 25, y: 25 },
     controllerLevel: 1,
     controllerProgress: 0,
     storageEnergy: 0,

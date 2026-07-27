@@ -28,7 +28,14 @@ describe("building planner", () => {
     const anchor = { x: 25, y: 25 };
     const built = allNonRoadStructuresAt(anchor, 3);
     const snap = colony(
-      colonySnap({ anchor, controllerLevel: 3, sources: [sourceAt(20, 10)], structures: built, sites: [] })
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 550,
+        sources: [sourceAt(20, 10)],
+        structures: built,
+        sites: []
+      })
     );
 
     const intents = snap.building();
@@ -47,6 +54,7 @@ describe("building planner", () => {
     const base = colonySnap({
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
+      energyCapacity: 550,
       sources: [sourceAt(20, 10)],
       structures: [],
       sites: []
@@ -65,6 +73,7 @@ describe("building planner", () => {
     const base = colonySnap({
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
+      energyCapacity: 550,
       sources: [sourceAt(20, 10)],
       structures: [],
       sites: []
@@ -187,25 +196,35 @@ describe("building planner focus policy", () => {
     expect(placed.some(i => i.type === "tower")).toBe(true);
   });
 
-  it("places no container sites before RCL3", () => {
-    for (const rcl of [1, 2]) {
+  it("places no container sites below the container energy-capacity gate", () => {
+    for (const capacity of [300, 549]) {
       const snap = colony(
-        colonySnap({ anchor, controllerLevel: rcl, sources: [sourceAt(20, 10)], structures: [], sites: [] })
+        colonySnap({
+          anchor,
+          controllerLevel: 3,
+          energyCapacity: capacity,
+          sources: [sourceAt(20, 10)],
+          structures: [],
+          sites: []
+        })
       );
       expect(placeSites(snap.building()).some(i => i.type === "container")).toBe(false);
     }
   });
 
-  it("places container sites from RCL3", () => {
-    const snap = colony(
-      colonySnap({ anchor, controllerLevel: 3, sources: [sourceAt(20, 10)], structures: [], sites: [] })
-    );
+  it("places container sites once the container energy-capacity gate is met", () => {
     const built = allNonRoadStructuresAt(anchor, 3);
-    const snap2 = colony(
-      colonySnap({ anchor, controllerLevel: 3, sources: [sourceAt(20, 10)], structures: built, sites: [] })
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 550,
+        sources: [sourceAt(20, 10)],
+        structures: built,
+        sites: []
+      })
     );
-    void snap;
-    expect(placeSites(snap2.building()).some(i => i.type === "container")).toBe(true);
+    expect(placeSites(snap.building()).some(i => i.type === "container")).toBe(true);
   });
 
   it("ranks containers below extensions in the focus slots", () => {
@@ -213,7 +232,14 @@ describe("building planner focus policy", () => {
       ...allNonRoadStructuresAt(anchor, 3).filter(s => s.type === "tower")
     ];
     const snap = colony(
-      colonySnap({ anchor, controllerLevel: 3, sources: [sourceAt(20, 10)], structures: withTower, sites: [] })
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 550,
+        sources: [sourceAt(20, 10)],
+        structures: withTower,
+        sites: []
+      })
     );
     const placed = placeSites(snap.building());
     expect(placed.every(i => i.type === "extension")).toBe(true);
@@ -240,19 +266,27 @@ describe("building planner focus policy", () => {
     expect(placed.some(i => i.type === "road")).toBe(true);
   });
 
-  it("mining's source-access roads are not capacity-gated, only adjacency-gated", () => {
-    const snap = colony(
-      colonySnap({
-        anchor,
-        controllerLevel: 3,
-        energyCapacity: 300,
-        sources: [sourceAt(20, 10)],
-        structures: allNonRoadStructuresAt(anchor, 3),
-        sites: []
-      })
-    );
+  // Once Mining claims (at its 550 container gate), building.ts places the claimed source-access
+  // roads without also holding them behind its own 800 bunker-road gate — claimed is the gate.
+  it("mining's source-access roads bypass building.ts's 800 road gate", () => {
+    const base = colonySnap({
+      anchor,
+      controllerLevel: 3,
+      energyCapacity: 550, // at Mining's container gate, still below building.ts's 800 road gate
+      sources: [sourceAt(20, 10)],
+      structures: allNonRoadStructuresAt(anchor, 3),
+      sites: []
+    });
+    // Pre-build every non-road claim Mining makes so the only thing left to place is its road —
+    // otherwise the higher-priority containers monopolise the two focus-site slots and the road
+    // (which we're actually testing) never gets a turn.
+    const nonRoadClaims = minedStructures(base)
+      .filter(p => p.type !== "road")
+      .map(p => ({ x: p.x, y: p.y, type: p.type }));
+    const snap = colony({ ...base, structures: [...base.structures, ...nonRoadClaims] });
+
     const placed = placeSites(snap.building());
-    expect(placed.some(i => i.type === "container")).toBe(true);
+    // A road placed despite capacity (550) sitting well below building.ts's 800 bunker-road gate.
     expect(placed.some(i => i.type === "road")).toBe(true);
   });
 

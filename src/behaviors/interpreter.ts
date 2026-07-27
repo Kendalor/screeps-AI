@@ -31,6 +31,11 @@ function pipelineOf(step: Step["do"]): string {
   return WORK_PIPELINE.has(step) ? "work" : step; // non-work methods are each their own pipeline
 }
 
+/** Whether a step collects into the creep's store (harvest/withdraw/pickup/gather), as opposed to spending or moving. */
+export function isGatherStep(step: Step): boolean {
+  return STEP_KIND[step.do] === "gather";
+}
+
 /** Whether two steps may both act on the same creep in the same tick per the engine's pipeline rules. */
 export function canCoFire(a: Step, b: Step): boolean {
   return pipelineOf(a.do) !== pipelineOf(b.do);

@@ -10,7 +10,7 @@ import { Supply } from "./supply";
 import { Upgrading } from "./upgrading";
 
 export { Operation } from "./operation";
-export { Mining, CONTAINERS_FROM_RCL } from "./mining";
+export { Mining, CONTAINERS_FROM_ENERGY_CAPACITY } from "./mining";
 export { Defense } from "./defense";
 export { Upgrading } from "./upgrading";
 export { Bootstrap } from "./bootstrap";

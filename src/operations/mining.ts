@@ -17,21 +17,23 @@ import { bodyContext } from "../spawn/bodyContext";
 import { Operation } from "./operation";
 
 const config = {
-  minContainerRcl: 2, // not gated on storage — the container economy is what funds storage
+  // A container/road claim waits on energy capacity, not RCL: RCL2 + all five extensions = 550.
+  // Capacity, not level, is what proves the extension economy exists to fund the container.
+  structuresFromEnergyCapacity: 550,
   linkRcl: 7, // link beats container: miner drops straight in, no hauler round trip
-  containersFromRcl: 3, // a container before miners exist is 5000 energy starving extensions
   minHaulerEnergy: 150, // one CARRY,CARRY,MOVE set — cheapest body
   workPerSource: SOURCE_SATURATING_WORK, // shared with miner.ts's body cap so the two can't drift apart
   sourceRegenPerTick: 10, // caps income so surplus miners can't ask for haulers to carry nonexistent energy
   roomIncomeCap: 20, // room ceiling on harvestable income (two sources)
   energyPerCarry: 50, // one CARRY part
+  haulerCarryMargin: 1.1, // over-provision required carry by 10%: covers respawn gaps and en-route drops
   defaultHaulDistance: 10, // fallback before an anchor is known
   maxHaulers: 6, // measured: more doesn't clear the pre-container backlog faster
   dropBacklogThreshold: 2000 // above this, extra transport is fielded to clear the pile
 } as const;
 
 // building.ts's gate on source containers is mining's knowledge of what it needs when.
-export const CONTAINERS_FROM_RCL = config.containersFromRcl;
+export const CONTAINERS_FROM_ENERGY_CAPACITY = config.structuresFromEnergyCapacity;
 
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
@@ -153,7 +155,9 @@ export class Mining extends Operation {
     if (income <= 0) return 0;
 
     const roundTrip = 2 * this.haulDistance(colony);
-    const neededCarry = income * roundTrip + this.backlogCarry(colony);
+    // Over-provision carry (round up): the exact steady-state figure runs too lean once respawn
+    // gaps and en-route drops are accounted for, so buy a margin (config.haulerCarryMargin).
+    const neededCarry = Math.ceil((income * roundTrip + this.backlogCarry(colony)) * config.haulerCarryMargin);
     const perHauler = Math.max(1, countPart(body, CARRY)) * config.energyPerCarry;
 
     return Math.min(config.maxHaulers, Math.max(1, Math.ceil(neededCarry / perHauler)));
@@ -199,10 +203,9 @@ export class Mining extends Operation {
 
   /** Each source's container/link and the road that reaches it. Never places sites — only claims. */
   public override structures(colony: ColonySnapshot, planned: readonly PlacedStructure[] = []): PlacedStructure[] {
-    if (colony.controllerLevel < config.minContainerRcl) return [];
+    if (colony.energyCapacity < config.structuresFromEnergyCapacity) return [];
 
     const type = sourceStructureType(colony.controllerLevel);
-    if (type === "container" && colony.controllerLevel < config.containersFromRcl) return [];
 
     const out: PlacedStructure[] = [];
     // Tiles already claimed by layout, a sibling, or an earlier source this loop. Built structures

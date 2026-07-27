@@ -1,8 +1,16 @@
 // The creep behaviour runner. Acts directly rather than returning intents, since travelTo keeps
 // internal path state. Empire-scoped because it iterates Game.creeps directly, not a snapshot.
 
-import { canCoFire, firstRunnableStep, nextStep, runStep, type CreepState } from "../behaviors/interpreter";
+import {
+  canCoFire,
+  firstRunnableStep,
+  isGatherStep,
+  nextStep,
+  runStep,
+  type CreepState
+} from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
+import { sweepEnRoute } from "../behaviors/sweep";
 import type { Step } from "../behaviors/types";
 
 export function runCreepBehaviors(): void {
@@ -17,6 +25,14 @@ function storeOf(creep: Creep): { free: number; used: number } {
   return { free: creep.store.getFreeCapacity(), used: creep.store.getUsedCapacity() };
 }
 
+// True when the creep already stands in action range (1) of its locked target — it has arrived and
+// should work the target, not detour to a bystander pile. No lock, or a dead lock, counts as not there.
+function atLockedTarget(creep: Creep, locked: Id<_HasId> | undefined): boolean {
+  if (!locked) return false;
+  const obj = Game.getObjectById(locked) as { pos?: RoomPosition } | null;
+  return !!obj?.pos && creep.pos.inRangeTo(obj.pos, 1);
+}
+
 function runOne(creep: Creep): void {
   const def = roleDef(creep.memory.role);
   if (!def || def.steps.length === 0) return;
@@ -27,6 +43,14 @@ function runOne(creep: Creep): void {
   // Skip straight to a step with something to do, rather than wasting a tick on one already complete on arrival.
   let step = firstRunnableStep(def.steps, task.step, storeOf(creep));
   if (step !== task.step) task.target = undefined; // lock belonged to the skipped step
+
+  // Opportunistic en-route pickup: only while *travelling* to collect — the runnable step gathers and
+  // the creep is not yet adjacent to its committed target (else it'd keep grabbing a tiny roadside pile
+  // instead of withdrawing the container it arrived at). Grab / step toward a loose pile and spend the
+  // tick on that; the primary gather re-issues its own path next tick (see behaviors/sweep.ts).
+  if (def.sweep && isGatherStep(def.steps[step]) && !atLockedTarget(creep, task.target) && sweepEnRoute(creep)) {
+    return;
+  }
 
   // A dead target costs no API call, so retry the next step immediately; bounded to one full pass.
   for (let i = 0; i < def.steps.length; i++) {

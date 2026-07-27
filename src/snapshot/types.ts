@@ -107,6 +107,7 @@ export interface ColonySnapshot {
   sources: SnapSource[];
   drops: SnapDrop[]; // ground-level energy from drop mining
   terrain: Uint8Array; // 1 = walkable, 0 = wall, indexed [x*50+y]
+  controller: XY; // controller position, so operations can path to it (e.g. the upgrade container)
   controllerLevel: number;
   controllerProgress: number;
   storageEnergy: number; // 0 when no storage built yet
