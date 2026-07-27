@@ -25,7 +25,7 @@ const upgraderConfig = {
   // Room energyCapacity at which the controller gets its own container + road (RCL2 + all five
   // extensions = 550). Before this the room can't spare the build; after it, the container ends the
   // upgraders' walk to storage.
-  containerFromEnergyCapacity: 800 // A/B: was 550
+  containerFromEnergyCapacity: 550
 } as const;
 
 const GOAL = GOAL_JSON as GoalLayout;
