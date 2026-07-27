@@ -39,6 +39,10 @@ export const SYSTEMS: System[] = [
   // Empire-scoped: spawn routing is cross-colony, so the arbiter sees every colony's demand and idle spawns at once.
   { name: "spawning", tier: 1, scope: "empire", run: e => e.spawning(roomDistance) },
   { name: "creeps", tier: 1, scope: "empire", run: runCreeps },
+  // Repurpose idle builders once construction is finished (converted creeps act under the new role next
+  // tick). Tier 2, so it's placed after the tier-1 creeps run — a tier-2 system ahead of creeps would
+  // `break` the loop under CPU pressure and skip creep behavior entirely.
+  { name: "workforce", tier: 2, scope: "colony", run: c => c.maintainWorkforce() },
   { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() },
   // Tier 3 but every tick, so the panel and harvest-rate window stay live rather than sampled.
   { name: "metrics", tier: 3, scope: "colony", run: c => c.metrics() }

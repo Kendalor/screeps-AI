@@ -36,6 +36,7 @@ export type RoleName =
   | "supply"
   | "upgrader"
   | "builder"
+  | "repair"
   | "sitter"
   | "scout"
   | "claimer"

@@ -58,6 +58,12 @@ export function panelOps(m: ColonyMetrics): VisualOp[] {
     0.5
   );
 
+  // Spawn load: living body parts vs. what the whole colony's spawns can sustain (each spawn = 500 parts).
+  // A colony-level utilisation, so it stays comparable as spawn count grows over time.
+  p.line("Spawns", HEADING);
+  p.line(`load       ${m.spawns.parts}/${m.spawns.capacity} parts (${m.spawns.busy}/${m.spawns.total} busy)`, DIM, 0.5);
+  p.line(`util       ${(m.spawns.load * 100).toFixed(0)}%`, m.spawns.load >= 1 ? WARN : OK, 0.5);
+
   // Buildings: built/targeted per type, red while any remain to build.
   p.line("Buildings", HEADING);
   if (m.buildings.length === 0) p.line("(none planned)", DIM, 0.5);

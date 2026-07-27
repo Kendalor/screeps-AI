@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
 import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
 import { colony } from "../../src/colony";
-import { colonySnap, sourceAt } from "../fixtures";
+import { colonySnap, snapCreep, sourceAt } from "../fixtures";
 import { Mining } from "../../src/operations/mining";
 import { buildableAtRcl } from "../../src/layouts/goal";
 import { stampLayout } from "../../src/layouts/stamp";
@@ -104,7 +104,7 @@ describe("building planner", () => {
     const intents = snap.building();
 
     expect(intents.every(i => i.kind === "placeSite")).toBe(true);
-    expect(intents).toHaveLength(2);
+    expect(intents).toHaveLength(4);
     const types = new Set(intents.map(i => i.kind === "placeSite" && i.type));
     expect([...types].some(t => t === "road")).toBe(false);
     expect(
@@ -125,7 +125,9 @@ describe("building planner", () => {
   it("emits nothing further once the room is already at the focus site cap", () => {
     const sites: SnapStructure[] = [
       { x: 1, y: 0, type: "extension" },
-      { x: 2, y: 0, type: "extension" }
+      { x: 2, y: 0, type: "extension" },
+      { x: 3, y: 0, type: "extension" },
+      { x: 4, y: 0, type: "extension" }
     ];
 
     const snap = colony(
@@ -176,17 +178,17 @@ describe("building planner focus policy", () => {
   const placeSites = (intents: Intent[]) =>
     intents.filter((i): i is Extract<Intent, { kind: "placeSite" }> => i.kind === "placeSite");
 
-  it("places at most 2 construction sites at a time", () => {
+  it("places at most 4 construction sites at a time", () => {
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] }));
 
-    expect(placeSites(snap.building())).toHaveLength(2);
+    expect(placeSites(snap.building())).toHaveLength(4);
   });
 
-  it("counts existing sites against the cap of 2", () => {
+  it("counts existing sites against the cap of 4", () => {
     const oneOpen: SnapStructure[] = [{ x: 10, y: 10, type: "road" }];
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: oneOpen }));
 
-    expect(placeSites(snap.building())).toHaveLength(1);
+    expect(placeSites(snap.building())).toHaveLength(3);
   });
 
   it("prioritises the tower ahead of extensions when both are buildable", () => {
@@ -277,17 +279,93 @@ describe("building planner focus policy", () => {
       structures: allNonRoadStructuresAt(anchor, 3),
       sites: []
     });
-    // Pre-build every non-road claim Mining makes so the only thing left to place is its road —
-    // otherwise the higher-priority containers monopolise the two focus-site slots and the road
-    // (which we're actually testing) never gets a turn.
     const nonRoadClaims = minedStructures(base)
       .filter(p => p.type !== "road")
       .map(p => ({ x: p.x, y: p.y, type: p.type }));
     const snap = colony({ ...base, structures: [...base.structures, ...nonRoadClaims] });
 
     const placed = placeSites(snap.building());
-    // A road placed despite capacity (550) sitting well below building.ts's 800 bunker-road gate.
     expect(placed.some(i => i.type === "road")).toBe(true);
   });
-
 });
+
+// Once construction is genuinely finished (not merely paused between placements), a builder that would
+// otherwise drop-mine out its remaining life is converted: to a repairer while anything is decaying,
+// else to an upgrader. maintainWorkforce() runs every tick and reuses the same backlog derivation.
+describe("idle-builder repurposing", () => {
+  const anchor = { x: 25, y: 25 };
+
+  // The fully-built RCL2 colony: every buildable structure plus mining's containers present, no sites.
+  function finishedColony(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
+    const base = colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [], ...over });
+    const containers: SnapStructure[] = minedStructures(base).map(c => ({ x: c.x, y: c.y, type: c.type }));
+    return { ...base, structures: [...allNonRoadStructuresAt(anchor, 2), ...containers], ...over };
+  }
+
+  const roleChanges = (intents: Intent[]) =>
+    intents.filter((i): i is Extract<Intent, { kind: "setCreepRole" }> => i.kind === "setCreepRole");
+
+  it("converts an idle builder to upgrader when construction is finished and nothing is damaged", () => {
+    const snap = colony({ ...finishedColony(), creeps: [snapCreep("builder")] });
+
+    const changes = roleChanges(snap.maintainWorkforce());
+    expect(changes).toHaveLength(1);
+    expect(changes[0].role).toBe("upgrader");
+  });
+
+  it("converts an idle builder to repair when a structure has decayed past the repair floor", () => {
+    const finished = finishedColony();
+    // Damage one built structure below 80% hits.
+    const damaged = finished.structures.map((s, i) =>
+      i === 0 ? { ...s, hits: 100, hitsMax: 1000 } : s
+    );
+    const snap = colony({ ...finished, structures: damaged, creeps: [snapCreep("builder")] });
+
+    const changes = roleChanges(snap.maintainWorkforce());
+    expect(changes).toHaveLength(1);
+    expect(changes[0].role).toBe("repair");
+  });
+
+  it("does NOT convert while construction sites are still open", () => {
+    const snap = colony({
+      ...finishedColony(),
+      sites: [{ x: 1, y: 0, type: "extension" }],
+      creeps: [snapCreep("builder")]
+    });
+
+    expect(snap.maintainWorkforce()).toEqual([]);
+  });
+
+  it("does NOT convert while the planner backlog still has unbuilt structures (between placements)", () => {
+    // A room that is NOT fully built and has zero sites right now: exactly the between-placements gap
+    // the focus cap creates. constructionProgress is 0, sites are empty, yet real work remains.
+    const snap = colony(
+      colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [], creeps: [snapCreep("builder")] })
+    );
+
+    expect(snap.maintainWorkforce()).toEqual([]);
+  });
+
+  it("leaves non-builder creeps alone", () => {
+    const snap = colony({
+      ...finishedColony(),
+      creeps: [snapCreep("upgrader"), snapCreep("miner"), snapCreep("hauler")]
+    });
+
+    expect(snap.maintainWorkforce()).toEqual([]);
+  });
+
+  it("ignores a structure that is damaged but still above the repair floor (converts to upgrader)", () => {
+    const finished = finishedColony();
+    // 90% hits — damaged, but not past the 0.8 repair floor.
+    const lightlyHurt = finished.structures.map((s, i) =>
+      i === 0 ? { ...s, hits: 900, hitsMax: 1000 } : s
+    );
+    const snap = colony({ ...finished, structures: lightlyHurt, creeps: [snapCreep("builder")] });
+
+    const changes = roleChanges(snap.maintainWorkforce());
+    expect(changes).toHaveLength(1);
+    expect(changes[0].role).toBe("upgrader");
+  });
+});
+

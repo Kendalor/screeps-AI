@@ -26,13 +26,24 @@ export class Upgrader extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return upgraderBody(energy);
   }
-  // Upgrade first, then refill from hauler, container, storage, link, or a dropped pile as fallback.
+  // Upgrade first, then refill from the nearest energy source — container, storage, link, a dropped
+  // pile or a tombstone all pooled into one candidate set so the closest wins rather than a fixed
+  // type order. `gather` (not withdraw/pickup) because the pool mixes store-holders with dropped
+  // energy and the verb must follow whatever resolves. Never draws from haulers: a hauler drained
+  // mid-run can't deliver its load, so the upgrader must not steal it in transit.
   static override readonly steps: Step[] = [
     { do: "upgrade" },
-    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
-    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
-    { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } }, 
-    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_LINK], where: "hasEnergy" } },
-    { do: "pickup", from: { find: "dropped", prefer: "largest" } }
+    {
+      do: "gather",
+      from: {
+        find: "any",
+        of: [
+          { find: "structure", type: [STRUCTURE_CONTAINER, STRUCTURE_STORAGE, STRUCTURE_LINK], where: "hasEnergy" },
+          { find: "dropped" },
+          { find: "tombstone" }
+        ],
+        prefer: "nearest"
+      }
+    }
   ];
 }

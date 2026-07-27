@@ -483,3 +483,135 @@ function runStepNoContainer(): { creep: Creep; traveled: { x: number; y: number 
   runStep(creep, { do: "harvest", from: { find: "source" } });
   return { creep, traveled, harvested };
 }
+
+// An upgrader in range keeps upgrading every tick but should draw closer to the controller — onto the
+// free controller container when one exists, otherwise in against the controller — rather than parking
+// at the far edge of upgrade range.
+function upgradeCreep(over: {
+  pos: { x: number; y: number };
+  containerPos?: { x: number; y: number };
+  containerOccupant?: string; // creep id currently on the container tile, if any
+}): { creep: Creep; upgraded: string[]; traveled: { x: number; y: number }[] } {
+  const upgraded: string[] = [];
+  const traveled: { x: number; y: number }[] = [];
+  const containerPos = over.containerPos;
+
+  function cheb(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+  }
+
+  const controllerPos = {
+    x: 25,
+    y: 25,
+    findInRange: (_type: unknown, range: number, opts: { filter: (s: { structureType: string }) => boolean }) => {
+      if (!containerPos) return [];
+      const container = { structureType: STRUCTURE_CONTAINER, id: "container1", pos: makePos(containerPos) };
+      return cheb(containerPos, { x: 25, y: 25 }) <= range && opts.filter(container) ? [container] : [];
+    },
+    inRangeTo: (p: { x: number; y: number }, range: number) => cheb(p, { x: 25, y: 25 }) <= range
+  };
+
+  function makePos(p: { x: number; y: number }) {
+    return {
+      x: p.x,
+      y: p.y,
+      lookFor: (_look: unknown) => (over.containerOccupant ? [{ id: over.containerOccupant }] : []),
+      isEqualTo: (other: { x: number; y: number }) => other.x === p.x && other.y === p.y
+    };
+  }
+
+  const controller = { id: "controller1", level: 2, pos: controllerPos };
+
+  const creepPos = {
+    x: over.pos.x,
+    y: over.pos.y,
+    inRangeTo: (p: { x: number; y: number }, range: number) => cheb(p, over.pos) <= range,
+    isEqualTo: (other: { x: number; y: number }) => other.x === over.pos.x && other.y === over.pos.y
+  };
+
+  const creep = {
+    id: "me",
+    pos: creepPos,
+    room: { controller },
+    memory: { task: { step: 0 } },
+    store: { getUsedCapacity: () => 50 },
+    upgradeController: (t: { id: string }) => upgraded.push(t.id),
+    travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+  };
+  return { creep: creep as unknown as Creep, upgraded, traveled };
+}
+
+describe("upgrade step: drawing closer to the controller", () => {
+  it("walks to within upgrade range when out of range, without upgrading yet", () => {
+    const { creep, traveled, upgraded } = upgradeCreep({ pos: { x: 10, y: 10 } });
+
+    const result = runStep(creep, { do: "upgrade" });
+
+    expect(upgraded).toEqual([]);
+    expect(traveled).toEqual([{ x: 25, y: 25 }]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "controller1" });
+  });
+
+  it("upgrades and steps onto the free controller container in the same tick", () => {
+    // In range 3 of the controller but not on the container tile.
+    const { creep, traveled, upgraded } = upgradeCreep({
+      pos: { x: 25, y: 28 },
+      containerPos: { x: 25, y: 27 }
+    });
+
+    const result = runStep(creep, { do: "upgrade" });
+
+    expect(upgraded).toEqual(["controller1"]);
+    expect(traveled).toEqual([{ x: 25, y: 27 }]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+  });
+
+  it("stays put and keeps upgrading once parked on the controller container", () => {
+    const { creep, traveled, upgraded } = upgradeCreep({
+      pos: { x: 25, y: 27 },
+      containerPos: { x: 25, y: 27 }
+    });
+
+    const result = runStep(creep, { do: "upgrade" });
+
+    expect(upgraded).toEqual(["controller1"]);
+    expect(traveled).toEqual([]); // already on the container tile, no re-path
+    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+  });
+
+  it("bunches in against the controller when there is no container, staying in upgrade range", () => {
+    // In range 3 but not adjacent — should upgrade and close to range 1.
+    const { creep, traveled, upgraded } = upgradeCreep({ pos: { x: 25, y: 28 } });
+
+    const result = runStep(creep, { do: "upgrade" });
+
+    expect(upgraded).toEqual(["controller1"]);
+    expect(traveled).toEqual([{ x: 25, y: 25 }]); // travelTo controller with range 1
+    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+  });
+
+  it("upgrades without re-pathing once already adjacent to a controller that has no container", () => {
+    const { creep, traveled, upgraded } = upgradeCreep({ pos: { x: 25, y: 26 } });
+
+    const result = runStep(creep, { do: "upgrade" });
+
+    expect(upgraded).toEqual(["controller1"]);
+    expect(traveled).toEqual([]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+  });
+
+  it("falls back to plain in-range upgrading when another creep holds the container tile", () => {
+    // Container occupied and creep already adjacent to the controller: upgrade in place, no re-path.
+    const { creep, traveled, upgraded } = upgradeCreep({
+      pos: { x: 25, y: 26 },
+      containerPos: { x: 25, y: 27 },
+      containerOccupant: "otherUpgrader"
+    });
+
+    const result = runStep(creep, { do: "upgrade" });
+
+    expect(upgraded).toEqual(["controller1"]);
+    expect(traveled).toEqual([]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+  });
+});

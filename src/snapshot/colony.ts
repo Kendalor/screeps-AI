@@ -113,8 +113,19 @@ function resolveAnchor(room: Room): XY | null {
   return anchor;
 }
 
-function snapStructure(s: { pos: RoomPosition; structureType: BuildableStructureConstant }): SnapStructure {
-  return { x: s.pos.x, y: s.pos.y, type: s.structureType };
+function snapStructure(s: {
+  pos: RoomPosition;
+  structureType: BuildableStructureConstant;
+  hits?: number;
+  hitsMax?: number;
+}): SnapStructure {
+  const base: SnapStructure = { x: s.pos.x, y: s.pos.y, type: s.structureType };
+  // Construction sites carry no hits; only stamp them for built structures.
+  if (s.hits !== undefined && s.hitsMax !== undefined) {
+    base.hits = s.hits;
+    base.hitsMax = s.hitsMax;
+  }
+  return base;
 }
 
 function snapUnit(c: Creep): SnapUnit {

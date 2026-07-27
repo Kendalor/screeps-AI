@@ -57,6 +57,18 @@ function act(intent: Intent): ScreepsReturnCode {
       if (!room) return ERR_NOT_FOUND;
       return room.createConstructionSite(intent.x, intent.y, intent.type);
     }
+    case "setCreepRole": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      if (creep.memory.role === intent.role) return OK; // already converted; idempotent
+      creep.memory.role = intent.role;
+      // Fresh step loop for the new role — the old task index/lock belonged to the builder's steps.
+      creep.memory.task = undefined;
+      // Drop the owning-operation stamp: the creep is no longer a builder Building owns, and clearing it
+      // lets the new role's owner (Upgrading, or a future repair owner) count it toward its quota.
+      creep.memory.op = undefined;
+      return OK;
+    }
     case "removeStructure": {
       // Last line of defense: never destroy a spawn here, regardless of intent.
       if (intent.type === "spawn") {

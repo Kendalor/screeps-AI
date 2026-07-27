@@ -7,6 +7,7 @@ import { Bootstrap } from "./bootstrap";
 import { Builder } from "./builder";
 import { Hauler } from "./hauler";
 import { Miner } from "./miner";
+import { Repair } from "./repair";
 import { Scout } from "./scout";
 import { Supply } from "./supply";
 import { Upgrader } from "./upgrader";
@@ -16,6 +17,7 @@ export const ROLES = {
   builder: Builder,
   upgrader: Upgrader,
   miner: Miner,
+  repair: Repair,
   supply: Supply,
   scout: Scout,
   hauler: Hauler

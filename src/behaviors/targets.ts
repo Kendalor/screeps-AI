@@ -4,6 +4,34 @@ import type { Prefer, TargetSpec } from "./types";
 
 export type Where = "notFull" | "hasEnergy" | "damaged";
 
+// Range 2 of the controller is where the controller container sits — an upgrader standing on it is still
+// in upgrade range (3). `near: "controller"`/"notController" partition containers by this radius.
+const CONTROLLER_CONTAINER_RANGE = 2;
+
+type Near = "assignedSource" | "controller" | "notController";
+
+// Positional filter shared by the live search and the locked-target re-check, so a lock survives exactly
+// the same near-test a fresh search would apply. A structure with no `near` always matches.
+function nearMatches(creep: Creep, s: { pos: RoomPosition }, near: Near | undefined): boolean {
+  switch (near) {
+    case undefined:
+      return true;
+    case "assignedSource": {
+      const source = creep.memory.sourceId && (Game.getObjectById(creep.memory.sourceId) as Source | null);
+      return !!source && s.pos.inRangeTo(source.pos, 1);
+    }
+    case "controller": {
+      const controller = creep.room.controller;
+      return !!controller && s.pos.inRangeTo(controller.pos, CONTROLLER_CONTAINER_RANGE);
+    }
+    case "notController": {
+      const controller = creep.room.controller;
+      // No controller (never happens in an owned room) means nothing to exclude — every container qualifies.
+      return !controller || !s.pos.inRangeTo(controller.pos, CONTROLLER_CONTAINER_RANGE);
+    }
+  }
+}
+
 // Ready-made "any" groups for the two directions energy moves: gathering it up (storage/containers
 // with energy, dropped piles, tombstones) and spending it down (extensions/spawn/storage/containers
 // with room to take more). Pooling these into one "any" spec — rather than a priority-ordered chain of
@@ -40,6 +68,24 @@ export interface TargetCandidate {
   hitsMax: number;
 }
 
+// True when the candidate's energy fraction is below `fillTo` (0..1), i.e. it still wants topping up. No
+// `fillTo` set means no cap — always true. A zero-capacity candidate can't be filled, so it never wants more.
+export function belowFillTo(c: TargetCandidate, fillTo: number | undefined): boolean {
+  if (fillTo === undefined) return true;
+  const capacity = c.usedCapacity + c.freeCapacity;
+  if (capacity <= 0) return false;
+  return c.usedCapacity / capacity < fillTo;
+}
+
+// True when the candidate's hits fraction is below `repairBelow` (0..1), i.e. it has decayed far enough
+// to want repairing. No `repairBelow` set means no gate — always true. A candidate with no hitsMax (a
+// site, a source) can't be repaired, so it never qualifies. The repair counterpart of belowFillTo.
+export function belowRepair(c: TargetCandidate, repairBelow: number | undefined): boolean {
+  if (repairBelow === undefined) return true;
+  if (c.hitsMax <= 0) return false;
+  return c.hits / c.hitsMax < repairBelow;
+}
+
 export function matchesWhere(c: TargetCandidate, where: Where | undefined): boolean {
   switch (where) {
     case "notFull":
@@ -58,7 +104,7 @@ export function matchesWhere(c: TargetCandidate, where: Where | undefined): bool
 
 export type TargetKind =
   | { kind: "structure"; structureType: StructureConstant }
-  | { kind: "constructionSite" }
+  | { kind: "constructionSite"; structureType?: StructureConstant }
   | { kind: "source" }
   | { kind: "controller" }
   | { kind: "dropped" }
@@ -84,6 +130,8 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
     case "creep":
       return k.kind === "creep" && roleMatches(k.role, spec);
     case "constructionSite":
+      // A site with no scoped structureType matches any spec; a scoped spec matches only its type.
+      return k.kind === "constructionSite" && (spec.structureType === undefined || k.structureType === spec.structureType);
     case "source":
     case "controller":
     case "dropped":
@@ -121,7 +169,9 @@ function toKind(obj: RoomObject): TargetKind | null {
     body?: unknown[];
     memory?: { role?: string };
   };
-  if (o.progressTotal !== undefined) return { kind: "constructionSite" };
+  // A construction site carries progressTotal AND a structureType (what it will become); capture the
+  // latter so a scoped constructionSite spec can filter on it.
+  if (o.progressTotal !== undefined) return { kind: "constructionSite", structureType: o.structureType };
   if (o.structureType !== undefined) return { kind: "structure", structureType: o.structureType };
   if (o.deathTime !== undefined) return { kind: "tombstone" };
   if (o.resourceType !== undefined) return { kind: "dropped" };
@@ -146,11 +196,20 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
   if ((kind.kind === "structure" || kind.kind === "creep") && !matchesWhere(toCandidate(obj), where)) {
     return null;
   }
-  // A locked container/link must stay the assigned source's own — a sibling source's, even if it
-  // resolved once (e.g. before sourceId was set), must be dropped the moment we can tell them apart.
-  if (memberSpec.find === "structure" && memberSpec.near === "assignedSource") {
-    const source = creep.memory.sourceId && (Game.getObjectById(creep.memory.sourceId) as Source | null);
-    if (!source || !(obj as unknown as { pos: RoomPosition }).pos.inRangeTo(source.pos, 1)) return null;
+  // A locked container/link must still pass the same positional and fill/repair-fraction tests a fresh
+  // search applies — otherwise a lock taken on a sibling source's container (before sourceId was set), a
+  // controller container that has since crossed its fill floor, or a container repaired back above its
+  // repair floor, would survive stale.
+  if (memberSpec.find === "structure") {
+    const s = obj as unknown as { pos: RoomPosition };
+    if (!nearMatches(creep, s, memberSpec.near)) return null;
+    if (!belowFillTo(toCandidate(obj), memberSpec.fillTo)) return null;
+    if (!belowRepair(toCandidate(obj), memberSpec.repairBelow)) return null;
+  }
+  // A locked construction site scoped by position must still sit where the spec wants it.
+  if (memberSpec.find === "constructionSite") {
+    const s = obj as unknown as { pos: RoomPosition };
+    if (!nearMatches(creep, s, memberSpec.near)) return null;
   }
   return obj;
 }
@@ -180,9 +239,16 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
 // worthwhile-filtered (drops only), then share-capped with fallback to the full set at each stage.
 function poolFor(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find: "controller" } | { find: "any" }>): RoomObject[] {
   // Both structure and creep specs carry a `where` read off the target's store; apply it to either.
-  const candidates = findCandidates(creep, spec).filter(
-    c => (spec.find !== "structure" && spec.find !== "creep") || matchesWhere(toCandidate(c), spec.where)
-  );
+  // A structure spec may also carry `fillTo`, a hard cap on fill fraction (not a fallback like the
+  // worthwhile floor): a controller container already at its floor must genuinely drop out so the step
+  // falls through to storage.
+  const candidates = findCandidates(creep, spec).filter(c => {
+    if (spec.find !== "structure" && spec.find !== "creep") return true;
+    if (!matchesWhere(toCandidate(c), spec.where)) return false;
+    if (spec.find === "structure" && !belowFillTo(toCandidate(c), spec.fillTo)) return false;
+    if (spec.find === "structure" && !belowRepair(toCandidate(c), spec.repairBelow)) return false;
+    return true;
+  });
   // Below-floor piles are deprioritized, not excluded — falls back to the full set if nothing clears the bar.
   const worthwhile = spec.find !== "dropped" ? candidates : candidates.filter(c => isWorthwhile(creep, c));
   const consider = worthwhile.length > 0 ? worthwhile : candidates;
@@ -303,15 +369,14 @@ function findCandidates(
       return room.find(FIND_DROPPED_RESOURCES);
     case "tombstone":
       return room.find(FIND_TOMBSTONES).filter(t => t.store.getUsedCapacity() > 0);
-    case "constructionSite":
-      return room.find(FIND_MY_CONSTRUCTION_SITES);
+    case "constructionSite": {
+      const sites = room.find(FIND_MY_CONSTRUCTION_SITES).filter(s => spec.structureType === undefined || s.structureType === spec.structureType);
+      return sites.filter(s => nearMatches(creep, s, spec.near));
+    }
     case "structure": {
       const wantedTypes = Array.isArray(spec.type) ? spec.type : [spec.type];
       const structures = room.find(FIND_STRUCTURES).filter(s => wantedTypes.includes(s.structureType));
-      if (spec.near !== "assignedSource") return structures;
-      const source = creep.memory.sourceId && (Game.getObjectById(creep.memory.sourceId) as Source | null);
-      if (!source) return [];
-      return structures.filter(s => s.pos.inRangeTo(source.pos, 1));
+      return structures.filter(s => nearMatches(creep, s, spec.near));
     }
     case "creep": {
       // Never the actor itself — a creep transferring to itself is a no-op.

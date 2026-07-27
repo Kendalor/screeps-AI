@@ -16,14 +16,28 @@ export type TargetSpec =
       where?: "notFull" | "hasEnergy" | "damaged";
       share?: Share;
       prefer?: Prefer;
-      // Restricts candidates to range 1 of the creep's assigned source (memory.sourceId) — a miner's own
-      // container/link, never a sibling source's, even when the sibling's is nearer by path.
-      near?: "assignedSource";
+      // Positional discriminator, the only way to tell same-typed structures apart by where they sit:
+      //  - "assignedSource": range 1 of the creep's memory.sourceId — a miner's own source container/link.
+      //  - "controller": range 2 of the room controller — the controller container (an upgrader parked on
+      //    it stays in upgrade range). This is the hauler's fill target.
+      //  - "notController": the complement — every container that is NOT the controller's, i.e. the source
+      //    containers a hauler draws from. Keeps a hauler from draining the very container it fills.
+      near?: "assignedSource" | "controller" | "notController";
+      // Only qualify a store-holder while its energy fraction is BELOW this (0..1). Lets the hauler top the
+      // controller container to a floor (0.7) and then leave it alone, rather than fighting the upgraders
+      // that drain it for every last unit. Combines with `where` (both must pass).
+      fillTo?: number;
+      // Only qualify a structure while its hits fraction is BELOW this (0..1) — the repair counterpart of
+      // fillTo. Lets a miner start repairing its container only once it has decayed past a floor (0.7)
+      // rather than chasing every point of decay. Combines with `where` (both must pass).
+      repairBelow?: number;
     }
   | { find: "dropped"; share?: Share; prefer?: Prefer }
   | { find: "tombstone"; share?: Share; prefer?: Prefer }
   | { find: "source" }
-  | { find: "constructionSite"; share?: Share; prefer?: Prefer }
+  // structureType/near scope which sites qualify, mirroring the structure spec: a miner builds only the
+  // CONTAINER site at its own source, not whatever construction site happens to be nearest.
+  | { find: "constructionSite"; structureType?: StructureConstant; near?: "assignedSource" | "controller" | "notController"; share?: Share; prefer?: Prefer }
   | { find: "controller" }
   | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share; prefer?: Prefer } // friendly creep as source/sink, filtered by role
   | { find: "id"; id: Id<_HasId> }
@@ -65,6 +79,10 @@ export interface TaskState {
 export interface BodyContext {
   hasContainer: boolean;
   hasLink: boolean;
+  // A container construction site exists at the source but isn't built yet. Grants a drop-miner one CARRY
+  // so it can harvest into its store and help build (and later repair) its own container, rather than
+  // dropping everything and standing idle while a builder does all the work.
+  hasContainerSite?: boolean;
   roads?: boolean; // whether the creep's route is paved; unused by body calculators today, reserved for MOVE-ratio tuning
 }
 

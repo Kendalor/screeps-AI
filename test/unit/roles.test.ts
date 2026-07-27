@@ -83,6 +83,36 @@ describe("upgrader body", () => {
   });
 });
 
+describe("repair body", () => {
+  const body = (energy: number) => ROLES.repair.body(energy);
+
+  it("is always a valid, affordable body with WORK and CARRY", () => {
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expectAffordable(body, e);
+      expect(b).toContain(WORK);
+      expect(b).toContain(CARRY);
+    }
+  });
+
+  it("grows (or holds) as energy increases, never shrinks", () => {
+    expectNonDecreasing(body);
+  });
+});
+
+describe("repair role", () => {
+  it("repairs a damaged structure first, then refills, harvesting only as a last resort", () => {
+    const steps = roleDef("repair")?.steps ?? [];
+    // Repair leads; the repair target is gated by `where: "damaged"` and a repairBelow floor.
+    expect(steps[0].do).toBe("repair");
+    const first = steps[0];
+    expect(first.do === "repair" && first.at).toMatchObject({ where: "damaged", repairBelow: expect.any(Number) });
+    // Gather sits ahead of self-harvest so a repairer draws from stores/drops before mining itself.
+    expect(steps.map(s => s.do)).toEqual(["repair", "gather", "harvest"]);
+  });
+});
+
 describe("bootstrap role", () => {
   it("picks up a drop pile before harvesting a source itself", () => {
     expect(roleDef("bootstrap")).toBe(ROLES.bootstrap);
@@ -164,6 +194,22 @@ describe("miner body", () => {
     }
   });
 
+  it("gains one CARRY as a drop-miner while its container is still a construction site, so it can build it", () => {
+    // A container SITE (not yet a built container: hasContainer stays false) means this miner should help
+    // raise it — which needs energy in store. The part appears once the room can afford it on top of WORK.
+    const withSite = body(550, { hasContainer: false, hasLink: false, hasContainerSite: true });
+    expect(withSite).toContain(CARRY);
+    expect(withSite.filter(p => p === CARRY).length).toBe(1);
+    expect(withSite).toContain(WORK); // never trades away a harvesting WORK part for the CARRY
+    expectValidBody(withSite);
+  });
+
+  it("stays a CARRY-less drop-miner when there is neither a container nor a site", () => {
+    for (const e of ENERGY_LEVELS) {
+      expect(body(e, { hasContainer: false, hasLink: false, hasContainerSite: false })).not.toContain(CARRY);
+    }
+  });
+
   it("drops CARRY below the first-extension energy threshold, even on a container", () => {
     for (const e of ENERGY_LEVELS.filter(e => e < 350)) {
       expect(body(e, { hasContainer: true, hasLink: false })).not.toContain(CARRY);
@@ -220,9 +266,14 @@ describe("hauler body (must stay 1:1 carry:move so a loaded hauler never fatigue
 });
 
 describe("miner role", () => {
-  it("harvests, then prefers a link over a container to deposit into", () => {
+  it("upkeeps its own container (repair < 70%, build the site) before harvesting, then link over container", () => {
     expect(roleDef("miner")).toBe(ROLES.miner);
     expect(roleDef("miner")?.steps).toEqual([
+      // Repair its own source container once it drops below 70% hits; scoped to the assigned source so a
+      // miner never repairs another source's container. Only fires when the miner carries energy.
+      { do: "repair", at: { find: "structure", type: [STRUCTURE_CONTAINER], where: "damaged", near: "assignedSource", repairBelow: 0.7 } },
+      // Help build the container site at its own source (never some other nearest site).
+      { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_CONTAINER, near: "assignedSource" } },
       { do: "harvest", from: { find: "source" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_LINK], where: "notFull", near: "assignedSource" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_CONTAINER], where: "notFull", near: "assignedSource" } }
@@ -242,7 +293,8 @@ describe("hauler role", () => {
         from: {
           find: "any",
           of: [
-            { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" },
+            // Source containers only (near: notController) — never the controller container it fills.
+            { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController" },
             { find: "dropped" },
             { find: "tombstone" }
           ],
@@ -250,7 +302,9 @@ describe("hauler role", () => {
         }
       },
       // Deliver phase: closest matching sink each step (resolveTarget picks the nearest by path),
-      // running until empty before the loop wraps back to the collect phase.
+      // running until empty before the loop wraps back to the collect phase. The controller container is
+      // topped to a 70% floor ahead of storage so the upgraders never starve; once at floor it drops out.
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_CONTAINER], where: "notFull", near: "controller", fillTo: 0.7 } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_STORAGE], where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
@@ -272,7 +326,7 @@ describe("supply role", () => {
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
       { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } }
+      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController" } }
     ]);
   });
 
@@ -292,17 +346,28 @@ describe("supply role", () => {
 });
 
 describe("upgrader role", () => {
-  it("upgrades first, then withdraws from hauler/container/storage/link, falling back to a pile", () => {
+  it("upgrades first, then gathers from the nearest of container/storage/link/drop/tombstone — never from haulers", () => {
     expect(roleDef("upgrader")).toBe(ROLES.upgrader);
     expect(roleDef("upgrader")?.steps).toEqual([
       { do: "upgrade" },
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
-      // The container step lets a pre-storage upgrader run off the mining economy.
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "creep", role: "hauler", where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_LINK], where: "hasEnergy" } },
-      { do: "pickup", from: { find: "dropped", prefer: "largest" } }
+      // Container/storage/link/drop/tombstone pooled into one gather step: the nearest source wins.
+      {
+        do: "gather",
+        from: {
+          find: "any",
+          of: [
+            { find: "structure", type: [STRUCTURE_CONTAINER, STRUCTURE_STORAGE, STRUCTURE_LINK], where: "hasEnergy" },
+            { find: "dropped" },
+            { find: "tombstone" }
+          ],
+          prefer: "nearest"
+        }
+      }
     ]);
+    // A hauler drained mid-run can't deliver its load, so the upgrader must never steal from it.
+    const gatherSpec = roleDef("upgrader")?.steps.find(s => s.do === "gather");
+    const members = gatherSpec?.from.find === "any" ? gatherSpec.from.of : [];
+    expect(members).not.toContainEqual({ find: "creep", role: "hauler", where: "hasEnergy" });
   });
 });
 

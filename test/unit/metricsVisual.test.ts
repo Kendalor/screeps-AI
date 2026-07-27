@@ -14,7 +14,7 @@ function metrics(over: Partial<ColonyMetrics> = {}): ColonyMetrics {
     controller: { level: 1, progress: 0 },
     construction: { remaining: 0 },
     safeMode: { active: 0, count: 0, available: false },
-    spawns: { total: 1, busy: 0 },
+    spawns: { total: 1, busy: 0, parts: 0, capacity: 500, load: 0 },
     ...over
   };
 }
@@ -128,6 +128,23 @@ describe("metricsVisual: safe mode", () => {
   it("shows the banked count when not active", () => {
     const ops = panelOps(metrics({ safeMode: { active: 0, count: 3, available: true } }));
     expect(joined(ops)).toContain("3 banked");
+  });
+});
+
+describe("metricsVisual: spawns", () => {
+  it("renders parts alive over capacity and utilisation as a percentage", () => {
+    const ops = panelOps(metrics({ spawns: { total: 1, busy: 0, parts: 50, capacity: 500, load: 0.1 } }));
+    const all = joined(ops);
+    expect(all).toContain("50/500 parts");
+    expect(all).toContain("10%");
+  });
+
+  it("flags an over-committed colony (load >= 1) in the warn colour", () => {
+    const over = panelOps(metrics({ spawns: { total: 1, busy: 1, parts: 600, capacity: 500, load: 1.2 } }));
+    const under = panelOps(metrics({ spawns: { total: 1, busy: 0, parts: 50, capacity: 500, load: 0.1 } }));
+    const utilColor = (ops: VisualOp[]) =>
+      ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text").find(o => o.text.includes("util"))!.color;
+    expect(utilColor(over)).not.toBe(utilColor(under));
   });
 });
 

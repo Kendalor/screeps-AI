@@ -196,7 +196,26 @@ describe("metrics: safe mode", () => {
 describe("metrics: spawns", () => {
   it("counts total spawns and how many are busy", () => {
     const m = collect(colonySnap({ spawns: [spawn("s1", true), spawn("s2", false)] }));
-    expect(m.spawns).toEqual({ total: 2, busy: 1 });
+    expect(m.spawns).toMatchObject({ total: 2, busy: 1 });
+  });
+
+  it("sums living body parts and reads load as the colony fraction of spawn capacity", () => {
+    // 3 default creeps * 3 parts = 9 parts; 1 spawn sustains 500 -> load 9/500.
+    const m = collect(colonySnap({ spawns: [spawn()], creeps: snapCreeps("miner", 3) }));
+    expect(m.spawns).toMatchObject({ parts: 9, capacity: 500 });
+    expect(m.spawns.load).toBeCloseTo(9 / 500);
+  });
+
+  it("scales capacity with spawn count so the fraction stays comparable as spawns grow", () => {
+    // Same 9 parts, but two spawns double the sustainable capacity -> load halves.
+    const m = collect(colonySnap({ spawns: [spawn("s1"), spawn("s2")], creeps: snapCreeps("miner", 3) }));
+    expect(m.spawns).toMatchObject({ parts: 9, capacity: 1000 });
+    expect(m.spawns.load).toBeCloseTo(9 / 1000);
+  });
+
+  it("reads load 0 for a spawnless colony rather than dividing by zero", () => {
+    const m = collect(colonySnap({ spawns: [], creeps: snapCreeps("miner", 1) }));
+    expect(m.spawns.load).toBe(0);
   });
 });
 

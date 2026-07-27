@@ -149,14 +149,7 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
     case "repair":
       return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3, allowTravel);
     case "upgrade":
-      return actOn(
-        creep,
-        { find: "controller" },
-        locked,
-        t => creep.upgradeController(t as StructureController),
-        3,
-        allowTravel
-      );
+      return upgradeStep(creep, locked, allowTravel);
     case "moveToRoom":
       return allowTravel ? moveToRoom(creep, step) : { acted: false, didAct: false };
     case "sit":
@@ -247,6 +240,48 @@ function harvestStep(
   if (!allowTravel) return { acted: false, didAct: false };
   creep.travelTo(standTarget ?? source.pos);
   return { acted: true, didAct: false, target: source.id };
+}
+
+// Upgrade range is 3, so once inside it the creep keeps upgrading every tick regardless of where it
+// stands. But parking at the far edge of range leaves it away from its energy source: the controller
+// container (range <=2 of the controller) is the ideal spot — upgrade AND withdraw in place. Steer onto
+// that free tile when one exists; otherwise close to range 1 of the controller so the creep bunches up
+// against it rather than idling at the range-3 rim. Either move runs alongside the upgrade call (movement
+// is a separate pipeline from WORK), so drawing closer never costs an upgrade tick.
+const UPGRADE_RANGE = 3;
+const CONTROLLER_CONTAINER_RANGE = 2; // range of the controller the controller container sits within
+
+function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  const controller = resolveTarget(creep, { find: "controller" }, locked);
+  if (!controller) return { acted: false, didAct: false };
+  const controllerPos = (controller as StructureController).pos;
+
+  if (!creep.pos.inRangeTo(controllerPos, UPGRADE_RANGE)) {
+    // Out of range: a co-fired bonus step must not travel (see runStep's allowTravel doc).
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(controllerPos, { range: UPGRADE_RANGE });
+    return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
+  }
+
+  creep.upgradeController(controller as StructureController);
+  if (allowTravel) drawCloserToController(creep, controllerPos);
+  return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
+}
+
+// Nudge an in-range upgrader toward a better standing tile: the free controller container if there is
+// one, else in against the controller itself. No-ops (no re-path) once already well placed.
+function drawCloserToController(creep: Creep, controllerPos: RoomPosition): void {
+  const container = controllerPos
+    .findInRange(FIND_STRUCTURES, CONTROLLER_CONTAINER_RANGE, { filter: s => s.structureType === STRUCTURE_CONTAINER })[0] as
+    | StructureContainer
+    | undefined;
+
+  if (container && isFreeForCreep(container.pos, creep)) {
+    if (!creep.pos.isEqualTo(container.pos)) creep.travelTo(container.pos);
+    return;
+  }
+  // No container to stand on: bunch up against the controller so the pack isn't strung out along range 3.
+  if (!creep.pos.inRangeTo(controllerPos, 1)) creep.travelTo(controllerPos, { range: 1 });
 }
 
 // A tile is free for this creep if nothing else is standing there — a creep already on it (this one

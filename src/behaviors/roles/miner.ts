@@ -21,6 +21,13 @@ function minerBody(energy: number, ctx: BodyContext): BodyPartConstant[] {
     const sets = affordableSets(energy - bodyCost(DROP_MINER_BASE), DROP_MINER_SET, 0, maxSets);
     let body = [...DROP_MINER_BASE];
     for (let i = 0; i < sets; i++) body = body.concat(DROP_MINER_SET);
+    // A container site (not yet built) means this miner should help build — and later repair — it, which
+    // needs energy in its store. Add one CARRY once the room can afford it on top of the WORK it already
+    // has, so the build-help never costs a harvesting WORK part. The miner respawns as a proper
+    // container-miner once the container is up and hasContainer flips true.
+    if (ctx.hasContainerSite && energy >= bodyCost(body) + BODYPART_COST[CARRY]) {
+      body.push(CARRY);
+    }
     return body;
   }
 
@@ -55,10 +62,21 @@ export class Miner extends Role {
   static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
     return minerBody(energy, ctx);
   }
-  // Standing on the container, harvest overflow already lands in it and these transfer steps no-op;
+  // A miner keeps its own source container alive: it repairs it once it has decayed past 70%, and helps
+  // build it while it is still a construction site. Both share harvest's WORK pipeline, so they cost a
+  // harvest tick when they fire — but only a miner with a CARRY (a container miner, or a drop-miner while
+  // a container site exists) has energy in store to spend, and a spend step with an empty store is
+  // skipped by firstRunnableStep. So an empty or CARRY-less miner falls straight through to harvest;
+  // these steps only engage once the miner is both carrying energy and the container actually needs work.
+  // Repair before build before harvest so upkeep of an existing container wins, and construction of a new
+  // one comes before topping the store; both self-limit as the store empties and refills.
+  //
+  // Standing on the container, harvest overflow already lands in it and the transfer steps no-op;
   // otherwise (an overflow CARRY miner sharing a source, or feeding a link) they fire the same tick as
   // harvest — transfer is its own engine pipeline, independent of harvest's WORK pipeline.
   static override readonly steps: Step[] = [
+    { do: "repair", at: { find: "structure", type: [STRUCTURE_CONTAINER], where: "damaged", near: "assignedSource", repairBelow: 0.7 } },
+    { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_CONTAINER, near: "assignedSource" } },
     { do: "harvest", from: { find: "source" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_LINK], where: "notFull", near: "assignedSource" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_CONTAINER], where: "notFull", near: "assignedSource" } }

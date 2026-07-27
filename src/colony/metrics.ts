@@ -52,8 +52,18 @@ export interface ColonyMetrics {
   spawns: {
     total: number;
     busy: number; // spawning a creep this tick
+    // Steady-state spawn load as a colony-level fraction, so it stays comparable as spawn count grows.
+    // Keeping one body part alive costs a spawn CREEP_SPAWN_TIME/CREEP_LIFE_TIME = 1/500 of its output,
+    // so utilisation = living parts / (spawns * 500). >= 1 means spawns can't keep the population alive.
+    load: number; // 0..1+: parts / capacity
+    parts: number; // living body parts across all the colony's creeps (the load numerator)
+    capacity: number; // total * PARTS_PER_SPAWN — parts these spawns can sustain
   };
 }
+
+// One spawn produces one part every CREEP_SPAWN_TIME (3) ticks, and a part must be replaced every
+// CREEP_LIFE_TIME (1500) ticks, so a single spawn can keep 1500/3 = 500 parts alive indefinitely.
+export const PARTS_PER_SPAWN = 500;
 
 // Desired = alive now + deficit from requests() (requests report the deficit, not a target).
 function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[]): CensusRow[] {
@@ -164,9 +174,17 @@ export function collectMetrics(
       count: snapshot.safeModeCount, // activations banked for later
       available: snapshot.safeModeAvailable
     },
-    spawns: {
-      total: snapshot.spawns.length,
-      busy: snapshot.spawns.filter(s => s.busy).length
-    }
+    spawns: (() => {
+      const total = snapshot.spawns.length;
+      const parts = snapshot.creeps.reduce((sum, c) => sum + c.body.length, 0);
+      const capacity = total * PARTS_PER_SPAWN;
+      return {
+        total,
+        busy: snapshot.spawns.filter(s => s.busy).length,
+        parts,
+        capacity,
+        load: capacity > 0 ? parts / capacity : 0 // colony fraction; 0 when spawnless (dying colony)
+      };
+    })()
   };
 }

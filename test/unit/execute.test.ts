@@ -127,6 +127,19 @@ describe("actuator", () => {
     expect(mem.sources.src1).toEqual({ spot: { x: 19, y: 11 }, containerId: "cont1" });
   });
 
+  it("repurposes a creep: sets the new role and clears task and op stamp", () => {
+    const creep = {
+      memory: { home: "W1N1", role: "builder", op: "building:W1N1", task: { step: 2, target: "x" } } as CreepMemory
+    };
+    stubGame({ objects: { c1: creep } });
+
+    execute([{ kind: "setCreepRole", creep: "c1" as Id<Creep>, role: "upgrader" }]);
+
+    expect(creep.memory.role).toBe("upgrader");
+    expect(creep.memory.task).toBeUndefined();
+    expect(creep.memory.op).toBeUndefined();
+  });
+
   it("keeps a previously recorded container id when this tick resolved none", () => {
     stubGame();
     (globalThis as Record<string, unknown>).Memory = {

@@ -8,13 +8,14 @@ import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
 import type { Intent } from "../intents/types";
 import type { Operation } from "../operations";
+import type { RoleName } from "../memory/schema";
 import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
 
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
 
 // Cap open sites low so a small pre-storage workforce finishes structures instead of smearing effort across the backlog.
-const FOCUS_SITE_CAP = 2;
+const FOCUS_SITE_CAP = 4;
 // Roads are dead weight while the bunker is still going up; hold until the colony can afford paving
 // (RCL3 with all extensions built = 800 capacity). Mining's source-access roads are exempt — see wantedStructures.
 export const ROADS_FROM_ENERGY_CAPACITY = 800;
@@ -119,4 +120,51 @@ function gateRoads(buildable: PlacedStructure[], colony: ColonySnapshot, claimed
 
 function sameSpot(a: PlacedStructure) {
   return (b: SnapStructure) => a.x === b.x && a.y === b.y && a.type === b.type;
+}
+
+// --- idle-builder repurposing -------------------------------------------------
+// A builder outlives the construction it was spawned for: wantedBuilders drops to 0 the moment the last
+// site completes, so no *new* builders spawn — but the ones already alive keep their ~1500-tick lease and,
+// with their build step a no-op, fall through to harvesting (drop-mining) for nothing. Rather than let
+// them idle-mine, convert them: to a repairer while anything is decaying, else to an upgrader. Both keep
+// the builder's WORK/CARRY body doing real work for the rest of its life.
+
+// Only convert once construction is *genuinely* finished, not merely paused between placements. placeAndDemolish
+// releases sites a focus-cap at a time (up to FOCUS_SITE_CAP), so `colony.sites` legitimately hits zero for a
+// stretch while a larger backlog still waits — converting then would strand real work. The planner's own
+// backlog (wantedStructures minus what's already built or already a site) is the authoritative "is there
+// anything left to build" signal, and it stays non-empty across those between-placement gaps.
+export function hasOutstandingConstruction(colony: ColonySnapshot, claimed: PlacedStructure[]): boolean {
+  if (colony.sites.length > 0) return true;
+  return wantedStructures(colony, claimed).some(
+    p => !colony.structures.some(sameSpot(p)) && !colony.sites.some(sameSpot(p))
+  );
+}
+
+// A structure worth a repairer: decayed below the repair floor, and not a wall/rampart (defense upkeep, not
+// decay maintenance). Kept in step with the repair role's own REPAIRABLE list and threshold by intent — the
+// role decides which to actually fix; this only decides repair-vs-upgrade for the conversion.
+const REPAIR_CONVERT_BELOW = 0.8;
+const NOT_REPAIRED: BuildableStructureConstant[] = ["constructedWall", "rampart"];
+
+function hasRepairWork(colony: ColonySnapshot): boolean {
+  return colony.structures.some(
+    s =>
+      s.hits !== undefined &&
+      s.hitsMax !== undefined &&
+      s.hitsMax > 0 &&
+      !NOT_REPAIRED.includes(s.type) &&
+      s.hits < s.hitsMax * REPAIR_CONVERT_BELOW
+  );
+}
+
+// Emits a role change for every owned builder once construction is finished: repair if anything is decaying,
+// upgrader otherwise. Pure — the setCreepRole actuator owns the memory write. `claimed` must be the same
+// operation claims planBuilding used this tick, so the backlog check agrees with what would be placed.
+export function repurposeIdleBuilders(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
+  if (hasOutstandingConstruction(colony, claimed)) return [];
+  const target: RoleName = hasRepairWork(colony) ? "repair" : "upgrader";
+  return colony.creeps
+    .filter(c => c.role === "builder" && c.room === colony.name)
+    .map(c => ({ kind: "setCreepRole", creep: c.id, role: target }));
 }

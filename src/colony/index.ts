@@ -5,7 +5,7 @@ import type { Intent } from "../intents/types";
 import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
-import { claimsOf, planBuilding, wantedStructures } from "./building";
+import { claimsOf, planBuilding, repurposeIdleBuilders, wantedStructures } from "./building";
 import { collectMetrics } from "./metrics";
 import { visualize } from "./metricsVisual";
 
@@ -28,6 +28,16 @@ export class Colony {
   /** The construction arbiter for this colony. */
   public building(): Intent[] {
     return planBuilding(this.snapshot, this.operations);
+  }
+
+  /**
+   * Repurposes builders left idle once construction is finished — to repairers while anything is decaying,
+   * else upgraders. Runs every tick (unlike building(), which is throttled) so a builder converts promptly
+   * rather than drop-mining for up to an interval before the next placement pass. Reuses building()'s own
+   * operation claims so the "is construction finished" check can't disagree with what would be placed.
+   */
+  public maintainWorkforce(): Intent[] {
+    return repurposeIdleBuilders(this.snapshot, claimsOf(this.snapshot, this.operations));
   }
 
   /** Collects metrics and returns the roomVisual intent that paints the panel; the only stateful capability (harvest-rate window in Memory). */

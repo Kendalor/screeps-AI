@@ -12,6 +12,7 @@ export class Supply extends Role {
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
     { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
-    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy" } }
+    // Source containers only — draining the controller container would undo the hauler that fills it.
+    { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController" } }
   ];
 }

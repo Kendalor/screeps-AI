@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  belowFillTo,
+  belowRepair,
   energySinkGroup,
   energySourceGroup,
   fitsSpec,
@@ -37,6 +39,44 @@ describe("target where-filter", () => {
   });
 });
 
+// belowFillTo is the fill-fraction cap that lets a hauler stop topping the controller container at a
+// floor rather than chase every last unit the upgraders drain.
+describe("belowFillTo", () => {
+  it("no cap matches every candidate", () => {
+    expect(belowFillTo(struct({ usedCapacity: 2000, freeCapacity: 0 }), undefined)).toBe(true);
+  });
+
+  it("qualifies a candidate below the fraction, rejects one at or above it", () => {
+    // capacity 2000: 60% used is below the 0.7 floor -> still wants topping up.
+    expect(belowFillTo(struct({ usedCapacity: 1200, freeCapacity: 800 }), 0.7)).toBe(true);
+    // exactly at the floor is NOT below it -> drops out so the step falls through to storage.
+    expect(belowFillTo(struct({ usedCapacity: 1400, freeCapacity: 600 }), 0.7)).toBe(false);
+    expect(belowFillTo(struct({ usedCapacity: 1600, freeCapacity: 400 }), 0.7)).toBe(false);
+  });
+
+  it("a zero-capacity candidate can never be filled, so it never wants more", () => {
+    expect(belowFillTo(struct({ usedCapacity: 0, freeCapacity: 0 }), 0.7)).toBe(false);
+  });
+});
+
+// belowRepair is the hits-fraction gate that lets a miner start repairing its container only once it has
+// decayed past a floor (0.7) — the repair counterpart of belowFillTo.
+describe("belowRepair", () => {
+  it("no gate matches every candidate", () => {
+    expect(belowRepair(struct({ hits: 10, hitsMax: 100 }), undefined)).toBe(true);
+  });
+
+  it("qualifies a candidate below the fraction, rejects one at or above it", () => {
+    expect(belowRepair(struct({ hits: 60, hitsMax: 100 }), 0.7)).toBe(true); // decayed past 70% -> repair
+    expect(belowRepair(struct({ hits: 70, hitsMax: 100 }), 0.7)).toBe(false); // exactly at floor is not below it
+    expect(belowRepair(struct({ hits: 90, hitsMax: 100 }), 0.7)).toBe(false); // healthy -> leave it alone
+  });
+
+  it("a candidate with no hitsMax (a site, a source) can never be repaired", () => {
+    expect(belowRepair(struct({ hits: 0, hitsMax: 0 }), 0.7)).toBe(false);
+  });
+});
+
 // fitsSpec is the kind half of re-validating a locked target each tick (matchesWhere
 // is the other half): "could this object still be what the spec is asking for?"
 describe("locked target spec-fit", () => {
@@ -46,6 +86,17 @@ describe("locked target spec-fit", () => {
     expect(fitsSpec({ kind: "structure", structureType: STRUCTURE_EXTENSION }, { find: "constructionSite" })).toBe(
       false
     );
+  });
+
+  // A structureType-scoped site spec (the miner's container-build step) fits only a site of that type, so
+  // a lock on the container site never survives onto, say, a road site the miner should ignore.
+  it("a scoped constructionSite spec fits only a site of its structureType", () => {
+    const containerSite: TargetKind = { kind: "constructionSite", structureType: STRUCTURE_CONTAINER };
+    const roadSite: TargetKind = { kind: "constructionSite", structureType: STRUCTURE_ROAD };
+    expect(fitsSpec(containerSite, { find: "constructionSite", structureType: STRUCTURE_CONTAINER })).toBe(true);
+    expect(fitsSpec(roadSite, { find: "constructionSite", structureType: STRUCTURE_CONTAINER })).toBe(false);
+    // An unscoped spec still matches any site type, as before.
+    expect(fitsSpec(roadSite, { find: "constructionSite" })).toBe(true);
   });
 
   // Without this, a lock taken on an extension step would survive into a spawn step.
@@ -601,6 +652,109 @@ describe("resolveTarget near:assignedSource", () => {
       structureCreep("mine", [mine], [siblingContainer], "siblingCont"),
       { find: "structure", type: STRUCTURE_CONTAINER, where: "notFull", near: "assignedSource" }
     );
+
+    expect(got).toBeNull();
+  });
+});
+
+// Once a room has both source containers and a controller container, a container spec must be able to
+// pick one role and never the other: the hauler FILLS the controller container (near: "controller") and
+// DRAINS the source containers (near: "notController"). They partition by range 2 of the controller.
+describe("resolveTarget near:controller / notController", () => {
+  const inRange = (x: number, y: number) => (o: { x: number; y: number }, r: number) =>
+    Math.max(Math.abs(o.x - x), Math.abs(o.y - y)) <= r;
+
+  // A container with a real store so `where` and `fillTo` can read used/free capacity off it.
+  function container(id: string, x: number, y: number, used = 0, capacity = 2000): object {
+    return {
+      id,
+      structureType: STRUCTURE_CONTAINER,
+      pos: { x, y, inRangeTo: inRange(x, y) },
+      store: {
+        getUsedCapacity: () => used,
+        getFreeCapacity: () => capacity - used,
+        getCapacity: () => capacity
+      }
+    };
+  }
+
+  // Controller sits at (25,25); creep's findClosestByPath just returns the first candidate.
+  function creepInRoom(containers: object[], lockedTarget?: string): Creep {
+    return {
+      id: "me",
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: {
+        controller: { pos: { x: 25, y: 25, inRangeTo: inRange(25, 25) } },
+        find: () => containers
+      },
+      store: { getFreeCapacity: () => 200 },
+      memory: { task: lockedTarget ? { step: 0, target: lockedTarget } : { step: 0 } }
+    } as unknown as Creep;
+  }
+
+  const ctrlContainer = () => container("ctrl", 25, 27, 0); // range 2 of controller -> the controller container
+  const srcContainer = () => container("src", 10, 10, 1000); // far from controller -> a source container
+
+  it("near:controller resolves only the container within range 2 of the controller", () => {
+    const ctrl = ctrlContainer();
+    const src = srcContainer();
+    stubGame({ objects: { ctrl, src } });
+
+    const got = resolveTarget(creepInRoom([src, ctrl]), {
+      find: "structure",
+      type: STRUCTURE_CONTAINER,
+      where: "notFull",
+      near: "controller"
+    });
+
+    expect((got as { id: string }).id).toBe("ctrl");
+  });
+
+  it("near:notController excludes the controller container, leaving only source containers", () => {
+    const ctrl = ctrlContainer();
+    const src = srcContainer();
+    stubGame({ objects: { ctrl, src } });
+
+    const got = resolveTarget(creepInRoom([ctrl, src]), {
+      find: "structure",
+      type: STRUCTURE_CONTAINER,
+      where: "hasEnergy",
+      near: "notController"
+    });
+
+    expect((got as { id: string }).id).toBe("src");
+  });
+
+  it("fillTo:0.7 keeps the controller container a target below the floor, drops it at or above", () => {
+    const spec = {
+      find: "structure" as const,
+      type: STRUCTURE_CONTAINER,
+      where: "notFull" as const,
+      near: "controller" as const,
+      fillTo: 0.7
+    };
+
+    const low = container("ctrl", 25, 27, 600); // 30% -> still wanted
+    stubGame({ objects: { ctrl: low } });
+    expect((resolveTarget(creepInRoom([low]), spec) as { id: string }).id).toBe("ctrl");
+
+    const atFloor = container("ctrl", 25, 27, 1400); // 70% -> no longer wanted; step falls through
+    stubGame({ objects: { ctrl: atFloor } });
+    expect(resolveTarget(creepInRoom([atFloor]), spec)).toBeNull();
+  });
+
+  it("drops a lock on the controller container once it crosses the fill floor", () => {
+    const spec = {
+      find: "structure" as const,
+      type: STRUCTURE_CONTAINER,
+      where: "notFull" as const,
+      near: "controller" as const,
+      fillTo: 0.7
+    };
+    const full = container("ctrl", 25, 27, 1500); // 75% -> stale lock must not survive
+    stubGame({ objects: { ctrl: full } });
+
+    const got = resolveTarget(creepInRoom([full], "ctrl"), spec);
 
     expect(got).toBeNull();
   });

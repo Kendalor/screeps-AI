@@ -240,7 +240,9 @@ describe("same-tick co-fire: miner harvest + transfer", () => {
 // specifically to prevent this).
 describe("co-fire never steals movement from the primary step", () => {
   it("an out-of-range upgrade step travels toward the controller, not toward an also-out-of-range hauler", () => {
-    const controller = { id: "ctrl", pos: sourcePos(40, 40) };
+    // The upgrade step travels to the controller's POSITION (range 3), so tag the pos with the
+    // controller's id to assert which object the creep headed toward.
+    const controller = { id: "ctrl", pos: { id: "ctrl", ...sourcePos(40, 40) } };
     const hauler = {
       id: "haul",
       body: [],
