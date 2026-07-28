@@ -12,6 +12,17 @@ import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { fillTo, opName, type CreepRequest } from "../spawn/request";
 
 /**
+ * One role's honest staffing target for metrics: how many this operation wants right now, independent
+ * of how many are alive. Distinct from `desiredCreeps`, which reports only the deficit (never negative),
+ * so an over-staffed role — target below the live count — is invisible there. Census uses this to show
+ * `current/target`, e.g. 5 builders alive with nothing left to build reads `5/0`, not `5/5`.
+ */
+export interface RoleTarget {
+  role: RoleName;
+  target: number;
+}
+
+/**
  * Stateless per-tick value, constructed fresh every tick — `room` is the only field. No mutable
  * fields or persisted `data`: ownership is derived fresh from the snapshot, not stored/reconciled.
  * Methods take `ColonySnapshot`, never `Colony`, so operations can never reach and call siblings.
@@ -38,6 +49,25 @@ export abstract class Operation {
   /** Demand — arbitrated by planSpawning, which sorts by priority, budgets and emits `spawn`. */
   public desiredCreeps(_colony: ColonySnapshot): CreepRequest[] {
     return [];
+  }
+
+  /**
+   * The honest per-role target for metrics (see `RoleTarget`). The default reconstructs today's census
+   * denominator — target = owned + still-requested — which is correct for any operation that can't
+   * over-staff (a role at or above its target simply emits no requests, so target = owned). Operations
+   * whose target can drop *below* the live count — Building once sites finish, Upgrading as energy
+   * falls — override this to report the true target so census can show the surplus (e.g. `5/0`).
+   */
+  public roleTargets(colony: ColonySnapshot): RoleTarget[] {
+    const by: Partial<Record<RoleName, number>> = {};
+    for (const r of this.desiredCreeps(colony)) {
+      const role = r.memory.role;
+      by[role] = (by[role] ?? 0) + 1;
+    }
+    // owned + requested, per role touched by either — the deficit reported by desiredCreeps plus what's alive.
+    const roles = new Set<RoleName>(Object.keys(by) as RoleName[]);
+    for (const c of colony.creeps) if (c.memory.op === undefined || c.memory.op === this.name) roles.add(c.role);
+    return [...roles].map(role => ({ role, target: this.owned(colony, role).length + (by[role] ?? 0) }));
   }
 
   /**

@@ -33,7 +33,8 @@ const config = {
   carryMargin: 1.1, // over-provision required carry by 10%, same margin mining.ts uses for haulers
   defaultHaulDistance: 10, // fallback before an anchor is known
   maxTransport: 6, // same measured ceiling mining.ts caps haulers at — more doesn't clear backlog faster
-  minTransportEnergy: 150 // one CARRY,CARRY,MOVE set — cheapest useful body
+  minTransportEnergy: 150, // one CARRY,CARRY,MOVE set — cheapest useful body
+  bootstrapEnergy: 300 // base spawn capacity, always affordable — size the FIRST transport off this
 } as const;
 
 export class Logistics extends Operation {
@@ -53,7 +54,12 @@ export class Logistics extends Operation {
     // energy plus a spawn system to feed is real, standing work.
     if (providers(colony).length === 0) return [];
 
-    const body = orderBody(roleDef("transport")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
+    // Nothing alive yet: size the first transport off base spawn capacity (300, always affordable),
+    // not full energyCapacity — otherwise the room stalls waiting for the extensions to fill, which
+    // is exactly what a transport creep is needed for in the first place. Once one is alive, size
+    // subsequent ones off full capacity.
+    const energyForBody = this.owned(colony, "transport").length === 0 ? config.bootstrapEnergy : colony.energyCapacity;
+    const body = orderBody(roleDef("transport")?.body(energyForBody, bodyContext(colony)) ?? []);
     const wanted = this.wantedTransport(colony, body);
     return fillTo(wanted, this.owned(colony, "transport").length, body, roleDef("transport")!.priority, {
       role: "transport",

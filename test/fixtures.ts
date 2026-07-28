@@ -168,6 +168,8 @@ export function snapCreep(
     spawning: false,
     ticksToLive: 1000,
     room: home, // defaults to home; a scout out on the frontier overrides it
+    x: 25, // defaults onto the fixture controller (25,25) so an upgrader reads as "near controller"; override to place elsewhere
+    y: 25,
     storeEnergy: 0,
     storeCapacity: 50,
     ...rest,

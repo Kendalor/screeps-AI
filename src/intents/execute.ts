@@ -72,7 +72,11 @@ function act(intent: Intent): ScreepsReturnCode {
     case "assignLogisticsTask": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
-      creep.memory.logistics = { ...creep.memory.logistics, current: intent.task };
+      // Split the paired follow-up out of the task: `current` holds the leg to run now, `next` the leg
+      // runTransport promotes the moment this one completes — so a pickup flows into its deliver with no
+      // idle re-plan tick between them. A deliver-only assignment carries no `next` and clears it.
+      const { next, ...current } = intent.task;
+      creep.memory.logistics = { current, next };
       return OK;
     }
     case "removeStructure": {

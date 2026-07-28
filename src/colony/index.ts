@@ -50,7 +50,8 @@ export class Colony {
       this.requests(),
       this.operations.map(op => op.name),
       targeted,
-      mem
+      mem,
+      this.operations.flatMap(op => op.roleTargets(this.snapshot))
     );
     return [visualize(report)];
   }

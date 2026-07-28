@@ -128,6 +128,21 @@ describe("Upgrading.desiredCreeps — with storage (ported getMaxUpgraders)", ()
   });
 });
 
+describe("Upgrading.roleTargets — metrics denominator", () => {
+  it("reports the true upgrader target, matching the quota", () => {
+    expect(upgrading.roleTargets(colonySnap({ storageEnergy: 500_000, controllerLevel: 6 }))).toEqual([
+      { role: "upgrader", target: 4 }
+    ]);
+  });
+
+  it("reports a target below the live count as a surplus once energy no longer supports them", () => {
+    // 4 upgraders alive, but storage has fallen so the target is 0: desiredCreeps hides it, roleTargets exposes 4/0.
+    const snap = colonySnap({ storageEnergy: 100_000, controllerLevel: 4, creeps: snapCreeps("upgrader", 4) });
+    expect(upgrading.desiredCreeps(snap)).toEqual([]);
+    expect(upgrading.roleTargets(snap)).toEqual([{ role: "upgrader", target: 0 }]);
+  });
+});
+
 describe("Upgrading.structures — controller container + road", () => {
   const anchor: XY = { x: 25, y: 25 };
   const controller: XY = { x: 25, y: 40 };

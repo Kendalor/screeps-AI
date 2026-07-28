@@ -104,7 +104,7 @@ describe("building planner", () => {
     const intents = snap.building();
 
     expect(intents.every(i => i.kind === "placeSite")).toBe(true);
-    expect(intents).toHaveLength(4);
+    expect(intents).toHaveLength(2);
     const types = new Set(intents.map(i => i.kind === "placeSite" && i.type));
     expect([...types].some(t => t === "road")).toBe(false);
     expect(
@@ -178,17 +178,55 @@ describe("building planner focus policy", () => {
   const placeSites = (intents: Intent[]) =>
     intents.filter((i): i is Extract<Intent, { kind: "placeSite" }> => i.kind === "placeSite");
 
-  it("places at most 4 construction sites at a time", () => {
+  it("places at most 2 construction sites at a time", () => {
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] }));
 
-    expect(placeSites(snap.building())).toHaveLength(4);
+    expect(placeSites(snap.building())).toHaveLength(2);
   });
 
-  it("counts existing sites against the cap of 4", () => {
+  it("counts existing sites against the cap of 2", () => {
     const oneOpen: SnapStructure[] = [{ x: 10, y: 10, type: "road" }];
     const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: oneOpen }));
 
-    expect(placeSites(snap.building())).toHaveLength(3);
+    expect(placeSites(snap.building())).toHaveLength(1);
+  });
+
+  it("opens at most one container site at a time even when mining declares two", () => {
+    // Everything higher-priority already built, two sources → two container claims compete for the focus slots.
+    const built = allNonRoadStructuresAt(anchor, 3);
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 800,
+        sources: [sourceAt(20, 10), sourceAt(30, 40)],
+        structures: built,
+        sites: []
+      })
+    );
+
+    const placed = placeSites(snap.building());
+    expect(placed.filter(i => i.type === "container")).toHaveLength(1);
+  });
+
+  it("opens no new container site while one is already under construction", () => {
+    const built = allNonRoadStructuresAt(anchor, 3);
+    const base = colonySnap({
+      anchor,
+      controllerLevel: 3,
+      energyCapacity: 800,
+      sources: [sourceAt(20, 10), sourceAt(30, 40)],
+      structures: built,
+      sites: []
+    });
+    const [firstContainer] = minedStructures(base);
+    const snap = colony({
+      ...base,
+      sites: [{ x: firstContainer.x, y: firstContainer.y, type: "container" }]
+    });
+
+    const placed = placeSites(snap.building());
+    expect(placed.some(i => i.type === "container")).toBe(false);
   });
 
   it("prioritises the tower ahead of extensions when both are buildable", () => {

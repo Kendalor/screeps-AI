@@ -35,4 +35,18 @@ describe("builder workforce", () => {
 
     expect(building.desiredCreeps(snap)).toEqual([]);
   });
+
+  describe("roleTargets (metrics denominator)", () => {
+    it("reports the true builder target, matching the quota", () => {
+      const snap = colonySnap({ constructionProgress: 8_000, storageEnergy: 200_000 });
+      expect(building.roleTargets(snap)).toEqual([{ role: "builder", target: 2 }]);
+    });
+
+    it("reports a target of 0 while builders are still alive — census reads this as a surplus", () => {
+      // Nothing left to build but two builders remain: desiredCreeps hides this (returns []), roleTargets exposes it.
+      const snap = colonySnap({ constructionProgress: 0, storageEnergy: 200_000, creeps: snapCreeps("builder", 2) });
+      expect(building.desiredCreeps(snap)).toEqual([]);
+      expect(building.roleTargets(snap)).toEqual([{ role: "builder", target: 0 }]);
+    });
+  });
 });

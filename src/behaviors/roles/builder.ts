@@ -1,4 +1,4 @@
-import { affordableSets } from "../../spawn/body";
+import { affordableSets, bodyCost } from "../../spawn/body";
 import type { Step } from "../types";
 import { Role } from "./role";
 
@@ -6,14 +6,31 @@ import { Role } from "./role";
 // WORK,WORK,CARRY,MOVE base — more carry per trip at RCL1. A/B slow-bench: ~4.5% faster to RCL3,
 // ~6% faster to full RCL3 build-out, slightly less energy wasted, no reliable downside.
 const B_300_BODY: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE]; // 300
+// From 350 the base gains a third MOVE (WORK,CARRY,CARRY,MOVE,MOVE,MOVE = 350), then extends by
+// WORK,MOVE sets — each set keeps the body move-balanced while adding build throughput.
+const B_350_BODY: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE, MOVE]; // 350
+const EXT_SET: BodyPartConstant[] = [WORK, MOVE]; // 150
+// Cap the total body at 1200 energy: 350 base + 5 WORK,MOVE sets (5*150 = 750) = 1100, the most sets
+// that fit under 1200. A sixth set would cost 1250, so the body tops out at 16 parts / 1100 energy.
+const MAX_BODY_COST = 1200;
+const MAX_EXT_SETS = Math.floor((MAX_BODY_COST - bodyCost(B_350_BODY)) / bodyCost(EXT_SET)); // 5
 
 function builderBody(energy: number): BodyPartConstant[] {
-  if (energy === 300) return [...B_300_BODY];
-  const BASE_BODY = [WORK, WORK, CARRY, MOVE];
-  const sets = affordableSets(energy, BASE_BODY, 1, 7);
-  let body: BodyPartConstant[] = [];
-  for (let i = 0; i < sets; i++) {
-    body = body.concat(BASE_BODY);
+  if (energy < 350) {
+    if (energy >= 300) return [...B_300_BODY];
+    const BASE_BODY = [WORK, WORK, CARRY, MOVE];
+    const sets = affordableSets(energy, BASE_BODY, 1, 7);
+    let body: BodyPartConstant[] = [];
+    for (let i = 0; i < sets; i++) {
+      body = body.concat(BASE_BODY);
+    }
+    return body;
+  }
+  const extEnergy = energy - bodyCost(B_350_BODY);
+  const extSets = affordableSets(extEnergy, EXT_SET, 0, MAX_EXT_SETS);
+  let body: BodyPartConstant[] = [...B_350_BODY];
+  for (let i = 0; i < extSets; i++) {
+    body = body.concat(EXT_SET);
   }
   return body;
 }

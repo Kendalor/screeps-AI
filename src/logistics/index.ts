@@ -15,17 +15,22 @@ function isIdle(creep: SnapCreep): boolean {
   return creep.memory.logistics?.current === undefined;
 }
 
-// Folds every creep's current+next task into reserved amounts so a fresh allocation this tick can
-// never double-book a provider/consumer a mid-task creep already claimed — generalizes targets.ts's
+// Folds every creep's in-flight task into reserved amounts so a fresh allocation this tick can never
+// double-book a provider/consumer a mid-task creep already claimed — generalizes targets.ts's
 // claimCounts() from "count of creeps pointed at X" to "amount of resource already spoken for at X".
+//
+// Only `current` is folded, never `next`: a pickup's `current` already carries both its provider
+// (`from`) and its destination consumer (`to`), so it reserves both legs of the round trip in one
+// pass. The paired `next` deliver names that SAME energy and SAME consumer — folding it too would
+// reserve the consumer twice and wrongly starve other idle creeps of it. When `next` is promoted to
+// `current` on completion, it then folds normally as the sole remaining leg.
 function foldReserved(creeps: readonly SnapCreep[]): ReservedAmounts {
   const reserved = emptyReserved();
   for (const creep of creeps) {
-    for (const task of [creep.memory.logistics?.current, creep.memory.logistics?.next]) {
-      if (!task) continue;
-      if (task.from) reserved.providers[refKey(task.from)] = (reserved.providers[refKey(task.from)] ?? 0) + task.amount;
-      if (task.to) reserved.consumers[refKey(task.to)] = (reserved.consumers[refKey(task.to)] ?? 0) + task.amount;
-    }
+    const task = creep.memory.logistics?.current;
+    if (!task) continue;
+    if (task.from) reserved.providers[refKey(task.from)] = (reserved.providers[refKey(task.from)] ?? 0) + task.amount;
+    if (task.to) reserved.consumers[refKey(task.to)] = (reserved.consumers[refKey(task.to)] ?? 0) + task.amount;
   }
   return reserved;
 }

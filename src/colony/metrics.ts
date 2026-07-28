@@ -5,12 +5,17 @@
 import type { PlacedStructure } from "../layouts/stamp";
 import type { RoleName } from "../memory/schema";
 import type { ColonyMetricsMemory } from "../memory/schema";
+import type { RoleTarget } from "../operations/operation";
 import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 
 export const HARVEST_WINDOW = 300; // ticks of source-energy history kept; matches ENERGY_REGEN_TIME
 
-/** One role's staffing: how many are alive now versus how many the colony's operations asked for. */
+/**
+ * One role's staffing: how many are alive now versus how many the colony's operations target. `desired`
+ * is the true target, so it can sit *below* `current` — an over-staffed role (5 builders alive, nothing
+ * left to build) reads `5/0`, not `5/5`. See `censusFor` for how the target is sourced.
+ */
 export interface CensusRow {
   role: RoleName;
   current: number;
@@ -54,9 +59,9 @@ export interface ColonyMetrics {
     busy: number; // spawning a creep this tick
     // Steady-state spawn load as a colony-level fraction, so it stays comparable as spawn count grows.
     // Keeping one body part alive costs a spawn CREEP_SPAWN_TIME/CREEP_LIFE_TIME = 1/500 of its output,
-    // so utilisation = living parts / (spawns * 500). >= 1 means spawns can't keep the population alive.
+    // so utilisation = required parts / (spawns * 500). >= 1 means spawns can't keep the population alive.
     load: number; // 0..1+: parts / capacity
-    parts: number; // living body parts across all the colony's creeps (the load numerator)
+    parts: number; // required body parts: living creeps + outstanding requests (the load numerator)
     capacity: number; // total * PARTS_PER_SPAWN — parts these spawns can sustain
   };
 }
@@ -65,8 +70,10 @@ export interface ColonyMetrics {
 // CREEP_LIFE_TIME (1500) ticks, so a single spawn can keep 1500/3 = 500 parts alive indefinitely.
 export const PARTS_PER_SPAWN = 500;
 
-// Desired = alive now + deficit from requests() (requests report the deficit, not a target).
-function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[]): CensusRow[] {
+// `desired` is the operation-reported target where one exists (operations sum across the colony), so it
+// can be below `current` and surface a surplus as `N/0`. Roles no operation reports a target for fall back
+// to alive + deficit-from-requests — the old denominator, correct for any role that never over-staffs.
+function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[], targets: RoleTarget[]): CensusRow[] {
   const current: Partial<Record<RoleName, number>> = {};
   for (const c of snapshot.creeps) current[c.role] = (current[c.role] ?? 0) + 1;
 
@@ -76,13 +83,23 @@ function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[]): CensusRo
     wanted[role] = (wanted[role] ?? 0) + 1;
   }
 
+  // Targets summed per role — two operations wanting the same role (rare) add up, matching how requests do.
+  const target: Partial<Record<RoleName, number>> = {};
+  for (const t of targets) target[t.role] = (target[t.role] ?? 0) + t.target;
+
   const roles = new Set<RoleName>([
     ...(Object.keys(current) as RoleName[]),
-    ...(Object.keys(wanted) as RoleName[])
+    ...(Object.keys(wanted) as RoleName[]),
+    ...(Object.keys(target) as RoleName[])
   ]);
 
   return [...roles]
-    .map(role => ({ role, current: current[role] ?? 0, desired: (current[role] ?? 0) + (wanted[role] ?? 0) }))
+    .map(role => ({
+      role,
+      current: current[role] ?? 0,
+      // Prefer the reported target; fall back to the request-derived denominator when none is reported.
+      desired: target[role] ?? (current[role] ?? 0) + (wanted[role] ?? 0)
+    }))
     .sort((a, b) => b.desired - a.desired || a.role.localeCompare(b.role));
 }
 
@@ -147,12 +164,13 @@ export function collectMetrics(
   requests: CreepRequest[],
   operationNames: string[],
   targeted: readonly PlacedStructure[],
-  mem: ColonyMetricsMemory
+  mem: ColonyMetricsMemory,
+  roleTargets: RoleTarget[] = []
 ): ColonyMetrics {
   return {
     room: snapshot.name,
     tick: snapshot.tick,
-    census: censusFor(snapshot, requests),
+    census: censusFor(snapshot, requests, roleTargets),
     operations: operationNames,
     buildings: buildingsFor(snapshot.structures, targeted),
     energy: {
@@ -176,7 +194,12 @@ export function collectMetrics(
     },
     spawns: (() => {
       const total = snapshot.spawns.length;
-      const parts = snapshot.creeps.reduce((sum, c) => sum + c.body.length, 0);
+      // Required parts, not just living ones: what's alive plus every creep still requested to fill the
+      // colony's targets. This reflects the full staffing load the spawns must sustain, so an understaffed
+      // colony reads > 100% (spawns can't keep up) rather than looking idle because few creeps are alive yet.
+      const livingParts = snapshot.creeps.reduce((sum, c) => sum + c.body.length, 0);
+      const requestedParts = requests.reduce((sum, r) => sum + r.body.length, 0);
+      const parts = livingParts + requestedParts;
       const capacity = total * PARTS_PER_SPAWN;
       return {
         total,

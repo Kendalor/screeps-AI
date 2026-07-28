@@ -15,7 +15,7 @@ import { Mining } from "../../../src/operations/mining";
 import { Bootstrap } from "../../../src/operations/bootstrap";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import GOAL_JSON from "../../../src/layouts/Base_2.json";
-import { colonySnap, roomDistance, sourceAt, spawn } from "../../fixtures";
+import { colonySnap, roomDistance, snapCreeps, sourceAt, spawn } from "../../fixtures";
 
 // A stand-in operation, so these assert the framework rather than Mining's formulas.
 class Stub extends Operation {
@@ -64,6 +64,35 @@ describe("Operation", () => {
     expect(op.desiredCreeps(snap)).toEqual([]);
     expect(op.structures(snap)).toEqual([]);
     expect(op.intents(snap)).toEqual([]);
+  });
+
+  // The default roleTargets reconstructs the old census denominator (owned + still-requested) for any
+  // operation that doesn't override it — correct because a role at/over target simply emits no request.
+  describe("roleTargets default (owned + requested)", () => {
+    const req = (role: "hauler" | "upgrader"): CreepRequest => ({
+      body: [CARRY, MOVE],
+      priority: 1,
+      memory: { role, home: "W1N1", op: "stub:W1N1" },
+      targetRoom: "W1N1"
+    });
+
+    it("counts a request the role has none alive for", () => {
+      const op = new Stub("W1N1", [req("hauler")]);
+      expect(op.roleTargets(colonySnap({ creeps: [] }))).toEqual([{ role: "hauler", target: 1 }]);
+    });
+
+    it("adds the deficit on top of the operation's living creeps", () => {
+      // Two owned upgraders + one requested -> target 3. Ownership matches the stub's op stamp.
+      const owned = snapCreeps("upgrader", 2).map(c => ({ ...c, memory: { ...c.memory, op: "stub:W1N1" } }));
+      const op = new Stub("W1N1", [req("upgrader")]);
+      expect(op.roleTargets(colonySnap({ creeps: owned }))).toEqual([{ role: "upgrader", target: 3 }]);
+    });
+
+    it("reports a target equal to the live count when the role is fully staffed (no requests)", () => {
+      const owned = snapCreeps("hauler", 4).map(c => ({ ...c, memory: { ...c.memory, op: "stub:W1N1" } }));
+      const op = new Stub("W1N1");
+      expect(op.roleTargets(colonySnap({ creeps: owned }))).toEqual([{ role: "hauler", target: 4 }]);
+    });
   });
 });
 

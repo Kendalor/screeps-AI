@@ -39,12 +39,12 @@ export function panelOps(m: ColonyMetrics): VisualOp[] {
 
   p.line(`${m.room}  ·  RCL ${m.controller.level}  ·  tick ${m.tick}`, HEADING);
 
-  // Census: role  current/desired, red when short.
+  // Census: role  current/target. Red when short (understaffed) or over (a surplus the ops no longer want).
   p.line("Census", HEADING);
   if (m.census.length === 0) p.line("(no creeps)", DIM, 0.5);
   for (const row of m.census) {
-    const short = row.current < row.desired;
-    p.line(`${row.role.padEnd(10)} ${row.current}/${row.desired}`, short ? WARN : OK, 0.5);
+    const staffed = row.current === row.desired;
+    p.line(`${row.role.padEnd(10)} ${row.current}/${row.desired}`, staffed ? OK : WARN, 0.5);
   }
 
   // Energy block.

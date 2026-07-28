@@ -32,13 +32,19 @@ export class Upgrader extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return upgraderBody(energy);
   }
-  // Upgrade first, then refill from the nearest energy source — container, storage, link, a dropped
-  // pile or a tombstone all pooled into one candidate set so the closest wins rather than a fixed
-  // type order. `gather` (not withdraw/pickup) because the pool mixes store-holders with dropped
-  // energy and the verb must follow whatever resolves. Never draws from haulers: a hauler drained
-  // mid-run can't deliver its load, so the upgrader must not steal it in transit.
+  // Refill from the nearest energy source — container, storage, link, a dropped pile or a tombstone
+  // all pooled into one candidate set so the closest wins rather than a fixed type order. `gather`
+  // (not withdraw/pickup) because the pool mixes store-holders with dropped energy and the verb must
+  // follow whatever resolves. Never draws from haulers: a hauler drained mid-run can't deliver its
+  // load, so the upgrader must not steal it in transit.
+  //
+  // Then BUILD before upgrading: an upgrader is an idle pair of WORK parts whenever there is
+  // construction outstanding, so it pitches in on the nearest-to-done site first and only falls
+  // through to upgrading once nothing is left to build. `build`'s target simply doesn't resolve when
+  // no sites remain, so the loop advances to `upgrade` in the same tick — no wasted turn. This mirrors
+  // the builder's own gather→build ordering; the two roles now behave identically at the site, the
+  // only difference being how many of each the operations spawn.
   static override readonly steps: Step[] = [
-    { do: "upgrade" },
     {
       do: "gather",
       from: {
@@ -50,6 +56,8 @@ export class Upgrader extends Role {
         ],
         prefer: "nearest"
       }
-    }
+    },
+    { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } },
+    { do: "upgrade" }
   ];
 }

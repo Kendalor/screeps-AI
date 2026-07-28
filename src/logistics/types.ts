@@ -18,4 +18,9 @@ export interface LogisticsTask {
   to?: NodeRef; // deliver: where to transfer to
   resource: ResourceConstant;
   amount: number; // capped to creep capacity when assigned; informational for matching
+  // The follow-up leg, assigned together with this one so a creep flows straight through with no idle
+  // re-plan tick between them: a pickup carries its paired deliver here. runTransport promotes it to
+  // `current` the instant this task completes (see behaviors/transport.ts). Never nests further — the
+  // deliver leg has no `next` of its own; the creep goes idle after it and gets re-planned fresh.
+  next?: LogisticsTask;
 }

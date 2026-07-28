@@ -3,7 +3,7 @@
 import { roleDef } from "../behaviors/roles";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
-import { Operation } from "./operation";
+import { Operation, type RoleTarget } from "./operation";
 
 const config = {
   // One builder per this much outstanding work, uncapped. Pre-storage figure is small: tiny bodies
@@ -24,5 +24,10 @@ export class Building extends Operation {
 
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
     return this.fillRole(colony, "builder", wantedBuilders(colony), roleDef("builder")!.priority);
+  }
+
+  /** Report the true builder target (0 once construction is done), so census shows any surplus as `N/0`. */
+  public override roleTargets(colony: ColonySnapshot): RoleTarget[] {
+    return [{ role: "builder", target: wantedBuilders(colony) }];
   }
 }

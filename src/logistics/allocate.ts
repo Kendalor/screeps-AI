@@ -56,7 +56,12 @@ export function allocate(
     providerRemaining.set(refKey(p.ref), p.available - (reserved.providers[refKey(p.ref)] ?? 0));
   }
 
-  for (const creep of idleCreeps) {
+  // Loaded creeps first: a creep already carrying energy should win a deliver before an empty creep is
+  // sent on a round trip for the same consumer — the pre-loaded one is ready this tick, the empty one
+  // isn't. (A creep pre-loaded speculatively from a drop, below, is exactly the case this serves.)
+  const byLoadedFirst = [...idleCreeps].sort((a, b) => b.storeEnergy - a.storeEnergy);
+
+  for (const creep of byLoadedFirst) {
     // Already carrying load (just spawned, or resuming): skip straight to the consumer match using
     // that load — no wasted trip back through a provider it doesn't need.
     if (creep.storeEnergy > 0) {
@@ -89,16 +94,61 @@ export function allocate(
     consumerRemaining.set(consumerKey, (consumerRemaining.get(consumerKey) ?? 0) - amount);
     providerRemaining.set(providerKey, (providerRemaining.get(providerKey) ?? 0) - amount);
 
+    // Pair the deliver leg into `next` so the creep flows pickup->deliver with no idle re-plan tick
+    // between. The consumer is reserved once here (consumerRemaining, above); the embedded deliver is
+    // NOT re-folded into `reserved` next tick — foldReserved counts `current` only for exactly this
+    // reason, since `next` always names the same energy `current` already reserved via its `to`.
     out[creep.id] = {
       kind: "pickup",
       from: provider.ref,
       to: consumer.ref,
       resource: consumer.resource,
-      amount
+      amount,
+      next: { kind: "deliver", to: consumer.ref, resource: consumer.resource, amount }
     };
   }
 
+  // Speculative pass: an empty creep with no consumer-driven job still tops itself off from any DECAYING
+  // source (dropped piles, tombstones), so it's pre-loaded and ready the instant a consumer appears —
+  // and the energy isn't lost to decay meanwhile. Decaying-only on purpose: container energy doesn't
+  // rot, so pulling it before a consumer wants it just moves the idle wait to the deliver side and
+  // fights miners for the container. These pickups carry NO `to`/`next` — the consumer is unknown yet;
+  // the loaded creep gets a deliver on a later tick, ahead of empty creeps (byLoadedFirst, above).
+  for (const creep of byLoadedFirst) {
+    if (out[creep.id]) continue; // already assigned by the consumer-driven pass
+    const free = creep.storeCapacity - creep.storeEnergy;
+    if (free <= 0) continue;
+
+    const provider = pickLargestDecayingProvider(providers, providerRemaining);
+    if (!provider) continue;
+
+    const providerKey = refKey(provider.ref);
+    const amount = Math.min(free, providerRemaining.get(providerKey) ?? 0);
+    if (amount <= 0) continue;
+
+    providerRemaining.set(providerKey, (providerRemaining.get(providerKey) ?? 0) - amount);
+    out[creep.id] = { kind: "pickup", from: provider.ref, resource: provider.resource, amount };
+  }
+
   return out;
+}
+
+function isDecaying(ref: NodeRef): boolean {
+  return ref.kind === "dropped" || ref.kind === "tombstone";
+}
+
+function pickLargestDecayingProvider(providers: readonly Provider[], remaining: Map<string, number>): Provider | undefined {
+  let best: Provider | undefined;
+  let bestAmount = 0;
+  for (const p of providers) {
+    if (p.resource !== RESOURCE_ENERGY || !isDecaying(p.ref)) continue;
+    const left = remaining.get(refKey(p.ref)) ?? 0;
+    if (left > bestAmount) {
+      best = p;
+      bestAmount = left;
+    }
+  }
+  return best;
 }
 
 function pickLargestProvider(

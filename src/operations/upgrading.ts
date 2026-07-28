@@ -10,7 +10,7 @@ import type { GoalLayout } from "../layouts/sync";
 import type { XY } from "../lib/geometry";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
-import { Operation } from "./operation";
+import { Operation, type RoleTarget } from "./operation";
 
 const upgraderConfig = {
   // Below this, storage is reserved for other spending; above it, one extra upgrader per 40k stored.
@@ -25,7 +25,7 @@ const upgraderConfig = {
   // Room energyCapacity at which the controller gets its own container + road (RCL2 + all five
   // extensions = 550). Before this the room can't spare the build; after it, the container ends the
   // upgraders' walk to storage.
-  containerFromEnergyCapacity: 800
+  containerFromEnergyCapacity: 550
 } as const;
 
 const GOAL = GOAL_JSON as GoalLayout;
@@ -71,6 +71,11 @@ export class Upgrading extends Operation {
 
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
     return this.fillRole(colony, "upgrader", wantedUpgraders(colony), roleDef("upgrader")!.priority);
+  }
+
+  /** Report the true upgrader target (it falls as stored energy drops), so census shows any surplus as `N/0`. */
+  public override roleTargets(colony: ColonySnapshot): RoleTarget[] {
+    return [{ role: "upgrader", target: wantedUpgraders(colony) }];
   }
 
   /**

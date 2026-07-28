@@ -139,4 +139,13 @@ describe("consumers", () => {
     const miner = snapCreep("miner", { storeEnergy: 0, storeCapacity: 50 });
     expect(consumers(colonySnap({ creeps: [miner] })).some(c => c.ref.kind === "creep")).toBe(false);
   });
+
+  it("only treats an upgrader within 5 tiles of the controller as a consumer", () => {
+    const near = snapCreep("upgrader", { storeEnergy: 20, storeCapacity: 100, x: 25, y: 30 }); // 5 tiles: viable
+    const far = snapCreep("upgrader", { storeEnergy: 20, storeCapacity: 100, x: 25, y: 31 }); // 6 tiles: off-target
+    const result = consumers(colonySnap({ creeps: [near, far], controller: { x: 25, y: 25 } }));
+
+    expect(result.some(c => c.ref.kind === "creep" && c.ref.id === near.id)).toBe(true);
+    expect(result.some(c => c.ref.kind === "creep" && c.ref.id === far.id)).toBe(false);
+  });
 });

@@ -48,6 +48,12 @@ const DROP_WORTHWHILE_FLOOR = 50;
 
 const CONTROLLER_CONTAINER_RANGE = 2; // range of the controller a controller container sits within
 
+// Only upgraders parked at the controller are worth a transport trip. An upgrader wandering off to
+// harvest or in transit isn't upgrading, so topping it up wherever it happens to be just drags a
+// transport away from the bunker after a moving target — the same babysitting the completion fix
+// avoids, applied at the consumer-selection level. Chebyshev range, matching isNearController's metric.
+const UPGRADER_CONTROLLER_RANGE = 5;
+
 function isNearController(colony: ColonySnapshot, c: SnapContainer): boolean {
   const dx = c.x - colony.controller.x;
   const dy = c.y - colony.controller.y;
@@ -146,10 +152,17 @@ export function consumers(colony: ColonySnapshot): Consumer[] {
   }
   for (const c of colony.creeps) {
     if (c.role !== "upgrader") continue;
+    if (!isNearControllerPos(colony, c)) continue; // only upgraders at the controller are viable sinks
     pushCreepConsumer(out, c, PRIORITY.upgrader);
   }
 
   return out;
+}
+
+function isNearControllerPos(colony: ColonySnapshot, c: SnapCreep): boolean {
+  const dx = c.x - colony.controller.x;
+  const dy = c.y - colony.controller.y;
+  return Math.max(Math.abs(dx), Math.abs(dy)) <= UPGRADER_CONTROLLER_RANGE;
 }
 
 function pushCreepConsumer(out: Consumer[], c: SnapCreep, priority: number): void {

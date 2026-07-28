@@ -9,7 +9,7 @@
 //
 // For building up several samples of one slow target faster, use scripts/bench-parallel.mjs with
 // the explicit test file, e.g.
-//   node scripts/bench-parallel.mjs 4 test/benchmark/slow/milestones-rcl3-cold-boot.test.ts
+//   node scripts/bench-parallel.mjs 4 test/benchmark/slow/milestones-cold-boot-history.test.ts
 //
 // See scripts/bench-shared.mjs for why a driver is needed at all: the bundle build and the
 // committed history file are both unsafe to touch from more than one process at once, and both

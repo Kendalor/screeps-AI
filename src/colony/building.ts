@@ -15,7 +15,11 @@ const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
 
 // Cap open sites low so a small pre-storage workforce finishes structures instead of smearing effort across the backlog.
-const FOCUS_SITE_CAP = 4;
+const FOCUS_SITE_CAP = 2;
+// At most one container construction site open at a time: a container is a big single-creep haul, so opening a
+// second before the first is built just splits the builder's effort. Existing (built) containers don't count —
+// only concurrent container *sites*. Containers still reach one-per-source over time, one at a time.
+const MAX_CONTAINER_SITES = 1;
 // Roads are dead weight while the bunker is still going up; hold until the colony can afford paving
 // (RCL3 with all extensions built = 800 capacity). Mining's source-access roads are exempt — see wantedStructures.
 export const ROADS_FROM_ENERGY_CAPACITY = 800;
@@ -85,12 +89,16 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
 
   const cap = Math.min(FOCUS_SITE_CAP, MAX_CONSTRUCTION_SITES);
   let budget = cap - colony.sites.length;
+  // Only concurrent container *sites* are limited; built containers don't count against the cap.
+  let containerSites = colony.sites.filter(s => s.type === "container").length;
   const out: Intent[] = [];
   for (const placement of prioritised) {
     if (budget <= 0) break;
+    if (placement.type === "container" && containerSites >= MAX_CONTAINER_SITES) continue;
     const exists = colony.structures.some(sameSpot(placement)) || colony.sites.some(sameSpot(placement));
     if (exists) continue;
     out.push({ kind: "placeSite", room: colony.name, x: placement.x, y: placement.y, type: placement.type });
+    if (placement.type === "container") containerSites++;
     budget--;
   }
 

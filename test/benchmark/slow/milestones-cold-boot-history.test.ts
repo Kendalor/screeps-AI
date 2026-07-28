@@ -6,8 +6,8 @@
 // within budget — a snapshot of the run's last tick (census by role, energy available/capacity/
 // storage, buildings built vs wanted) so the history also shows *how far* a stalled run actually got.
 //
-// Lives under test/benchmark/slow/ for the same reason as milestones-rcl3-cold-boot.test.ts: a
-// 20k-tick run is far too slow for the standard `npm run bench` set. Run it with:
+// Lives under test/benchmark/slow/ because a 20k-tick run is far too slow for the standard
+// `npm run bench` set. Run it with:
 //
 //   npm run bench:slow
 //

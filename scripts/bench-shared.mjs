@@ -21,8 +21,11 @@ export const HISTORY = path.join(REPO, "test", "benchmark", "benchmarks.json");
 // isn't comparable to the fast milestones and shouldn't crowd the same committed file.
 export const HISTORY_SLOW = path.join(REPO, "test", "benchmark", "slow", "benchmarks-slow.json");
 
-// Keep in step with MAX_RUNS in test/benchmark/benchmarks.ts.
-export const MAX_RUNS = 10;
+// Keep in step with MAX_RUNS in test/benchmark/benchmarks.ts. This is the cap mergeIntoHistory
+// applies to the committed file; when it was smaller than the recorder's cap the history was pinned
+// to a permanent N-wide sliding window that dropped the oldest run on every bench:slow invocation, so
+// the median baseline never accumulated and lurched across a mix of commits instead of stabilising.
+export const MAX_RUNS = 100;
 
 export const load = file => {
   try {

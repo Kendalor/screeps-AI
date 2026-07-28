@@ -352,10 +352,9 @@ describe("supply role", () => {
 });
 
 describe("upgrader role", () => {
-  it("upgrades first, then gathers from the nearest of container/storage/link/drop/tombstone — never from haulers", () => {
+  it("gathers, then builds outstanding sites before upgrading — never from haulers", () => {
     expect(roleDef("upgrader")).toBe(ROLES.upgrader);
     expect(roleDef("upgrader")?.steps).toEqual([
-      { do: "upgrade" },
       // Container/storage/link/drop/tombstone pooled into one gather step: the nearest source wins.
       {
         do: "gather",
@@ -368,7 +367,10 @@ describe("upgrader role", () => {
           ],
           prefer: "nearest"
         }
-      }
+      },
+      // Build outstanding sites first; only fall through to upgrade when none remain to resolve.
+      { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } },
+      { do: "upgrade" }
     ]);
     // A hauler drained mid-run can't deliver its load, so the upgrader must never steal from it.
     const gatherSpec = roleDef("upgrader")?.steps.find(s => s.do === "gather");

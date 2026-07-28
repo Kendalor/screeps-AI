@@ -36,6 +36,8 @@ export interface SnapCreep {
   role: RoleName; // === memory.role
   home: string; // === memory.home
   room: string; // creep.pos.roomName — may differ from home (e.g. a scout on the frontier)
+  x: number; // creep.pos.x — lets a planner range-gate a creep (e.g. only upgraders near the controller)
+  y: number; // creep.pos.y
 
   storeEnergy: number; // current carried energy — lets a planner tell a loaded creep from an empty one
   storeCapacity: number; // total store capacity across all resource types

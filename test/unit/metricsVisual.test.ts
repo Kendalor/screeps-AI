@@ -66,6 +66,29 @@ describe("metricsVisual: census", () => {
     const hauler = textOps.find(o => o.text.includes("hauler"))!;
     expect(miner.color).not.toBe(hauler.color);
   });
+
+  it("renders a surplus as current over a lower target (e.g. 5/0)", () => {
+    const ops = panelOps(metrics({ census: [{ role: "builder", current: 5, desired: 0 }] }));
+    expect(joined(ops)).toContain("5/0");
+  });
+
+  it("colours a surplus role like an understaffed one, not like a met one", () => {
+    const ops = panelOps(
+      metrics({
+        census: [
+          { role: "builder", current: 5, desired: 0 }, // surplus
+          { role: "miner", current: 1, desired: 2 }, // short
+          { role: "hauler", current: 2, desired: 2 } // met
+        ]
+      })
+    );
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const builder = textOps.find(o => o.text.includes("builder"))!;
+    const miner = textOps.find(o => o.text.includes("miner"))!;
+    const hauler = textOps.find(o => o.text.includes("hauler"))!;
+    expect(builder.color).toBe(miner.color); // both flagged
+    expect(builder.color).not.toBe(hauler.color); // met role differs
+  });
 });
 
 describe("metricsVisual: buildings", () => {

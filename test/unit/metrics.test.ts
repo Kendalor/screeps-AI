@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildingsFor, collectMetrics, HARVEST_WINDOW, type ColonyMetrics } from "../../src/colony/metrics";
 import type { PlacedStructure } from "../../src/layouts/stamp";
-import type { ColonyMetricsMemory } from "../../src/memory/schema";
+import type { ColonyMetricsMemory, RoleName } from "../../src/memory/schema";
+import type { RoleTarget } from "../../src/operations/operation";
 import type { SnapStructure } from "../../src/snapshot/types";
 import type { CreepRequest } from "../../src/spawn/request";
 import { colonySnap, containerAt, dropAt, snapCreeps, spawn } from "../fixtures";
@@ -24,10 +25,14 @@ function collect(
   requests: CreepRequest[] = [],
   ops: string[] = [],
   targeted: PlacedStructure[] = [],
-  m = mem()
+  m = mem(),
+  roleTargets: RoleTarget[] = []
 ): ColonyMetrics {
-  return collectMetrics(snap, requests, ops, targeted, m);
+  return collectMetrics(snap, requests, ops, targeted, m, roleTargets);
 }
+
+// A per-role staffing target, as an operation would report it via roleTargets().
+const roleTarget = (role: RoleName, n: number): RoleTarget[] => [{ role, target: n }];
 
 // Terse constructors for the built/targeted structure lists.
 const built = (type: BuildableStructureConstant, n: number): SnapStructure[] =>
@@ -69,6 +74,36 @@ describe("metrics: census", () => {
     const rows = collect(colonySnap({ creeps: snapCreeps("miner", 1) })).census;
 
     expect(rows.map(r => r.role)).toEqual(["miner"]);
+  });
+
+  it("shows a surplus as current over target when an operation reports a target below the live count", () => {
+    // 5 builders alive, but the operation now targets 0 (nothing left to build) -> 5/0, not 5/5.
+    const snap = colonySnap({ creeps: snapCreeps("builder", 5) });
+    const rows = collect(snap, [], [], [], mem(), roleTarget("builder", 0)).census;
+
+    expect(rows.find(r => r.role === "builder")).toMatchObject({ current: 5, desired: 0 });
+  });
+
+  it("uses the reported target as the denominator even when the role is understaffed", () => {
+    // A reported target overrides the request-derived count so both directions come from one source.
+    const snap = colonySnap({ creeps: snapCreeps("upgrader", 1) });
+    const rows = collect(snap, [], [], [], mem(), roleTarget("upgrader", 3)).census;
+
+    expect(rows.find(r => r.role === "upgrader")).toMatchObject({ current: 1, desired: 3 });
+  });
+
+  it("includes a role with a positive target but none alive", () => {
+    const rows = collect(colonySnap({ creeps: [] }), [], [], [], mem(), roleTarget("builder", 2)).census;
+
+    expect(rows.find(r => r.role === "builder")).toMatchObject({ current: 0, desired: 2 });
+  });
+
+  it("falls back to the request-derived denominator for roles with no reported target", () => {
+    // miner has no roleTarget entry -> old behavior: current + requests.
+    const snap = colonySnap({ creeps: snapCreeps("miner", 2) });
+    const rows = collect(snap, want("miner", 1), [], [], mem(), roleTarget("builder", 0)).census;
+
+    expect(rows.find(r => r.role === "miner")).toMatchObject({ current: 2, desired: 3 });
   });
 });
 
@@ -204,6 +239,20 @@ describe("metrics: spawns", () => {
     const m = collect(colonySnap({ spawns: [spawn()], creeps: snapCreeps("miner", 3) }));
     expect(m.spawns).toMatchObject({ parts: 9, capacity: 500 });
     expect(m.spawns.load).toBeCloseTo(9 / 500);
+  });
+
+  it("counts required parts: living creeps plus every outstanding request", () => {
+    // 3 living miners * 3 parts = 9, plus 2 requested creeps at 1 part each (want()'s body is [WORK]) = 11.
+    const m = collect(colonySnap({ spawns: [spawn()], creeps: snapCreeps("miner", 3) }), want("miner", 2));
+    expect(m.spawns).toMatchObject({ parts: 11, capacity: 500 });
+    expect(m.spawns.load).toBeCloseTo(11 / 500);
+  });
+
+  it("reads load from requests alone when no creeps are alive yet", () => {
+    // A cold colony with nothing alive but staffing requested reads its full required load, not 0.
+    const m = collect(colonySnap({ spawns: [spawn()], creeps: [] }), want("miner", 4));
+    expect(m.spawns).toMatchObject({ parts: 4, capacity: 500 });
+    expect(m.spawns.load).toBeCloseTo(4 / 500);
   });
 
   it("scales capacity with spawn count so the fraction stays comparable as spawns grow", () => {

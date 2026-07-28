@@ -36,6 +36,8 @@ function snapCreep(c: Creep): SnapCreep {
     role: c.memory.role,
     home: c.memory.home,
     room: c.pos.roomName,
+    x: c.pos.x,
+    y: c.pos.y,
     storeEnergy: c.store.getUsedCapacity(RESOURCE_ENERGY),
     storeCapacity: c.store.getCapacity(),
     memory: c.memory

@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
 import { colonySnap, containerAt, snapCreep, snapCreeps } from "../../fixtures";
+import { bodyCost } from "../../../src/spawn/body";
 
 const logistics = new Logistics("W1N1");
 
@@ -38,6 +39,34 @@ describe("Logistics.desiredCreeps", () => {
   it("still wants a transport creep when the spawn is full but a provider has energy", () => {
     const full = withWork({ energyAvailable: 300, energyCapacity: 300 });
     expect(logistics.desiredCreeps(full).length).toBeGreaterThanOrEqual(1);
+  });
+
+  // With no transport alive, the first one must be sized off base spawn capacity (300, always
+  // affordable) rather than full energyCapacity — otherwise the room stalls waiting for extensions
+  // to fill, which is the very job the transport exists to do. Capacity is 550 here (RCL2 + all
+  // extensions), but nothing is alive to fill them, so the body must cost <= 300.
+  it("sizes the first transport off base spawn capacity, not full energyCapacity", () => {
+    const highCapNoneAlive = withWork({ energyAvailable: 300, energyCapacity: 550 });
+    const [request] = highCapNoneAlive ? logistics.desiredCreeps(highCapNoneAlive) : [];
+    expect(bodyCost(request.body)).toBeLessThanOrEqual(300);
+  });
+
+  // Once one transport is alive it can fill the extensions, so subsequent ones size off full capacity.
+  // Two full-income miners plus a long haul warrant more than one transport, so a second request is
+  // still emitted with one alive; its body must be sized off the 550 capacity, not the 300 bootstrap.
+  it("sizes subsequent transports off full energyCapacity once one is alive", () => {
+    const miner = snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] });
+    // A far anchor lengthens the haul enough that income warrants more than one transport, so a
+    // second request is still emitted with one alive — and its body is sized off the 550 capacity.
+    const oneAlive = withWork({
+      energyAvailable: 550,
+      energyCapacity: 550,
+      anchor: { x: 49, y: 49 },
+      creeps: [miner, ...snapCreeps("transport", 1)]
+    });
+    const [request] = logistics.desiredCreeps(oneAlive);
+    expect(request).toBeDefined();
+    expect(bodyCost(request.body)).toBeGreaterThan(300);
   });
 
   it("returns nothing once the live transport creeps meet the quota", () => {

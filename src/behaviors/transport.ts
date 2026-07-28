@@ -9,6 +9,34 @@
 import type { LogisticsTask, NodeRef } from "../logistics/types";
 import { transferTo, withdrawOrPickup } from "./actions";
 
+const PARK_RADIUS = 3; // "near the bunker" — anywhere within this range of the anchor counts as parked
+const PARK_SPREAD = 2; // per-creep offset off the anchor so idle creeps fan out instead of stacking
+
+// A stable per-creep hash so a given creep always parks on the same spread-out spot rather than
+// jittering every tick — cheap FNV-ish fold over the name.
+function nameHash(name: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) {
+    h = (h ^ name.charCodeAt(i)) * 16777619;
+  }
+  return h >>> 0;
+}
+
+// Idle with nothing to carry and nowhere to deliver: loiter near the bunker anchor (a spread-out spot,
+// not exactly on it) so a parked transport creep isn't sitting on a source/road blocking traffic, and
+// is central for whichever consumer appears next. No-op until building has recorded an anchor.
+function parkNearBunker(creep: Creep): void {
+  const anchor = typeof Memory !== "undefined" ? Memory.colonies?.[creep.memory.home]?.anchor : undefined;
+  if (!anchor) return;
+
+  if (creep.pos.getRangeTo(anchor.x, anchor.y) <= PARK_RADIUS) return; // close enough already
+
+  const h = nameHash(creep.name);
+  const dx = (h % (2 * PARK_SPREAD + 1)) - PARK_SPREAD;
+  const dy = (Math.floor(h / (2 * PARK_SPREAD + 1)) % (2 * PARK_SPREAD + 1)) - PARK_SPREAD;
+  creep.travelTo(new RoomPosition(anchor.x + dx, anchor.y + dy, creep.room.name));
+}
+
 function resolveNode(creep: Creep, ref: NodeRef): RoomObject | null {
   switch (ref.kind) {
     case "structure":
@@ -32,25 +60,41 @@ function resolveNode(creep: Creep, ref: NodeRef): RoomObject | null {
   }
 }
 
-// A task is done once it can no longer make progress: a pickup with no free capacity left, or a
-// deliver with nothing left to give. Mirrors interpreter.ts's isComplete for gather/spend steps.
+// A task is done once it can no longer make progress *before acting this tick*: a pickup with no free
+// capacity left, or a deliver with nothing left to give. Mirrors interpreter.ts's isComplete for
+// gather/spend steps. NOTE: a deliver is ALSO completed the instant its transfer executes in range —
+// see runTransport below — so a creep whose committed amount lands in a nearly-full consumer (e.g. a
+// builder with only a few free capacity) is released back to reallocation still loaded, rather than
+// babysitting that consumer and dribbling in energy while spawn/extensions sit empty behind it.
 function isTaskDone(creep: Creep, task: LogisticsTask): boolean {
   if (task.kind === "pickup") return creep.store.getFreeCapacity(task.resource) === 0;
   return creep.store.getUsedCapacity(task.resource) === 0;
 }
 
+// Advance to `next` (the paired follow-up leg); park near the bunker when nothing remains so an idle
+// creep loiters centrally instead of blocking a source/road wherever it happened to finish.
+function advanceOrPark(creep: Creep): void {
+  const next = creep.memory.logistics?.next;
+  creep.memory.logistics = { current: next };
+  if (!next) parkNearBunker(creep);
+}
+
 export function runTransport(creep: Creep): void {
   const task = creep.memory.logistics?.current;
-  if (!task) return; // nothing assigned yet this tick — planLogistics runs upstream, not from here
+  if (!task) {
+    // Nothing assigned this tick — planLogistics runs upstream, not from here. Loiter near the bunker.
+    parkNearBunker(creep);
+    return;
+  }
 
   if (isTaskDone(creep, task)) {
-    creep.memory.logistics = { current: creep.memory.logistics?.next };
+    advanceOrPark(creep);
     return;
   }
 
   const ref = task.kind === "pickup" ? task.from : task.to;
   if (!ref) {
-    creep.memory.logistics = { current: creep.memory.logistics?.next };
+    advanceOrPark(creep);
     return;
   }
 
@@ -58,13 +102,22 @@ export function runTransport(creep: Creep): void {
   if (!target) {
     // Target vanished (drained by someone else, picked up, etc) — drop the task so next tick's
     // planLogistics assigns fresh rather than retrying a dead reference forever.
-    creep.memory.logistics = { current: creep.memory.logistics?.next };
+    advanceOrPark(creep);
     return;
   }
 
   if (task.kind === "pickup") {
     withdrawOrPickup(creep, target, task.resource);
-  } else {
-    transferTo(creep, target, task.resource);
+    return;
   }
+
+  // A deliver is fulfilled the tick its transfer actually executes (in range): the task named an
+  // `amount` to move to `to`, and one transfer moves min(carried, target free capacity) into it — so
+  // the ask is complete once that transfer fires, whether or not the creep is now empty. Completing
+  // here (rather than only when the creep empties) is what stops a still-loaded creep from following a
+  // slow-draining builder/upgrader forever: it goes idle and next tick's allocate re-matches its
+  // remaining load to the highest-priority consumer with room (spawn/extensions). `didAct` is true
+  // only when it acted in range; a false means it merely traveled toward the target this tick.
+  const result = transferTo(creep, target, task.resource);
+  if (result.didAct) advanceOrPark(creep);
 }
