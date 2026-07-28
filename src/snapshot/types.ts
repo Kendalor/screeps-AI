@@ -35,6 +35,9 @@ export interface SnapCreep {
   home: string; // === memory.home
   room: string; // creep.pos.roomName — may differ from home (e.g. a scout on the frontier)
 
+  storeEnergy: number; // current carried energy — lets a planner tell a loaded creep from an empty one
+  storeCapacity: number; // total store capacity across all resource types
+
   // Live reference, deeply readonly: writing through it to Memory is a compile error, keeping Intent -> execute.ts the sole write boundary.
   memory: DeepReadonly<CreepMemory>;
 }

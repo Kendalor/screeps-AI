@@ -162,6 +162,8 @@ export function snapCreep(
     spawning: false,
     ticksToLive: 1000,
     room: home, // defaults to home; a scout out on the frontier overrides it
+    storeEnergy: 0,
+    storeCapacity: 50,
     ...rest,
     role,
     home,
