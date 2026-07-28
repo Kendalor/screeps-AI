@@ -1,5 +1,6 @@
 // nextStep decides step advancement as a pure function, testable without a creep; runStep is the actuator that touches the game API.
 
+import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
 import { resolveTarget } from "./targets";
 import type { Step, TargetSpec } from "./types";
 
@@ -103,40 +104,16 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
       return harvestStep(creep, step.from, locked, allowTravel);
     case "withdraw":
       if (creep.store.getFreeCapacity() === 0) return { acted: false, didAct: false };
-      return actOn(
-        creep,
-        step.from,
-        locked,
-        t => creep.withdraw(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY),
-        1,
-        allowTravel
-      );
+      return resolveAndAct(creep, step.from, locked, t => withdrawOrPickup(creep, t, step.resource ?? RESOURCE_ENERGY, allowTravel));
     case "pickup":
       if (creep.store.getFreeCapacity() === 0) return { acted: false, didAct: false };
       return actOn(creep, step.from, locked, t => creep.pickup(t as Resource), 1, allowTravel);
     case "gather":
       if (creep.store.getFreeCapacity() === 0) return { acted: false, didAct: false };
-      return actOn(
-        creep,
-        step.from,
-        locked,
-        t =>
-          isResource(t)
-            ? creep.pickup(t)
-            : creep.withdraw(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY),
-        1,
-        allowTravel
-      );
+      return resolveAndAct(creep, step.from, locked, t => withdrawOrPickup(creep, t, step.resource ?? RESOURCE_ENERGY, allowTravel));
     case "transfer":
       if (creep.store.getUsedCapacity() === 0) return { acted: false, didAct: false };
-      return actOn(
-        creep,
-        step.to,
-        locked,
-        t => creep.transfer(t as Structure & { store: StoreDefinition }, step.resource ?? RESOURCE_ENERGY),
-        1,
-        allowTravel
-      );
+      return resolveAndAct(creep, step.to, locked, t => transferTo(creep, t, step.resource ?? RESOURCE_ENERGY, allowTravel));
     case "build":
       return actOn(
         creep,
@@ -198,15 +175,21 @@ function actOn(
 ): StepResult {
   const target = resolveTarget(creep, spec, locked);
   if (!target) return { acted: false, didAct: false };
-  if (creep.pos.inRangeTo(target as { pos: RoomPosition }, range)) {
-    action(target);
-    return { acted: true, didAct: true, target: (target as unknown as { id: Id<_HasId> }).id };
-  }
-  // Out of range: a co-fired bonus step must not travel (see runStep's allowTravel doc) — resolving a
-  // target it can't reach this tick counts as not having acted at all.
-  if (!allowTravel) return { acted: false, didAct: false };
-  creep.travelTo(target as { pos: RoomPosition });
-  return { acted: true, didAct: false, target: (target as unknown as { id: Id<_HasId> }).id };
+  return actOnResolved(creep, target, action, range, allowTravel);
+}
+
+// Resolves a spec, then hands the concrete target to an actions.ts shim (which does its own
+// range-check-then-act-or-travel at range 1) — the "no target" short-circuit stays here since the
+// shim only knows what to do once a target already exists.
+function resolveAndAct(
+  creep: Creep,
+  spec: TargetSpec,
+  locked: Id<_HasId> | undefined,
+  act: (t: RoomObject) => StepResult
+): StepResult {
+  const target = resolveTarget(creep, spec, locked);
+  if (!target) return { acted: false, didAct: false };
+  return act(target);
 }
 
 // A container's tile is a mining spot: harvesting from on top of it drops overflow straight in, no
@@ -291,9 +274,3 @@ function isFreeForCreep(pos: RoomPosition, creep: Creep): boolean {
   return !occupant || occupant.id === creep.id;
 }
 
-// A dropped resource pile needs creep.pickup(); everything else a "gather" spec can resolve to
-// (structure, tombstone, ruin) carries a .store and needs creep.withdraw() instead. Same discriminator
-// targets.ts's toKind() uses to classify a dropped pile.
-function isResource(obj: RoomObject): obj is Resource {
-  return (obj as { resourceType?: ResourceConstant }).resourceType !== undefined;
-}
