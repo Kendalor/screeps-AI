@@ -8,7 +8,7 @@
 // Which of {nearest, largest-capacity-first} allocation order performs better is the plan's open
 // question 1 — worth a benchmark once there's a real workload, not resolved by guessing here.
 
-import type { SnapCreep } from "../snapshot/types";
+import type { DeepReadonly, SnapCreep } from "../snapshot/types";
 import type { Consumer, Provider } from "./graph";
 import type { LogisticsTask, NodeRef } from "./types";
 
@@ -22,8 +22,10 @@ export function emptyReserved(): ReservedAmounts {
 }
 
 // A NodeRef has no single natural id field ("spawnSystem" has none at all) — key reservations by a
-// stable string so pickup/deliver targets from different kinds never collide in the same map.
-export function refKey(ref: NodeRef): string {
+// stable string so pickup/deliver targets from different kinds never collide in the same map. Accepts
+// the DeepReadonly variant too, since planLogistics reads NodeRefs back out of a snapshot creep's
+// (deeply readonly) memory when folding in-flight tasks into `reserved`.
+export function refKey(ref: NodeRef | DeepReadonly<NodeRef>): string {
   switch (ref.kind) {
     case "spawnSystem":
       return "spawnSystem";

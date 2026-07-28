@@ -1,6 +1,7 @@
 // Intent union: planners return these; only intents/execute.ts turns them into game API calls.
 
 import type { RoleName } from "../memory/schema";
+import type { LogisticsTask } from "../logistics/types";
 
 export type Intent =
   | { kind: "towerAttack"; tower: Id<StructureTower>; target: Id<Creep> }
@@ -19,6 +20,9 @@ export type Intent =
   // Repurpose a live creep in place — an idle builder with no construction left becomes a repairer or
   // upgrader instead of drop-mining out its remaining life. execute.ts owns the memory.role write.
   | { kind: "setCreepRole"; creep: Id<Creep>; role: RoleName }
+  // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
+  // execute.ts owns the memory write" split as setCreepRole above).
+  | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }
   | { kind: "removeStructure"; room: string; x: number; y: number; type: BuildableStructureConstant }
   | {
       kind: "recordSourceSpot";

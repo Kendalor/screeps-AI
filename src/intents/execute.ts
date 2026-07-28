@@ -69,6 +69,12 @@ function act(intent: Intent): ScreepsReturnCode {
       creep.memory.op = undefined;
       return OK;
     }
+    case "assignLogisticsTask": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      creep.memory.logistics = { ...creep.memory.logistics, current: intent.task };
+      return OK;
+    }
     case "removeStructure": {
       // Last line of defense: never destroy a spawn here, regardless of intent.
       if (intent.type === "spawn") {

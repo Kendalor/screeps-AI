@@ -10,6 +10,7 @@ import { Miner } from "./miner";
 import { Repair } from "./repair";
 import { Scout } from "./scout";
 import { Supply } from "./supply";
+import { Transport } from "./transport";
 import { Upgrader } from "./upgrader";
 
 export const ROLES = {
@@ -20,7 +21,8 @@ export const ROLES = {
   repair: Repair,
   supply: Supply,
   scout: Scout,
-  hauler: Hauler
+  hauler: Hauler,
+  transport: Transport
 } satisfies Partial<Record<RoleName, RoleDef>>;
 
 export function roleDef(role: RoleName): RoleDef | undefined {
