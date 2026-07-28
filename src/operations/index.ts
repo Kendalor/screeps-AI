@@ -3,6 +3,7 @@
 import { Bootstrap } from "./bootstrap";
 import { Building } from "./building";
 import { Defense } from "./defense";
+import { Logistics } from "./logistics";
 import { Mining } from "./mining";
 import type { Operation } from "./operation";
 import { Scouting } from "./scouting";
@@ -17,6 +18,7 @@ export { Bootstrap } from "./bootstrap";
 export { Building } from "./building";
 export { Scouting } from "./scouting";
 export { Supply } from "./supply";
+export { Logistics } from "./logistics";
 
 /** Every colony gets every operation kind unconditionally; each decides for itself whether to act.
  * Order matters only for structures(): Mining paths first so later operations converge onto its routes. */
@@ -28,6 +30,7 @@ export function operationsFor(room: string): Operation[] {
     new Bootstrap(room),
     new Building(room),
     new Scouting(room),
-    new Supply(room)
+    new Supply(room),
+    new Logistics(room)
   ];
 }
