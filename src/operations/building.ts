@@ -1,22 +1,32 @@
 // Building owns the construction workforce: builders that service outstanding sites. Demand only, pure.
 
+import { countPart } from "../spawn/body";
+import { bodyContext } from "../spawn/bodyContext";
 import { roleDef } from "../behaviors/roles";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { Operation, type RoleTarget } from "./operation";
 
 const config = {
-  // One builder per this much outstanding work, uncapped. Pre-storage figure is small: tiny bodies
-  // and trip-bound throughput mean many small builders in parallel are needed to finish anything.
-  progressPerBuilderPreStorage: 1_500,
-  progressPerBuilder: 5_000
+  // One WORK part per this much outstanding work — headcount falls out of dividing by a body's WORK
+  // count, not from a fixed progress-per-creep figure. Uncapped in WORK, but never more than
+  // maxBuilders creeps: a handful of well-bodied builders beat a swarm of small ones once storage exists.
+  progressPerWork: 1_000,
+  maxBuilders: 6
 } as const;
 
-// No storage gate: the builder role sources energy pre-storage too (drop/container/harvest fallback).
+function builderBodyWork(colony: ColonySnapshot): number {
+  const body = roleDef("builder")?.body(colony.energyCapacity, bodyContext(colony)) ?? [];
+  return Math.max(1, countPart(body, WORK));
+}
+
+// WORK needed to clear outstanding progress, translated into a creep headcount against the current
+// body's WORK-per-creep, then capped at maxBuilders — never a raw headcount off progress directly.
 function wantedBuilders(colony: ColonySnapshot): number {
   if (colony.constructionProgress <= 0) return 0;
-  const per = colony.storageEnergy > 0 ? config.progressPerBuilder : config.progressPerBuilderPreStorage;
-  return Math.ceil(colony.constructionProgress / per);
+  const wantedWork = Math.ceil(colony.constructionProgress / config.progressPerWork);
+  const bodies = Math.ceil(wantedWork / builderBodyWork(colony));
+  return Math.min(config.maxBuilders, bodies);
 }
 
 export class Building extends Operation {

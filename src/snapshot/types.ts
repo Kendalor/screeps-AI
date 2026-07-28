@@ -57,8 +57,10 @@ export type DeepReadonly<T> = T extends (...args: never[]) => unknown
 
 export interface SnapStructure extends XY {
   type: BuildableStructureConstant;
-  // Present for a built structure, absent for a construction site (which has no hits). Lets the Building
-  // operation tell whether any built structure has decayed far enough to be worth a repairer.
+  // id/hits/hitsMax are present for a built structure, absent for a construction site (which has
+  // neither hits nor a stable structure id yet). Lets the Building operation tell whether any built
+  // structure has decayed far enough to be worth a repairer, and lets Defense target it with towerRepair.
+  id?: Id<Structure>;
   hits?: number;
   hitsMax?: number;
 }

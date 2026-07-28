@@ -6,6 +6,7 @@ import type { LogisticsTask } from "../logistics/types";
 export type Intent =
   | { kind: "towerAttack"; tower: Id<StructureTower>; target: Id<Creep> }
   | { kind: "towerHeal"; tower: Id<StructureTower>; target: Id<Creep> }
+  | { kind: "towerRepair"; tower: Id<StructureTower>; target: Id<Structure> }
   | { kind: "safeMode"; room: string }
   | {
       // No top-level role: memory.role is ground truth, and a second carrier would have nothing enforcing agreement.

@@ -12,6 +12,7 @@ import type {
   SnapDrop,
   SnapSource,
   SnapSpawn,
+  SnapStructure,
   SnapTombstone,
   SnapTower,
   SnapUnit,
@@ -135,6 +136,15 @@ export function woundedAt(x: number, y: number, id = `wounded_${x}_${y}`): SnapU
 
 export function towerAt(x: number, y: number, id = `tower_${x}_${y}`, storeEnergy = 0): SnapTower {
   return { id: id as Id<StructureTower>, x, y, storeEnergy, storeCapacity: 1000 };
+}
+
+export function structureAt(
+  x: number,
+  y: number,
+  type: BuildableStructureConstant,
+  over: Partial<Pick<SnapStructure, "id" | "hits" | "hitsMax">> = {}
+): SnapStructure {
+  return { x, y, type, id: `${type}_${x}_${y}` as Id<Structure>, hits: 1000, hitsMax: 1000, ...over };
 }
 
 export function containerAt(

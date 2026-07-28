@@ -1,23 +1,7 @@
 import { affordableSets } from "../../spawn/body";
+import { REPAIRABLE, REPAIR_BELOW } from "../../lib/repairable";
 import type { Step } from "../types";
 import { Role } from "./role";
-
-// Structure types a repairer keeps alive. Walls and ramparts are deliberately excluded: their hitsMax
-// is enormous and topping them is a defense concern, not the decay upkeep a converted builder does.
-// Roads and containers decay on a timer; the rest can take combat/misc damage.
-const REPAIRABLE: StructureConstant[] = [
-  STRUCTURE_ROAD,
-  STRUCTURE_CONTAINER,
-  STRUCTURE_SPAWN,
-  STRUCTURE_EXTENSION,
-  STRUCTURE_TOWER,
-  STRUCTURE_STORAGE,
-  STRUCTURE_LINK
-];
-
-// Start repairing a structure once it has decayed past this fraction of hitsMax, mirroring legacy's 0.8
-// threshold — chasing every last point of decay would smear effort and never let the creep do anything else.
-const REPAIR_BELOW = 0.8;
 
 // Same WORK/CARRY body shape as the builder it converts from (a converted builder keeps its own body;
 // this is only used if a repairer is ever spawned directly). 2:1 weight:MOVE for road speed.

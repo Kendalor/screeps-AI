@@ -1,5 +1,12 @@
 # Colony-level logistics migration plan
 
+## Status: fully implemented and resolved (2026-07-28)
+All 6 steps below are done, and step 7's `maxHaulers: 0` A/B has been decided: `Logistics`/`transport`
+won. `Mining` no longer spawns haulers at all — `mining.ts`'s hauler-request code (`haulerRequests`,
+`wantedHaulers`, `backlogCarry`, the miner/hauler interleave) has been deleted outright, not just
+zeroed via config. `hauler.ts`/`Supply` are untouched (Supply still uses `haulerBody`). This file is
+kept as historical design record; do not treat "nothing has been implemented yet" below as current.
+
 ## Handoff orientation (read this first if picking this up cold)
 - Repo: `c:\Users\Kenda\Documents\GitHub\screeps-AI`, branch `rewrite` (dev is the PR base). Working tree had uncommitted WIP in `builder.ts`/`upgrader.ts`/`mining.ts`/`upgrading.ts`/benchmarks at planning time — check `git status` before starting; this plan does not depend on that WIP but don't clobber it.
 - Nothing has been implemented yet — this file is 100% design, zero code written. Step 0 (interpreter verb extraction) is the correct first commit.

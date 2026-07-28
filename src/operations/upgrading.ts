@@ -21,6 +21,7 @@ const upgraderConfig = {
   // Pre-storage overflow sink: holds at floor while sites are outstanding, then scales with surplus.
   minPreStorageUpgraders: 1,
   surplusPerUpgrader: 1_000, // standing surplus absorbed per extra upgrader
+  maxUpgraders: 6, // hard ceiling regardless of regime — mirrors Building's worker cap
 
   // Room energyCapacity at which the controller gets its own container + road (RCL2 + all five
   // extensions = 550). Before this the room can't spare the build; after it, the container ends the
@@ -49,13 +50,14 @@ function wantedPreStorageUpgraders(colony: ColonySnapshot): number {
 
 function wantedUpgraders(colony: ColonySnapshot): number {
   // With storage, scale with what it holds.
-  if (colony.storageEnergy > 0) {
-    return Math.min(
-      upgraderConfig.maxStorageUpgraders,
-      Math.max(0, Math.floor((colony.storageEnergy - upgraderConfig.storageReserve) / upgraderConfig.storagePerUpgrader))
-    );
-  }
-  return wantedPreStorageUpgraders(colony);
+  const wanted =
+    colony.storageEnergy > 0
+      ? Math.min(
+          upgraderConfig.maxStorageUpgraders,
+          Math.max(0, Math.floor((colony.storageEnergy - upgraderConfig.storageReserve) / upgraderConfig.storagePerUpgrader))
+        )
+      : wantedPreStorageUpgraders(colony);
+  return Math.min(upgraderConfig.maxUpgraders, wanted);
 }
 
 // The tile storage sits on in the bunker goal — known from the anchor before storage is built, so the

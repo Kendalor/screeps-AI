@@ -6,6 +6,7 @@ import GOAL_JSON from "../layouts/Base_2.json";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
+import { needsRepair } from "../lib/repairable";
 import type { Intent } from "../intents/types";
 import type { Operation } from "../operations";
 import type { RoleName } from "../memory/schema";
@@ -149,21 +150,10 @@ export function hasOutstandingConstruction(colony: ColonySnapshot, claimed: Plac
   );
 }
 
-// A structure worth a repairer: decayed below the repair floor, and not a wall/rampart (defense upkeep, not
-// decay maintenance). Kept in step with the repair role's own REPAIRABLE list and threshold by intent — the
-// role decides which to actually fix; this only decides repair-vs-upgrade for the conversion.
-const REPAIR_CONVERT_BELOW = 0.8;
-const NOT_REPAIRED: BuildableStructureConstant[] = ["constructedWall", "rampart"];
-
-function hasRepairWork(colony: ColonySnapshot): boolean {
-  return colony.structures.some(
-    s =>
-      s.hits !== undefined &&
-      s.hitsMax !== undefined &&
-      s.hitsMax > 0 &&
-      !NOT_REPAIRED.includes(s.type) &&
-      s.hits < s.hitsMax * REPAIR_CONVERT_BELOW
-  );
+// A structure worth a repairer: decayed below the shared repair floor (src/lib/repairable.ts) — the
+// same definition the repair role and tower repair use, so this, the role, and Defense never drift apart.
+export function hasRepairWork(colony: ColonySnapshot): boolean {
+  return colony.structures.some(s => s.hits !== undefined && s.hitsMax !== undefined && needsRepair(s.type, s.hits, s.hitsMax));
 }
 
 // Emits a role change for every owned builder once construction is finished: repair if anything is decaying,

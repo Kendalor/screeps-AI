@@ -127,12 +127,13 @@ function resolveAnchor(room: Room): XY | null {
 }
 
 function snapStructure(s: {
+  id: string;
   pos: RoomPosition;
   structureType: BuildableStructureConstant;
   hits?: number;
   hitsMax?: number;
 }): SnapStructure {
-  const base: SnapStructure = { x: s.pos.x, y: s.pos.y, type: s.structureType };
+  const base: SnapStructure = { id: s.id as Id<Structure>, x: s.pos.x, y: s.pos.y, type: s.structureType };
   // Construction sites carry no hits; only stamp them for built structures.
   if (s.hits !== undefined && s.hitsMax !== undefined) {
     base.hits = s.hits;

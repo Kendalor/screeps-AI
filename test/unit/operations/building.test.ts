@@ -1,6 +1,6 @@
 // The Building operation: the dedicated builder workforce that services outstanding construction.
-// Ported from systems/building.test.ts (and the interim colony/requests.test.ts). The quota formula
-// did not change, only its home (now an operation) and its argument (ColonySnapshot).
+// Quota scales by WORK parts, not headcount: 1 WORK per 1k of outstanding progress, translated into
+// creeps via the current builder body's WORK count, capped at maxBuilders regardless of body size.
 
 import { describe, expect, it } from "vitest";
 import { Building } from "../../../src/operations/building";
@@ -14,32 +14,35 @@ describe("builder workforce", () => {
     expect(building.desiredCreeps(snap)).toEqual([]);
   });
 
-  // Post-storage, one builder per 5k of work (a builder withdraws a full load per trip), uncapped.
-  it("scales one builder per 5k of work with storage, uncapped", () => {
-    expect(building.desiredCreeps(colonySnap({ constructionProgress: 3_000, storageEnergy: 200_000 }))).toHaveLength(1);
-    expect(building.desiredCreeps(colonySnap({ constructionProgress: 8_000, storageEnergy: 200_000 }))).toHaveLength(2);
-    // Cap removed — 50k of work wants 10 builders; the arbiter's affordability guard is the real limit.
-    expect(building.desiredCreeps(colonySnap({ constructionProgress: 50_000, storageEnergy: 200_000 }))).toHaveLength(10);
+  // At the 300-capacity default body (1 WORK/creep), 1 WORK per 1k of progress means one creep per 1k.
+  it("scales one builder per 1k of work (1 WORK part each at the 300-capacity body)", () => {
+    expect(building.desiredCreeps(colonySnap({ constructionProgress: 3_000, storageEnergy: 200_000 }))).toHaveLength(3);
+    expect(building.desiredCreeps(colonySnap({ constructionProgress: 5_000, storageEnergy: 200_000 }))).toHaveLength(5);
   });
 
-  // Pre-storage, builders are tiny (a 50-energy load per trip) so many are needed to finish a site
-  // before every other role drains the drops — one per 1.5k of work, so an extension (3k) pulls two,
-  // two extension sites (6k) pull four. Completing them is what lifts the room past 300 capacity.
-  it("fields many small builders pre-storage to finish sites before storage exists", () => {
-    expect(building.desiredCreeps(colonySnap({ constructionProgress: 3_000, storageEnergy: 0 }))).toHaveLength(2);
-    expect(building.desiredCreeps(colonySnap({ constructionProgress: 6_000, storageEnergy: 0, controllerLevel: 2 }))).toHaveLength(4);
+  // Hard ceiling regardless of how much WORK the backlog calls for.
+  it("caps at maxBuilders even when outstanding work asks for more", () => {
+    expect(building.desiredCreeps(colonySnap({ constructionProgress: 50_000, storageEnergy: 200_000 }))).toHaveLength(6);
+    expect(building.desiredCreeps(colonySnap({ constructionProgress: 8_000, storageEnergy: 0 }))).toHaveLength(6);
+  });
+
+  // A bigger body (more WORK per creep) needs fewer creeps to cover the same WORK target.
+  it("needs fewer creeps once the body carries more WORK per creep", () => {
+    // 1100-capacity builder body carries multiple WORK parts, so 5k of progress (5 WORK) fits in fewer creeps.
+    const snap = colonySnap({ constructionProgress: 5_000, storageEnergy: 200_000, energyCapacity: 1100 });
+    expect(building.desiredCreeps(snap).length).toBeLessThan(5);
   });
 
   it("returns nothing once the live builders meet the quota", () => {
-    const snap = colonySnap({ constructionProgress: 8_000, storageEnergy: 200_000, creeps: snapCreeps("builder", 2) });
+    const snap = colonySnap({ constructionProgress: 5_000, storageEnergy: 200_000, creeps: snapCreeps("builder", 5) });
 
     expect(building.desiredCreeps(snap)).toEqual([]);
   });
 
   describe("roleTargets (metrics denominator)", () => {
     it("reports the true builder target, matching the quota", () => {
-      const snap = colonySnap({ constructionProgress: 8_000, storageEnergy: 200_000 });
-      expect(building.roleTargets(snap)).toEqual([{ role: "builder", target: 2 }]);
+      const snap = colonySnap({ constructionProgress: 5_000, storageEnergy: 200_000 });
+      expect(building.roleTargets(snap)).toEqual([{ role: "builder", target: 5 }]);
     });
 
     it("reports a target of 0 while builders are still alive — census reads this as a surplus", () => {

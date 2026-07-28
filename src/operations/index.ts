@@ -6,6 +6,7 @@ import { Defense } from "./defense";
 import { Logistics } from "./logistics";
 import { Mining } from "./mining";
 import type { Operation } from "./operation";
+import { Repairing } from "./repairing";
 import { Scouting } from "./scouting";
 import { Supply } from "./supply";
 import { Upgrading } from "./upgrading";
@@ -16,6 +17,7 @@ export { Defense } from "./defense";
 export { Upgrading } from "./upgrading";
 export { Bootstrap } from "./bootstrap";
 export { Building } from "./building";
+export { Repairing } from "./repairing";
 export { Scouting } from "./scouting";
 export { Supply } from "./supply";
 export { Logistics } from "./logistics";
@@ -29,6 +31,7 @@ export function operationsFor(room: string): Operation[] {
     new Upgrading(room),
     new Bootstrap(room),
     new Building(room),
+    new Repairing(room),
     new Scouting(room),
     new Supply(room),
     new Logistics(room)

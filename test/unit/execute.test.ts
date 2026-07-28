@@ -108,6 +108,19 @@ describe("actuator", () => {
     expect(dirs).toContain(BOTTOM);
   });
 
+  it("repairs a structure with the given tower", () => {
+    const repair = vi.fn(() => OK);
+    const tower = { repair };
+    const target = {};
+    stubGame({ objects: { tower1: tower, target1: target } });
+
+    execute([
+      { kind: "towerRepair", tower: "tower1" as Id<StructureTower>, target: "target1" as Id<Structure> }
+    ]);
+
+    expect(repair).toHaveBeenCalledWith(target);
+  });
+
   it("persists a source's mining spot and container into colony memory", () => {
     stubGame();
     (globalThis as Record<string, unknown>).Memory = { colonies: {} };

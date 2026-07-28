@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Defense } from "../../../src/operations/defense";
-import { colonySnap, hostileAt, towerAt, woundedAt } from "../../fixtures";
+import { colonySnap, hostileAt, structureAt, towerAt, woundedAt } from "../../fixtures";
 
 const defense = new Defense("W1N1");
 
@@ -51,5 +51,39 @@ describe("Defense.intents", () => {
     });
 
     expect(defense.intents(snap)).toEqual([{ kind: "towerAttack", tower: "towerA", target: hostile.id }]);
+  });
+
+  it("repairs the closest decayed structure within range 6 when nothing is hostile or wounded", () => {
+    const decayed = structureAt(12, 10, "road", { hits: 400, hitsMax: 1000 });
+    const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], structures: [decayed] });
+
+    expect(defense.intents(snap)).toEqual([{ kind: "towerRepair", tower: "towerA", target: decayed.id }]);
+  });
+
+  it("prefers healing a wounded friendly over repairing a structure", () => {
+    const hurt = woundedAt(11, 10);
+    const decayed = structureAt(12, 10, "road", { hits: 400, hitsMax: 1000 });
+    const snap = colonySnap({
+      towers: [towerAt(10, 10, "towerA")],
+      woundedFriendlies: [hurt],
+      structures: [decayed]
+    });
+
+    expect(defense.intents(snap)).toEqual([{ kind: "towerHeal", tower: "towerA", target: hurt.id }]);
+  });
+
+  it("does not repair a structure beyond range 6, leaving it for a repairer creep", () => {
+    const tooFar = structureAt(20, 10, "road", { hits: 400, hitsMax: 1000 });
+    const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], structures: [tooFar] });
+
+    expect(defense.intents(snap)).toEqual([]);
+  });
+
+  it("ignores structures above the repair floor and structure types excluded from repair (walls/ramparts)", () => {
+    const healthy = structureAt(12, 10, "road", { hits: 999, hitsMax: 1000 });
+    const decayedWall = structureAt(11, 10, "constructedWall", { hits: 1, hitsMax: 300_000_000 });
+    const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], structures: [healthy, decayedWall] });
+
+    expect(defense.intents(snap)).toEqual([]);
   });
 });

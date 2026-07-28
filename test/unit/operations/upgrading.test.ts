@@ -55,18 +55,18 @@ describe("Upgrading.desiredCreeps — pre-storage squad", () => {
     ).toHaveLength(2); // base 1 + ceil(200/1000)=1
   });
 
-  // The point of removing the cap: when energy piles up unspent, add consumers so it does not rot.
-  // One extra upgrader per 1k of standing surplus (drops + container), on top of the per-source base.
-  it("scales up, uncapped, with the standing energy surplus", () => {
+  // When energy piles up unspent, add consumers so it does not rot — one extra upgrader per 1k of
+  // standing surplus (drops + container), on top of the per-source base, up to maxUpgraders.
+  it("scales up with the standing energy surplus, capped at maxUpgraders", () => {
     const oneSource = [{ id: "s1" as Id<Source>, x: 20, y: 10, openTiles: 8 }];
     // base 1 + ceil(3500/1000)=4 → 5 upgraders to burn down a 3.5k drop pile.
     expect(
       upgraderRequests({ storageEnergy: 0, controllerLevel: 2, sources: oneSource, drops: [dropAt(20, 10, 3500)] })
     ).toHaveLength(5);
-    // A big enough surplus asks for many — no cap.
+    // A big enough surplus is clamped to the maxUpgraders ceiling rather than growing without bound.
     expect(
       upgraderRequests({ storageEnergy: 0, controllerLevel: 2, sources: oneSource, drops: [dropAt(20, 10, 9000)] })
-    ).toHaveLength(10);
+    ).toHaveLength(6);
   });
 
   // Container energy counts toward the surplus just like ground drops.
@@ -127,6 +127,7 @@ describe("Upgrading.desiredCreeps — with storage (ported getMaxUpgraders)", ()
     expect(request.memory).toMatchObject({ role: "upgrader", home: "W1N1", op: "upgrading:W1N1" });
   });
 });
+
 
 describe("Upgrading.roleTargets — metrics denominator", () => {
   it("reports the true upgrader target, matching the quota", () => {

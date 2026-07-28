@@ -46,18 +46,3 @@ export function haulDistance(colony: ColonySnapshot, config: IncomeConfig): numb
   return Math.max(1, Math.round(total / colony.sources.length));
 }
 
-/**
- * Interleave-rank formula: descends from `topPriority` by 2 per live-count-so-far, staggered by
- * `offset` so two roles competing for the same spawn slots alternate (miner, hauler, miner, hauler,
- * ...) instead of one exhausting its whole demand before the other gets a single spawn. Used by
- * mining.ts for its own miner/hauler interleave (the fix for the cold-start deadlock where miners
- * monopolise every spawn slot before a single hauler spawns — see the "spawning-interleave-deadlock"
- * memory). NOT used for Logistics/transport: staggering transport's rank against live counts this way
- * proved fragile in practice (the two operations' live-count reads didn't line up on the same tick
- * closely enough to guarantee transport ever won a slot) — transport instead uses a flat top-tier
- * priority (see behaviors/roles/transport.ts), safe because Logistics.desiredCreeps only ever asks
- * for a transport creep once there is real work for it (see logistics.ts's header comment).
- */
-export function interleaveRank(topPriority: number, floor: number, roleIndex: number, offset: 0 | 1): number {
-  return Math.max(floor, topPriority - 2 * roleIndex - offset);
-}

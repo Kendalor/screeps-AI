@@ -32,6 +32,12 @@ function act(intent: Intent): ScreepsReturnCode {
       if (!tower || !target) return ERR_NOT_FOUND;
       return tower.heal(target);
     }
+    case "towerRepair": {
+      const tower = Game.getObjectById(intent.tower);
+      const target = Game.getObjectById(intent.target);
+      if (!tower || !target) return ERR_NOT_FOUND;
+      return tower.repair(target);
+    }
     case "safeMode": {
       const controller = Game.rooms[intent.room]?.controller;
       if (!controller) return ERR_NOT_FOUND;

@@ -1,5 +1,6 @@
-// Mining owns the source-to-storage capability end to end: miners, the haulers that carry what
-// miners produce, and the per-source container/link they drop into. Pure — reads the snapshot only.
+// Mining owns getting energy out of the ground: miners and the per-source container/link they drop
+// into. Transport off the source is Logistics' job (see operations/logistics.ts). Pure — reads the
+// snapshot only.
 
 import { countPart, orderBody } from "../spawn/body";
 import { roleDef } from "../behaviors/roles";
@@ -10,9 +11,8 @@ import { plannedObstacles } from "../layouts/goal";
 import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../layouts/roads";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
-import { harvestIncome, haulDistance, interleaveRank } from "../logistics/fleet";
 import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
-import { fillTo, type CreepRequest } from "../spawn/request";
+import type { CreepRequest } from "../spawn/request";
 import { bodyContext } from "../spawn/bodyContext";
 import { Operation } from "./operation";
 
@@ -21,18 +21,7 @@ const config = {
   // Capacity, not level, is what proves the extension economy exists to fund the container.
   structuresFromEnergyCapacity: 550,
   linkRcl: 7, // link beats container: miner drops straight in, no hauler round trip
-  minHaulerEnergy: 150, // one CARRY,CARRY,MOVE set — cheapest body
-  workPerSource: SOURCE_SATURATING_WORK, // shared with miner.ts's body cap so the two can't drift apart
-  sourceRegenPerTick: 10, // caps income so surplus miners can't ask for haulers to carry nonexistent energy
-  roomIncomeCap: 20, // room ceiling on harvestable income (two sources)
-  energyPerCarry: 50, // one CARRY part
-  haulerCarryMargin: 1.1, // over-provision required carry by 10%: covers respawn gaps and en-route drops
-  defaultHaulDistance: 10, // fallback before an anchor is known
-  // 0: Logistics/transport now covers the source->spawn/extension leg (docs/logistics-plan.md step 7).
-  // interleaveByPriority still runs over an empty haulers array — no special-casing needed. Existing
-  // haulers age out naturally with no replacements.
-  maxHaulers: 0,
-  dropBacklogThreshold: 2000 // above this, extra transport is fielded to clear the pile
+  workPerSource: SOURCE_SATURATING_WORK // shared with miner.ts's body cap so the two can't drift apart
 } as const;
 
 // building.ts's gate on source containers is mining's knowledge of what it needs when.
@@ -43,27 +32,6 @@ const ROAD: BuildableStructureConstant = "road";
 
 function sourceStructureType(rcl: number): BuildableStructureConstant {
   return rcl >= config.linkRcl ? "link" : "container";
-}
-
-/**
- * Rewrite miner/hauler priorities so the arbiter spawns them interleaved (miner, hauler, miner,
- * hauler) instead of every wanted miner before the first hauler, which deadlocks the cold start.
- * haulers is always [] under maxHaulers:0 (docs/logistics-plan.md step 7) — this loop simply never
- * emits anything for that side, no special-casing needed.
- */
-function interleaveByPriority(
-  miners: CreepRequest[],
-  haulers: CreepRequest[],
-  liveMiners: number,
-  liveHaulers: number
-): CreepRequest[] {
-  const minerPriority = roleDef("miner")!.priority;
-  const floor = roleDef("upgrader")!.priority + 1; // never dip into the upgrader tier
-
-  const out: CreepRequest[] = [];
-  miners.forEach((m, i) => out.push({ ...m, priority: interleaveRank(minerPriority, floor, liveMiners + i, 0) }));
-  haulers.forEach((h, i) => out.push({ ...h, priority: interleaveRank(minerPriority, floor, liveHaulers + i, 1) }));
-  return out;
 }
 
 // Asks the role table rather than restating its formula, sized against the same context the request body uses.
@@ -77,14 +45,8 @@ const workOf = (c: SnapCreep): number => countPart(c.body, WORK); // live WORK, 
 export class Mining extends Operation {
   public readonly kind = "mining";
 
-  /** Miners and haulers, interleaved by priority so the arbiter spawns them in alternation. */
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
-    return interleaveByPriority(
-      this.minerRequests(colony),
-      this.haulerRequests(colony),
-      this.owned(colony, "miner").length,
-      this.owned(colony, "hauler").length
-    );
+    return this.minerRequests(colony);
   }
 
   /**
@@ -134,42 +96,6 @@ export class Mining extends Operation {
       }
     }
     return out;
-  }
-
-  /**
-   * Haulers sized against what miners actually produce (income × round trip), not a flat
-   * one-per-container count. Zero when no miners are producing.
-   */
-  private haulerRequests(colony: ColonySnapshot): CreepRequest[] {
-    if (colony.energyCapacity < config.minHaulerEnergy) return [];
-
-    const body = orderBody(roleDef("hauler")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
-    const wanted = this.wantedHaulers(colony, body);
-    return fillTo(wanted, this.owned(colony, "hauler").length, body, roleDef("hauler")!.priority, {
-      role: "hauler",
-      home: colony.name,
-      op: this.name
-    });
-  }
-
-  /** How many haulers current miner output warrants: steady-state pile + any drop backlog, capped. */
-  private wantedHaulers(colony: ColonySnapshot, body: BodyPartConstant[]): number {
-    const income = harvestIncome(this.owned(colony, "miner"), colony, config);
-    if (income <= 0) return 0;
-
-    const roundTrip = 2 * haulDistance(colony, config);
-    // Over-provision carry (round up): the exact steady-state figure runs too lean once respawn
-    // gaps and en-route drops are accounted for, so buy a margin (config.haulerCarryMargin).
-    const neededCarry = Math.ceil((income * roundTrip + this.backlogCarry(colony)) * config.haulerCarryMargin);
-    const perHauler = Math.max(1, countPart(body, CARRY)) * config.energyPerCarry;
-
-    return Math.min(config.maxHaulers, Math.max(1, Math.ceil(neededCarry / perHauler)));
-  }
-
-  /** Carry owed to a dropped-energy backlog — zero below threshold, else the whole pile. */
-  private backlogCarry(colony: ColonySnapshot): number {
-    const dropped = colony.drops.reduce((sum: number, d) => sum + d.amount, 0);
-    return dropped > config.dropBacklogThreshold ? dropped : 0;
   }
 
   /** Each source's container/link and the road that reaches it. Never places sites — only claims. */
