@@ -60,8 +60,11 @@ describe("spawn arbiter — single colony", () => {
         snapCreep("miner", { memory: { sourceId: source.id, op: "mining:W1N1" } }),
         ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } })
       ],
-      // Energy on the ground gives the upgrader something to draw from, so upgrading asks for one.
-      drops: [dropAt(20, 10, 200)]
+      // Energy in the controller container (a logistics *consumer*, not a provider) gives the upgrader
+      // something to draw from without also creating a transport provider — a ground drop would, and
+      // transport (priority 100) would then take the single spawn slot ahead of the upgrader (60),
+      // which is correct behaviour but a different scenario than this body-affordability regression.
+      containers: [containerAt(25, 25, 200)]
     });
 
     expect(intents).toHaveLength(1);

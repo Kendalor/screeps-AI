@@ -30,6 +30,16 @@ describe("Logistics.desiredCreeps", () => {
     expect(logistics.desiredCreeps(withWork()).length).toBeGreaterThanOrEqual(1);
   });
 
+  // Regression: the transport request must NOT vanish the moment the spawn fills to capacity. The
+  // spawnSystem consumer's `wanted` is (capacity - available), which hits 0 at a full spawn; if that
+  // was the only consumer, desiredCreeps returned [] exactly when there was finally energy to spawn
+  // the transport — an oscillation where a lower-priority miner spawned instead, drained the spawn,
+  // and the transport reappeared next tick. A live provider is enough demand on its own.
+  it("still wants a transport creep when the spawn is full but a provider has energy", () => {
+    const full = withWork({ energyAvailable: 300, energyCapacity: 300 });
+    expect(logistics.desiredCreeps(full).length).toBeGreaterThanOrEqual(1);
+  });
+
   it("returns nothing once the live transport creeps meet the quota", () => {
     const miner = snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] });
     expect(logistics.desiredCreeps(withWork({ creeps: [miner, ...snapCreeps("transport", 6)] }))).toEqual([]);

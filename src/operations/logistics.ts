@@ -10,15 +10,15 @@
 // count to avoid miners monopolising every spawn slot, but that only works if both operations agree
 // on the exact same live-count index at the exact same tick, which proved fragile in practice
 // (miners kept winning every slot regardless). Simpler and correct: desiredCreeps here only ever
-// returns a request once providers()/consumers() are both non-empty — i.e. real energy is already
-// sitting on the ground/in a container AND there's somewhere for it to go — so a transport request
-// can never exist before the first miner has produced something. Once it does exist, it should win
-// the very next spawn slot outright.
+// returns a request once a provider has energy to move — real energy already sitting on the
+// ground/in a container — so a transport request can never exist before the first miner has produced
+// something. Once it does exist, it should win the very next spawn slot outright. The gate keys off
+// providers only, NOT the live consumers() list, whose spawnSystem entry blinks out at a full spawn.
 
 import { countPart, orderBody } from "../spawn/body";
 import type { Intent } from "../intents/types";
 import { planLogistics } from "../logistics";
-import { providers, consumers } from "../logistics/graph";
+import { providers } from "../logistics/graph";
 import { harvestIncome, haulDistance } from "../logistics/fleet";
 import { bodyContext } from "../spawn/bodyContext";
 import type { ColonySnapshot } from "../snapshot/types";
@@ -44,7 +44,14 @@ export class Logistics extends Operation {
   // on a job that doesn't exist, the same silent-stall shape Supply avoids by gating on storageEnergy.
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
     if (colony.energyCapacity < config.minTransportEnergy) return [];
-    if (providers(colony).length === 0 || consumers(colony).length === 0) return [];
+    // Gate on a provider having energy to move — NOT on consumers() being non-empty this tick. The
+    // spawn/extension system is the always-present structural sink (energyCapacity > 0), but its
+    // consumers() entry is (capacity - available), which momentarily hits 0 at a full spawn. Gating on
+    // the live consumer list there made the transport request vanish exactly when the spawn finally
+    // had the energy to build it — a lower-priority miner spawned instead, drained the spawn, and the
+    // request reappeared next tick (an oscillation that never spawned transport). A provider with
+    // energy plus a spawn system to feed is real, standing work.
+    if (providers(colony).length === 0) return [];
 
     const body = orderBody(roleDef("transport")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
     const wanted = this.wantedTransport(colony, body);

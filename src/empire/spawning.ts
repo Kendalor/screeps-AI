@@ -5,6 +5,7 @@ import { bodyCost } from "../spawn/body";
 import type { Colony } from "../colony";
 import type { Intent } from "../intents/types";
 import type { CreepRequest } from "../spawn/request";
+import { log } from "../lib/log";
 
 // Injected room-grid distance (Game.map.getRoomLinearDistance) so tests need no Game.
 export type RoomDistance = (a: string, b: string) => number;
@@ -32,6 +33,10 @@ export function planSpawning(colonies: Colony[], roomDistance: RoomDistance): In
     .sort((a, b) => b.priority - a.priority);
   if (requests.length === 0) return [];
 
+  log.info(
+    `spawn queue: ${requests.map(r => `${r.memory.role}(${r.priority})@${r.targetRoom}`).join(", ")}`
+  );
+
   const purses = new Map<string, Purse>();
   for (const c of colonies) {
     purses.set(c.name, {
@@ -51,6 +56,7 @@ export function planSpawning(colonies: Colony[], roomDistance: RoomDistance): In
     if (choice.stop) stopped.add(choice.stop);
     if (!choice.purse) continue; // nowhere can spawn this right now
     const slot = choice.purse.idle.shift()!; // pickPurse guarantees one
+    log.info(`spawning ${request.memory.role}(${request.priority})@${request.targetRoom} from ${choice.purse.room}`);
     out.push({ kind: "spawn", spawn: slot.id, body: request.body, memory: request.memory });
     choice.purse.budget -= bodyCost(request.body);
   }

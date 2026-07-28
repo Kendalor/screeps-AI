@@ -3,6 +3,7 @@
 import type { RoomType } from "../lib/roomName";
 import type { TaskState } from "../behaviors/types";
 import type { LogisticsTask } from "../logistics/types";
+import type { LogLevel } from "../lib/log";
 
 declare global {
   interface Memory {
@@ -12,6 +13,7 @@ declare global {
     expansion: ExpansionMemory;
     stats: StatsMemory;
     metrics: Record<string, ColonyMetricsMemory>; // cross-tick harvest-rate window; everything else in a report is derived fresh
+    logLevel?: LogLevel; // set via the in-game console (commands/console.ts); absent means "error" only
   }
 
   interface CreepMemory {
