@@ -11,12 +11,20 @@ import {
 } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
 import { sweepEnRoute } from "../behaviors/sweep";
+import { runTransport } from "../behaviors/transport";
 import type { Step } from "../behaviors/types";
 
 export function runCreepBehaviors(): void {
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
     if (creep.spawning) continue;
+    // Diverted before the step-table dispatch: "transport"'s ROLES entry deliberately has empty
+    // steps (assignment comes from planLogistics via memory.logistics, not a static step table), so
+    // falling into runOne would hit its `def.steps.length === 0` early-return and do nothing.
+    if (creep.memory.role === "transport") {
+      runTransport(creep);
+      continue;
+    }
     runOne(creep);
   }
 }
