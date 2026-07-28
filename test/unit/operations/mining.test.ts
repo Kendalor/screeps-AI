@@ -282,7 +282,10 @@ describe("Mining.desiredCreeps — haulers", () => {
 
   // One 3-WORK miner is 6 energy/tick; anchor 10 tiles from the source is a 20-tick round trip, so
   // 120 energy piles up between visits — one hauler (4 CARRY × 50 = 200 capacity) covers it.
-  it("wants one hauler for a single modest miner nearby", () => {
+  // Skipped: maxHaulers is 0 (docs/logistics-plan.md step 7 — Logistics/transport now covers this
+  // leg), so wantedHaulers' formula is permanently capped to 0 output in production. The formula
+  // itself is untouched; re-enable if maxHaulers is ever reverted off 0.
+  it.skip("wants one hauler for a single modest miner nearby", () => {
     const snap = colonySnap({
       sources: [sourceAt(20, 10)],
       anchor: { x: 10, y: 10 },
@@ -293,7 +296,8 @@ describe("Mining.desiredCreeps — haulers", () => {
 
   // Saturated income (two sources, 20 energy/tick capped) over the same trip piles 400 energy — two
   // haulers. Hauler capacity thus scales with miner output, which is the point.
-  it("fields more haulers as miner output rises", () => {
+  // Skipped: maxHaulers is 0 (see note above).
+  it.skip("fields more haulers as miner output rises", () => {
     const snap = colonySnap({
       sources: [sourceAt(20, 10), sourceAt(20, 12)],
       anchor: { x: 10, y: 10 },
@@ -304,7 +308,8 @@ describe("Mining.desiredCreeps — haulers", () => {
 
   // Same income, longer haul: a source far from the drop-off needs more carry capacity in flight, so
   // more haulers. Distance is a first-class input to the fleet size.
-  it("fields more haulers as the haul distance grows", () => {
+  // Skipped: maxHaulers is 0 (see note above).
+  it.skip("fields more haulers as the haul distance grows", () => {
     const near = colonySnap({ sources: [sourceAt(15, 10)], anchor: { x: 10, y: 10 }, creeps: wnMiners(1, 3) });
     const far = colonySnap({ sources: [sourceAt(45, 40)], anchor: { x: 10, y: 10 }, creeps: wnMiners(1, 3) });
 
@@ -338,7 +343,8 @@ describe("Mining.desiredCreeps — haulers", () => {
     expect(haulerRequests(snap)).toEqual([]);
   });
 
-  it("asks only for the shortfall once some haulers are alive", () => {
+  // Skipped: maxHaulers is 0 (see note above).
+  it.skip("asks only for the shortfall once some haulers are alive", () => {
     const before = colonySnap({
       sources: [sourceAt(20, 10), sourceAt(20, 12)],
       anchor: { x: 10, y: 10 },
@@ -355,7 +361,8 @@ describe("Mining.desiredCreeps — haulers", () => {
     expect(haulerRequests(after)).toHaveLength(wanted - 1);
   });
 
-  it("stamps the same op as its miners — one operation owns both", () => {
+  // Skipped: maxHaulers is 0 (see note above).
+  it.skip("stamps the same op as its miners — one operation owns both", () => {
     const snap = colonySnap({ sources: [sourceAt(20, 10)], anchor: { x: 10, y: 10 }, creeps: wnMiners(1, 3) });
 
     expect(haulerRequests(snap)[0].memory).toMatchObject({ role: "hauler", home: "W1N1", op: "mining:W1N1" });
@@ -364,7 +371,8 @@ describe("Mining.desiredCreeps — haulers", () => {
   // Ported from the legacy HaulerOperation: income sizes the steady-state fleet, but a large backlog
   // of dropped energy is transport capacity the colony is *already behind on*, so extra haulers are
   // fielded to work it down — the dynamic bump the goal asks for.
-  it("fields extra haulers when a large backlog of dropped energy has piled up", () => {
+  // Skipped: maxHaulers is 0 (see note above).
+  it.skip("fields extra haulers when a large backlog of dropped energy has piled up", () => {
     const base = {
       sources: [sourceAt(20, 10)],
       anchor: { x: 10, y: 10 },
@@ -431,7 +439,10 @@ describe("Mining.desiredCreeps — miner/hauler alternation", () => {
   // The deadlock this prevents: several miners already alive, none of them yet drained by a hauler.
   // Ranking by request index alone would keep the remaining miners on top forever; ranking by live
   // count puts the first haulers (hauler #1, #2) ahead of the next miners (miner #4, #5, …).
-  it("prioritises the first haulers over further miners once miners are already alive", () => {
+  // Skipped: maxHaulers is 0 (docs/logistics-plan.md step 7), so haulerRequests always returns []
+  // and there is no hauler to interleave with miners. interleaveByPriority itself is untouched and
+  // still runs over an empty haulers array; re-enable if maxHaulers is ever reverted off 0.
+  it.skip("prioritises the first haulers over further miners once miners are already alive", () => {
     const snap = colonySnap({
       sources: [sourceAt(20, 10), sourceAt(20, 12)],
       anchor: { x: 10, y: 10 },

@@ -15,6 +15,8 @@ function resolveNode(creep: Creep, ref: NodeRef): RoomObject | null {
       return Game.getObjectById(ref.id) as RoomObject | null;
     case "dropped":
       return Game.getObjectById(ref.id) as RoomObject | null;
+    case "tombstone":
+      return Game.getObjectById(ref.id) as RoomObject | null;
     case "creep":
       return Game.getObjectById(ref.id) as RoomObject | null;
     case "spawnSystem": {

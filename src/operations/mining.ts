@@ -10,7 +10,7 @@ import { plannedObstacles } from "../layouts/goal";
 import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../layouts/roads";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
-import { range, type XY } from "../lib/geometry";
+import { harvestIncome, haulDistance, interleaveRank } from "../logistics/fleet";
 import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
 import { fillTo, type CreepRequest } from "../spawn/request";
 import { bodyContext } from "../spawn/bodyContext";
@@ -28,7 +28,10 @@ const config = {
   energyPerCarry: 50, // one CARRY part
   haulerCarryMargin: 1.1, // over-provision required carry by 10%: covers respawn gaps and en-route drops
   defaultHaulDistance: 10, // fallback before an anchor is known
-  maxHaulers: 6, // measured: more doesn't clear the pre-container backlog faster
+  // 0: Logistics/transport now covers the source->spawn/extension leg (docs/logistics-plan.md step 7).
+  // interleaveByPriority still runs over an empty haulers array — no special-casing needed. Existing
+  // haulers age out naturally with no replacements.
+  maxHaulers: 0,
   dropBacklogThreshold: 2000 // above this, extra transport is fielded to clear the pile
 } as const;
 
@@ -45,6 +48,8 @@ function sourceStructureType(rcl: number): BuildableStructureConstant {
 /**
  * Rewrite miner/hauler priorities so the arbiter spawns them interleaved (miner, hauler, miner,
  * hauler) instead of every wanted miner before the first hauler, which deadlocks the cold start.
+ * haulers is always [] under maxHaulers:0 (docs/logistics-plan.md step 7) — this loop simply never
+ * emits anything for that side, no special-casing needed.
  */
 function interleaveByPriority(
   miners: CreepRequest[],
@@ -53,13 +58,11 @@ function interleaveByPriority(
   liveHaulers: number
 ): CreepRequest[] {
   const minerPriority = roleDef("miner")!.priority;
-  const FLOOR = roleDef("upgrader")!.priority + 1; // never dip into the upgrader tier
-  const rank = (roleIndex: number, offset: 0 | 1): number =>
-    Math.max(FLOOR, minerPriority - 2 * roleIndex - offset);
+  const floor = roleDef("upgrader")!.priority + 1; // never dip into the upgrader tier
 
   const out: CreepRequest[] = [];
-  miners.forEach((m, i) => out.push({ ...m, priority: rank(liveMiners + i, 0) }));
-  haulers.forEach((h, i) => out.push({ ...h, priority: rank(liveHaulers + i, 1) }));
+  miners.forEach((m, i) => out.push({ ...m, priority: interleaveRank(minerPriority, floor, liveMiners + i, 0) }));
+  haulers.forEach((h, i) => out.push({ ...h, priority: interleaveRank(minerPriority, floor, liveHaulers + i, 1) }));
   return out;
 }
 
@@ -151,10 +154,10 @@ export class Mining extends Operation {
 
   /** How many haulers current miner output warrants: steady-state pile + any drop backlog, capped. */
   private wantedHaulers(colony: ColonySnapshot, body: BodyPartConstant[]): number {
-    const income = this.harvestIncome(colony);
+    const income = harvestIncome(this.owned(colony, "miner"), colony, config);
     if (income <= 0) return 0;
 
-    const roundTrip = 2 * this.haulDistance(colony);
+    const roundTrip = 2 * haulDistance(colony, config);
     // Over-provision carry (round up): the exact steady-state figure runs too lean once respawn
     // gaps and en-route drops are accounted for, so buy a margin (config.haulerCarryMargin).
     const neededCarry = Math.ceil((income * roundTrip + this.backlogCarry(colony)) * config.haulerCarryMargin);
@@ -167,38 +170,6 @@ export class Mining extends Operation {
   private backlogCarry(colony: ColonySnapshot): number {
     const dropped = colony.drops.reduce((sum: number, d) => sum + d.amount, 0);
     return dropped > config.dropBacklogThreshold ? dropped : 0;
-  }
-
-  /** Harvestable income right now: live miner WORK as energy/tick, clamped to source regen. */
-  private harvestIncome(colony: ColonySnapshot): number {
-    const workParts = this.owned(colony, "miner").reduce(
-      (sum: number, c: SnapCreep) => sum + countPart(c.body, WORK),
-      0
-    );
-    const raw = workParts * HARVEST_POWER;
-    const regenCap = Math.min(config.roomIncomeCap, colony.sources.length * config.sourceRegenPerTick);
-    return Math.min(raw, regenCap);
-  }
-
-  /** Mean distance from a source drop-off to where a hauler unloads; flat default before an anchor exists. */
-  private haulDistance(colony: ColonySnapshot): number {
-    const dropOff = this.dropOff(colony);
-    if (!dropOff || colony.sources.length === 0) return config.defaultHaulDistance;
-
-    const total = colony.sources.reduce((sum: number, source: SnapSource) => {
-      const spot = colony.sourceMemory[source.id]?.spot ?? source;
-      return sum + range(dropOff, spot);
-    }, 0);
-    return Math.max(1, Math.round(total / colony.sources.length));
-  }
-
-  /** Where haulers deliver: storage if built, else the anchor. Null before either exists. */
-  private dropOff(colony: ColonySnapshot): XY | null {
-    if (colony.storageId) {
-      const storage = colony.structures.find(s => s.type === "storage");
-      if (storage) return { x: storage.x, y: storage.y };
-    }
-    return colony.anchor;
   }
 
   /** Each source's container/link and the road that reaches it. Never places sites — only claims. */

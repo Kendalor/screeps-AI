@@ -3,7 +3,7 @@
 // Reuses targets.ts's belowFillTo/isWorthwhile-shaped math so "is this container full/worth a trip" is
 // asked once, not reinvented here — same reasoning, snapshot-pure instead of live-object.
 
-import type { ColonySnapshot, SnapContainer, SnapDrop } from "../snapshot/types";
+import type { ColonySnapshot, SnapContainer, SnapCreep, SnapDrop, SnapTombstone, SnapTower } from "../snapshot/types";
 import type { NodeRef } from "./types";
 
 export interface Provider {
@@ -17,15 +17,24 @@ export interface Consumer {
   ref: NodeRef;
   resource: ResourceConstant;
   wanted: number; // free capacity, capped by fillTo-equivalent floors
-  priority: number; // spawn/extension > controller-container-floor > storage > tower > creep sink
+  priority: number; // spawn/extension > tower > controller-container-floor
 }
 
-// Mirrors hauler.ts's step order (spawn/ext first, then controller-container to a floor, then
-// storage/tower/creep sink) — this graph is a new, additive consumer of that knowledge, not a rewrite
-// of hauler.ts, which stays live during the A/B (see docs/logistics-plan.md).
+// Deliberately NOT hauler.ts's step order: hauler ranks controller-container above tower, which is
+// faulty — an empty tower during an attack is worse than the controller container missing its 0.7
+// floor. Logistics ranks tower above controller-container instead; this graph is the new, additive
+// consumer of the spawn/extension-first knowledge only, not a full copy of hauler.ts's tier order.
 const PRIORITY = {
   spawnSystem: 100,
-  controllerContainer: 80
+  tower: 90,
+  controllerContainer: 80,
+  // New sinks so builder/upgrader aren't left to self-harvest once transport claims every ground
+  // pile before they can scavenge it (the regression this fixes: construction/upgrading throughput
+  // collapsed to whatever a creep could personally harvest, once maxHaulers:0 meant transport was
+  // efficient enough to leave drops=0/containers=0 permanently). Builder ranks above upgrader per
+  // explicit direction — a stalled build blocks the room's economy longer than slower upgrading does.
+  builder: 40,
+  upgrader: 30
 } as const;
 
 // The controller container is topped to a floor (not filled to 100%) so upgraders draining it for
@@ -70,6 +79,18 @@ export function providers(colony: ColonySnapshot): Provider[] {
     });
   }
 
+  // A dead creep's leftover energy — same worthwhile bar as a dropped pile, and it decays too
+  // (tombstones expire), so it gets the same urgency treatment.
+  for (const t of colony.tombstones) {
+    if (t.storeEnergy < DROP_WORTHWHILE_FLOOR) continue;
+    out.push({
+      ref: { kind: "tombstone", id: t.id },
+      resource: RESOURCE_ENERGY,
+      available: t.storeEnergy,
+      urgency: 1
+    });
+  }
+
   return out;
 }
 
@@ -91,6 +112,19 @@ export function consumers(colony: ColonySnapshot): Consumer[] {
     });
   }
 
+  // Ranked above the controller container: an empty tower during an attack outranks the
+  // controller container's 0.7 floor top-off.
+  for (const t of colony.towers) {
+    const wanted = t.storeCapacity - t.storeEnergy;
+    if (wanted <= 0) continue;
+    out.push({
+      ref: { kind: "structure", id: t.id as unknown as Id<AnyStoreStructure> },
+      resource: RESOURCE_ENERGY,
+      wanted,
+      priority: PRIORITY.tower
+    });
+  }
+
   for (const c of colony.containers) {
     if (!isNearController(colony, c)) continue;
     const floorAmount = Math.floor(c.storeCapacity * CONTROLLER_CONTAINER_FILL_FLOOR);
@@ -104,5 +138,22 @@ export function consumers(colony: ColonySnapshot): Consumer[] {
     });
   }
 
+  // Lowest tiers: builder and upgrader as direct creep sinks, so they don't fall back to self-harvest
+  // once transport has already claimed every ground pile — builder ranked above upgrader.
+  for (const c of colony.creeps) {
+    if (c.role !== "builder") continue;
+    pushCreepConsumer(out, c, PRIORITY.builder);
+  }
+  for (const c of colony.creeps) {
+    if (c.role !== "upgrader") continue;
+    pushCreepConsumer(out, c, PRIORITY.upgrader);
+  }
+
   return out;
+}
+
+function pushCreepConsumer(out: Consumer[], c: SnapCreep, priority: number): void {
+  const wanted = c.storeCapacity - c.storeEnergy;
+  if (wanted <= 0) return;
+  out.push({ ref: { kind: "creep", id: c.id }, resource: RESOURCE_ENERGY, wanted, priority });
 }

@@ -31,6 +31,7 @@ export function refKey(ref: NodeRef | DeepReadonly<NodeRef>): string {
       return "spawnSystem";
     case "structure":
     case "dropped":
+    case "tombstone":
     case "creep":
       return `${ref.kind}:${ref.id}`;
   }

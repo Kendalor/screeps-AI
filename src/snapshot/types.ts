@@ -12,6 +12,8 @@ export interface SnapTower {
   id: Id<StructureTower>;
   x: number;
   y: number;
+  storeEnergy: number;
+  storeCapacity: number;
 }
 
 import type { XY } from "../lib/geometry";
@@ -75,6 +77,11 @@ export interface SnapDrop extends XY {
   amount: number;
 }
 
+export interface SnapTombstone extends XY {
+  id: Id<Tombstone>;
+  storeEnergy: number;
+}
+
 // A room within scouting radius, as the Scouting operation sees it, built by walking the room graph at the snapshot boundary.
 export interface ScoutCandidate {
   room: string;
@@ -113,6 +120,7 @@ export interface ColonySnapshot {
   energyCapacity: number;
   sources: SnapSource[];
   drops: SnapDrop[]; // ground-level energy from drop mining
+  tombstones: SnapTombstone[]; // energy left behind by a dead creep
   terrain: Uint8Array; // 1 = walkable, 0 = wall, indexed [x*50+y]
   controller: XY; // controller position, so operations can path to it (e.g. the upgrade container)
   controllerLevel: number;

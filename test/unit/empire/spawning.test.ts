@@ -200,6 +200,57 @@ describe("spawn arbiter — single colony", () => {
     expect(ops).toEqual(["cheap:W1N1"]);
   });
 
+  // Real-operation regression (not hand-built requests): a colony with simultaneous miner, upgrader
+  // and transport demand must spawn transport first, and never let a cheaper miner/upgrader leapfrog
+  // it just because transport's body happens to cost more. Exercises Mining + Upgrading + Logistics
+  // together through the actual Colony/operationsFor() pipeline, since desiredCreeps() unit tests for
+  // each operation in isolation can't catch a cross-operation priority inversion.
+  it("spawns transport ahead of a competing miner/upgrader deficit when it can afford its body", () => {
+    const miner = snapCreep("miner", { body: [WORK, WORK, MOVE, MOVE], memory: { sourceId: "s0" as Id<Source> } });
+    const upgrader = snapCreep("upgrader", { body: [WORK, CARRY, MOVE, MOVE] });
+
+    const intents = arbitrate({
+      name: "W8N3",
+      spawns: [spawn()],
+      energyAvailable: 550,
+      energyCapacity: 550,
+      controllerLevel: 3,
+      sources: [sourceAt(20, 10, "s0", 3), sourceAt(20, 12, "s1", 3)],
+      creeps: [miner, upgrader],
+      drops: [dropAt(33, 21, 500), dropAt(33, 20, 400)],
+      containers: [containerAt(21, 10, 300)],
+      anchor: { x: 25, y: 15 }
+    });
+
+    expect(intents).toHaveLength(1);
+    const spawned = intents[0] as Extract<Intent, { kind: "spawn" }>;
+    expect(spawned.memory.role).toBe("transport");
+  });
+
+  // The counterpart: when transport can't yet afford its body, the arbiter must stop the colony
+  // (per the "stops on an unaffordable request" rule above) rather than let the cheaper miner or
+  // upgrader deficit spawn instead — that would be exactly the priority inversion this covers.
+  it("does not let miner or upgrader spawn ahead of an unaffordable transport request", () => {
+    const miner = snapCreep("miner", { body: [WORK, WORK, MOVE, MOVE], memory: { sourceId: "s0" as Id<Source> } });
+    const upgrader = snapCreep("upgrader", { body: [WORK, CARRY, MOVE, MOVE] });
+
+    const intents = arbitrate({
+      name: "W8N3",
+      spawns: [spawn()],
+      energyAvailable: 250, // transport's body (500) is unaffordable, but within capacity (550)
+      energyCapacity: 550,
+      controllerLevel: 3,
+      sources: [sourceAt(20, 10, "s0", 3), sourceAt(20, 12, "s1", 3)],
+      creeps: [miner, upgrader],
+      drops: [dropAt(33, 21, 500), dropAt(33, 20, 400)],
+      containers: [containerAt(21, 10, 300)],
+      anchor: { x: 25, y: 15 }
+    });
+
+    const spawned = intents.filter(i => i.kind === "spawn") as Extract<Intent, { kind: "spawn" }>[];
+    expect(spawned.every(i => i.memory.role !== "miner" && i.memory.role !== "upgrader")).toBe(true);
+  });
+
   it("does not block a lower-priority request an unaffordable recovery request cannot pay for", () => {
     // Recovery sizes down to affordability and stands aside when it still cannot pay, rather than
     // stopping the arbiter on request zero. The cheapest possible supply body is one [CARRY, MOVE]

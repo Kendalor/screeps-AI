@@ -9,6 +9,7 @@ export type NodeRef =
   | { kind: "structure"; id: Id<AnyStoreStructure> }
   | { kind: "spawnSystem" }
   | { kind: "dropped"; id: Id<Resource> }
+  | { kind: "tombstone"; id: Id<Tombstone> }
   | { kind: "creep"; id: Id<Creep> };
 
 export interface LogisticsTask {

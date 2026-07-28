@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
-import { colonySnap, containerAt, snapCreeps } from "../../fixtures";
+import { colonySnap, containerAt, snapCreep, snapCreeps } from "../../fixtures";
 
 const logistics = new Logistics("W1N1");
 
@@ -14,26 +14,43 @@ describe("Logistics.desiredCreeps", () => {
     expect(logistics.desiredCreeps(colonySnap({}))).toEqual([]);
   });
 
+  // A miner with live WORK parts is what makes wantedTransport's income-based sizing nonzero —
+  // without one, harvestIncome is 0 and Logistics correctly asks for nothing (see the case above).
   const withWork = (over: Parameters<typeof colonySnap>[0] = {}) =>
     colonySnap({
       containers: [containerAt(10, 10, 300)],
       controller: { x: 25, y: 25 },
       energyAvailable: 200,
       energyCapacity: 300,
+      creeps: [snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] })],
       ...over
     });
 
-  it("wants one transport creep once a provider and consumer both exist", () => {
-    expect(logistics.desiredCreeps(withWork())).toHaveLength(1);
+  it("wants at least one transport creep once a provider and consumer both exist", () => {
+    expect(logistics.desiredCreeps(withWork()).length).toBeGreaterThanOrEqual(1);
   });
 
   it("returns nothing once the live transport creeps meet the quota", () => {
-    expect(logistics.desiredCreeps(withWork({ creeps: snapCreeps("transport", 1) }))).toEqual([]);
+    const miner = snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] });
+    expect(logistics.desiredCreeps(withWork({ creeps: [miner, ...snapCreeps("transport", 6)] }))).toEqual([]);
   });
 
   it("stamps its own op name on every request", () => {
     const [request] = logistics.desiredCreeps(withWork());
     expect(request.memory).toMatchObject({ role: "transport", home: "W1N1", op: "logistics:W1N1" });
+  });
+
+  // The regression this guards: an earlier version staggered transport's priority against live
+  // miner/transport counts to avoid miners monopolising every spawn slot, but the two operations'
+  // live-count reads didn't line up closely enough in practice — miners kept winning regardless.
+  // Fixed with a flat top-tier priority (100, same as bootstrap/supply) instead: since
+  // desiredCreeps only ever returns a request once there's real provider/consumer work, a flat top
+  // priority can't fire before the first miner has produced anything, but always wins once it does.
+  it("ranks above any number of live miners once there is real work to do", () => {
+    const sixMiners = Array.from({ length: 6 }, () => snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] }));
+    const [request] = logistics.desiredCreeps(withWork({ creeps: sixMiners }));
+
+    expect(request.priority).toBe(100);
   });
 });
 

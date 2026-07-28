@@ -50,7 +50,13 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     tick,
     towers: room
       .find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER })
-      .map(t => ({ id: t.id as Id<StructureTower>, x: t.pos.x, y: t.pos.y })),
+      .map(t => ({
+        id: t.id as Id<StructureTower>,
+        x: t.pos.x,
+        y: t.pos.y,
+        storeEnergy: (t as StructureTower).store.getUsedCapacity(RESOURCE_ENERGY),
+        storeCapacity: (t as StructureTower).store.getCapacity(RESOURCE_ENERGY)
+      })),
     hostiles: room.find(FIND_HOSTILE_CREEPS).map(snapUnit),
     woundedFriendlies: myCreeps.filter(c => c.hits < c.hitsMax).map(snapUnit),
     safeModeAvailable:
@@ -65,6 +71,9 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     energyCapacity: room.energyCapacityAvailable,
     sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
     drops: room.find(FIND_DROPPED_RESOURCES).map(d => ({ id: d.id, x: d.pos.x, y: d.pos.y, amount: d.amount })),
+    tombstones: room
+      .find(FIND_TOMBSTONES)
+      .map(t => ({ id: t.id, x: t.pos.x, y: t.pos.y, storeEnergy: t.store.getUsedCapacity(RESOURCE_ENERGY) })),
     terrain: walkablePixelsForRoom(room.name),
     controller: { x: controller.pos.x, y: controller.pos.y },
     controllerLevel: controller.level,

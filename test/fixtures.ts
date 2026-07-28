@@ -12,6 +12,7 @@ import type {
   SnapDrop,
   SnapSource,
   SnapSpawn,
+  SnapTombstone,
   SnapTower,
   SnapUnit,
   VisibleRoom
@@ -31,6 +32,10 @@ export function sourceAt(x: number, y: number, id = `source_${x}_${y}`, openTile
 
 export function dropAt(x: number, y: number, amount = 50, id = `drop_${x}_${y}`): SnapDrop {
   return { id: id as Id<Resource>, x, y, amount };
+}
+
+export function tombstoneAt(x: number, y: number, storeEnergy = 50, id = `tombstone_${x}_${y}`): SnapTombstone {
+  return { id: id as Id<Tombstone>, x, y, storeEnergy };
 }
 
 export function empireSnap(...colonies: ColonySnapshot[]): EmpireSnapshot {
@@ -75,6 +80,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     energyCapacity: 300,
     sources: [sourceAt(20, 10)],
     drops: [],
+    tombstones: [],
     terrain: openTerrain(),
     controller: { x: 25, y: 25 },
     controllerLevel: 1,
@@ -127,8 +133,8 @@ export function woundedAt(x: number, y: number, id = `wounded_${x}_${y}`): SnapU
   return { id: id as Id<Creep>, x, y, hits: 50, hitsMax: 100 };
 }
 
-export function towerAt(x: number, y: number, id = `tower_${x}_${y}`): SnapTower {
-  return { id: id as Id<StructureTower>, x, y };
+export function towerAt(x: number, y: number, id = `tower_${x}_${y}`, storeEnergy = 0): SnapTower {
+  return { id: id as Id<StructureTower>, x, y, storeEnergy, storeCapacity: 1000 };
 }
 
 export function containerAt(
