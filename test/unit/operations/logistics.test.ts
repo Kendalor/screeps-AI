@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
-import { colonySnap, containerAt, snapCreep, snapCreeps } from "../../fixtures";
+import { colonySnap, containerAt, sinkAt, snapCreep, snapCreeps } from "../../fixtures";
 import { bodyCost } from "../../../src/spawn/body";
 
 const logistics = new Logistics("W1N1");
@@ -102,6 +102,7 @@ describe("Logistics.intents", () => {
         creeps: [creep],
         containers: [container],
         controller: { x: 25, y: 25 },
+        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")], // open sink so allocate has a consumer to assign to
         energyAvailable: 200,
         energyCapacity: 300
       })

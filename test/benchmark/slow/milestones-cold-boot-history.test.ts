@@ -87,8 +87,9 @@ function totalControllerProgress(level: number, progress: number): number {
 
 const FINAL_SNAPSHOT_SPEC: BenchmarkSpec = {
   finalRcl: { direction: "higher", unit: "level" },
-  // Progress into the current level and how much that level needs — together the "current RCL progress".
-  finalControllerProgress: { direction: "higher", unit: "progress" },
+  // Progress into the current level, shown against the level's threshold ("50000 / 400000"). The
+  // threshold (finalControllerProgressTotal) is display-only: it's a per-RCL constant, not an outcome.
+  finalControllerProgress: { direction: "higher", unit: "progress", outOf: "finalControllerProgressTotal" },
   finalControllerProgressTotal: { unit: "progress" },
   // Monotonic cumulative upgrade points across all levels; comparable regardless of the RCL reached.
   finalTotalControllerProgress: { direction: "higher", unit: "progress" },

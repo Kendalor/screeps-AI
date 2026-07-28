@@ -25,6 +25,16 @@ export interface SnapSpawn {
   busy: boolean; // spawning right now
 }
 
+// A single spawn or extension as an energy sink, with its own store so the logistics graph can hand a
+// transport creep one specific structure to reserve (and thereby remove from other creeps' options),
+// rather than only the colony-wide energyAvailable/energyCapacity aggregate. Spawns and extensions
+// share a type here because a hauler fills them identically — the "any spawn/extension with room" pool.
+export interface SnapSink extends XY {
+  id: Id<StructureSpawn | StructureExtension>;
+  storeEnergy: number;
+  storeCapacity: number;
+}
+
 // One live creep, as a requester's satisfaction check sees it. No counts carried — different requesters project the same creeps differently.
 export interface SnapCreep {
   id: Id<Creep>;
@@ -120,6 +130,10 @@ export interface ColonySnapshot {
   safeModeCount: number; // activations banked for later use
   creeps: SnapCreep[]; // alive + spawning creeps with memory.home this colony
   spawns: SnapSpawn[];
+  // Per-structure spawn/extension sinks, so the logistics graph can reserve individual extensions for
+  // one creep's multi-dropoff trip. energyAvailable/energyCapacity below remain the aggregate the fleet
+  // sizing and spawn gating read — the two coexist, one for reservation, one for economy math.
+  spawnSinks: SnapSink[];
   energyAvailable: number;
   energyCapacity: number;
   sources: SnapSource[];
@@ -129,7 +143,9 @@ export interface ColonySnapshot {
   controller: XY; // controller position, so operations can path to it (e.g. the upgrade container)
   controllerLevel: number;
   controllerProgress: number;
+  controllerProgressTotal: number; // progress needed to reach the next level; 0 at max RCL
   storageEnergy: number; // 0 when no storage built yet
+  storageCapacity: number; // 0 when no storage built yet — total store capacity when it exists
   containers: SnapContainer[]; // empty until mining containers are built
   storageId?: Id<StructureStorage>; // absent until storage is built
   anchor: XY | null; // null until a bunker-fitting anchor is found in this room

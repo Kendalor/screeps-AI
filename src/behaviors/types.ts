@@ -4,8 +4,8 @@ import type { RoleName } from "../memory/schema";
 // Sources ignore this and use their open harvest-tile count as the cap instead.
 export type Share = "allow" | "avoid" | number;
 
-// Selection strategy a step declares outright, no implicit fallback: "nearest" (default) is closest, "largest" ranks a drop pile by amount, "mostProgress" ranks a construction site closest to done.
-export type Prefer = "nearest" | "largest" | "mostProgress";
+// Selection strategy a step declares outright, no implicit fallback: "nearest" (default) is closest, "largest" ranks a drop pile by amount, "mostProgress" ranks a construction site closest to done, "mostDamaged" ranks a structure by lowest hits fraction (the repair counterpart of "mostProgress").
+export type Prefer = "nearest" | "largest" | "mostProgress" | "mostDamaged";
 
 export type TargetSpec =
   | {

@@ -95,6 +95,9 @@ Object.assign(globalThis, {
   // A WORK part harvests this much energy per tick, from screeps/common constants.
   HARVEST_POWER: 2,
 
+  // Hits repaired per energy spent, from screeps/common constants — the metrics repair-energy conversion.
+  REPAIR_POWER: 100,
+
   // Spawn cost per body part, from screeps/common constants.
   BODYPART_COST: {
     move: 50,

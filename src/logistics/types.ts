@@ -19,8 +19,11 @@ export interface LogisticsTask {
   resource: ResourceConstant;
   amount: number; // capped to creep capacity when assigned; informational for matching
   // The follow-up leg, assigned together with this one so a creep flows straight through with no idle
-  // re-plan tick between them: a pickup carries its paired deliver here. runTransport promotes it to
-  // `current` the instant this task completes (see behaviors/transport.ts). Never nests further — the
-  // deliver leg has no `next` of its own; the creep goes idle after it and gets re-planned fresh.
+  // re-plan tick between them. A trip is a chain of pickups terminating in one deliver — e.g.
+  // pickup(A) -> pickup(B) -> deliver(consumer) when no single provider fills the creep for that
+  // consumer (see allocate.ts). runTransport promotes `next` to `current` the instant the current leg
+  // completes (see behaviors/transport.ts). The terminal deliver has no `next` of its own; the creep
+  // goes idle after it and gets re-planned fresh. Every pickup in the chain also carries the consumer
+  // in its own `to` so foldReserved can read the destination off `current` without walking the chain.
   next?: LogisticsTask;
 }

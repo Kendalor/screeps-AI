@@ -2,6 +2,8 @@
 // energy, plus the controller container/road that keeps them fed without a hauler round trip. Pure.
 
 import { roleDef } from "../behaviors/roles";
+import { bodyContext } from "../spawn/bodyContext";
+import { countPart } from "../spawn/body";
 import GOAL_JSON from "../layouts/Base_2.json";
 import { plannedObstacles } from "../layouts/goal";
 import { buildCostMatrix, controllerContainerPath } from "../layouts/roads";
@@ -10,6 +12,7 @@ import type { GoalLayout } from "../layouts/sync";
 import type { XY } from "../lib/geometry";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
+import { incomePerTick, sustainableBuildWork } from "./building";
 import { Operation, type RoleTarget } from "./operation";
 
 const upgraderConfig = {
@@ -48,16 +51,42 @@ function wantedPreStorageUpgraders(colony: ColonySnapshot): number {
   return base + surplusBonus;
 }
 
+function upgraderBodyWork(colony: ColonySnapshot): number {
+  const body = roleDef("upgrader")?.body(colony.energyCapacity, bodyContext(colony)) ?? [];
+  return Math.max(1, countPart(body, WORK));
+}
+
+/**
+ * Pre-storage upgrader headcount ceiling from income. upgrade() costs 1 e/tick per WORK, so the whole
+ * income could feed upgrading — but building wins the competition: while a backlog exists builders take
+ * up to sustainableBuildWork * 5 e/t (the full income at low RCL), leaving upgraders only the remainder
+ * at 1 e/t per WORK. Once construction is done the remainder is the whole income again. Translated into
+ * a headcount against the current body's WORK, so the cap tracks body size like Building's does.
+ */
+function incomeCappedUpgraders(colony: ColonySnapshot): number {
+  const buildSpend = colony.constructionProgress > 0 ? sustainableBuildWork(colony) * 5 : 0;
+  const upgradeBudgetWork = Math.max(0, incomePerTick(colony) - buildSpend); // 1 e/t per WORK
+  return Math.floor(upgradeBudgetWork / upgraderBodyWork(colony));
+}
+
 function wantedUpgraders(colony: ColonySnapshot): number {
-  // With storage, scale with what it holds.
-  const wanted =
-    colony.storageEnergy > 0
-      ? Math.min(
-          upgraderConfig.maxStorageUpgraders,
-          Math.max(0, Math.floor((colony.storageEnergy - upgraderConfig.storageReserve) / upgraderConfig.storagePerUpgrader))
-        )
-      : wantedPreStorageUpgraders(colony);
-  return Math.min(upgraderConfig.maxUpgraders, wanted);
+  // With storage, scale with what it holds — the buffer, not income, is the constraint.
+  if (colony.storageEnergy > 0) {
+    const wanted = Math.min(
+      upgraderConfig.maxStorageUpgraders,
+      Math.max(0, Math.floor((colony.storageEnergy - upgraderConfig.storageReserve) / upgraderConfig.storagePerUpgrader))
+    );
+    return Math.min(upgraderConfig.maxUpgraders, wanted);
+  }
+
+  // Pre-storage: the demand-side count (surplus/backlog driven) capped by what income can sustainably
+  // feed, since there's no buffer to draw down. The floor (minPreStorageUpgraders while building) still
+  // applies via wantedPreStorageUpgraders — a lone floor upgrader is cheap enough to run off the buffer
+  // haulers keep in the containers even when the strict income remainder rounds to zero.
+  const demand = wantedPreStorageUpgraders(colony);
+  const capped = Math.min(demand, incomeCappedUpgraders(colony));
+  const floored = colony.constructionProgress > 0 ? Math.max(capped, Math.min(demand, upgraderConfig.minPreStorageUpgraders)) : capped;
+  return Math.min(upgraderConfig.maxUpgraders, floored);
 }
 
 // The tile storage sits on in the bunker goal — known from the anchor before storage is built, so the

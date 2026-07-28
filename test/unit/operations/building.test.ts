@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Building } from "../../../src/operations/building";
-import { colonySnap, snapCreeps } from "../../fixtures";
+import { colonySnap, snapCreeps, sourceAt } from "../../fixtures";
 
 describe("builder workforce", () => {
   const building = new Building("W1N1");
@@ -20,10 +20,25 @@ describe("builder workforce", () => {
     expect(building.desiredCreeps(colonySnap({ constructionProgress: 5_000, storageEnergy: 200_000 }))).toHaveLength(5);
   });
 
-  // Hard ceiling regardless of how much WORK the backlog calls for.
+  // Hard ceiling regardless of how much WORK the backlog calls for (storage present, so income doesn't bind).
   it("caps at maxBuilders even when outstanding work asks for more", () => {
     expect(building.desiredCreeps(colonySnap({ constructionProgress: 50_000, storageEnergy: 200_000 }))).toHaveLength(6);
-    expect(building.desiredCreeps(colonySnap({ constructionProgress: 8_000, storageEnergy: 0 }))).toHaveLength(6);
+    // With storage there's a buffer to burn on a blitz, so a 6-source room reaches the maxBuilders cap.
+    const sources = [10, 12, 14, 16, 18, 20].map(y => sourceAt(20, y, `source_${y}`));
+    expect(building.desiredCreeps(colonySnap({ constructionProgress: 50_000, storageEnergy: 200_000, sources }))).toHaveLength(6);
+  });
+
+  // build() costs 5 e/tick per WORK, so pre-storage (no buffer to draw down) the WORK is capped at
+  // income/5 = sources*10/5 = sources*2 WORK, no matter how large the backlog. Default fixture = 1 source.
+  it("caps builder WORK at what income can feed when there is no storage", () => {
+    // 1 source = 10 e/t → floor(10/5) = 2 sustainable WORK → 2 builders at the 1-WORK/creep 300 body,
+    // even though 8k of backlog would otherwise ask for 8.
+    expect(building.desiredCreeps(colonySnap({ constructionProgress: 8_000, storageEnergy: 0 }))).toHaveLength(2);
+    // 2 sources = 20 e/t → floor(20/5) = 4 sustainable WORK → 4 builders.
+    const twoSources = [sourceAt(20, 10, "source_a"), sourceAt(20, 14, "source_b")];
+    expect(
+      building.desiredCreeps(colonySnap({ constructionProgress: 8_000, storageEnergy: 0, sources: twoSources }))
+    ).toHaveLength(4);
   });
 
   // A bigger body (more WORK per creep) needs fewer creeps to cover the same WORK target.

@@ -19,18 +19,24 @@ function isIdle(creep: SnapCreep): boolean {
 // double-book a provider/consumer a mid-task creep already claimed — generalizes targets.ts's
 // claimCounts() from "count of creeps pointed at X" to "amount of resource already spoken for at X".
 //
-// Only `current` is folded, never `next`: a pickup's `current` already carries both its provider
-// (`from`) and its destination consumer (`to`), so it reserves both legs of the round trip in one
-// pass. The paired `next` deliver names that SAME energy and SAME consumer — folding it too would
-// reserve the consumer twice and wrongly starve other idle creeps of it. When `next` is promoted to
-// `current` on completion, it then folds normally as the sole remaining leg.
+// A creep's `current` is the head of a chain that mixes pickup and deliver legs (pickup->pickup->...->
+// deliver->deliver->...). The reservation rule is per-leg-kind:
+//   - each PICKUP leg reserves its `from` PROVIDER by that leg's amount — every source in the chain is
+//     still to be drawn from, so an idle creep must not be sent to one this chain plans to empty;
+//   - each DELIVER leg reserves its `to` CONSUMER by that leg's amount — every sink the trip will fill
+//     is still open work nobody else should be dispatched to.
+// A pickup leg's own `to` (only a foldReserved-free head-pointer hint the allocator sets) is IGNORED
+// here — reserving off it would double-count the consumer the deliver legs already reserve exactly.
 function foldReserved(creeps: readonly SnapCreep[]): ReservedAmounts {
   const reserved = emptyReserved();
   for (const creep of creeps) {
-    const task = creep.memory.logistics?.current;
-    if (!task) continue;
-    if (task.from) reserved.providers[refKey(task.from)] = (reserved.providers[refKey(task.from)] ?? 0) + task.amount;
-    if (task.to) reserved.consumers[refKey(task.to)] = (reserved.consumers[refKey(task.to)] ?? 0) + task.amount;
+    for (let leg = creep.memory.logistics?.current; leg; leg = leg.next) {
+      if (leg.kind === "pickup" && leg.from) {
+        reserved.providers[refKey(leg.from)] = (reserved.providers[refKey(leg.from)] ?? 0) + leg.amount;
+      } else if (leg.kind === "deliver" && leg.to) {
+        reserved.consumers[refKey(leg.to)] = (reserved.consumers[refKey(leg.to)] ?? 0) + leg.amount;
+      }
+    }
   }
   return reserved;
 }

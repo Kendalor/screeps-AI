@@ -34,7 +34,12 @@ const PRIORITY = {
   // efficient enough to leave drops=0/containers=0 permanently). Builder ranks above upgrader per
   // explicit direction — a stalled build blocks the room's economy longer than slower upgrading does.
   builder: 40,
-  upgrader: 30
+  upgrader: 30,
+  // Storage is the overflow buffer: the lowest-priority sink, taken only when every live consumer
+  // above is satisfied. It is the inverse of the source-side gate below — storage is a sink exactly
+  // when the spawn system has no deficit, and a source exactly when it does, so it is never both in
+  // the same tick and can never feed itself in a loop.
+  storage: 20
 } as const;
 
 // The controller container is topped to a floor (not filled to 100%) so upgraders draining it for
@@ -58,6 +63,13 @@ function isNearController(colony: ColonySnapshot, c: SnapContainer): boolean {
   const dx = c.x - colony.controller.x;
   const dy = c.y - colony.controller.y;
   return Math.max(Math.abs(dx), Math.abs(dy)) <= CONTROLLER_CONTAINER_RANGE;
+}
+
+// Spawn/extension energy the room still wants this tick. The one switch that decides storage's role:
+// a deficit means storage drains to cover it (source, supply's old job); no deficit means storage is
+// the overflow sink. The two are mutually exclusive, which keeps storage from ever feeding itself.
+function spawnSystemDeficit(colony: ColonySnapshot): number {
+  return Math.max(0, colony.energyCapacity - colony.energyAvailable);
 }
 
 /** Source containers (never the controller's) with energy, plus dropped piles worth a trip. */
@@ -97,6 +109,18 @@ export function providers(colony: ColonySnapshot): Provider[] {
     });
   }
 
+  // Storage as a source, but only while the spawn system is short: this is the drain direction the
+  // supply role used to own — buffer out to keep spawning alive. When the spawn system is full,
+  // storage is a sink instead (see consumers), never both. Lowest urgency: stored energy doesn't decay.
+  if (colony.storageId && colony.storageEnergy > 0 && spawnSystemDeficit(colony) > 0) {
+    out.push({
+      ref: { kind: "structure", id: colony.storageId as Id<AnyStoreStructure> },
+      resource: RESOURCE_ENERGY,
+      available: colony.storageEnergy,
+      urgency: 0
+    });
+  }
+
   return out;
 }
 
@@ -108,12 +132,18 @@ function isWorthwhileDrop(d: SnapDrop): boolean {
 export function consumers(colony: ColonySnapshot): Consumer[] {
   const out: Consumer[] = [];
 
-  const spawnWanted = colony.energyCapacity - colony.energyAvailable;
-  if (spawnWanted > 0) {
+  // One consumer per spawn/extension with free capacity, all at the spawn-system priority. Emitting
+  // them individually (rather than a single "spawnSystem" aggregate) lets the allocator reserve each
+  // extension for one creep's multi-dropoff trip — a full creep claims N extensions up front, removing
+  // them from every other creep's options, instead of one being sent per extension per tick. The
+  // aggregate energyAvailable/energyCapacity still drives fleet sizing and spawn gating elsewhere.
+  for (const sink of colony.spawnSinks) {
+    const wanted = sink.storeCapacity - sink.storeEnergy;
+    if (wanted <= 0) continue;
     out.push({
-      ref: { kind: "spawnSystem" },
+      ref: { kind: "structure", id: sink.id as Id<AnyStoreStructure> },
       resource: RESOURCE_ENERGY,
-      wanted: spawnWanted,
+      wanted,
       priority: PRIORITY.spawnSystem
     });
   }
@@ -154,6 +184,22 @@ export function consumers(colony: ColonySnapshot): Consumer[] {
     if (c.role !== "upgrader") continue;
     if (!isNearControllerPos(colony, c)) continue; // only upgraders at the controller are viable sinks
     pushCreepConsumer(out, c, PRIORITY.upgrader);
+  }
+
+  // Storage as the overflow buffer, lowest priority of all: taken only once every live consumer above
+  // is satisfied. Gated on the spawn system being full — the exact inverse of the source-side gate, so
+  // storage is a sink or a source but never both in the same tick (it can't feed itself). When spawn is
+  // short, storage is a source (see providers) and skipped here.
+  if (colony.storageId && spawnSystemDeficit(colony) === 0) {
+    const wanted = colony.storageCapacity - colony.storageEnergy;
+    if (wanted > 0) {
+      out.push({
+        ref: { kind: "structure", id: colony.storageId as Id<AnyStoreStructure> },
+        resource: RESOURCE_ENERGY,
+        wanted,
+        priority: PRIORITY.storage
+      });
+    }
   }
 
   return out;

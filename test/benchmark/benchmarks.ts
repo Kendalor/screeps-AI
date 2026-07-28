@@ -36,6 +36,10 @@ export interface MeasurementSpec {
   unit?: string;
   /** Fraction of baseline a run may drift worse before it counts as a regression. Default 0.25. */
   tolerance?: number;
+  /** Name of a sibling measurement to show as the denominator, rendering "value / denominator"
+   * (e.g. controller progress "86761 / 400000"). The denominator is display-only; it gets no row,
+   * no baseline and no verdict of its own. */
+  outOf?: string;
 }
 
 /** The specs for every measurement a benchmark takes, keyed by measurement name. */
@@ -113,6 +117,8 @@ export interface Comparison {
   regressionRatio: number | null;
   /** How many prior runs contributed to the baseline. */
   samples: number;
+  /** Display-only denominator (this run's `outOf` sibling), rendering "value / outOf". null when unset. */
+  outOf: number | null;
 }
 
 /** The result of recording one run: the run itself plus a comparison per measurement. */
@@ -135,9 +141,14 @@ export function recordBenchmark(
   const data = loadBenchmarks(file);
   const history = data[benchmark] ?? [];
 
-  const comparisons = Object.entries(measurements).map(([name, value]) =>
-    compareMeasurement(name, value, history, specs[name] ?? {})
-  );
+  const comparisons = Object.entries(measurements)
+    // A measurement named only as another's `outOf` denominator is display-only: no row of its own.
+    .filter(([name]) => !isDenominatorOnly(name, specs, measurements))
+    .map(([name, value]) => {
+      const spec = specs[name] ?? {};
+      const outOf = spec.outOf ? (measurements[spec.outOf] ?? null) : null;
+      return compareMeasurement(name, value, history, spec, outOf);
+    });
 
   const run: BenchRun = { at: new Date().toISOString(), commit: shortSha(), ...measurements };
   if (process.env.BENCH_NO_WRITE !== "1") {
@@ -153,11 +164,23 @@ export function recordBenchmark(
   };
 }
 
+/** A measurement is "denominator-only" — omitted from its own row — when some other spec names it as
+ * its `outOf` and it carries no direction of its own (so it's purely a threshold, not an outcome). */
+function isDenominatorOnly(
+  name: string,
+  specs: BenchmarkSpec,
+  measurements: Record<string, number | null>
+): boolean {
+  if (specs[name]?.direction) return false;
+  return Object.entries(specs).some(([n, s]) => s.outOf === name && n in measurements);
+}
+
 function compareMeasurement(
   name: string,
   value: number | null,
   history: BenchRun[],
-  spec: MeasurementSpec
+  spec: MeasurementSpec,
+  outOf: number | null = null
 ): Comparison {
   const direction = spec.direction ?? "lower";
   const unit = spec.unit ?? "ticks";
@@ -182,7 +205,8 @@ function compareMeasurement(
     delta,
     ratio,
     regressionRatio,
-    samples: prior.length
+    samples: prior.length,
+    outOf
   };
 }
 
@@ -206,7 +230,8 @@ function fmt(n: number): string {
 
 /** One line per measurement: value, baseline, and the verdict. */
 export function formatComparison(c: Comparison): string {
-  const shown = c.value === null ? "NOT MEASURED" : `${fmt(c.value)} ${c.unit}`;
+  const denom = c.outOf !== null ? ` / ${fmt(c.outOf)}` : "";
+  const shown = c.value === null ? "NOT MEASURED" : `${fmt(c.value)}${denom} ${c.unit}`;
   if (c.baseline === null) return `${c.measurement}: ${shown} (no baseline yet)`;
 
   const pct = c.ratio === null ? "" : ` ${c.ratio >= 0 ? "+" : ""}${(c.ratio * 100).toFixed(1)}%`;

@@ -62,50 +62,45 @@ export function allocate(
   const byLoadedFirst = [...idleCreeps].sort((a, b) => b.storeEnergy - a.storeEnergy);
 
   for (const creep of byLoadedFirst) {
-    // Already carrying load (just spawned, or resuming): skip straight to the consumer match using
-    // that load — no wasted trip back through a provider it doesn't need.
+    // Already carrying load (just spawned, or resuming): skip straight to delivering that load — no
+    // wasted trip back through a provider it doesn't need. Spread it across as many consumers as it
+    // takes to empty the creep (e.g. a 200-energy creep filling four 50-cap extensions in one trip).
     if (creep.storeEnergy > 0) {
-      const consumer = sortedConsumers.find(
-        c => c.resource === RESOURCE_ENERGY && (consumerRemaining.get(refKey(c.ref)) ?? 0) > 0
-      );
-      if (!consumer) continue;
-      const consumerKey = refKey(consumer.ref);
-      const amount = Math.min(creep.storeEnergy, consumerRemaining.get(consumerKey) ?? 0);
-      if (amount <= 0) continue;
-      consumerRemaining.set(consumerKey, (consumerRemaining.get(consumerKey) ?? 0) - amount);
-      out[creep.id] = { kind: "deliver", to: consumer.ref, resource: RESOURCE_ENERGY, amount };
+      const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, creep.storeEnergy);
+      const chain = linkDelivers(delivers);
+      if (chain) out[creep.id] = chain;
       continue;
     }
 
     const capacity = creep.storeCapacity;
     if (capacity <= 0) continue;
 
-    const consumer = sortedConsumers.find(c => (consumerRemaining.get(refKey(c.ref)) ?? 0) > 0);
-    if (!consumer) continue;
+    // Load up to the creep's full capacity, bounded by the total the currently-reservable consumers
+    // want — no point carrying energy nothing has room for. Filling to capacity (not one consumer's
+    // want) is what lets a single full creep then fan out across many extensions below.
+    const wantOpen = openConsumerDemand(sortedConsumers, consumerRemaining, RESOURCE_ENERGY);
+    const fillTarget = Math.min(capacity, wantOpen);
+    if (fillTarget <= 0) continue;
 
-    const provider = pickLargestProvider(providers, providerRemaining, consumer.resource);
-    if (!provider) continue;
+    const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget);
+    if (pickups.length === 0) continue;
+    const loaded = pickups.reduce((sum, p) => sum + p.amount, 0);
 
-    const consumerKey = refKey(consumer.ref);
-    const providerKey = refKey(provider.ref);
-    const amount = Math.min(capacity, providerRemaining.get(providerKey) ?? 0, consumerRemaining.get(consumerKey) ?? 0);
-    if (amount <= 0) continue;
+    // Spread the load across consumers (highest priority first) — a chain of delivers, one per sink,
+    // each reserved so no other creep is sent to a sink this trip will fill. Providers were reserved in
+    // buildPickupChain; consumers are reserved in buildDeliverChain. foldReserved re-derives both from
+    // the stored chain next tick, so a mid-trip creep never double-books either side.
+    const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, loaded);
 
-    consumerRemaining.set(consumerKey, (consumerRemaining.get(consumerKey) ?? 0) - amount);
-    providerRemaining.set(providerKey, (providerRemaining.get(providerKey) ?? 0) - amount);
-
-    // Pair the deliver leg into `next` so the creep flows pickup->deliver with no idle re-plan tick
-    // between. The consumer is reserved once here (consumerRemaining, above); the embedded deliver is
-    // NOT re-folded into `reserved` next tick — foldReserved counts `current` only for exactly this
-    // reason, since `next` always names the same energy `current` already reserved via its `to`.
-    out[creep.id] = {
-      kind: "pickup",
-      from: provider.ref,
-      to: consumer.ref,
-      resource: consumer.resource,
-      amount,
-      next: { kind: "deliver", to: consumer.ref, resource: consumer.resource, amount }
-    };
+    // Head pickup carries the first deliver's consumer as its `to` so foldReserved can read *a*
+    // destination off `current`; the full per-consumer accounting lives in the deliver legs it walks.
+    const deliverChain = linkDelivers(delivers);
+    let chain: LogisticsTask | undefined = deliverChain;
+    const headTo = delivers[0]?.ref;
+    for (let i = pickups.length - 1; i >= 0; i--) {
+      chain = { kind: "pickup", from: pickups[i].ref, to: headTo, resource: RESOURCE_ENERGY, amount: pickups[i].amount, next: chain };
+    }
+    if (chain) out[creep.id] = chain;
   }
 
   // Speculative pass: an empty creep with no consumer-driven job still tops itself off from any DECAYING
@@ -131,6 +126,77 @@ export function allocate(
   }
 
   return out;
+}
+
+// Greedily draw `fillTarget` from the largest available providers in turn, decrementing each in
+// `remaining` as it's claimed so the same energy is never handed to two legs. Returns one entry per
+// provider tapped ({ref, amount}); stops as soon as the target is met or providers run dry. Largest-
+// first mirrors the single-pickup pass's pickLargestProvider (and hauler.ts's `prefer: "largest"`),
+// keeping trips short by preferring fuller sources first.
+function buildPickupChain(
+  providers: readonly Provider[],
+  remaining: Map<string, number>,
+  resource: ResourceConstant,
+  fillTarget: number
+): { ref: NodeRef; amount: number }[] {
+  const out: { ref: NodeRef; amount: number }[] = [];
+  let need = fillTarget;
+  while (need > 0) {
+    const provider = pickLargestProvider(providers, remaining, resource);
+    if (!provider) break;
+    const key = refKey(provider.ref);
+    const take = Math.min(need, remaining.get(key) ?? 0);
+    if (take <= 0) break;
+    remaining.set(key, (remaining.get(key) ?? 0) - take);
+    out.push({ ref: provider.ref, amount: take });
+    need -= take;
+  }
+  return out;
+}
+
+// Total energy the currently-reservable consumers still want, in priority order — the ceiling on how
+// much a creep should load, since carrying more than any consumer has room for just idles on the creep.
+function openConsumerDemand(consumers: readonly Consumer[], remaining: Map<string, number>, resource: ResourceConstant): number {
+  let sum = 0;
+  for (const c of consumers) {
+    if (c.resource !== resource) continue;
+    sum += Math.max(0, remaining.get(refKey(c.ref)) ?? 0);
+  }
+  return sum;
+}
+
+// Spread `available` energy across consumers (already priority-sorted) until it's used up or demand
+// runs out, decrementing each consumer's remaining so no other creep is sent to a sink this trip fills.
+// Returns one entry per consumer tapped ({ref, amount}) — the caller links them into a deliver chain.
+function buildDeliverChain(
+  consumers: readonly Consumer[],
+  remaining: Map<string, number>,
+  resource: ResourceConstant,
+  available: number
+): { ref: NodeRef; amount: number }[] {
+  const out: { ref: NodeRef; amount: number }[] = [];
+  let left = available;
+  for (const c of consumers) {
+    if (left <= 0) break;
+    if (c.resource !== resource) continue;
+    const key = refKey(c.ref);
+    const want = remaining.get(key) ?? 0;
+    if (want <= 0) continue;
+    const give = Math.min(left, want);
+    remaining.set(key, want - give);
+    out.push({ ref: c.ref, amount: give });
+    left -= give;
+  }
+  return out;
+}
+
+// Link deliver legs into a `next`-chained task (deliver1 -> deliver2 -> ...); undefined if empty.
+function linkDelivers(delivers: readonly { ref: NodeRef; amount: number }[]): LogisticsTask | undefined {
+  let chain: LogisticsTask | undefined;
+  for (let i = delivers.length - 1; i >= 0; i--) {
+    chain = { kind: "deliver", to: delivers[i].ref, resource: RESOURCE_ENERGY, amount: delivers[i].amount, next: chain };
+  }
+  return chain;
 }
 
 function isDecaying(ref: NodeRef): boolean {

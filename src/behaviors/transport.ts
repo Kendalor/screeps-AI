@@ -37,6 +37,26 @@ function parkNearBunker(creep: Creep): void {
   creep.travelTo(new RoomPosition(anchor.x + dx, anchor.y + dy, creep.room.name));
 }
 
+// After a withdraw/pickup, has the source got nothing left of this resource to give? A dropped pile
+// exposes `.amount`; a store-bearing structure/tombstone exposes `.store`. Either at zero means this
+// pickup leg is spent and the creep should flow on to the next leg rather than retry an empty source.
+function providerEmpty(target: RoomObject, resource: ResourceConstant): boolean {
+  const asDrop = target as { amount?: number };
+  if (typeof asDrop.amount === "number") return asDrop.amount <= 0;
+  const asStore = target as { store?: { getUsedCapacity?(r: ResourceConstant): number | null } };
+  if (typeof asStore.store?.getUsedCapacity === "function") return (asStore.store.getUsedCapacity(resource) ?? 0) <= 0;
+  return false;
+}
+
+// A deliver target with no room left for this resource: a store-bearing structure/creep at capacity.
+// Objects without a queryable store (shouldn't be a deliver target) count as "not full" so the normal
+// transfer path handles them. Mirrors providerEmpty on the sink side.
+function consumerFull(target: RoomObject, resource: ResourceConstant): boolean {
+  const asStore = target as { store?: { getFreeCapacity?(r: ResourceConstant): number | null } };
+  if (typeof asStore.store?.getFreeCapacity === "function") return (asStore.store.getFreeCapacity(resource) ?? 0) <= 0;
+  return false;
+}
+
 function resolveNode(creep: Creep, ref: NodeRef): RoomObject | null {
   switch (ref.kind) {
     case "structure":
@@ -71,11 +91,12 @@ function isTaskDone(creep: Creep, task: LogisticsTask): boolean {
   return creep.store.getUsedCapacity(task.resource) === 0;
 }
 
-// Advance to `next` (the paired follow-up leg); park near the bunker when nothing remains so an idle
-// creep loiters centrally instead of blocking a source/road wherever it happened to finish.
+// Advance to the current leg's nested follow-up (the next link in the pickup->...->deliver chain);
+// park near the bunker when nothing remains so an idle creep loiters centrally instead of blocking a
+// source/road wherever it happened to finish.
 function advanceOrPark(creep: Creep): void {
-  const next = creep.memory.logistics?.next;
-  creep.memory.logistics = { current: next };
+  const next = creep.memory.logistics?.current?.next;
+  creep.memory.logistics = next ? { current: next } : {};
   if (!next) parkNearBunker(creep);
 }
 
@@ -107,7 +128,23 @@ export function runTransport(creep: Creep): void {
   }
 
   if (task.kind === "pickup") {
-    withdrawOrPickup(creep, target, task.resource);
+    const result = withdrawOrPickup(creep, target, task.resource);
+    // Advance once this pickup can make no further progress here: the creep filled up, OR the provider
+    // is now empty (a partial container/pile that didn't fill the creep). Without the drained-provider
+    // check a chain would re-withdraw from an empty source forever, since it's not idle and so never
+    // re-planned. Only after acting in range (didAct) — merely traveling toward it isn't progress.
+    if (result.didAct && (creep.store.getFreeCapacity(task.resource) === 0 || providerEmpty(target, task.resource))) {
+      advanceOrPark(creep);
+    }
+    return;
+  }
+
+  // Target already full on arrival (another creep, a spawn, or a tower drew from the pool since the
+  // allocator picked it a tick ago): skip straight to the next leg rather than travel to — or babysit —
+  // a sink with no room. This is what makes the deliver chain robust to a target going stale between
+  // planning and execution (the per-structure trade-off for reserving specific extensions up front).
+  if (consumerFull(target, task.resource)) {
+    advanceOrPark(creep);
     return;
   }
 
@@ -115,9 +152,9 @@ export function runTransport(creep: Creep): void {
   // `amount` to move to `to`, and one transfer moves min(carried, target free capacity) into it — so
   // the ask is complete once that transfer fires, whether or not the creep is now empty. Completing
   // here (rather than only when the creep empties) is what stops a still-loaded creep from following a
-  // slow-draining builder/upgrader forever: it goes idle and next tick's allocate re-matches its
-  // remaining load to the highest-priority consumer with room (spawn/extensions). `didAct` is true
-  // only when it acted in range; a false means it merely traveled toward the target this tick.
+  // slow-draining builder/upgrader forever, AND lets a multi-dropoff chain flow sink->sink: each leg
+  // fires once and advances to the next. `didAct` is true only when it acted in range; false means it
+  // merely traveled toward the target this tick.
   const result = transferTo(creep, target, task.resource);
   if (result.didAct) advanceOrPark(creep);
 }

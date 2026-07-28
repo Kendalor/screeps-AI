@@ -205,14 +205,57 @@ describe("metrics: harvest rate", () => {
 });
 
 describe("metrics: controller and construction", () => {
-  it("reports controller level and progress", () => {
-    const m = collect(colonySnap({ controllerLevel: 4, controllerProgress: 12_345 }));
-    expect(m.controller).toEqual({ level: 4, progress: 12_345 });
+  it("reports controller level, progress and the total to the next level", () => {
+    const m = collect(colonySnap({ controllerLevel: 4, controllerProgress: 12_345, controllerProgressTotal: 45_000 }));
+    expect(m.controller).toEqual({ level: 4, progress: 12_345, progressTotal: 45_000 });
   });
 
   it("reports outstanding construction work", () => {
     const m = collect(colonySnap({ constructionProgress: 8_000 }));
     expect(m.construction.remaining).toBe(8_000);
+  });
+});
+
+describe("metrics: repair", () => {
+  // A built structure carries hits/hitsMax; a construction site does not. REPAIR_BELOW is 0.8.
+  const struct = (type: BuildableStructureConstant, hits: number, hitsMax: number): SnapStructure => ({
+    type,
+    x: 0,
+    y: 0,
+    id: "s" as SnapStructure["id"],
+    hits,
+    hitsMax
+  });
+
+  it("counts sub-100% decay even above the repair floor, but nothing is actionable yet", () => {
+    const snap = colonySnap({ structures: [struct("road", 4_500, 5_000)] }); // 90%: 500 decayed, above 80%
+    expect(collect(snap).repair).toEqual({ decay: 500, actionable: 0 });
+  });
+
+  it("counts fully-healthy structures as neither decay nor actionable", () => {
+    const snap = colonySnap({ structures: [struct("road", 5_000, 5_000)] });
+    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0 });
+  });
+
+  it("reports both the total decay and the actionable subset past the floor", () => {
+    const snap = colonySnap({
+      structures: [
+        struct("road", 1_000, 5_000), // 20%: 4,000 decayed, past floor -> actionable
+        struct("container", 240_000, 250_000) // 96%: 10,000 decayed, above floor -> decay only
+      ]
+    });
+    // decay = 4,000 + 10,000; actionable = just the road's 4,000.
+    expect(collect(snap).repair).toEqual({ decay: 14_000, actionable: 4_000 });
+  });
+
+  it("ignores structure types that are not repairable (walls/ramparts)", () => {
+    const snap = colonySnap({ structures: [struct("rampart", 1, 300_000_000)] });
+    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0 });
+  });
+
+  it("ignores construction sites (no hits to restore)", () => {
+    const snap = colonySnap({ structures: [{ type: "road", x: 0, y: 0 }] });
+    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0 });
   });
 });
 

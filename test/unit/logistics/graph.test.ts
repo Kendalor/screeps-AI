@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { consumers, providers } from "../../../src/logistics/graph";
-import { colonySnap, containerAt, dropAt, snapCreep, tombstoneAt, towerAt } from "../../fixtures";
+import { colonySnap, containerAt, dropAt, sinkAt, snapCreep, tombstoneAt, towerAt } from "../../fixtures";
 
 describe("providers", () => {
   it("treats a source container holding energy as a provider", () => {
@@ -50,18 +50,54 @@ describe("providers", () => {
     const tombstone = tombstoneAt(15, 15, 10);
     expect(providers(colonySnap({ tombstones: [tombstone] }))).toEqual([]);
   });
+
+  const storageId = "storage1" as Id<StructureStorage>;
+
+  it("offers storage as a provider only while the spawn system is not full", () => {
+    // Spawn/extension deficit present (30 of 50): storage should drain to feed it — supply's old job.
+    const result = providers(
+      colonySnap({ storageId, storageEnergy: 5000, storageCapacity: 10000, energyAvailable: 30, energyCapacity: 50 })
+    );
+    expect(result).toContainEqual({
+      ref: { kind: "structure", id: storageId },
+      resource: RESOURCE_ENERGY,
+      available: 5000,
+      urgency: 0
+    });
+  });
+
+  it("does not offer storage as a provider when the spawn system is full", () => {
+    // No spawn deficit: storage is a sink this tick, never a source — the mutual-exclusion invariant.
+    const result = providers(
+      colonySnap({ storageId, storageEnergy: 5000, storageCapacity: 10000, energyAvailable: 50, energyCapacity: 50 })
+    );
+    expect(result.some(p => p.ref.kind === "structure" && p.ref.id === storageId)).toBe(false);
+  });
+
+  it("does not offer empty storage as a provider", () => {
+    const result = providers(
+      colonySnap({ storageId, storageEnergy: 0, storageCapacity: 10000, energyAvailable: 30, energyCapacity: 50 })
+    );
+    expect(result.some(p => p.ref.kind === "structure" && p.ref.id === storageId)).toBe(false);
+  });
 });
 
 describe("consumers", () => {
-  it("wants the spawn/extension gap as one aggregate node", () => {
-    const result = consumers(colonySnap({ energyAvailable: 30, energyCapacity: 50 }));
+  it("emits one consumer per spawn/extension with free capacity, keyed by its own id", () => {
+    const result = consumers(
+      colonySnap({ spawnSinks: [sinkAt(10, 10, 20, 50, "ext1"), sinkAt(11, 10, 0, 50, "ext2")] })
+    );
 
-    expect(result).toContainEqual({ ref: { kind: "spawnSystem" }, resource: RESOURCE_ENERGY, wanted: 20, priority: 100 });
+    // ext1 wants 30 (50 cap - 20 held), ext2 wants 50 — each its own consumer at spawn-system priority.
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 100 });
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext2" }, resource: RESOURCE_ENERGY, wanted: 50, priority: 100 });
+    // No single-node aggregate is emitted anymore.
+    expect(result.some(c => c.ref.kind === "spawnSystem")).toBe(false);
   });
 
-  it("omits the spawn/extension node once full", () => {
-    const result = consumers(colonySnap({ energyAvailable: 300, energyCapacity: 300 }));
-    expect(result.some(c => c.ref.kind === "spawnSystem")).toBe(false);
+  it("omits a spawn/extension sink once it is full", () => {
+    const result = consumers(colonySnap({ spawnSinks: [sinkAt(10, 10, 50, 50, "ext1")] }));
+    expect(result.some(c => c.ref.kind === "structure" && c.ref.id === "ext1")).toBe(false);
   });
 
   it("wants a controller container below its 0.7 fill floor", () => {
@@ -147,5 +183,37 @@ describe("consumers", () => {
 
     expect(result.some(c => c.ref.kind === "creep" && c.ref.id === near.id)).toBe(true);
     expect(result.some(c => c.ref.kind === "creep" && c.ref.id === far.id)).toBe(false);
+  });
+
+  const storageId = "storage1" as Id<StructureStorage>;
+
+  it("wants storage's free capacity as the lowest-priority overflow sink once the spawn system is full", () => {
+    // Spawn full, so storage is the overflow buffer: 10000 - 4000 = 6000 free, ranked below upgrader (30).
+    const result = consumers(
+      colonySnap({ storageId, storageEnergy: 4000, storageCapacity: 10000, energyAvailable: 50, energyCapacity: 50 })
+    );
+    const storageConsumer = result.find(c => c.ref.kind === "structure" && c.ref.id === storageId);
+    expect(storageConsumer).toEqual({ ref: { kind: "structure", id: storageId }, resource: RESOURCE_ENERGY, wanted: 6000, priority: 20 });
+
+    const upgrader = snapCreep("upgrader", { storeEnergy: 20, storeCapacity: 100, x: 25, y: 25 });
+    const upgraderConsumer = consumers(colonySnap({ creeps: [upgrader], controller: { x: 25, y: 25 } })).find(
+      c => c.ref.kind === "creep"
+    );
+    expect(upgraderConsumer!.priority).toBeGreaterThan(storageConsumer!.priority);
+  });
+
+  it("does not treat storage as a sink while the spawn system still wants energy", () => {
+    // Spawn deficit present: storage is a source this tick, never a sink — the mutual-exclusion invariant.
+    const result = consumers(
+      colonySnap({ storageId, storageEnergy: 4000, storageCapacity: 10000, energyAvailable: 30, energyCapacity: 50 })
+    );
+    expect(result.some(c => c.ref.kind === "structure" && c.ref.id === storageId)).toBe(false);
+  });
+
+  it("does not treat full storage as a sink", () => {
+    const result = consumers(
+      colonySnap({ storageId, storageEnergy: 10000, storageCapacity: 10000, energyAvailable: 50, energyCapacity: 50 })
+    );
+    expect(result.some(c => c.ref.kind === "structure" && c.ref.id === storageId)).toBe(false);
   });
 });

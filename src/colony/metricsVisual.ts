@@ -33,6 +33,20 @@ function fmt(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
+// Compact magnitude for values that get large: 24_000 -> "24k", 1_200_000 -> "1.2m". One decimal only
+// when it adds information (24.0k reads as noise, 1.2m does not). Below 1k the raw rounded number.
+function kmb(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1e6) return `${trim(n / 1e6)}m`;
+  if (abs >= 1e3) return `${trim(n / 1e3)}k`;
+  return `${Math.round(n)}`;
+}
+
+// One decimal, but drop a trailing ".0".
+function trim(n: number): string {
+  return n.toFixed(1).replace(/\.0$/, "");
+}
+
 /** Build the drawing ops for one colony's report. Exposed for tests; visualize() wraps it in an intent. */
 export function panelOps(m: ColonyMetrics): VisualOp[] {
   const p = panel();
@@ -72,10 +86,24 @@ export function panelOps(m: ColonyMetrics): VisualOp[] {
     p.line(`${row.type.padEnd(10)} ${row.built}/${row.targeted}`, done ? OK : WARN, 0.5);
   }
 
-  // Progress: controller + any construction.
+  // Progress: controller + any construction + any repair upkeep. The bracketed figure on the build/repair
+  // lines is the energy still to spend: construction is 1 energy per point, repair is REPAIR_POWER (100)
+  // hits per energy, so hits/100. The controller reads progress/total directly — its points are 1 energy
+  // each, so a separate energy figure would just restate the number.
   p.line("Progress", HEADING);
-  p.line(`controller ${fmt(m.controller.progress)}`, DIM, 0.5);
-  if (m.construction.remaining > 0) p.line(`building   ${fmt(m.construction.remaining)} left`, DIM, 0.5);
+  p.line(`controller ${kmb(m.controller.progress)}/${kmb(m.controller.progressTotal)}`, DIM, 0.5);
+  if (m.construction.remaining > 0) {
+    p.line(`building   ${fmt(m.construction.remaining)} left [${fmt(m.construction.remaining)}e]`, DIM, 0.5);
+  }
+  // Repair upkeep, shown as soon as anything has decayed at all (not only past the repairer's floor).
+  // `decay` is the visible total; the WARN colour and the "(Ne to fix)" energy figure track `actionable`
+  // — the subset a repairer would actually restore — so a healthy-but-decaying colony reads dim with no
+  // energy call-out, and only genuine backlog turns it red. Energy is hits / REPAIR_POWER (100).
+  if (m.repair.decay > 0) {
+    const actionableEnergy = m.repair.actionable / REPAIR_POWER;
+    const suffix = m.repair.actionable > 0 ? ` (${kmb(m.repair.actionable)} to fix [${fmt(actionableEnergy)}e])` : "";
+    p.line(`repair     ${kmb(m.repair.decay)} hits${suffix}`, m.repair.actionable > 0 ? WARN : DIM, 0.5);
+  }
 
   // Safe mode: highlight when actually active.
   const sm =

@@ -1,9 +1,12 @@
 // No snapshot needed — hand-built Provider[]/Consumer[]/SnapCreep[] arrays, fully unit-testable.
 
 import { describe, expect, it } from "vitest";
-import { allocate, emptyReserved, type ReservedAmounts } from "../../../src/logistics/allocate";
+import { allocate, emptyReserved, refKey, type ReservedAmounts } from "../../../src/logistics/allocate";
 import type { Consumer, Provider } from "../../../src/logistics/graph";
+import type { NodeRef } from "../../../src/logistics/types";
 import { snapCreep } from "../../fixtures";
+
+const refKeyOf = (ref: NodeRef | undefined) => (ref ? refKey(ref) : undefined);
 
 const idleHauler = (over: Partial<{ storeEnergy: number; storeCapacity: number }> = {}) =>
   snapCreep("hauler", { storeEnergy: 0, storeCapacity: 100, ...over });
@@ -59,6 +62,93 @@ describe("allocate", () => {
       resource: RESOURCE_ENERGY,
       amount: 100
     });
+  });
+
+  it("chains a second pickup into `next` when one provider can't fill the creep for the consumer", () => {
+    // Consumer wants 200; the creep can carry 200. No single provider has that much (each holds 120),
+    // so the trip must pick up from BOTH before delivering, rather than delivering a half-empty load.
+    const creep = idleHauler({ storeEnergy: 0, storeCapacity: 200 });
+    const result = allocate([provider("a", 120), provider("b", 120)], [consumer("sink", 200)], [creep], emptyReserved());
+
+    const task = result[creep.id];
+    // First pickup drains the larger/equal provider up to what's left of the fill target.
+    expect(task).toMatchObject({ kind: "pickup", amount: 120 });
+    // Second leg is ANOTHER pickup (80 = 200 capacity - 120 already taken), from the other provider.
+    expect(task?.next).toMatchObject({ kind: "pickup", amount: 80 });
+    expect(refKeyOf(task?.next?.from)).not.toBe(refKeyOf(task?.from));
+    // The chain terminates in a single deliver of the full 200 to the consumer.
+    expect(task?.next?.next).toEqual({ kind: "deliver", to: { kind: "structure", id: "sink" }, resource: RESOURCE_ENERGY, amount: 200 });
+  });
+
+  it("stops chaining pickups at the consumer's demand, not the creep's full capacity", () => {
+    // Creep can carry 200 but the consumer only wants 150 — the chain fills to 150, no further.
+    const creep = idleHauler({ storeEnergy: 0, storeCapacity: 200 });
+    const result = allocate([provider("a", 100), provider("b", 100)], [consumer("sink", 150)], [creep], emptyReserved());
+
+    const task = result[creep.id];
+    expect(task).toMatchObject({ kind: "pickup", amount: 100 });
+    expect(task?.next).toMatchObject({ kind: "pickup", amount: 50 }); // tops up to 150, the demand
+    expect(task?.next?.next).toEqual({ kind: "deliver", to: { kind: "structure", id: "sink" }, resource: RESOURCE_ENERGY, amount: 150 });
+  });
+
+  it("does not double-book a provider drained by an earlier chained pickup", () => {
+    // Only two providers, both consumed by one creep's chain; a second creep must find nothing left.
+    const creepA = idleHauler({ storeEnergy: 0, storeCapacity: 200 });
+    const creepB = idleHauler({ storeEnergy: 0, storeCapacity: 200 });
+    const result = allocate([provider("a", 120), provider("b", 120)], [consumer("sink", 400)], [creepA, creepB], emptyReserved());
+
+    // creepA fills to 200 across both providers; only 40 (240 total - 200) is left for creepB.
+    const first = Object.values(result).find(t => t.amount === 120 || (t.kind === "pickup" && t.next));
+    expect(first).toBeDefined();
+    // creepB, if assigned, may only carry the 40 remainder.
+    const bTask = result[creepB.id];
+    if (bTask) expect(bTask.amount).toBeLessThanOrEqual(40);
+  });
+
+  it("chains delivers across multiple consumers so one full creep fills several sinks in one trip", () => {
+    // A 200-cap creep, one big provider, and four 50-cap extensions: one pickup then four delivers,
+    // each 50, so no other creep is dispatched to any of them.
+    const creep = idleHauler({ storeEnergy: 0, storeCapacity: 200 });
+    const sinks = [consumer("e1", 50, 100), consumer("e2", 50, 100), consumer("e3", 50, 100), consumer("e4", 50, 100)];
+    const result = allocate([provider("src", 1000)], sinks, [creep], emptyReserved());
+
+    const task = result[creep.id];
+    expect(task).toMatchObject({ kind: "pickup", amount: 200 });
+    // Walk the chain: pickup -> deliver e1 -> deliver e2 -> deliver e3 -> deliver e4.
+    const legs: { kind: string; amount: number; to?: { id?: string } }[] = [];
+    for (let leg = task; leg; leg = leg.next) legs.push(leg as never);
+    const delivers = legs.filter(l => l.kind === "deliver");
+    expect(delivers).toHaveLength(4);
+    expect(delivers.every(d => d.amount === 50)).toBe(true);
+    expect(delivers.map(d => (d.to as { id: string }).id).sort()).toEqual(["e1", "e2", "e3", "e4"]);
+  });
+
+  it("spreads a pre-loaded creep's carried energy across multiple sinks", () => {
+    // Loaded with 150, three 50-cap extensions: a three-deliver chain, no pickup leg.
+    const creep = idleHauler({ storeEnergy: 150, storeCapacity: 200 });
+    const sinks = [consumer("e1", 50, 100), consumer("e2", 50, 100), consumer("e3", 50, 100)];
+    const result = allocate([provider("src", 1000)], sinks, [creep], emptyReserved());
+
+    const task = result[creep.id];
+    expect(task?.kind).toBe("deliver");
+    const legs: { kind: string; amount: number }[] = [];
+    for (let leg = task; leg; leg = leg.next) legs.push(leg as never);
+    expect(legs).toHaveLength(3);
+    expect(legs.every(l => l.kind === "deliver" && l.amount === 50)).toBe(true);
+  });
+
+  it("reserves each sink in a deliver chain so a second creep isn't sent to the same extensions", () => {
+    // Two full-enough sinks, two loaded creeps: the first claims both; the second finds nothing open.
+    const creepA = idleHauler({ storeEnergy: 100, storeCapacity: 200 });
+    const creepB = idleHauler({ storeEnergy: 100, storeCapacity: 200 });
+    const sinks = [consumer("e1", 50, 100), consumer("e2", 50, 100)];
+    const result = allocate([provider("src", 1000)], sinks, [creepA, creepB], emptyReserved());
+
+    // creepA fills both e1 and e2 (100 carried -> 50 + 50); creepB has no open sink left.
+    const aLegs: { kind: string }[] = [];
+    for (let leg = result[creepA.id]; leg; leg = leg.next) aLegs.push(leg as never);
+    expect(aLegs.filter(l => l.kind === "deliver")).toHaveLength(2);
+    expect(result[creepB.id]).toBeUndefined();
   });
 
   it("does not double-book a provider/consumer already reserved by a mid-task creep", () => {

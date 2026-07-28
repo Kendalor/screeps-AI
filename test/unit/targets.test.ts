@@ -380,6 +380,22 @@ describe("resolveTarget prefer ordering", () => {
 
     expect((got as { id: string }).id).toBe("almostDone");
   });
+
+  it("prefer: mostDamaged picks the structure with the lowest hits fraction, not the nearest", () => {
+    // First in the fixture (what nearest would pick) is the least damaged; mostDamaged must skip it.
+    const barelyDamaged = { id: "barely", pos: { x: 5, y: 5 }, structureType: STRUCTURE_ROAD, hits: 4900, hitsMax: 5000 };
+    const wrecked = { id: "wrecked", pos: { x: 5, y: 5 }, structureType: STRUCTURE_ROAD, hits: 200, hitsMax: 5000 };
+    stubGame({ objects: { barelyDamaged, wrecked } });
+
+    const got = resolveTarget(collectorCreep("me", 200, [barelyDamaged, wrecked]), {
+      find: "structure",
+      type: STRUCTURE_ROAD,
+      where: "damaged",
+      prefer: "mostDamaged"
+    });
+
+    expect((got as { id: string }).id).toBe("wrecked");
+  });
 });
 
 describe("resolveTarget pile claim limits", () => {

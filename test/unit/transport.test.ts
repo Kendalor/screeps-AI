@@ -121,8 +121,13 @@ describe("runTransport", () => {
         role: "transport",
         home: "W1N1",
         logistics: {
-          current: { kind: "pickup", from: { kind: "structure", id: "cont1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 },
-          next: { kind: "deliver", to: { kind: "structure", id: "ext1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 }
+          current: {
+            kind: "pickup",
+            from: { kind: "structure", id: "cont1" as Id<AnyStoreStructure> },
+            resource: RESOURCE_ENERGY,
+            amount: 50,
+            next: { kind: "deliver", to: { kind: "structure", id: "ext1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 }
+          }
         }
       },
       free: 0 // already full — task is done
@@ -131,6 +136,55 @@ describe("runTransport", () => {
     runTransport(creep);
 
     expect(creep.memory.logistics?.current).toEqual({ kind: "deliver", to: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, amount: 50 });
+  });
+
+  it("advances to the next pickup once a provider is drained, even with free capacity left", () => {
+    // A partial provider (100 left) into a creep with room for 200: the withdraw fires but the creep
+    // is still half-empty. The pickup must still complete — the provider is spent — so the creep flows
+    // to the chained second pickup rather than re-withdrawing from the now-empty container forever.
+    const cont = { id: "cont1", pos: { x: 5, y: 5 }, structureType: STRUCTURE_CONTAINER, store: { getUsedCapacity: () => 0 } };
+    stubGame({ objects: { cont1: cont } });
+    const { creep, calls } = transportCreep({
+      memory: {
+        role: "transport",
+        home: "W1N1",
+        logistics: {
+          current: {
+            kind: "pickup",
+            from: { kind: "structure", id: "cont1" as Id<AnyStoreStructure> },
+            resource: RESOURCE_ENERGY,
+            amount: 100,
+            next: { kind: "pickup", from: { kind: "structure", id: "cont2" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 100, next: { kind: "deliver", to: { kind: "spawnSystem" }, resource: RESOURCE_ENERGY, amount: 200 } }
+          }
+        }
+      },
+      free: 100, // still room after the withdraw — but the provider is now empty
+      inRange: true
+    });
+
+    runTransport(creep);
+
+    expect(calls.withdraw).toBe(1); // it did withdraw this tick
+    expect(creep.memory.logistics?.current).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "cont2" } });
+  });
+
+  it("does NOT advance a pickup that is still filling a provider that still has energy", () => {
+    // The provider still holds energy and the creep still has room: keep pulling from it next tick.
+    const cont = { id: "cont1", pos: { x: 5, y: 5 }, structureType: STRUCTURE_CONTAINER, store: { getUsedCapacity: () => 500 } };
+    stubGame({ objects: { cont1: cont } });
+    const { creep } = transportCreep({
+      memory: {
+        role: "transport",
+        home: "W1N1",
+        logistics: { current: { kind: "pickup", from: { kind: "structure", id: "cont1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 200 } }
+      },
+      free: 100, // still room, provider not empty
+      inRange: true
+    });
+
+    runTransport(creep);
+
+    expect(creep.memory.logistics?.current).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "cont1" } });
   });
 
   it("clears the current task and promotes next once a deliver empties the creep", () => {
@@ -171,6 +225,63 @@ describe("runTransport", () => {
 
     expect(calls.transfer).toBe(1);
     expect(creep.memory.logistics?.current).toBeUndefined(); // released, not stuck on the builder
+  });
+
+  it("advances a deliver whose target is already full on arrival, without babysitting it", () => {
+    // ext1 filled up between planning and now: skip to the next queued deliver, don't travel/transfer.
+    const ext1 = { id: "ext1", pos: { x: 5, y: 5 }, structureType: STRUCTURE_EXTENSION, store: { getFreeCapacity: () => 0 } };
+    stubGame({ objects: { ext1 } });
+    const { creep, calls } = transportCreep({
+      memory: {
+        role: "transport",
+        home: "W1N1",
+        logistics: {
+          current: {
+            kind: "deliver",
+            to: { kind: "structure", id: "ext1" as Id<AnyStoreStructure> },
+            resource: RESOURCE_ENERGY,
+            amount: 50,
+            next: { kind: "deliver", to: { kind: "structure", id: "ext2" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 }
+          }
+        }
+      },
+      used: 100,
+      free: 0,
+      inRange: false // even out of range, a full target must not be traveled to
+    });
+
+    runTransport(creep);
+
+    expect(calls.transfer).toBe(0);
+    expect(creep.memory.logistics?.current).toMatchObject({ kind: "deliver", to: { kind: "structure", id: "ext2" } });
+  });
+
+  it("flows deliver->deliver: after filling one sink in range it promotes the next deliver", () => {
+    const ext1 = { id: "ext1", pos: { x: 5, y: 5 }, structureType: STRUCTURE_EXTENSION, store: { getFreeCapacity: () => 50 } };
+    stubGame({ objects: { ext1 } });
+    const { creep, calls } = transportCreep({
+      memory: {
+        role: "transport",
+        home: "W1N1",
+        logistics: {
+          current: {
+            kind: "deliver",
+            to: { kind: "structure", id: "ext1" as Id<AnyStoreStructure> },
+            resource: RESOURCE_ENERGY,
+            amount: 50,
+            next: { kind: "deliver", to: { kind: "structure", id: "ext2" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 }
+          }
+        }
+      },
+      used: 100,
+      free: 0,
+      inRange: true
+    });
+
+    runTransport(creep);
+
+    expect(calls.transfer).toBe(1);
+    expect(creep.memory.logistics?.current).toMatchObject({ kind: "deliver", to: { kind: "structure", id: "ext2" } });
   });
 
   it("does NOT complete a deliver when out of range (it travels, task stays)", () => {

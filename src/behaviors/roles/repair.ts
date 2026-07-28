@@ -1,5 +1,5 @@
 import { affordableSets } from "../../spawn/body";
-import { REPAIRABLE, REPAIR_BELOW } from "../../lib/repairable";
+import { REPAIRABLE } from "../../lib/repairable";
 import type { Step } from "../types";
 import { Role } from "./role";
 
@@ -20,11 +20,16 @@ export class Repair extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return repairBody(energy);
   }
-  // Repair the nearest decaying structure, refilling from the nearest energy source when empty; self-harvest
-  // is the last resort. A repairer with nothing left below the repair floor falls through to gather/harvest
-  // and simply idles topped-up — the Building operation converts it back once real work reappears.
+  // Two-tier target search so the repairer doesn't crisscross the room chasing the single most-damaged
+  // structure while ignoring one it's standing next to: first look for anything below 50% (there's a
+  // real emergency, go to the worst of those); only once none qualify, widen to any decay at all and
+  // take the nearest one instead of the most damaged, so mopping up minor decay stays local.
+  // Refills from the nearest energy source when empty; self-harvest is the last resort. A repairer with
+  // nothing left to repair falls through to gather/harvest and idles topped-up — the Building operation
+  // converts it back once real work reappears.
   static override readonly steps: Step[] = [
-    { do: "repair", at: { find: "structure", type: REPAIRABLE, where: "damaged", repairBelow: REPAIR_BELOW } },
+    { do: "repair", at: { find: "structure", type: REPAIRABLE, where: "damaged", repairBelow: 0.5, prefer: "mostDamaged" } },
+    { do: "repair", at: { find: "structure", type: REPAIRABLE, where: "damaged", prefer: "nearest" } },
     {
       do: "gather",
       from: {

@@ -22,9 +22,11 @@ declare global {
     op?: string; // requester that ordered this creep, as `kind:room`; absent means unowned (predates its requester)
     sourceId?: Id<Source>; // singular — no multi-source miner assignment
     task?: TaskState; // current behavior progress — owned by behaviors/interpreter.ts
-    // Current/next transport assignment — owned by intents/execute.ts (write) via Logistics.intents();
-    // empire/creeps.ts's transport runner reads and consumes `current`, never writes it directly.
-    logistics?: { current?: LogisticsTask; next?: LogisticsTask };
+    // Current transport assignment — owned by intents/execute.ts (write) via Logistics.intents();
+    // empire/creeps.ts's transport runner reads and consumes `current`, never writes it directly. The
+    // whole trip is one chain (pickup -> ... -> deliver) nested in `current.next`; runTransport promotes
+    // `current.next` as each leg completes, so there is no separate follow-up field here.
+    logistics?: { current?: LogisticsTask };
     scoutTarget?: string; // room a scout is assigned to reach; cleared by moveToRoom on arrival
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom

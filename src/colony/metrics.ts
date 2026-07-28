@@ -3,6 +3,7 @@
 // Harvest rate is the one stored exception — see harvestRate() for why a window, not a running total.
 
 import type { PlacedStructure } from "../layouts/stamp";
+import { needsRepair, REPAIRABLE } from "../lib/repairable";
 import type { RoleName } from "../memory/schema";
 import type { ColonyMetricsMemory } from "../memory/schema";
 import type { RoleTarget } from "../operations/operation";
@@ -45,9 +46,18 @@ export interface ColonyMetrics {
   controller: {
     level: number;
     progress: number;
+    progressTotal: number; // progress to the next level; 0 at max RCL. progressTotal - progress = work left
   };
   construction: {
-    remaining: number; // total work left across all sites; 0 when nothing is building
+    remaining: number; // total build points left across all sites; 0 when nothing is building. 1 point = 1 energy
+  };
+  repair: {
+    // Total hits of decay across all repairable structures below 100% — visible upkeep, shown before it
+    // reaches the repairer's action floor. 1 energy per REPAIR_POWER (100) hits.
+    decay: number;
+    // The subset of that decay past the repair floor (REPAIR_BELOW) — the hits a repairer would actually
+    // be dispatched to restore. <= decay; 0 while everything is above the floor even if some has decayed.
+    actionable: number;
   };
   safeMode: {
     active: number; // ticks remaining, 0 when not active
@@ -129,6 +139,28 @@ function countByType(structures: readonly { type: BuildableStructureConstant }[]
   return counts;
 }
 
+/**
+ * Two views of repairable decay, both in hits, over the same REPAIRABLE type set (walls/ramparts
+ * excluded — their upkeep is a defense concern, not this). Sites (no hits) are skipped.
+ *
+ * - `decay`: every point below hitsMax, so upkeep is visible as it accumulates.
+ * - `actionable`: the subset past the repair floor, matching `needsRepair` exactly — the hits a repairer
+ *   would actually be dispatched to restore. Always <= decay.
+ */
+export function repairRemainingFor(structures: readonly SnapStructure[]): { decay: number; actionable: number } {
+  let decay = 0;
+  let actionable = 0;
+  for (const s of structures) {
+    if (s.hits === undefined || s.hitsMax === undefined) continue;
+    if (!REPAIRABLE.includes(s.type)) continue;
+    const missing = s.hitsMax - s.hits;
+    if (missing <= 0) continue;
+    decay += missing;
+    if (needsRepair(s.type, s.hits, s.hitsMax)) actionable += missing;
+  }
+  return { decay, actionable };
+}
+
 // SnapSource carries no live energy, so harvest is measured at the destination: containers + storage + drops.
 function totalSourceEnergy(snapshot: ColonySnapshot): number {
   const containers = snapshot.containers.reduce((sum, c) => sum + c.storeEnergy, 0);
@@ -182,11 +214,13 @@ export function collectMetrics(
     },
     controller: {
       level: snapshot.controllerLevel,
-      progress: snapshot.controllerProgress
+      progress: snapshot.controllerProgress,
+      progressTotal: snapshot.controllerProgressTotal
     },
     construction: {
       remaining: snapshot.constructionProgress
     },
+    repair: repairRemainingFor(snapshot.structures),
     safeMode: {
       active: snapshot.safeModeActive, // ticks remaining, 0 when not active
       count: snapshot.safeModeCount, // activations banked for later

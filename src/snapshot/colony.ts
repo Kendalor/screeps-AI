@@ -69,6 +69,17 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     spawns: room
       .find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_SPAWN })
       .map(s => ({ id: s.id as Id<StructureSpawn>, busy: (s as StructureSpawn).spawning !== null })),
+    spawnSinks: room
+      .find<StructureSpawn | StructureExtension>(FIND_MY_STRUCTURES, {
+        filter: s => s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION
+      })
+      .map(s => ({
+        id: s.id,
+        x: s.pos.x,
+        y: s.pos.y,
+        storeEnergy: s.store.getUsedCapacity(RESOURCE_ENERGY),
+        storeCapacity: s.store.getCapacity(RESOURCE_ENERGY)
+      })),
     energyAvailable: room.energyAvailable,
     energyCapacity: room.energyCapacityAvailable,
     sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
@@ -80,7 +91,9 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     controller: { x: controller.pos.x, y: controller.pos.y },
     controllerLevel: controller.level,
     controllerProgress: controller.progress,
+    controllerProgressTotal: controller.progressTotal ?? 0, // undefined at RCL8 (max)
     storageEnergy: room.storage?.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0,
+    storageCapacity: room.storage?.store.getCapacity(RESOURCE_ENERGY) ?? 0,
     storageId: room.storage?.id,
     containers: room
       .find<StructureContainer>(FIND_STRUCTURES, {

@@ -102,14 +102,19 @@ describe("repair body", () => {
 });
 
 describe("repair role", () => {
-  it("repairs a damaged structure first, then refills, harvesting only as a last resort", () => {
+  it("prefers the most-damaged structure below 50% hits, falls back to the nearest damaged one, then refills", () => {
     const steps = roleDef("repair")?.steps ?? [];
-    // Repair leads; the repair target is gated by `where: "damaged"` and a repairBelow floor.
-    expect(steps[0].do).toBe("repair");
+    // Tier 1: an emergency-level target (<50% hits), most damaged first — worth crossing the room for.
     const first = steps[0];
-    expect(first.do === "repair" && first.at).toMatchObject({ where: "damaged", repairBelow: expect.any(Number) });
+    expect(first.do).toBe("repair");
+    expect(first.do === "repair" && first.at).toMatchObject({ where: "damaged", repairBelow: 0.5, prefer: "mostDamaged" });
+    // Tier 2: any decay at all, nearest first — mopping up minor damage stays local instead of crisscrossing.
+    const second = steps[1];
+    expect(second.do).toBe("repair");
+    expect(second.do === "repair" && second.at).toMatchObject({ where: "damaged", prefer: "nearest" });
+    expect(second.do === "repair" && (second.at as { repairBelow?: number }).repairBelow).toBeUndefined();
     // Gather sits ahead of self-harvest so a repairer draws from stores/drops before mining itself.
-    expect(steps.map(s => s.do)).toEqual(["repair", "gather", "harvest"]);
+    expect(steps.map(s => s.do)).toEqual(["repair", "repair", "gather", "harvest"]);
   });
 });
 

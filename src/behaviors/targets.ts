@@ -275,6 +275,12 @@ function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomO
     );
     return sorted[0] ?? null;
   }
+  if (prefer === "mostDamaged") {
+    // Lowest hits fraction first — the structure closest to being lost. A candidate with no hitsMax
+    // (never happens on a "damaged" pool, but guard anyway) sorts to the back.
+    const sorted = [...pool].sort((a, b) => damageFraction(a) - damageFraction(b));
+    return sorted[0] ?? null;
+  }
   return creep.pos.findClosestByPath(pool) ?? pool[0] ?? null;
 }
 
@@ -286,6 +292,14 @@ function energyAmount(o: RoomObject): number {
   if (amount !== undefined) return amount;
   const store = (o as unknown as { store?: Store<ResourceConstant, false> }).store;
   return store?.getUsedCapacity(RESOURCE_ENERGY) ?? 0;
+}
+
+// Fraction of max hits a structure still has; ranks a "mostDamaged" pool ascending (lowest = most
+// damaged, picked first). A candidate with no hitsMax sorts to 1 (undamaged), never chosen over a real one.
+function damageFraction(o: RoomObject): number {
+  const h = o as unknown as { hits?: number; hitsMax?: number };
+  if (!h.hitsMax || h.hitsMax <= 0) return 1;
+  return (h.hits ?? 0) / h.hitsMax;
 }
 
 const WORTHWHILE_FRACTION = 0.25; // fraction of the collector's free capacity a drop pile must hold

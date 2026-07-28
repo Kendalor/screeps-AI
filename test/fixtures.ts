@@ -8,6 +8,7 @@ import type {
   EmpireSnapshot,
   ScoutCandidate,
   SnapContainer,
+  SnapSink,
   SnapCreep,
   SnapDrop,
   SnapSource,
@@ -77,6 +78,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     safeModeCount: 0,
     creeps: [],
     spawns: [],
+    spawnSinks: [],
     energyAvailable: 300,
     energyCapacity: 300,
     sources: [sourceAt(20, 10)],
@@ -86,7 +88,9 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     controller: { x: 25, y: 25 },
     controllerLevel: 1,
     controllerProgress: 0,
+    controllerProgressTotal: 0,
     storageEnergy: 0,
+    storageCapacity: 0,
     containers: [],
     anchor: null,
     sourceMemory: {},
@@ -158,6 +162,12 @@ export function containerAt(
 
 export function spawn(id = "spawn1", busy = false): SnapSpawn {
   return { id: id as Id<StructureSpawn>, busy };
+}
+
+// A single spawn/extension energy sink (default capacity 50 = one extension), for logistics-graph tests
+// that need individually-reservable spawn/extension targets rather than the energyAvailable aggregate.
+export function sinkAt(x: number, y: number, storeEnergy = 0, storeCapacity = 50, id = `sink_${x}_${y}`): SnapSink {
+  return { id: id as Id<StructureSpawn | StructureExtension>, x, y, storeEnergy, storeCapacity };
 }
 
 let creepSeq = 0;

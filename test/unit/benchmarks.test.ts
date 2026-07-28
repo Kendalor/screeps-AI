@@ -281,6 +281,29 @@ describe("formatComparison", () => {
       "no baseline yet"
     );
   });
+
+  it("renders 'value / denominator' when a spec names an outOf sibling", () => {
+    const result = recordBenchmark(
+      "rcl2",
+      { progress: 50000, threshold: 400000 },
+      { progress: { direction: "higher", unit: "progress", outOf: "threshold" }, threshold: { unit: "progress" } },
+      file
+    );
+
+    expect(formatComparison(result.get("progress")!)).toContain("50000 / 400000 progress");
+  });
+
+  it("gives a denominator-only measurement no row of its own", () => {
+    const result = recordBenchmark(
+      "rcl2",
+      { progress: 50000, threshold: 400000 },
+      { progress: { direction: "higher", unit: "progress", outOf: "threshold" }, threshold: { unit: "progress" } },
+      file
+    );
+
+    expect(result.get("threshold")).toBeUndefined();
+    expect(result.comparisons.map(c => c.measurement)).toEqual(["progress"]);
+  });
 });
 
 describe("formatResult", () => {
