@@ -137,12 +137,14 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
 }
 
 // Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
-function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" }): StepResult {
-  const dest = step.to === "scoutTarget" ? creep.memory.scoutTarget : step.room;
+function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" | "targetRoom" }): StepResult {
+  const dest =
+    step.to === "scoutTarget" ? creep.memory.scoutTarget : step.to === "targetRoom" ? creep.memory.targetRoom : step.room;
   if (!dest) return { acted: false, didAct: false }; // nothing to move toward — step is a no-op, advance past it
 
   if (creep.room.name === dest) {
-    // Arrived. Clear a consumed dynamic target and its route so the next assignment starts clean.
+    // Arrived. Clear a consumed scout target and its route so the next assignment starts clean. A
+    // targetRoom (a remote miner's permanent destination) is NOT cleared — the creep works there for life.
     if (step.to === "scoutTarget") {
       creep.memory.scoutTarget = undefined;
       creep.memory.route = undefined;

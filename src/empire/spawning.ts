@@ -57,7 +57,11 @@ export function planSpawning(colonies: Colony[], roomDistance: RoomDistance): In
     if (!choice.purse) continue; // nowhere can spawn this right now
     const slot = choice.purse.idle.shift()!; // pickPurse guarantees one
     log.info(`spawning ${request.memory.role}(${request.priority})@${request.targetRoom} from ${choice.purse.room}`);
-    out.push({ kind: "spawn", spawn: slot.id, body: request.body, memory: request.memory });
+    // A creep needed in a room other than where it spawns (a remote miner) carries that room as its
+    // permanent destination, so moveToRoom walks it there before it works. Local creeps get no targetRoom.
+    const memory =
+      request.targetRoom !== choice.purse.room ? { ...request.memory, targetRoom: request.targetRoom } : request.memory;
+    out.push({ kind: "spawn", spawn: slot.id, body: request.body, memory });
     choice.purse.budget -= bodyCost(request.body);
   }
   return out;

@@ -311,6 +311,31 @@ describe("spawn arbiter — cross-colony routing", () => {
     expect(pinned && pinned.kind === "spawn" && pinned.spawn).toBe("bSpawn");
   });
 
+  it("stamps memory.targetRoom on a creep spawned for a room other than where it spawns", () => {
+    // A remote miner: home W1N1 requests it for the remote room W2N1, and W1N1's own spawn serves it.
+    const a = colonySnap({ name: "W1N1", spawns: [spawn("aSpawn")], energyAvailable: 1000, sources: [], creeps: snapCreeps("miner", 1) });
+    const empire = testEmpire(a);
+    empire.colonies[0].requests = () => [
+      { body: [WORK, MOVE], priority: 90, memory: { role: "miner", home: "W1N1", op: "mining:W1N1" }, targetRoom: "W2N1" }
+    ];
+
+    const intents = planSpawning(empire.colonies, roomDistance);
+    const spawned = intents.find(i => i.kind === "spawn");
+    expect(spawned && spawned.kind === "spawn" && spawned.memory.targetRoom).toBe("W2N1");
+  });
+
+  it("leaves memory.targetRoom unset for a creep spawned in its own target room", () => {
+    const a = colonySnap({ name: "W1N1", spawns: [spawn("aSpawn")], energyAvailable: 1000, sources: [], creeps: snapCreeps("miner", 1) });
+    const empire = testEmpire(a);
+    empire.colonies[0].requests = () => [
+      { body: [WORK, MOVE], priority: 90, memory: { role: "miner", home: "W1N1", op: "mining:W1N1" }, targetRoom: "W1N1" }
+    ];
+
+    const intents = planSpawning(empire.colonies, roomDistance);
+    const spawned = intents.find(i => i.kind === "spawn");
+    expect(spawned && spawned.kind === "spawn" && spawned.memory.targetRoom).toBeUndefined();
+  });
+
   it("keeps each colony's energy budget separate", () => {
     // Two colonies, each with one 300-energy spawn and one recovery request costing ~300. Both spawn
     // — a shared budget would let only one through.

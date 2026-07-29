@@ -60,49 +60,73 @@ export class Mining extends Operation {
 
   /**
    * Bring each source up to its WORK target (not a headcount), clamped by open tiles. Per-source
-   * rather than colony-total so one double-staffed, one bare source can't average out.
+   * rather than colony-total so one double-staffed, one bare source can't average out. Local sources
+   * first, then selected remote sources — but remote requests are gated behind local sources being
+   * fully staffed, so a remote can never starve the home room of its own miners (invariant #3).
    */
   private minerRequests(colony: ColonySnapshot): CreepRequest[] {
     const bodyWork = minerBodyWork(colony);
     const miners = this.owned(colony, "miner"); // this operation's only — a sibling must not count these
+    const body = orderBody(roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
 
     // Miners predating stage 2 carry no sourceId (PRD §6). Treat as generic cover: borrowed by at
-    // most one source, contributing both WORK (toward target) and head (tile safeguard).
-    const unassigned = miners.filter(c => c.memory.sourceId === undefined);
-    let next = 0; // index of the first not-yet-borrowed miner
+    // most one source, contributing both WORK (toward target) and head (tile safeguard). A single
+    // shared pool spans local and remote sources, drawn local-first.
+    const pool = { miners: miners.filter(c => c.memory.sourceId === undefined), next: 0 };
 
-    const body = orderBody(roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
-    const out: CreepRequest[] = [];
+    const local: CreepRequest[] = [];
     for (const source of colony.sources) {
-      const wantedWork = config.workPerSource;
-      const onSource = miners.filter(c => c.memory.sourceId === source.id);
-      const assignedWork = onSource.reduce((s, c) => s + workOf(c), 0);
-      // Draw on the unassigned pool before asking for a new creep — WORK already paid for.
-      const workGap = Math.max(0, wantedWork - assignedWork);
-      let borrowedWork = 0;
-      let borrowedHeads = 0;
-      while (next < unassigned.length && borrowedWork < workGap) {
-        borrowedWork += workOf(unassigned[next]);
-        borrowedHeads++;
-        next++;
-      }
+      local.push(...this.requestsForSource(colony, source.id, source.openTiles, colony.name, miners, pool, body, bodyWork));
+    }
 
-      const deficit = workGap - borrowedWork;
-      const freeTiles = Math.max(0, source.openTiles - onSource.length - borrowedHeads);
-      const wantedBodies = Math.min(freeTiles, Math.ceil(deficit / bodyWork));
-      for (let i = 0; i < wantedBodies; i++) {
-        out.push({
-          body,
-          priority: roleDef("miner")!.priority,
-          memory: {
-            role: "miner",
-            home: colony.name,
-            op: this.name,
-            sourceId: source.id
-          },
-          targetRoom: colony.name // remote mining will differ — the seam is here
-        });
-      }
+    // Local-first gate: hold all remote requests until every local source is fully staffed, so the
+    // arbiter never fills a remote miner ahead of a home one. `local.length === 0` means no local
+    // deficit remains this tick.
+    if (local.length > 0) return local;
+
+    const remote: CreepRequest[] = [];
+    for (const source of colony.remoteSources) {
+      if (source.danger > 0) continue; // a hostile remote stops new miners; in-flight ones age out
+      remote.push(...this.requestsForSource(colony, source.id, source.openTiles, source.room, miners, pool, body, bodyWork));
+    }
+    return remote;
+  }
+
+  /** One source's miner deficit as concrete requests, drawing the shared unassigned pool first. */
+  private requestsForSource(
+    colony: ColonySnapshot,
+    sourceId: Id<Source>,
+    openTiles: number,
+    targetRoom: string,
+    miners: readonly SnapCreep[],
+    pool: { miners: SnapCreep[]; next: number },
+    body: BodyPartConstant[],
+    bodyWork: number
+  ): CreepRequest[] {
+    const wantedWork = config.workPerSource;
+    const onSource = miners.filter(c => c.memory.sourceId === sourceId);
+    const assignedWork = onSource.reduce((s, c) => s + workOf(c), 0);
+    // Draw on the unassigned pool before asking for a new creep — WORK already paid for.
+    const workGap = Math.max(0, wantedWork - assignedWork);
+    let borrowedWork = 0;
+    let borrowedHeads = 0;
+    while (pool.next < pool.miners.length && borrowedWork < workGap) {
+      borrowedWork += workOf(pool.miners[pool.next]);
+      borrowedHeads++;
+      pool.next++;
+    }
+
+    const deficit = workGap - borrowedWork;
+    const freeTiles = Math.max(0, openTiles - onSource.length - borrowedHeads);
+    const wantedBodies = Math.min(freeTiles, Math.ceil(deficit / bodyWork));
+    const out: CreepRequest[] = [];
+    for (let i = 0; i < wantedBodies; i++) {
+      out.push({
+        body,
+        priority: roleDef("miner")!.priority,
+        memory: { role: "miner", home: colony.name, op: this.name, sourceId },
+        targetRoom
+      });
     }
     return out;
   }

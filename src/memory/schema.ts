@@ -28,6 +28,7 @@ declare global {
     // `current.next` as each leg completes, so there is no separate follow-up field here.
     logistics?: { current?: LogisticsTask };
     scoutTarget?: string; // room a scout is assigned to reach; cleared by moveToRoom on arrival
+    targetRoom?: string; // a remote worker's permanent destination room (its source's room); NOT cleared on arrival, unlike scoutTarget
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
   }

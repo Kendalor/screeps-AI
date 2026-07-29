@@ -75,6 +75,9 @@ export class Miner extends Role {
   // otherwise (an overflow CARRY miner sharing a source, or feeding a link) they fire the same tick as
   // harvest — transfer is its own engine pipeline, independent of harvest's WORK pipeline.
   static override readonly steps: Step[] = [
+    // Remote miners walk to their source's room first (targetRoom set at spawn). A local miner has no
+    // targetRoom, so this no-ops and the interpreter advances straight to harvesting.
+    { do: "moveToRoom", to: "targetRoom" },
     { do: "repair", at: { find: "structure", type: [STRUCTURE_CONTAINER], where: "damaged", near: "assignedSource", repairBelow: 0.7 } },
     { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_CONTAINER, near: "assignedSource" } },
     { do: "harvest", from: { find: "source" } },

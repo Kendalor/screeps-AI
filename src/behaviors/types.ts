@@ -66,7 +66,7 @@ export type Step = ({
     | { do: "build"; at?: TargetSpec }
     | { do: "repair"; at: TargetSpec; upTo?: number }
     | { do: "upgrade" }
-    | { do: "moveToRoom"; room?: string; to?: "scoutTarget" } // static room, or "scoutTarget" to read memory.route from creep memory
+    | { do: "moveToRoom"; room?: string; to?: "scoutTarget" | "targetRoom" } // static room, or "scoutTarget"/"targetRoom" to read the destination + memory.route from creep memory
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
   );
 

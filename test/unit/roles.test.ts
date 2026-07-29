@@ -278,6 +278,9 @@ describe("miner role", () => {
   it("upkeeps its own container (repair < 70%, build the site) before harvesting, then link over container", () => {
     expect(roleDef("miner")).toBe(ROLES.miner);
     expect(roleDef("miner")?.steps).toEqual([
+      // Remote miners walk to their source's room first (targetRoom set at spawn); a local miner has no
+      // targetRoom so this no-ops and the interpreter advances to harvesting.
+      { do: "moveToRoom", to: "targetRoom" },
       // Repair its own source container once it drops below 70% hits; scoped to the assigned source so a
       // miner never repairs another source's container. Only fires when the miner carries energy.
       { do: "repair", at: { find: "structure", type: [STRUCTURE_CONTAINER], where: "damaged", near: "assignedSource", repairBelow: 0.7 } },

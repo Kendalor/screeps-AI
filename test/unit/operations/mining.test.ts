@@ -13,7 +13,7 @@ import type { GoalLayout } from "../../../src/layouts/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { roleDef } from "../../../src/behaviors/roles";
 import { Mining } from "../../../src/operations/mining";
-import { colonySnap, containerAt, openTerrain, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
+import { colonySnap, containerAt, openTerrain, remoteSourceAt, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
 
 const GOAL = GOAL_JSON as GoalLayout;
 
@@ -260,6 +260,56 @@ describe("Mining.desiredCreeps — miners", () => {
     const snap = colonySnap({ sources: [a, b], energyCapacity: 550, creeps });
 
     expect(minerRequests(snap)).toEqual([]);
+  });
+});
+
+const remoteMinerRequests = (snap: Parameters<Mining["desiredCreeps"]>[0]) =>
+  mining.desiredCreeps(snap).filter(r => r.memory.role === "miner" && r.targetRoom !== "W1N1");
+
+describe("Mining.desiredCreeps — remote miners", () => {
+  // A local source already fully staffed (so the local-first gate is open) plus one selected remote
+  // source: Mining asks for miners aimed at the remote room and stamped with the remote source id.
+  it("requests miners for a selected remote source, targeted at the remote room", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60 });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [remote],
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    const requests = remoteMinerRequests(snap);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const r of requests) {
+      expect(r.targetRoom).toBe("W2N1");
+      expect(r.memory.sourceId).toBe(remote.id);
+      expect(r.memory.op).toBe("mining:W1N1");
+    }
+  });
+
+  // Invariant #3: a remote can never starve the home room. While any local source is still short a
+  // miner, no remote request is emitted at all.
+  it("staffs no remote source while a local source is still under-staffed", () => {
+    const bareLocal = sourceAt(20, 10, "local", 1); // no miner assigned -> local deficit
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60 });
+    const snap = colonySnap({ sources: [bareLocal], remoteSources: [remote], creeps: snapCreeps("hauler", 5) });
+
+    expect(remoteMinerRequests(snap)).toEqual([]);
+    // and it is still asking for the LOCAL miner
+    expect(minerRequests(snap).every(r => r.targetRoom === "W1N1")).toBe(true);
+  });
+
+  // Danger response is age-out, not retreat: a hostile remote just stops new miner requests.
+  it("skips a remote source whose room is in danger", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const danger = remoteSourceAt(25, 25, "W2N1", { distance: 60, danger: 1 });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [danger],
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    expect(remoteMinerRequests(snap)).toEqual([]);
   });
 });
 

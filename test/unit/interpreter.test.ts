@@ -615,3 +615,39 @@ describe("upgrade step: drawing closer to the controller", () => {
     expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
   });
 });
+
+// A remote miner is spawned at home with memory.targetRoom set to its source's room and a stored route.
+// moveToRoom { to: "targetRoom" } walks it there; only once it has arrived do the harvest steps engage.
+describe("moveToRoom to a creep's targetRoom", () => {
+  function roamer(room: string, targetRoom: string, route?: { dest: string; rooms: string[]; index: number }) {
+    const traveled: { x: number; y: number; room: string }[] = [];
+    const creep = {
+      room: { name: room },
+      memory: { targetRoom, route },
+      travelTo: (p: { x: number; y: number; roomName: string }) => traveled.push({ x: p.x, y: p.y, room: p.roomName })
+    };
+    return { creep: creep as unknown as Creep, traveled };
+  }
+
+  it("travels toward the target room while outside it", () => {
+    const { creep, traveled } = roamer("W1N1", "W2N1");
+    const result = runStep(creep, { do: "moveToRoom", to: "targetRoom" });
+    expect(result.acted).toBe(true);
+    expect(traveled).toEqual([{ x: 25, y: 25, room: "W2N1" }]);
+  });
+
+  it("no-ops (advances past) once standing in the target room", () => {
+    const { creep, traveled } = roamer("W2N1", "W2N1");
+    const result = runStep(creep, { do: "moveToRoom", to: "targetRoom" });
+    expect(result).toEqual({ acted: false, didAct: false });
+    expect(traveled).toEqual([]);
+  });
+
+  it("follows the stored route's next room rather than jumping to the destination", () => {
+    // Two rooms out: the next hop is W2N1, not the final W3N1.
+    const route = { dest: "W3N1", rooms: ["W2N1", "W3N1"], index: 0 };
+    const { creep, traveled } = roamer("W1N1", "W3N1", route);
+    runStep(creep, { do: "moveToRoom", to: "targetRoom" });
+    expect(traveled).toEqual([{ x: 25, y: 25, room: "W2N1" }]);
+  });
+});
