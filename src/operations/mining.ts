@@ -204,7 +204,8 @@ export class Mining extends Operation {
         storage: colony.anchor ?? colony.controller,
         energyCapacity: colony.energyCapacity,
         spawnHeadroom: colony.controllerLevel >= config.remoteFromRcl
-      }
+      },
+      currentlySelected: colony.remoteSources.map(s => s.id)
     });
     if (remotes.length === 0) return undefined;
     return { kind: "setRemotes", room: colony.name, remotes };

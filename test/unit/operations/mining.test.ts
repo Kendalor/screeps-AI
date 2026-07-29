@@ -13,7 +13,7 @@ import type { GoalLayout } from "../../../src/layouts/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { roleDef } from "../../../src/behaviors/roles";
 import { Mining } from "../../../src/operations/mining";
-import { colonySnap, containerAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
+import { colonySnap, containerAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt, spawn } from "../../fixtures";
 import type { Intent } from "../../../src/intents/types";
 
 const GOAL = GOAL_JSON as GoalLayout;
@@ -577,6 +577,7 @@ describe("Mining.intents — remote selection", () => {
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
       energyCapacity: 800,
+      spawns: [spawn()], // headroom: an empty spawn network has capacity for a remote miner's body
       scoutTargets: [scoutTarget("W2N1", scouted({ sources: [{ id: "rs" as Id<Source>, x: 25, y: 25 }] }))]
     });
 
@@ -592,6 +593,7 @@ describe("Mining.intents — remote selection", () => {
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
       energyCapacity: 800,
+      spawns: [spawn()],
       scoutTargets: [scoutTarget("W2N1", scouted())]
     });
 
@@ -604,7 +606,38 @@ describe("Mining.intents — remote selection", () => {
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
       energyCapacity: 800,
+      spawns: [spawn()],
       scoutTargets: [] // nothing scouted
+    });
+
+    expect(setRemotesOf(snap)).toEqual([]);
+  });
+
+  it("stays silent with no spawns at all — no capacity to staff anything new", () => {
+    const snap = colonySnap({
+      tick: 100,
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      spawns: [], // no spawn network: zero capacity, gate must fail closed
+      scoutTargets: [scoutTarget("W2N1", scouted({ sources: [{ id: "rs" as Id<Source>, x: 25, y: 25 }] }))]
+    });
+
+    expect(setRemotesOf(snap)).toEqual([]);
+  });
+
+  it("stays silent when the spawn network is already saturated by living creeps", () => {
+    // One spawn sustains PARTS_PER_SPAWN (500) parts. Fill it past capacity with a pile of live
+    // creeps so even a small remote-miner body can't fit underneath — headroom must read false.
+    const saturating = snapCreeps(50, i => snapCreep({ id: `sat_${i}` as Id<Creep>, role: "upgrader", body: Array(10).fill(WORK) }));
+    const snap = colonySnap({
+      tick: 100,
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      spawns: [spawn()],
+      creeps: saturating,
+      scoutTargets: [scoutTarget("W2N1", scouted({ sources: [{ id: "rs" as Id<Source>, x: 25, y: 25 }] }))]
     });
 
     expect(setRemotesOf(snap)).toEqual([]);

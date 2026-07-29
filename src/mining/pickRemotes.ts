@@ -19,6 +19,9 @@ export interface PickRemotesHome {
 export interface PickRemotesInput {
   candidates: ScoutCandidate[]; // scouted neighbours; each info.sources is the remote-mining input
   home: PickRemotesHome;
+  currentlySelected: Id<Source>[]; // sources already committed to Memory.remotes — never dropped here, and
+  // at most one *new* source is added per call so a burst of newly-profitable candidates can't all land
+  // in the same throttle tick (see MAX_NEW_REMOTES_PER_SELECTION below).
 }
 
 // Below this, energyCapacity can't build a miner worth sending (RCL2 with all extensions = 550).
@@ -28,6 +31,11 @@ const MIN_ENERGY_CAPACITY = 550;
 // unbounded remote fleet. Nearest-first, so the cap keeps the cheapest energy. A coarse ceiling — the
 // real spawn-capacity signal is the handoff's open question; this is the safety net until then.
 const MAX_REMOTE_SOURCES = 6;
+
+// At most one never-before-selected source is added per call, even if several newly become profitable in
+// the same throttle tick (e.g. a scout just finished several rooms at once). Keeps ramp-up gradual instead
+// of spawning a whole remote-mining fleet's worth of miners/haulers/claimers in one go.
+const MAX_NEW_REMOTES_PER_SELECTION = 1;
 
 // One scouted source flattened with the room it lives in and its computed haul distance.
 interface Candidate {
@@ -71,7 +79,20 @@ export function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
 
   // Nearest-first, then capped: the spawn-capacity ceiling keeps the cheapest energy and can't over-commit.
   worthwhile.sort((a, b) => a.distance - b.distance);
-  const capped = worthwhile.slice(0, MAX_REMOTE_SOURCES);
+
+  // Never drop a source we've already committed to, even if it'd fall outside the cap on a re-rank (e.g.
+  // nearer candidates appeared). Then add previously-unseen sources one at a time, nearest-first, up to
+  // both the per-call trickle limit and the overall ceiling.
+  const alreadySelected = new Set(input.currentlySelected);
+  const kept = worthwhile.filter(c => alreadySelected.has(c.id));
+  const fresh = worthwhile.filter(c => !alreadySelected.has(c.id));
+
+  const capped = kept.slice(0, MAX_REMOTE_SOURCES);
+  for (const c of fresh) {
+    if (capped.length >= MAX_REMOTE_SOURCES) break;
+    if (capped.length - kept.length >= MAX_NEW_REMOTES_PER_SELECTION) break;
+    capped.push(c);
+  }
 
   // Group surviving sources back into per-room RemoteMemory entries.
   const byRoom = new Map<string, RemoteMemory>();

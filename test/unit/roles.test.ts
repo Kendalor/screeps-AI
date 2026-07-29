@@ -143,7 +143,7 @@ describe("builder role", () => {
           find: "any",
           of: [
             { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
-            { find: "dropped" }
+            { find: "dropped", unlessSpawnNeedsEnergy: true }
           ],
           prefer: "nearest"
         }
@@ -370,7 +370,7 @@ describe("upgrader role", () => {
           find: "any",
           of: [
             { find: "structure", type: [STRUCTURE_CONTAINER, STRUCTURE_STORAGE, STRUCTURE_LINK], where: "hasEnergy" },
-            { find: "dropped" },
+            { find: "dropped", unlessSpawnNeedsEnergy: true },
             { find: "tombstone" }
           ],
           prefer: "nearest"

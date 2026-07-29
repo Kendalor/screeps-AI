@@ -20,8 +20,13 @@
 // is missed, so the history shows *when* things started going wrong rather than just a single
 // pass/fail flip.
 //
-// Runs in the harness's default room (bunker terrain, spawn on the layout's own spawn tile):
-// stubWorld()'s stock rooms cap clearance at 4 vs BUNKER_RADIUS=6, so no anchor would be found.
+// Runs on scoutableTerrain(), not the plain bunkerTerrain() default: the run is long enough (20,000
+// ticks) that a colony reaching RCL3+ has time to scout, select, reserve and staff a real remote —
+// autonomously, via the bot's own Scouting/Mining/Reservation operations, not seeded — so the
+// benchmark also tracks how the remote-mining pipeline performs over a full cold start. Opening the
+// borders costs nothing for a colony that never gets that far: bunkerTerrain()'s interior wall bands
+// (the anchor-search discriminator) are untouched, only the perimeter gains the same aligned openings
+// scouting.test.ts uses (north into W0N2, west into W1N1).
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { CONTROLLER_LEVELS } from "@screeps/common/lib/constants";
@@ -39,7 +44,7 @@ import {
   type BenchmarkSpec
 } from "../benchmarks";
 import { EnergyMetrics } from "../../integration/energyMetrics";
-import { BootedColony, bundleBot } from "../../integration/harness";
+import { BootedColony, bundleBot, scoutableTerrain } from "../../integration/harness";
 
 // Every role the census can report on, so the final-snapshot spec below has a fixed, known shape
 // (unlike buildings, whose types vary by RCL and layout — see finalSnapshotOf).
@@ -101,7 +106,11 @@ const FINAL_SNAPSHOT_SPEC: BenchmarkSpec = {
   finalEnergyCapacity: { direction: "higher", unit: "energy" },
   finalStorageEnergy: { direction: "higher", unit: "energy" },
   finalBuildingsBuilt: { direction: "higher", unit: "structures" },
-  finalBuildingsWanted: { unit: "structures" }
+  finalBuildingsWanted: { unit: "structures" },
+  // How much of the run's remote-mining pipeline actually engaged by the last tick — a colony that
+  // stalled before RCL3 (config.remoteFromRcl) legitimately never selects a remote at all.
+  finalRemoteSources: { direction: "higher", unit: "sources" },
+  finalRemoteRoomsReserved: { direction: "higher", unit: "rooms" }
 };
 
 const MILESTONE_SPEC: BenchmarkSpec = {
@@ -112,19 +121,25 @@ const MILESTONE_SPEC: BenchmarkSpec = {
   rcl5: { unit: "ticks" },
   towerBuilt: { unit: "ticks" },
   storageBuilt: { unit: "ticks" },
+  // First tick each stage of the autonomous remote-mining pipeline was observed; null if the run
+  // never got there within budget (same "missed, not failed" treatment as the RCL rungs above).
+  remoteSelected: { unit: "ticks" },
+  remoteReserved: { unit: "ticks" },
+  remoteMinerStaffed: { unit: "ticks" },
   ...FINAL_SNAPSHOT_SPEC
 };
 
 /** Census, energy and build progress as they stood on the run's last tick — one extra read, not
  * sampled every tick, so it doesn't add per-tick cost to an already-slow 20k-tick loop. */
 async function finalSnapshotOf(colony: BootedColony): Promise<Record<string, number | null>> {
-  const [ctrl, rolesAlive, energyAvailable, energyCapacity, storageEnergy, layout] = await Promise.all([
+  const [ctrl, rolesAlive, energyAvailable, energyCapacity, storageEnergy, layout, remotes] = await Promise.all([
     colony.controller(),
     colony.rolesAlive(),
     Promise.all(["spawn", "extension"].map(t => colony.energyIn(t))).then(xs => xs.reduce((a, b) => a + b, 0)),
     colony.energyCapacity(),
     colony.energyIn("storage"),
-    colony.layoutSnapshot()
+    colony.layoutSnapshot(),
+    remoteMemory(colony)
   ]);
 
   const roleCounts: Record<string, number> = {};
@@ -147,8 +162,18 @@ async function finalSnapshotOf(colony: BootedColony): Promise<Record<string, num
     finalEnergyCapacity: energyCapacity,
     finalStorageEnergy: storageEnergy,
     finalBuildingsBuilt: built,
-    finalBuildingsWanted: wanted.length
+    finalBuildingsWanted: wanted.length,
+    finalRemoteSources: remotes.reduce((sum, r) => sum + r.sources.length, 0),
+    finalRemoteRoomsReserved: remotes.filter(r => r.reserved).length
   };
+}
+
+/** ColonyMemory.remotes as pickRemotes/Reservation last wrote it — [] before any remote is selected. */
+async function remoteMemory(colony: BootedColony): Promise<{ room: string; sources: unknown[]; reserved: boolean }[]> {
+  const mem = (await colony.memory()) as {
+    colonies?: Record<string, { remotes?: { room: string; sources: unknown[]; reserved: boolean }[] }>;
+  };
+  return mem.colonies?.[colony.room]?.remotes ?? [];
 }
 
 let colony: BootedColony;
@@ -156,7 +181,7 @@ let colony: BootedColony;
 const energy = new EnergyMetrics();
 
 beforeAll(async () => {
-  colony = await BootedColony.boot({ botCode: bundleBot() });
+  colony = await BootedColony.boot({ botCode: bundleBot(), terrain: scoutableTerrain() });
 }, 120_000);
 
 afterAll(() => {
@@ -172,7 +197,22 @@ test(
       rcl4: null,
       rcl5: null,
       towerBuilt: null,
-      storageBuilt: null
+      storageBuilt: null,
+      remoteSelected: null,
+      remoteReserved: null,
+      remoteMinerStaffed: null
+    };
+
+    // A creep owned by the bot standing in any remote room currently selected in ColonyMemory.remotes
+    // — cheaper than scanning every stub neighbour, and correct regardless of which room got picked.
+    const hasMinerInAnyRemote = async (): Promise<boolean> => {
+      const remotes = await remoteMemory(colony);
+      if (remotes.length === 0) return false;
+      for (const r of remotes) {
+        const objs = (await colony.server.world.roomObjects(r.room)) as Array<{ type: string; user?: string }>;
+        if (objs.some(o => o.type === "creep" && o.user === colony.bot.id)) return true;
+      }
+      return false;
     };
 
     // runUntil resolves the predicate to a tick only when it turns true, and to null if the budget
@@ -195,6 +235,14 @@ test(
         }
         if (milestones.storageBuilt === null && (await colony.structures("storage")).length > 0) {
           milestones.storageBuilt = tick;
+        }
+        if (milestones.remoteSelected === null || milestones.remoteReserved === null) {
+          const remotes = await remoteMemory(colony);
+          if (milestones.remoteSelected === null && remotes.length > 0) milestones.remoteSelected = tick;
+          if (milestones.remoteReserved === null && remotes.some(r => r.reserved)) milestones.remoteReserved = tick;
+        }
+        if (milestones.remoteMinerStaffed === null && (await hasMinerInAnyRemote())) {
+          milestones.remoteMinerStaffed = tick;
         }
       }
     );

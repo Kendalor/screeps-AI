@@ -32,7 +32,10 @@ export type TargetSpec =
       // rather than chasing every point of decay. Combines with `where` (both must pass).
       repairBelow?: number;
     }
-  | { find: "dropped"; share?: Share; prefer?: Prefer }
+  // unlessSpawnNeedsEnergy: skip this pool while the room's spawn/extensions aren't full, so builders/
+  // upgraders leave ground piles for the hauler (whose own gather step has no such gate) rather than
+  // competing with it for the exact energy the spawn system needs to produce replacements.
+  | { find: "dropped"; share?: Share; prefer?: Prefer; unlessSpawnNeedsEnergy?: boolean }
   | { find: "tombstone"; share?: Share; prefer?: Prefer }
   | { find: "source" }
   // structureType/near scope which sites qualify, mirroring the structure spec: a miner builds only the

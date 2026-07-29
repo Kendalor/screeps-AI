@@ -364,8 +364,13 @@ export class BootedColony {
     metrics.sample(observeTick((await this.roomObjects()) as RawObj[], this.seenCreeps));
   }
 
-  async sources(): Promise<XY[]> {
-    return (await this.roomObjects()).filter(o => o.type === "source").map(o => ({ x: o.x, y: o.y }));
+  // Real object ids (the mockup db's `_id`), not just position — a seeded miner's memory.sourceId must
+  // resolve via Game.getObjectById in the real engine, so layoutSnapshot() needs genuine ids rather than
+  // synthetic placeholders.
+  async sourcesWithId(): Promise<Array<XY & { id: Id<Source> }>> {
+    return (await this.roomObjects())
+      .filter(o => o.type === "source")
+      .map(o => ({ x: o.x, y: o.y, id: o._id as Id<Source> }));
   }
 
   // 1 = walkable, 0 = wall, indexed [x*50+y] — the form layouts/roads and layouts/stamp expect.
@@ -395,7 +400,7 @@ export class BootedColony {
       spawns: [],
       energyAvailable: 0,
       energyCapacity: 0,
-      sources: (await this.sources()).map((s, i) => ({ ...s, id: `source-${i}` as Id<Source>, openTiles: 8 })),
+      sources: (await this.sourcesWithId()).map(s => ({ ...s, openTiles: 8 })),
       remoteSources: [],
       remoteEnergy: [],
       drops: [],

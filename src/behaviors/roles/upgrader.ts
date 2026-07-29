@@ -36,7 +36,9 @@ export class Upgrader extends Role {
   // all pooled into one candidate set so the closest wins rather than a fixed type order. `gather`
   // (not withdraw/pickup) because the pool mixes store-holders with dropped energy and the verb must
   // follow whatever resolves. Never draws from haulers: a hauler drained mid-run can't deliver its
-  // load, so the upgrader must not steal it in transit.
+  // load, so the upgrader must not steal it in transit. Drops are further gated by
+  // unlessSpawnNeedsEnergy: while spawn/extensions aren't full, the upgrader skips ground piles
+  // entirely and falls through to container/storage/tombstone, leaving drops for the hauler.
   //
   // Then BUILD before upgrading: an upgrader is an idle pair of WORK parts whenever there is
   // construction outstanding, so it pitches in on the nearest-to-done site first and only falls
@@ -51,7 +53,7 @@ export class Upgrader extends Role {
         find: "any",
         of: [
           { find: "structure", type: [STRUCTURE_CONTAINER, STRUCTURE_STORAGE, STRUCTURE_LINK], where: "hasEnergy" },
-          { find: "dropped" },
+          { find: "dropped", unlessSpawnNeedsEnergy: true },
           { find: "tombstone" }
         ],
         prefer: "nearest"

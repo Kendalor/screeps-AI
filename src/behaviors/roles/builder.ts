@@ -45,6 +45,9 @@ export class Builder extends Role {
   // hauler is carrying to the spawn/extensions, and with a large RCL3 builder cohort that starves the
   // spawn structures and stalls replacements into a colony wipe (the controller container / spawn-fill
   // collapse). Builders draw from the same standing energy (drops, containers) haulers already deliver.
+  // Ground piles are further gated by unlessSpawnNeedsEnergy: while spawn/extensions aren't full, the
+  // builder skips drops entirely (falling through to container/storage or self-harvest) so it never
+  // beats the hauler to the exact energy the spawn system needs.
   static override readonly steps: Step[] = [
     {
       do: "gather",
@@ -52,7 +55,7 @@ export class Builder extends Role {
         find: "any",
         of: [
           { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
-          { find: "dropped" }
+          { find: "dropped", unlessSpawnNeedsEnergy: true }
         ],
         prefer: "nearest"
       }

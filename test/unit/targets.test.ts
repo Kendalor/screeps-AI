@@ -310,11 +310,20 @@ function fakeDrop(id: string, amount: number): object {
   return { id, pos: { x: 5, y: 5 }, amount };
 }
 
-function collectorCreep(name: string, freeCapacity: number, candidates: object[]): Creep {
+function collectorCreep(
+  name: string,
+  freeCapacity: number,
+  candidates: object[],
+  energy?: { available: number; capacity: number }
+): Creep {
   return {
     name,
     pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
-    room: { find: () => candidates },
+    room: {
+      find: () => candidates,
+      energyAvailable: energy?.available ?? 0,
+      energyCapacityAvailable: energy?.capacity ?? 0
+    },
     store: { getFreeCapacity: () => freeCapacity },
     memory: { task: { step: 0 } }
   } as unknown as Creep;
@@ -340,6 +349,50 @@ describe("resolveTarget worthwhile-amount filter for drop piles", () => {
     const got = resolveTarget(collectorCreep("me", 200, [only]), { find: "dropped" });
 
     expect((got as { id: string }).id).toBe("only");
+  });
+});
+
+// unlessSpawnNeedsEnergy: a builder/upgrader gather step must leave ground piles for the hauler while
+// the room's spawn/extensions aren't full, so the two roles stop competing for the same energy.
+describe("resolveTarget unlessSpawnNeedsEnergy gate for drop piles", () => {
+  it("excludes drop piles while the spawn system has spare capacity", () => {
+    const pile = fakeDrop("pile", 500);
+    stubGame({ objects: { pile } });
+
+    const creep = collectorCreep("me", 200, [pile], { available: 200, capacity: 300 });
+    const got = resolveTarget(creep, { find: "dropped", unlessSpawnNeedsEnergy: true });
+
+    expect(got).toBeNull();
+  });
+
+  it("offers drop piles once the spawn system is full", () => {
+    const pile = fakeDrop("pile", 500);
+    stubGame({ objects: { pile } });
+
+    const creep = collectorCreep("me", 200, [pile], { available: 300, capacity: 300 });
+    const got = resolveTarget(creep, { find: "dropped", unlessSpawnNeedsEnergy: true });
+
+    expect((got as { id: string }).id).toBe("pile");
+  });
+
+  it("without the flag, drop piles are offered regardless of spawn fill state", () => {
+    const pile = fakeDrop("pile", 500);
+    stubGame({ objects: { pile } });
+
+    const creep = collectorCreep("me", 200, [pile], { available: 0, capacity: 300 });
+    const got = resolveTarget(creep, { find: "dropped" });
+
+    expect((got as { id: string }).id).toBe("pile");
+  });
+
+  it("releases a locked drop pile the instant the spawn system starts needing energy", () => {
+    const pile = fakeDrop("pile", 500);
+    stubGame({ objects: { pile } });
+
+    const creep = collectorCreep("me", 200, [pile], { available: 200, capacity: 300 });
+    const got = resolveTarget(creep, { find: "dropped", unlessSpawnNeedsEnergy: true }, "pile" as Id<_HasId>);
+
+    expect(got).toBeNull();
   });
 });
 

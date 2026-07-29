@@ -211,6 +211,12 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
     const s = obj as unknown as { pos: RoomPosition };
     if (!nearMatches(creep, s, memberSpec.near)) return null;
   }
+  // A locked drop pile must release the instant the spawn system starts needing energy, same as a
+  // fresh search would never offer it — otherwise a builder/upgrader already travelling to one keeps
+  // going even after another creep's delivery (or the miner's own overflow) reopens spawn demand.
+  if (memberSpec.find === "dropped" && memberSpec.unlessSpawnNeedsEnergy && spawnNeedsEnergy(creep.room)) {
+    return null;
+  }
   return obj;
 }
 
@@ -242,6 +248,10 @@ function poolFor(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find
   // A structure spec may also carry `fillTo`, a hard cap on fill fraction (not a fallback like the
   // worthwhile floor): a controller container already at its floor must genuinely drop out so the step
   // falls through to storage.
+  // A gate on the ROOM, not the candidate — checked once and applied to the whole pool rather than
+  // per-candidate. Unlike fillTo/worthwhile there is no fallback to the full set: while the spawn system
+  // needs energy the pool is genuinely empty, so the step falls through to whatever comes next (self-harvest).
+  if (spec.find === "dropped" && spec.unlessSpawnNeedsEnergy && spawnNeedsEnergy(creep.room)) return [];
   const candidates = findCandidates(creep, spec).filter(c => {
     if (spec.find !== "structure" && spec.find !== "creep") return true;
     if (!matchesWhere(toCandidate(c), spec.where)) return false;
@@ -300,6 +310,13 @@ function damageFraction(o: RoomObject): number {
   const h = o as unknown as { hits?: number; hitsMax?: number };
   if (!h.hitsMax || h.hitsMax <= 0) return 1;
   return (h.hits ?? 0) / h.hitsMax;
+}
+
+// True while the room's spawn system (spawn + extensions) has spare capacity — the hauler's own top
+// priority. Gates builder/upgrader dropped-energy pickup so they leave ground piles for the hauler
+// instead of racing it for the energy the spawn needs to produce replacements.
+function spawnNeedsEnergy(room: Room): boolean {
+  return room.energyAvailable < room.energyCapacityAvailable;
 }
 
 const WORTHWHILE_FRACTION = 0.25; // fraction of the collector's free capacity a drop pile must hold
