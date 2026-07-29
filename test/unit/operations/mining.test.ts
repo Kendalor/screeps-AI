@@ -312,6 +312,79 @@ describe("Mining.desiredCreeps — remote miners", () => {
 
     expect(remoteMinerRequests(snap)).toEqual([]);
   });
+
+  // A remote miner's body must be sized off its OWN room's reserved state, never the home room's
+  // container/link/site state — that was the original bug (a shared bodyContext(colony) leaked the home
+  // room's structures into every remote request).
+  it("sizes an unreserved remote source's WORK to 3, whatever the home room's container state", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reserved: false });
+    const snap = colonySnap({
+      sources: [local],
+      containers: [containerAt(21, 11)], // home room's source has a container — must not leak into remote sizing
+      remoteSources: [remote],
+      energyCapacity: 5000,
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    const requests = remoteMinerRequests(snap);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const r of requests) expect(r.body.filter(p => p === WORK).length).toBe(3);
+  });
+
+  it("sizes a reserved remote source's WORK to 6, the same target as a local source", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reserved: true });
+    const snap = colonySnap({
+      sources: [local],
+      containers: [], // home room has no container — must not leak into remote sizing either
+      remoteSources: [remote],
+      energyCapacity: 5000,
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    const requests = remoteMinerRequests(snap);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const r of requests) expect(r.body.filter(p => p === WORK).length).toBe(6);
+  });
+
+  it("gives a remote miner WORK:MOVE 1:1 (no road home assumed), unlike a local miner's cheaper ratio", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reserved: true });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [remote],
+      energyCapacity: 5000,
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    const requests = remoteMinerRequests(snap);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const r of requests) {
+      const work = r.body.filter(p => p === WORK).length;
+      const move = r.body.filter(p => p === MOVE).length;
+      expect(move).toBe(work);
+    }
+  });
+
+  // The request quota (wantedWork) must track the lower unreserved target too, or Mining keeps asking
+  // for a second miner trying to reach the full 6-WORK quota — overstaffing an unreserved source 2x.
+  it("stops asking for more miners once an unreserved remote source has its 3-WORK quota covered", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reserved: false, openTiles: 8 });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [remote],
+      energyCapacity: 5000,
+      creeps: [
+        ...snapCreeps("hauler", 5),
+        satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } }),
+        mnMiner(3, { memory: { sourceId: remote.id, op: "mining:W1N1" } }) // already covers the 3-WORK quota
+      ]
+    });
+
+    expect(remoteMinerRequests(snap)).toEqual([]);
+  });
 });
 
 // Every request now comes from a flat, uniform priority — no interleave, no hauler channel.

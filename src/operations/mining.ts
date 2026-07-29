@@ -4,7 +4,7 @@
 
 import { countPart, orderBody } from "../spawn/body";
 import { roleDef } from "../behaviors/roles";
-import { SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
+import { REMOTE_UNRESERVED_WORK, SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
 import { pickRemotes } from "../mining/pickRemotes";
 import type { Intent } from "../intents/types";
 import GOAL_JSON from "../layouts/Base_2.json";
@@ -12,6 +12,7 @@ import { plannedObstacles } from "../layouts/goal";
 import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../layouts/roads";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
+import type { BodyContext } from "../behaviors/types";
 import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { bodyContext } from "../spawn/bodyContext";
@@ -40,12 +41,6 @@ function sourceStructureType(rcl: number): BuildableStructureConstant {
   return rcl >= config.linkRcl ? "link" : "container";
 }
 
-// Asks the role table rather than restating its formula, sized against the same context the request body uses.
-function minerBodyWork(colony: ColonySnapshot): number {
-  const body = roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony)) ?? [];
-  return Math.max(1, countPart(body, WORK));
-}
-
 const workOf = (c: SnapCreep): number => countPart(c.body, WORK); // live WORK, spawning included
 
 export class Mining extends Operation {
@@ -62,9 +57,7 @@ export class Mining extends Operation {
    * fully staffed, so a remote can never starve the home room of its own miners (invariant #3).
    */
   private minerRequests(colony: ColonySnapshot): CreepRequest[] {
-    const bodyWork = minerBodyWork(colony);
     const miners = this.owned(colony, "miner"); // this operation's only — a sibling must not count these
-    const body = orderBody(roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
 
     // Miners predating stage 2 carry no sourceId (PRD §6). Treat as generic cover: borrowed by at
     // most one source, contributing both WORK (toward target) and head (tile safeguard). A single
@@ -73,7 +66,11 @@ export class Mining extends Operation {
 
     const local: CreepRequest[] = [];
     for (const source of colony.sources) {
-      local.push(...this.requestsForSource(colony, source.id, source.openTiles, colony.name, miners, pool, body, bodyWork));
+      // Sized against THIS source's own container/site — a multi-source room can't average that state
+      // across sources, and it must never leak into a remote source's body (see below).
+      const body = orderBody(roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony, false, source.id)) ?? []);
+      const bodyWork = Math.max(1, countPart(body, WORK));
+      local.push(...this.requestsForSource(colony, source.id, source.openTiles, colony.name, miners, pool, body, bodyWork, config.workPerSource));
     }
 
     // Local-first gate: hold all remote requests until every local source is fully staffed, so the
@@ -84,7 +81,17 @@ export class Mining extends Operation {
     const remote: CreepRequest[] = [];
     for (const source of colony.remoteSources) {
       if (source.danger > 0) continue; // a hostile remote stops new miners; in-flight ones age out
-      remote.push(...this.requestsForSource(colony, source.id, source.openTiles, source.room, miners, pool, body, bodyWork));
+      // bodyContext(colony) would answer with the HOME room's container/link/site state — meaningless
+      // for a source that lives in a different room. Remote sizing keys off remote/reserved instead
+      // (see minerBody): hasContainer/hasLink no longer drive body shape at all.
+      const remoteCtx: BodyContext = { hasContainer: false, hasLink: false, remote: true, reserved: source.reserved };
+      const body = orderBody(roleDef("miner")?.body(colony.energyCapacity, remoteCtx) ?? []);
+      const bodyWork = Math.max(1, countPart(body, WORK));
+      // An unreserved source only regens enough to justify REMOTE_UNRESERVED_WORK (3), not the full
+      // 6-WORK target — asking for 6 worth of miners here would overstaff it 2x, each one idling half
+      // its WORK parts every tick.
+      const wantedWork = source.reserved ? config.workPerSource : REMOTE_UNRESERVED_WORK;
+      remote.push(...this.requestsForSource(colony, source.id, source.openTiles, source.room, miners, pool, body, bodyWork, wantedWork));
     }
     return remote;
   }
@@ -98,9 +105,9 @@ export class Mining extends Operation {
     miners: readonly SnapCreep[],
     pool: { miners: SnapCreep[]; next: number },
     body: BodyPartConstant[],
-    bodyWork: number
+    bodyWork: number,
+    wantedWork: number
   ): CreepRequest[] {
-    const wantedWork = config.workPerSource;
     const onSource = miners.filter(c => c.memory.sourceId === sourceId);
     const assignedWork = onSource.reduce((s, c) => s + workOf(c), 0);
     // Draw on the unassigned pool before asking for a new creep — WORK already paid for.

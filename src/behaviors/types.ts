@@ -88,6 +88,13 @@ export interface BodyContext {
   // dropping everything and standing idle while a builder does all the work.
   hasContainerSite?: boolean;
   roads?: boolean; // whether the creep's route is paved; unused by body calculators today, reserved for MOVE-ratio tuning
+  // This body is for a source in a remote room, not the home room — no paved road home is assumed, so a
+  // miner needs a full MOVE per non-MOVE part rather than the home bunker's road-subsidized half ratio.
+  remote?: boolean;
+  // Only meaningful when remote is true: is the remote room currently reserved by us? Reserved sources
+  // regen at the same 10/tick rate as home sources (worth the full WORK target); unreserved ones regen at
+  // half that, so staffing to the full target would only buy idle WORK parts.
+  reserved?: boolean;
 }
 
 export interface RoleDef {

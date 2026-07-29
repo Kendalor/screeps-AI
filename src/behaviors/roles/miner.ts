@@ -1,4 +1,4 @@
-import { affordableSets, bodyCost, parts } from "../../spawn/body";
+import { bodyCost, parts } from "../../spawn/body";
 import type { BodyContext, Step } from "../types";
 import { Role } from "./role";
 
@@ -8,51 +8,32 @@ import { Role } from "./role";
 // a single body can actually carry.
 export const SOURCE_SATURATING_WORK = 6;
 
-const DROP_MINER_BASE: BodyPartConstant[] = [WORK, WORK, MOVE, MOVE];
-const DROP_MINER_SET: BodyPartConstant[] = [WORK, MOVE];
+// An unreserved remote source regens at half rate (5/tick vs 10/tick reserved) — 3 WORK (6/tick
+// capacity) already outpaces the supply, so staffing it to the full local/reserved target would
+// only buy idle WORK parts. Exported so mining.ts's per-source WORK target can't drift from what an
+// unreserved remote's body actually carries.
+export const REMOTE_UNRESERVED_WORK = 3;
 
-// First-extension energy: below this a container miner's body is too tight to spare a CARRY part.
-const CONTAINER_MINER_CARRY_ENERGY = 350;
+// Below this a body is too tight to spare a CARRY part at all.
+const MIN_CARRY_ENERGY = 350;
 
-// A miner's shape follows where it puts the energy: no container means it drops to the ground and needs no CARRY at all; a container miner carries one part-time overflow CARRY once the room can afford it; feeding a link always needs one.
+// Every miner gets exactly one CARRY once the room can afford it, regardless of container/link/site —
+// it ferries overflow into whatever it's standing near (container, link, or just its own next trip),
+// and remote miners need it to shuttle into a container that may not exist yet.
 function minerBody(energy: number, ctx: BodyContext): BodyPartConstant[] {
-  if (!ctx.hasContainer) {
-    const maxSets = SOURCE_SATURATING_WORK - 2; // base already carries 2 WORK; each set adds 1 more
-    const sets = affordableSets(energy - bodyCost(DROP_MINER_BASE), DROP_MINER_SET, 0, maxSets);
-    let body = [...DROP_MINER_BASE];
-    for (let i = 0; i < sets; i++) body = body.concat(DROP_MINER_SET);
-    // A container site (not yet built) means this miner should help build — and later repair — it, which
-    // needs energy in its store. Add one CARRY once the room can afford it on top of the WORK it already
-    // has, so the build-help never costs a harvesting WORK part. The miner respawns as a proper
-    // container-miner once the container is up and hasContainer flips true.
-    if (ctx.hasContainerSite && energy >= bodyCost(body) + BODYPART_COST[CARRY]) {
-      body.push(CARRY);
-    }
-    return body;
-  }
+  const workTarget = ctx.remote && !ctx.reserved ? REMOTE_UNRESERVED_WORK : SOURCE_SATURATING_WORK;
+  const carry: 0 | 1 = energy >= MIN_CARRY_ENERGY ? 1 : 0;
 
-  // Capped at SOURCE_SATURATING_WORK like the drop-miner path — same target, one source, one body.
-  // WORK is sized off energy alone (MOVE reserved up front) so an overflow CARRY never costs a WORK part.
-  const workBudget = energy - BODYPART_COST[MOVE];
-  let work = Math.min(SOURCE_SATURATING_WORK, Math.max(1, Math.floor(workBudget / BODYPART_COST[WORK])));
-  const affordsCarryOnTop = (w: number) => energy >= w * BODYPART_COST[WORK] + BODYPART_COST[MOVE] + BODYPART_COST[CARRY];
+  // WORK is sized off energy alone (one MOVE + the flat CARRY reserved up front) so it never eats into
+  // either of those two parts once affordable.
+  const reserved = BODYPART_COST[MOVE] + carry * BODYPART_COST[CARRY];
+  const work = Math.min(workTarget, Math.max(1, Math.floor((energy - reserved) / BODYPART_COST[WORK])));
 
-  let carry: 0 | 1;
-  if (ctx.hasLink) {
-    // Feeding a link is mandatory, not a nice-to-have overflow part — shrink WORK by one rather than
-    // propose a body the room can't afford, but never below the one WORK part a miner needs to function.
-    carry = 1;
-    if (!affordsCarryOnTop(work) && work > 1) work -= 1;
-    if (!affordsCarryOnTop(work)) carry = 0; // rock-bottom energy: can't afford even one CARRY alongside WORK+MOVE
-  } else {
-    // A container miner unable to reach the container tile (a second miner on a shared source) still
-    // needs to ferry its harvest in. Only added once it's free on top of WORK's own increment, so it
-    // never shrinks WORK by a part — the miner simply goes without until the room can spare it.
-    carry = energy >= CONTAINER_MINER_CARRY_ENERGY && affordsCarryOnTop(work) ? 1 : 0;
-  }
-
+  // A remote can't assume a road home yet, so it needs the full 1 MOVE per non-MOVE part to keep
+  // fatigue at zero; a local miner rides the bunker's paved roads and gets by on half that.
+  const moveRatio = ctx.remote ? 1 : 0.5;
   const spare = energy - bodyCost([...parts(WORK, work), ...parts(CARRY, carry)]);
-  const move = Math.max(1, Math.min(Math.ceil(work / 2), Math.floor(spare / BODYPART_COST[MOVE])));
+  const move = Math.max(1, Math.min(Math.ceil(work * moveRatio), Math.floor(spare / BODYPART_COST[MOVE])));
 
   return [...parts(WORK, work), ...parts(CARRY, carry), ...parts(MOVE, move)];
 }
@@ -64,12 +45,12 @@ export class Miner extends Role {
   }
   // A miner keeps its own source container alive: it repairs it once it has decayed past 70%, and helps
   // build it while it is still a construction site. Both share harvest's WORK pipeline, so they cost a
-  // harvest tick when they fire — but only a miner with a CARRY (a container miner, or a drop-miner while
-  // a container site exists) has energy in store to spend, and a spend step with an empty store is
-  // skipped by firstRunnableStep. So an empty or CARRY-less miner falls straight through to harvest;
-  // these steps only engage once the miner is both carrying energy and the container actually needs work.
-  // Repair before build before harvest so upkeep of an existing container wins, and construction of a new
-  // one comes before topping the store; both self-limit as the store empties and refills.
+  // harvest tick when they fire — but a spend step with an empty store is skipped by firstRunnableStep,
+  // so a miner below the CARRY energy threshold (or one that just emptied its store) falls straight
+  // through to harvest; these steps only engage once the miner is both carrying energy and the container
+  // actually needs work. Repair before build before harvest so upkeep of an existing container wins, and
+  // construction of a new one comes before topping the store; both self-limit as the store empties and
+  // refills.
   //
   // Standing on the container, harvest overflow already lands in it and the transfer steps no-op;
   // otherwise (an overflow CARRY miner sharing a source, or feeding a link) they fire the same tick as

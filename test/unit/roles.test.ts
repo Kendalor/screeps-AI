@@ -180,12 +180,11 @@ describe("miner body", () => {
   const body = (energy: number, over: Partial<Parameters<typeof ROLES.miner.body>[1]> = {}) =>
     ROLES.miner.body(energy, { hasContainer: false, hasLink: false, ...over });
 
-  it("is always a valid, affordable body with WORK, across every container/link combination", () => {
+  it("is always a valid, affordable body with WORK, across every remote/reserved combination", () => {
     for (const ctx of [
-      { hasContainer: false, hasLink: false },
-      { hasContainer: true, hasLink: false },
-      { hasContainer: true, hasLink: true },
-      { hasContainer: false, hasLink: true }
+      {},
+      { remote: true, reserved: false },
+      { remote: true, reserved: true }
     ]) {
       const bodyAt = (energy: number) => body(energy, ctx);
       for (const e of ENERGY_LEVELS) {
@@ -197,57 +196,51 @@ describe("miner body", () => {
     }
   });
 
-  it("drops CARRY entirely without a container to stand on", () => {
-    for (const e of ENERGY_LEVELS) {
-      expect(body(e, { hasContainer: false, hasLink: false })).not.toContain(CARRY);
+  // CARRY is a flat rule now: every miner body (local or remote, any container/link state) gets exactly
+  // one once the room can afford it — hasContainer/hasContainerSite no longer gate it at all.
+  it("carries exactly one CARRY once energy reaches the threshold, regardless of container/link state", () => {
+    for (const e of ENERGY_LEVELS.filter(e => e >= 350)) {
+      for (const ctx of [{}, { hasContainer: true }, { hasContainer: true, hasLink: true }, { remote: true, reserved: false }]) {
+        const b = body(e, ctx);
+        expect(b.filter(p => p === CARRY).length).toBe(1);
+      }
     }
   });
 
-  it("gains one CARRY as a drop-miner while its container is still a construction site, so it can build it", () => {
-    // A container SITE (not yet a built container: hasContainer stays false) means this miner should help
-    // raise it — which needs energy in store. The part appears once the room can afford it on top of WORK.
-    const withSite = body(550, { hasContainer: false, hasLink: false, hasContainerSite: true });
-    expect(withSite).toContain(CARRY);
-    expect(withSite.filter(p => p === CARRY).length).toBe(1);
-    expect(withSite).toContain(WORK); // never trades away a harvesting WORK part for the CARRY
-    expectValidBody(withSite);
-  });
-
-  it("stays a CARRY-less drop-miner when there is neither a container nor a site", () => {
-    for (const e of ENERGY_LEVELS) {
-      expect(body(e, { hasContainer: false, hasLink: false, hasContainerSite: false })).not.toContain(CARRY);
-    }
-  });
-
-  it("drops CARRY below the first-extension energy threshold, even on a container", () => {
+  it("drops CARRY entirely below the threshold, regardless of container/link state", () => {
     for (const e of ENERGY_LEVELS.filter(e => e < 350)) {
-      expect(body(e, { hasContainer: true, hasLink: false })).not.toContain(CARRY);
+      for (const ctx of [{}, { hasContainer: true }, { hasContainer: true, hasLink: true }]) {
+        expect(body(e, ctx)).not.toContain(CARRY);
+      }
     }
   });
 
-  it("carries one overflow CARRY on a container once the room can spare it, without shrinking WORK", () => {
-    // A second miner sharing a source can't always stand on the container itself, so it needs to
-    // ferry its harvest in by hand once the room affords the part on top of its current WORK count.
-    const rich = body(1200, { hasContainer: true, hasLink: false });
-    expect(rich).toContain(CARRY);
-    expect(rich.filter(p => p === WORK).length).toBe(6);
+  it("targets 6 WORK locally and for a reserved remote, but only 3 for an unreserved remote", () => {
+    const rich = (ctx: Partial<Parameters<typeof ROLES.miner.body>[1]>) => body(50_000, ctx);
+    expect(rich({}).filter(p => p === WORK).length).toBe(6);
+    expect(rich({ remote: true, reserved: true }).filter(p => p === WORK).length).toBe(6);
+    expect(rich({ remote: true, reserved: false }).filter(p => p === WORK).length).toBe(3);
   });
 
-  it("feeding a link always carries CARRY, once the budget can afford anything beyond the bare floor", () => {
-    const linked = body(1200, { hasContainer: true, hasLink: true });
-    expect(linked).toContain(CARRY);
-  });
-
-  it("never exceeds the 6-WORK ceiling (above the 5 that exactly saturate a source), however rich the room", () => {
-    for (const ctx of [{ hasContainer: false }, { hasContainer: true }]) {
+  it("never exceeds its WORK ceiling however rich the room", () => {
+    for (const ctx of [{}, { remote: true, reserved: true }, { remote: true, reserved: false }]) {
       const rich = body(50_000, ctx);
-      expect(rich.filter(p => p === WORK).length).toBeLessThanOrEqual(6);
+      const ceiling = ctx.remote && !ctx.reserved ? 3 : 6;
+      expect(rich.filter(p => p === WORK).length).toBeLessThanOrEqual(ceiling);
     }
+  });
+
+  it("pairs WORK 1:1 with MOVE for a remote (no road assumed), vs the cheaper ~2:1 ratio locally", () => {
+    const local = body(50_000, {});
+    const remote = body(50_000, { remote: true, reserved: true });
+    expect(local.filter(p => p === MOVE).length).toBe(Math.ceil(local.filter(p => p === WORK).length / 2));
+    expect(remote.filter(p => p === MOVE).length).toBe(remote.filter(p => p === WORK).length);
   });
 
   it("grows (or holds) as energy increases, never shrinks", () => {
     expectNonDecreasing((e: number) => body(e));
-    expectNonDecreasing((e: number) => body(e, { hasContainer: true }));
+    expectNonDecreasing((e: number) => body(e, { remote: true, reserved: false }));
+    expectNonDecreasing((e: number) => body(e, { remote: true, reserved: true }));
   });
 });
 
