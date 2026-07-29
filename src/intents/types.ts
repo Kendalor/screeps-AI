@@ -1,6 +1,6 @@
 // Intent union: planners return these; only intents/execute.ts turns them into game API calls.
 
-import type { RoleName } from "../memory/schema";
+import type { RoleName, RemoteMemory } from "../memory/schema";
 import type { LogisticsTask } from "../logistics/types";
 
 export type Intent =
@@ -41,6 +41,9 @@ export type Intent =
   | { kind: "setScoutTarget"; creep: Id<Creep>; targetRoom: string }
   // Emitted when the current scouting radius is fully surveyed; execute.ts owns the Memory write and cap.
   | { kind: "advanceScoutRadius" }
+  // pickRemotes decides which remote rooms/sources to mine (throttled); execute.ts owns the
+  // Memory.colonies[room].remotes write. The cached selection the snapshot builder reads back.
+  | { kind: "setRemotes"; room: string; remotes: RemoteMemory[] }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
   // Drawing primitives for one room's RoomVisual; drawn in order so later ops paint over earlier ones.

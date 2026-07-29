@@ -5,6 +5,7 @@
 import { countPart, orderBody } from "../spawn/body";
 import { roleDef } from "../behaviors/roles";
 import { SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
+import { pickRemotes } from "../mining/pickRemotes";
 import type { Intent } from "../intents/types";
 import GOAL_JSON from "../layouts/Base_2.json";
 import { plannedObstacles } from "../layouts/goal";
@@ -21,7 +22,15 @@ const config = {
   // Capacity, not level, is what proves the extension economy exists to fund the container.
   structuresFromEnergyCapacity: 550,
   linkRcl: 7, // link beats container: miner drops straight in, no hauler round trip
-  workPerSource: SOURCE_SATURATING_WORK // shared with miner.ts's body cap so the two can't drift apart
+  workPerSource: SOURCE_SATURATING_WORK, // shared with miner.ts's body cap so the two can't drift apart
+  // Remote selection is cached; re-rank only occasionally so the active set is stable, not thrashing.
+  remoteSelectionEvery: 100,
+  // Don't attempt remote mining until the home economy is established — a stable, snapshot-derivable
+  // proxy for "the spawn can take on more creeps". TODO(remote): a real spawn-busy-fraction signal.
+  remoteFromRcl: 3,
+  // Autonomous pickRemotes emission is OFF until step 8. Until then remotes are hand-seeded into
+  // ColonyMemory.remotes for testing steps 5-7; the snapshot builder reads them either way.
+  autonomousRemotes: false
 } as const;
 
 // building.ts's gate on source containers is mining's knowledge of what it needs when.
@@ -126,6 +135,10 @@ export class Mining extends Operation {
   /** Source-spot bookkeeping so roles skip re-pathing. Emitted only when the write would change something. */
   public override intents(colony: ColonySnapshot): Intent[] {
     const out: Intent[] = [];
+
+    const remoteSelection = this.remoteSelection(colony);
+    if (remoteSelection) out.push(remoteSelection);
+
     const planned = colony.anchor
       ? stampLayout(plannedObstacles(GOAL, colony.controllerLevel, colony.anchor, colony.sources), colony.anchor)
       : [];
@@ -148,6 +161,27 @@ export class Mining extends Operation {
       });
     }
     return out;
+  }
+
+  /**
+   * Throttled remote selection: re-rank the remote source set occasionally and cache it via setRemotes.
+   * Off until step 8 (config.autonomousRemotes) — until then remotes are hand-seeded and this is a no-op,
+   * but the wiring is in place so step 8 is a one-flag change. Gated behind an established home economy.
+   */
+  private remoteSelection(colony: ColonySnapshot): Intent | undefined {
+    if (!config.autonomousRemotes) return undefined;
+    if (colony.tick % config.remoteSelectionEvery !== 0) return undefined;
+
+    const remotes = pickRemotes({
+      candidates: colony.scoutTargets,
+      home: {
+        name: colony.name,
+        storage: colony.anchor ?? colony.controller,
+        energyCapacity: colony.energyCapacity,
+        spawnHeadroom: colony.controllerLevel >= config.remoteFromRcl
+      }
+    });
+    return { kind: "setRemotes", room: colony.name, remotes };
   }
 
   /** Shared route derivation so the recorded spot can never disagree with the built spot. */

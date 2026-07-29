@@ -3,6 +3,7 @@
 import { openHarvestTiles } from "../behaviors/targets";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import type { XY } from "../lib/geometry";
+import { buildRemoteSources, type RemoteRoomVision } from "../mining/remoteSources";
 import { censusByColony } from "./census";
 import { scoutCandidatesAround } from "./scoutGraph";
 import type { ColonySnapshot, EmpireSnapshot, SnapCreep, SnapStructure, SnapUnit, VisibleRoom } from "./types";
@@ -83,7 +84,10 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     energyAvailable: room.energyAvailable,
     energyCapacity: room.energyCapacityAvailable,
     sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
-    remoteSources: [], // populated by the snapshot builder from ColonyMemory.remotes in step 4; empty is a total no-op
+    remoteSources: buildRemoteSources(
+      Memory.colonies[room.name]?.remotes ?? [],
+      remoteRoomVision(Memory.colonies[room.name]?.remotes ?? [], controller.owner?.username)
+    ),
     drops: room.find(FIND_DROPPED_RESOURCES).map(d => ({ id: d.id, x: d.pos.x, y: d.pos.y, amount: d.amount })),
     tombstones: room
       .find(FIND_TOMBSTONES)
@@ -121,6 +125,44 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1),
     visibleRooms
   };
+}
+
+// Live facts about each selected remote room we currently have vision of (a creep is standing in it).
+// Rooms with no vision are simply absent, and buildRemoteSources falls back to memory/defaults for them.
+// This is the sole Game.* read for remote data — the join itself (buildRemoteSources) stays pure.
+// `me` is our username (the home controller's owner), so a reservation we placed reads as `reserved`.
+function remoteRoomVision(
+  remotes: readonly { room: string; sources: { id: Id<Source> }[] }[],
+  me: string | undefined
+): Partial<Record<string, RemoteRoomVision>> {
+  const out: Partial<Record<string, RemoteRoomVision>> = {};
+  for (const remote of remotes) {
+    const room = Game.rooms[remote.room];
+    if (!room) continue; // no vision this tick
+
+    const containers = room.find<StructureContainer>(FIND_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER
+    });
+    const openTilesBySource: Partial<Record<Id<Source>, number>> = {};
+    const containerBySource: Partial<Record<Id<Source>, Id<StructureContainer>>> = {};
+    for (const sel of remote.sources) {
+      const source = Game.getObjectById(sel.id);
+      if (!source) continue;
+      openTilesBySource[sel.id] = openHarvestTiles(source);
+      // A source's drop container sits on its mining spot, adjacent to the source.
+      const near = containers.find(c => c.pos.isNearTo(source.pos));
+      if (near) containerBySource[sel.id] = near.id;
+    }
+
+    const reservation = room.controller?.reservation;
+    out[remote.room] = {
+      reserved: reservation !== undefined && reservation.username === me,
+      danger: room.find(FIND_HOSTILE_CREEPS).length,
+      openTilesBySource,
+      containerBySource
+    };
+  }
+  return out;
 }
 
 // Computed once per colony and cached in ColonyMemory.anchor — never recomputed once found.

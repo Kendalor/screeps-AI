@@ -138,6 +138,11 @@ function act(intent: Intent): ScreepsReturnCode {
       if (mem.radius < MAX_SCOUT_RANGE) mem.radius += 1;
       return OK;
     }
+    case "setRemotes": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      mem.remotes = intent.remotes;
+      return OK;
+    }
     case "recordSourceSpot": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
       const source = (mem.sources[intent.source] ??= {});

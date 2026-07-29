@@ -153,6 +153,19 @@ describe("actuator", () => {
     expect(creep.memory.op).toBeUndefined();
   });
 
+  it("writes the selected remotes into colony memory", () => {
+    stubGame();
+    (globalThis as Record<string, unknown>).Memory = { colonies: {} };
+
+    const remotes = [
+      { room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 60 }] }
+    ];
+    execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+
+    const mem = (globalThis as { Memory: { colonies: Record<string, { remotes: unknown }> } }).Memory.colonies.W1N1;
+    expect(mem.remotes).toEqual(remotes);
+  });
+
   it("keeps a previously recorded container id when this tick resolved none", () => {
     stubGame();
     (globalThis as Record<string, unknown>).Memory = {
