@@ -27,10 +27,7 @@ const config = {
   remoteSelectionEvery: 100,
   // Don't attempt remote mining until the home economy is established — a stable, snapshot-derivable
   // proxy for "the spawn can take on more creeps". TODO(remote): a real spawn-busy-fraction signal.
-  remoteFromRcl: 3,
-  // Autonomous pickRemotes emission is OFF until step 8. Until then remotes are hand-seeded into
-  // ColonyMemory.remotes for testing steps 5-7; the snapshot builder reads them either way.
-  autonomousRemotes: false
+  remoteFromRcl: 3
 } as const;
 
 // building.ts's gate on source containers is mining's knowledge of what it needs when.
@@ -188,12 +185,16 @@ export class Mining extends Operation {
   }
 
   /**
-   * Throttled remote selection: re-rank the remote source set occasionally and cache it via setRemotes.
-   * Off until step 8 (config.autonomousRemotes) — until then remotes are hand-seeded and this is a no-op,
-   * but the wiring is in place so step 8 is a one-flag change. Gated behind an established home economy.
+   * Throttled remote selection: re-rank the remote source set occasionally and cache it via setRemotes,
+   * so the active remote set is stable rather than re-ranked every tick. Emits only when the selection is
+   * non-empty — a colony with no worthwhile scouted neighbour stays silent (its remotes are already [],
+   * so writing [] would be pure noise every throttle tick). Gated to its throttle tick.
+   *
+   * NOTE: this never *clears* a previously-selected remote that has gone unprofitable. The staffing gates
+   * downstream (danger>0, netEnergy re-check) already stop working a bad remote, and a stale memory entry
+   * is re-evaluated on the next non-empty selection; a dedicated clear path is a future refinement.
    */
   private remoteSelection(colony: ColonySnapshot): Intent | undefined {
-    if (!config.autonomousRemotes) return undefined;
     if (colony.tick % config.remoteSelectionEvery !== 0) return undefined;
 
     const remotes = pickRemotes({
@@ -205,6 +206,7 @@ export class Mining extends Operation {
         spawnHeadroom: colony.controllerLevel >= config.remoteFromRcl
       }
     });
+    if (remotes.length === 0) return undefined;
     return { kind: "setRemotes", room: colony.name, remotes };
   }
 

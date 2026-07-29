@@ -13,7 +13,8 @@ import type { GoalLayout } from "../../../src/layouts/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { roleDef } from "../../../src/behaviors/roles";
 import { Mining } from "../../../src/operations/mining";
-import { colonySnap, containerAt, openTerrain, remoteSourceAt, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
+import { colonySnap, containerAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
+import type { Intent } from "../../../src/intents/types";
 
 const GOAL = GOAL_JSON as GoalLayout;
 
@@ -561,5 +562,51 @@ describe("Mining.intents", () => {
     });
 
     expect(mining.intents(snap)).toEqual([]);
+  });
+});
+
+// Step 8: autonomous remote selection. Mining emits a setRemotes intent on its throttle tick, driven by
+// pickRemotes over the scouted neighbours — no hand-seed. Off-tick it's silent so the cached set is stable.
+describe("Mining.intents — remote selection", () => {
+  const setRemotesOf = (snap: Parameters<Mining["intents"]>[0]) =>
+    mining.intents(snap).filter((i: Intent): i is Extract<Intent, { kind: "setRemotes" }> => i.kind === "setRemotes");
+
+  it("emits setRemotes on the throttle tick, selecting a scouted profitable neighbour", () => {
+    const snap = colonySnap({
+      tick: 100, // a multiple of remoteSelectionEvery (100)
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      scoutTargets: [scoutTarget("W2N1", scouted({ sources: [{ id: "rs" as Id<Source>, x: 25, y: 25 }] }))]
+    });
+
+    const [intent] = setRemotesOf(snap);
+    expect(intent).toBeDefined();
+    expect(intent.room).toBe("W1N1");
+    expect(intent.remotes.map(r => r.room)).toContain("W2N1");
+  });
+
+  it("stays silent off the throttle tick", () => {
+    const snap = colonySnap({
+      tick: 101, // not a multiple of 100
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      scoutTargets: [scoutTarget("W2N1", scouted())]
+    });
+
+    expect(setRemotesOf(snap)).toEqual([]);
+  });
+
+  it("stays silent when no neighbour pays off (no noisy empty write every throttle tick)", () => {
+    const snap = colonySnap({
+      tick: 100,
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      scoutTargets: [] // nothing scouted
+    });
+
+    expect(setRemotesOf(snap)).toEqual([]);
   });
 });
