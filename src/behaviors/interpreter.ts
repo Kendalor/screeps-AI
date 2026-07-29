@@ -16,6 +16,7 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   build: "spend",
   repair: "spend",
   upgrade: "spend",
+  reserve: "move", // a store-less claimer reserves for life — never self-completes, like a movement step
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
   sit: "move"
 };
@@ -127,6 +128,8 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
       return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3, allowTravel);
     case "upgrade":
       return upgradeStep(creep, locked, allowTravel);
+    case "reserve":
+      return reserveStep(creep, locked, allowTravel);
     case "moveToRoom":
       return allowTravel ? moveToRoom(creep, step) : { acted: false, didAct: false };
     case "sit":
@@ -250,6 +253,24 @@ function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: 
 
   creep.upgradeController(controller as StructureController);
   if (allowTravel) drawCloserToController(creep, controllerPos);
+  return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
+}
+
+// A claimer reserves the controller of whatever room it stands in (its targetRoom, reached by the
+// preceding moveToRoom step). reserveController is range 1. No drawing-closer nicety — a claimer just
+// needs to be adjacent; it holds that spot for life.
+function reserveStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  const controller = resolveTarget(creep, { find: "controller" }, locked);
+  if (!controller) return { acted: false, didAct: false };
+  const controllerPos = (controller as StructureController).pos;
+
+  if (!creep.pos.inRangeTo(controllerPos, 1)) {
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(controllerPos, { range: 1 });
+    return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
+  }
+
+  creep.reserveController(controller as StructureController);
   return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
 }
 

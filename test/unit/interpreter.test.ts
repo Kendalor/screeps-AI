@@ -651,3 +651,37 @@ describe("moveToRoom to a creep's targetRoom", () => {
     expect(traveled).toEqual([{ x: 25, y: 25, room: "W2N1" }]);
   });
 });
+
+// A claimer reserves the controller of the room it stands in. reserveController is range 1, like upgrade.
+describe("reserve step", () => {
+  function claimerAt(inRange: boolean) {
+    const reserved: string[] = [];
+    const traveled: { x: number; y: number }[] = [];
+    const controller = { id: "ctrl1", pos: { x: 40, y: 40 } };
+    const creep = {
+      pos: {
+        inRangeTo: () => inRange,
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      room: { controller },
+      reserveController: (c: { id: string }) => reserved.push(c.id),
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    };
+    return { creep: creep as unknown as Creep, reserved, traveled };
+  }
+
+  it("reserves the controller when in range", () => {
+    const { creep, reserved } = claimerAt(true);
+    const result = runStep(creep, { do: "reserve" });
+    expect(reserved).toEqual(["ctrl1"]);
+    expect(result.didAct).toBe(true);
+  });
+
+  it("travels to the controller when out of range instead of reserving", () => {
+    const { creep, reserved, traveled } = claimerAt(false);
+    const result = runStep(creep, { do: "reserve" });
+    expect(reserved).toEqual([]);
+    expect(traveled).toEqual([{ x: 40, y: 40 }]);
+    expect(result.didAct).toBe(false);
+  });
+});

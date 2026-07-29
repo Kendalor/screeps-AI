@@ -5,6 +5,7 @@ import type { RoleName } from "../../memory/schema";
 import type { RoleDef } from "../types";
 import { Bootstrap } from "./bootstrap";
 import { Builder } from "./builder";
+import { Claimer } from "./claimer";
 import { Hauler } from "./hauler";
 import { Miner } from "./miner";
 import { Repair } from "./repair";
@@ -21,6 +22,7 @@ export const ROLES = {
   repair: Repair,
   supply: Supply,
   scout: Scout,
+  claimer: Claimer,
   hauler: Hauler,
   transport: Transport
 } satisfies Partial<Record<RoleName, RoleDef>>;

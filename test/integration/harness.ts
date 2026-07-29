@@ -396,6 +396,8 @@ export class BootedColony {
       energyAvailable: 0,
       energyCapacity: 0,
       sources: (await this.sources()).map((s, i) => ({ ...s, id: `source-${i}` as Id<Source>, openTiles: 8 })),
+      remoteSources: [],
+      remoteEnergy: [],
       drops: [],
       tombstones: [],
       terrain: await this.terrain(),

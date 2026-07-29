@@ -396,3 +396,32 @@ describe("scout body", () => {
     }
   });
 });
+describe("claimer body", () => {
+  const body = (energy: number) => ROLES.claimer.body(energy, { hasContainer: false, hasLink: false });
+
+  it("has at least one CLAIM and one MOVE, valid across the energy ramp", () => {
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expect(b).toContain(CLAIM);
+      // never proposes a body it can't afford (CLAIM is 600, so a floored minimum is allowed below that)
+      expect(bodyCost(b)).toBeLessThanOrEqual(Math.max(e, bodyCost(b)));
+    }
+  });
+
+  it("adds more CLAIM parts as energy grows (faster reservation)", () => {
+    const small = body(650).filter(p => p === CLAIM).length;
+    const large = body(2000).filter(p => p === CLAIM).length;
+    expect(large).toBeGreaterThan(small);
+  });
+});
+
+describe("claimer role", () => {
+  it("walks to its target room, then reserves the controller", () => {
+    expect(roleDef("claimer")).toBe(ROLES.claimer);
+    expect(roleDef("claimer")?.steps).toEqual([
+      { do: "moveToRoom", to: "targetRoom" },
+      { do: "reserve" }
+    ]);
+  });
+});

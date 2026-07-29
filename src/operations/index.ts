@@ -7,6 +7,7 @@ import { Logistics } from "./logistics";
 import { Mining } from "./mining";
 import type { Operation } from "./operation";
 import { Repairing } from "./repairing";
+import { Reservation } from "./reservation";
 import { Scouting } from "./scouting";
 import { Supply } from "./supply";
 import { Upgrading } from "./upgrading";
@@ -21,6 +22,7 @@ export { Repairing } from "./repairing";
 export { Scouting } from "./scouting";
 export { Supply } from "./supply";
 export { Logistics } from "./logistics";
+export { Reservation } from "./reservation";
 
 /** Every colony gets every operation kind unconditionally; each decides for itself whether to act.
  * Order matters only for structures(): Mining paths first so later operations converge onto its routes. */
@@ -34,6 +36,7 @@ export function operationsFor(room: string): Operation[] {
     new Repairing(room),
     new Scouting(room),
     new Supply(room),
-    new Logistics(room)
+    new Logistics(room),
+    new Reservation(room)
   ];
 }
