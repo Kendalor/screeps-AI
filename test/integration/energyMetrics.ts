@@ -3,6 +3,12 @@
 //
 // "wasted" is the energy still sitting in a source at its regen reset — income no miner drained
 // in time, distinct from "harvested" (capacity minus that leftover).
+//
+// "decayed" is modeled directly from the engine's per-tick rule (ceil(amount / ENERGY_DECAY) per
+// dropped-energy pile, see @screeps/engine's energy/tick intent) rather than inferred from the
+// pile total shrinking — a shrink is indistinguishable from a pickup, which would otherwise get
+// double-counted as decay.
+const ENERGY_DECAY = 1000;
 
 // A loosely-typed room object row as the mockup returns it (engine schema).
 export interface RawObj {
@@ -33,6 +39,7 @@ const BODYPART_COST: Record<string, number> = {
 export function observeTick(objects: RawObj[], seenCreeps: Set<string>): TickObs {
   const sources: SourceObs[] = [];
   let droppedEnergy = 0;
+  let droppedDecay = 0;
   let controllerProgress = 0;
   let controllerLevel = 0;
   let siteProgress = 0;
@@ -48,9 +55,14 @@ export function observeTick(objects: RawObj[], seenCreeps: Set<string>): TickObs
           ticksToRegeneration: o.ticksToRegeneration ?? 0
         });
         break;
-      case "energy":
-        droppedEnergy += o.energy ?? 0;
+      case "energy": {
+        const amount = o.energy ?? 0;
+        droppedEnergy += amount;
+        // Per-pile ceiling, matching the engine: a pile decays independently of its neighbors,
+        // so this must be summed per-object rather than derived from the aggregate.
+        droppedDecay += Math.ceil(amount / ENERGY_DECAY);
         break;
+      }
       case "controller":
         controllerLevel = o.level ?? 0;
         controllerProgress = o.progress ?? 0;
@@ -69,7 +81,7 @@ export function observeTick(objects: RawObj[], seenCreeps: Set<string>): TickObs
     }
   }
 
-  return { sources, droppedEnergy, controllerProgress, controllerLevel, siteProgress, spawnedBodyCost };
+  return { sources, droppedEnergy, droppedDecay, controllerProgress, controllerLevel, siteProgress, spawnedBodyCost };
 }
 
 export interface SourceObs {
@@ -82,6 +94,7 @@ export interface SourceObs {
 export interface TickObs {
   sources: SourceObs[];
   droppedEnergy: number; // total dropped energy on the ground this tick
+  droppedDecay: number; // sum of ceil(amount / ENERGY_DECAY) across dropped-energy piles this tick
   controllerProgress: number; // cumulative
   controllerLevel: number;
   siteProgress: number; // summed absolute progress across open sites
@@ -107,7 +120,6 @@ export class EnergyMetrics {
   private creeps = 0;
 
   private prevSourceEnergy = new Map<string, number>();
-  private prevDropped = 0;
   private prevControllerProgress?: number;
   private prevControllerLevel?: number;
   private prevSiteProgress?: number;
@@ -130,12 +142,7 @@ export class EnergyMetrics {
       this.prevSourceEnergy.set(s.id, s.energy);
     }
 
-    // Dropped energy that disappeared without the pile growing is decay. A drop
-    // that grows (a fresh pile) is not decay; only a net shrink counts.
-    if (obs.droppedEnergy < this.prevDropped) {
-      this.decayed += this.prevDropped - obs.droppedEnergy;
-    }
-    this.prevDropped = obs.droppedEnergy;
+    this.decayed += obs.droppedDecay;
 
     if (this.prevControllerProgress !== undefined && this.prevControllerLevel !== undefined) {
       if (obs.controllerLevel > this.prevControllerLevel) {

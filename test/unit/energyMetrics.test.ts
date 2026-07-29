@@ -6,6 +6,7 @@ function obs(over: Partial<TickObs> = {}): TickObs {
   return {
     sources: [],
     droppedEnergy: 0,
+    droppedDecay: 0,
     controllerProgress: 0,
     controllerLevel: 3,
     siteProgress: 0,
@@ -70,18 +71,18 @@ describe("energy metrics: multiple sources", () => {
 });
 
 describe("energy metrics: decay", () => {
-  it("counts a net shrink in dropped energy as decay", () => {
+  it("sums the reported per-tick decay directly, independent of pile growth", () => {
     const m = new EnergyMetrics();
-    m.sample(obs({ droppedEnergy: 100 }));
-    m.sample(obs({ droppedEnergy: 90 }));
+    m.sample(obs({ droppedEnergy: 100, droppedDecay: 1 }));
+    m.sample(obs({ droppedEnergy: 200, droppedDecay: 2 })); // pile grew (new drop), decay still accrues
 
-    expect(m.report().decayed).toBe(10);
+    expect(m.report().decayed).toBe(3);
   });
 
-  it("does not count a growing dropped pile as decay", () => {
+  it("does not infer decay from a pile shrinking (that's a pickup, not decay)", () => {
     const m = new EnergyMetrics();
-    m.sample(obs({ droppedEnergy: 50 }));
-    m.sample(obs({ droppedEnergy: 200 }));
+    m.sample(obs({ droppedEnergy: 100, droppedDecay: 0 }));
+    m.sample(obs({ droppedEnergy: 0, droppedDecay: 0 })); // whole pile picked up, not decayed
 
     expect(m.report().decayed).toBe(0);
   });
@@ -140,6 +141,18 @@ describe("observeTick: raw room objects -> TickObs", () => {
     expect(t.droppedEnergy).toBe(40);
     expect(t.controllerLevel).toBe(3);
     expect(t.controllerProgress).toBe(500);
+  });
+
+  it("sums per-pile decay (ceil(amount / 1000)) across dropped-energy piles", () => {
+    const t = observeTick(
+      objs([
+        { type: "energy", _id: "d1", energy: 1500 }, // ceil(1500/1000) = 2
+        { type: "energy", _id: "d2", energy: 10 } // ceil(10/1000) = 1
+      ]),
+      new Set()
+    );
+
+    expect(t.droppedDecay).toBe(3);
   });
 
   it("counts a creep's body cost once, on the tick it first appears", () => {
