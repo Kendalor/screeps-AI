@@ -105,6 +105,17 @@ export interface SnapDrop extends XY {
   amount: number;
 }
 
+// Energy sitting in a *remote* room, ready to be hauled home — the return-haul's provider set. A remote
+// source's drop container or the ground pile a container-less remote miner drops into. Only present when
+// we have vision of that room (a miner is standing in it). Additive: these are *extra* Logistics
+// providers; home containers/drops are untouched. `decaying` marks a ground pile (rots) vs a container.
+export interface SnapRemoteEnergy {
+  id: Id<StructureContainer | Resource | Tombstone>;
+  room: string;
+  amount: number;
+  kind: "container" | "dropped" | "tombstone";
+}
+
 export interface SnapTombstone extends XY {
   id: Id<Tombstone>;
   storeEnergy: number;
@@ -152,6 +163,7 @@ export interface ColonySnapshot {
   energyCapacity: number;
   sources: SnapSource[];
   remoteSources: SnapRemoteSource[]; // selected remote sources; empty until pickRemotes chooses some. Mining/Reservation/Logistics all read it.
+  remoteEnergy: SnapRemoteEnergy[]; // energy in remote rooms to haul home (the return-haul provider set); empty without remote vision
   drops: SnapDrop[]; // ground-level energy from drop mining
   tombstones: SnapTombstone[]; // energy left behind by a dead creep
   terrain: Uint8Array; // 1 = walkable, 0 = wall, indexed [x*50+y]

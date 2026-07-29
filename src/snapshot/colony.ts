@@ -6,7 +6,15 @@ import type { XY } from "../lib/geometry";
 import { buildRemoteSources, type RemoteRoomVision } from "../mining/remoteSources";
 import { censusByColony } from "./census";
 import { scoutCandidatesAround } from "./scoutGraph";
-import type { ColonySnapshot, EmpireSnapshot, SnapCreep, SnapStructure, SnapUnit, VisibleRoom } from "./types";
+import type {
+  ColonySnapshot,
+  EmpireSnapshot,
+  SnapCreep,
+  SnapRemoteEnergy,
+  SnapStructure,
+  SnapUnit,
+  VisibleRoom
+} from "./types";
 
 export function buildEmpireSnapshot(): EmpireSnapshot {
   // One pass over all creeps -> grouped by home colony.
@@ -88,6 +96,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
       Memory.colonies[room.name]?.remotes ?? [],
       remoteRoomVision(Memory.colonies[room.name]?.remotes ?? [], controller.owner?.username)
     ),
+    remoteEnergy: remoteEnergyFor(Memory.colonies[room.name]?.remotes ?? []),
     drops: room.find(FIND_DROPPED_RESOURCES).map(d => ({ id: d.id, x: d.pos.x, y: d.pos.y, amount: d.amount })),
     tombstones: room
       .find(FIND_TOMBSTONES)
@@ -161,6 +170,34 @@ function remoteRoomVision(
       openTilesBySource,
       containerBySource
     };
+  }
+  return out;
+}
+
+// Energy sitting in the selected remote rooms we currently have vision of, for Logistics to haul home:
+// each remote source's drop container (with energy), plus dropped piles and tombstones anywhere in the
+// room (a container-less remote miner drops on the ground). Empty without vision — the return-haul just
+// waits until a miner is standing there. The sole Game.* read for remote provider data.
+function remoteEnergyFor(remotes: readonly { room: string }[]): SnapRemoteEnergy[] {
+  const out: SnapRemoteEnergy[] = [];
+  const seen = new Set<string>();
+  for (const remote of remotes) {
+    if (seen.has(remote.room)) continue; // a room may host several selected sources; scan it once
+    seen.add(remote.room);
+    const room = Game.rooms[remote.room];
+    if (!room) continue; // no vision this tick
+
+    for (const c of room.find<StructureContainer>(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER })) {
+      const amount = c.store.getUsedCapacity(RESOURCE_ENERGY);
+      if (amount > 0) out.push({ id: c.id, room: remote.room, amount, kind: "container" });
+    }
+    for (const d of room.find(FIND_DROPPED_RESOURCES, { filter: r => r.resourceType === RESOURCE_ENERGY })) {
+      out.push({ id: d.id, room: remote.room, amount: d.amount, kind: "dropped" });
+    }
+    for (const t of room.find(FIND_TOMBSTONES)) {
+      const amount = t.store.getUsedCapacity(RESOURCE_ENERGY);
+      if (amount > 0) out.push({ id: t.id, room: remote.room, amount, kind: "tombstone" });
+    }
   }
   return out;
 }

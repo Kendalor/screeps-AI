@@ -13,6 +13,7 @@ import type {
   SnapDrop,
   SnapSource,
   SnapRemoteSource,
+  SnapRemoteEnergy,
   SnapSpawn,
   SnapStructure,
   SnapTombstone,
@@ -50,6 +51,15 @@ export function remoteSourceAt(
     danger: 0,
     ...over
   };
+}
+
+export function remoteEnergyAt(
+  room: string,
+  amount: number,
+  kind: SnapRemoteEnergy["kind"] = "dropped",
+  id = `remote_${kind}_${room}_${amount}`
+): SnapRemoteEnergy {
+  return { id: id as SnapRemoteEnergy["id"], room, amount, kind };
 }
 
 export function dropAt(x: number, y: number, amount = 50, id = `drop_${x}_${y}`): SnapDrop {
@@ -103,6 +113,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     energyCapacity: 300,
     sources: [sourceAt(20, 10)],
     remoteSources: [],
+    remoteEnergy: [],
     drops: [],
     tombstones: [],
     terrain: openTerrain(),

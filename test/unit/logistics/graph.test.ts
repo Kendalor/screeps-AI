@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { consumers, providers } from "../../../src/logistics/graph";
-import { colonySnap, containerAt, dropAt, sinkAt, snapCreep, tombstoneAt, towerAt } from "../../fixtures";
+import { colonySnap, containerAt, dropAt, remoteEnergyAt, sinkAt, snapCreep, tombstoneAt, towerAt } from "../../fixtures";
 
 describe("providers", () => {
   it("treats a source container holding energy as a provider", () => {
@@ -35,6 +35,39 @@ describe("providers", () => {
   it("excludes a dropped pile below the worthwhile floor", () => {
     const drop = dropAt(15, 15, 10);
     expect(providers(colonySnap({ drops: [drop] }))).toEqual([]);
+  });
+
+  it("includes remote energy as an extra provider (the return-haul source)", () => {
+    const remote = remoteEnergyAt("W2N1", 200, "dropped");
+    const result = providers(colonySnap({ remoteEnergy: [remote] }));
+
+    expect(result).toContainEqual(
+      expect.objectContaining({ ref: { kind: "dropped", id: remote.id }, resource: RESOURCE_ENERGY, available: 200 })
+    );
+  });
+
+  it("leaves the home providers untouched when remote energy is added (additive)", () => {
+    const container = containerAt(10, 10, 300);
+    const remote = remoteEnergyAt("W2N1", 200, "dropped");
+    const home = providers(colonySnap({ containers: [container] }));
+    const both = providers(colonySnap({ containers: [container], remoteEnergy: [remote] }));
+
+    // Every home provider still present, unchanged; remote is purely additional.
+    for (const p of home) expect(both).toContainEqual(p);
+    expect(both).toHaveLength(home.length + 1);
+  });
+
+  it("excludes remote energy below the worthwhile floor", () => {
+    const remote = remoteEnergyAt("W2N1", 10, "dropped");
+    expect(providers(colonySnap({ remoteEnergy: [remote] }))).toEqual([]);
+  });
+
+  it("withholds remote energy while the home spawn system is still short", () => {
+    // energyAvailable < energyCapacity => a home spawn deficit; a cross-room haul must not be offered.
+    const remote = remoteEnergyAt("W2N1", 200, "dropped");
+    const snap = colonySnap({ remoteEnergy: [remote], energyAvailable: 200, energyCapacity: 550 });
+
+    expect(providers(snap).some(p => p.ref.kind === "dropped" && p.ref.id === remote.id)).toBe(false);
   });
 
   it("includes a tombstone's energy above the worthwhile floor", () => {

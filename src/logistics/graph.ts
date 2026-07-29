@@ -109,6 +109,28 @@ export function providers(colony: ColonySnapshot): Provider[] {
     });
   }
 
+  // Remote energy waiting in remote rooms — the return-haul. Additive: these are *extra* providers on
+  // top of the home ones above, so the local transport economy is untouched. A ground pile/tombstone
+  // decays (urgency 1); a remote container doesn't. Same worthwhile floor as a home drop, since a tiny
+  // remote pile isn't worth a cross-room trip either.
+  //
+  // Gated on the home spawn system having no deficit: a cross-room round trip must never be chosen while
+  // home spawns/extensions are still hungry (invariant: never regress local stability). When home is
+  // short, the home providers above cover it and remote hauling waits — the remote energy is still there
+  // next tick (or decays slowly), but a hungry home spawn can't.
+  if (spawnSystemDeficit(colony) === 0) {
+    for (const r of colony.remoteEnergy) {
+      if (r.amount < DROP_WORTHWHILE_FLOOR) continue;
+      const ref: NodeRef =
+        r.kind === "container"
+          ? { kind: "structure", id: r.id as Id<AnyStoreStructure> }
+          : r.kind === "tombstone"
+            ? { kind: "tombstone", id: r.id as Id<Tombstone> }
+            : { kind: "dropped", id: r.id as Id<Resource> };
+      out.push({ ref, resource: RESOURCE_ENERGY, available: r.amount, urgency: r.kind === "container" ? 0.5 : 1 });
+    }
+  }
+
   // Storage as a source, but only while the spawn system is short: this is the drain direction the
   // supply role used to own — buffer out to keep spawning alive. When the spawn system is full,
   // storage is a sink instead (see consumers), never both. Lowest urgency: stored energy doesn't decay.
