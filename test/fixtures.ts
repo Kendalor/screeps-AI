@@ -12,6 +12,7 @@ import type {
   SnapCreep,
   SnapDrop,
   SnapSource,
+  SnapRemoteSource,
   SnapSpawn,
   SnapStructure,
   SnapTombstone,
@@ -30,6 +31,25 @@ export function openTerrain(): Uint8Array {
 
 export function sourceAt(x: number, y: number, id = `source_${x}_${y}`, openTiles = 8): SnapSource {
   return { id: id as Id<Source>, x, y, openTiles };
+}
+
+export function remoteSourceAt(
+  x: number,
+  y: number,
+  room: string,
+  over: Partial<Omit<SnapRemoteSource, "x" | "y" | "room">> = {}
+): SnapRemoteSource {
+  return {
+    id: `remote_src_${room}_${x}_${y}` as Id<Source>,
+    x,
+    y,
+    room,
+    distance: 1,
+    openTiles: 8,
+    reserved: false,
+    danger: 0,
+    ...over
+  };
 }
 
 export function dropAt(x: number, y: number, amount = 50, id = `drop_${x}_${y}`): SnapDrop {
@@ -82,6 +102,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     energyAvailable: 300,
     energyCapacity: 300,
     sources: [sourceAt(20, 10)],
+    remoteSources: [],
     drops: [],
     tombstones: [],
     terrain: openTerrain(),

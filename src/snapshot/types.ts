@@ -86,6 +86,20 @@ export interface SnapSource extends XY {
   openTiles: number; // walkable tiles adjacent to the source, i.e. its miner/collector share cap
 }
 
+// A remote-room source selected for mining, in the *home* colony's snapshot. Local sources are
+// conceptually these at distance 0, but stay in `sources` (SnapSource) to avoid churning every current
+// reader — Mining iterates `sources` then `remoteSources`. x/y are in `room`'s coordinate space, not home's.
+// Built by the snapshot builder from ColonyMemory.remotes joined against scout data + any live remote vision.
+export interface SnapRemoteSource extends XY {
+  id: Id<Source>;
+  room: string; // the remote room this source lives in (never the home room)
+  distance: number; // route length home storage/anchor -> source; drives haul-upkeep economics & nearest-first
+  openTiles: number; // walkable tiles adjacent — miner/collector share cap (same meaning as SnapSource)
+  containerId?: Id<StructureContainer>; // its drop container once built (in the remote room)
+  reserved: boolean; // is the room currently reserved by us (10/tick) or not (5/tick)
+  danger: number; // hostile presence in the room; > 0 means stop staffing/reserving
+}
+
 export interface SnapDrop extends XY {
   id: Id<Resource>;
   amount: number;
@@ -137,6 +151,7 @@ export interface ColonySnapshot {
   energyAvailable: number;
   energyCapacity: number;
   sources: SnapSource[];
+  remoteSources: SnapRemoteSource[]; // selected remote sources; empty until pickRemotes chooses some. Mining/Reservation/Logistics all read it.
   drops: SnapDrop[]; // ground-level energy from drop mining
   tombstones: SnapTombstone[]; // energy left behind by a dead creep
   terrain: Uint8Array; // 1 = walkable, 0 = wall, indexed [x*50+y]

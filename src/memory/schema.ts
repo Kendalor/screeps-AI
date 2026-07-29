@@ -55,8 +55,29 @@ export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building
   sources: Record<Id<Source>, SourceMemory>; // owned by mining
   links?: LinkNetworkMemory; // owned by links
-  remotes: string[]; // owned by mining (future)
+  remotes: RemoteMemory[]; // the selected remote rooms + their mined sources; owned by mining (pickRemotes writes it)
   danger: number; // owned by defense
+}
+
+// One remote room we've chosen to mine, cached in ColonyMemory so selection is stable and not re-ranked
+// every tick. Written by the pickRemotes selector (throttled), read by the snapshot builder to fill
+// ColonySnapshot.remoteSources.
+export interface RemoteMemory {
+  room: string;
+  sources: RemoteSourceMemory[]; // the sources selected for mining in this room (a room may have unmined far sources)
+  reserved: boolean; // are we currently reserving it (recomputed, cached to avoid thrash)
+}
+
+// A selected remote source and the facts about it that survive across ticks without vision. Live per-tick
+// fields (container energy, hostiles) are not stored here — the snapshot builder fills those only when a
+// creep gives us vision of the remote room that tick.
+export interface RemoteSourceMemory {
+  id: Id<Source>;
+  x: number;
+  y: number;
+  distance: number; // route length home->source, computed once at selection time (see mining/distance.ts)
+  containerId?: Id<StructureContainer>;
+  spot?: { x: number; y: number }; // mining position, recorded like a local source's
 }
 
 // A room-by-room route and how far along it the creep is; `index` is the next room to enter.
