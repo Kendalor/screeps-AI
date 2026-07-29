@@ -25,7 +25,7 @@ const config = {
   linkRcl: 7, // link beats container: miner drops straight in, no hauler round trip
   workPerSource: SOURCE_SATURATING_WORK, // shared with miner.ts's body cap so the two can't drift apart
   // Remote selection is cached; re-rank only occasionally so the active set is stable, not thrashing.
-  remoteSelectionEvery: 100,
+  remoteSelectionEvery: 1000,
   // Don't attempt remote mining until the home economy is established — a stable, snapshot-derivable
   // proxy for "the spawn can take on more creeps". TODO(remote): a real spawn-busy-fraction signal.
   remoteFromRcl: 3

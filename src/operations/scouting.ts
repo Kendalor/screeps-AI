@@ -2,7 +2,7 @@
 // Pure — reads the snapshot, returns intents (recordScout, setScoutTarget); execute.ts does the live-room read, route computation, and walking.
 
 import { roleDef } from "../behaviors/roles";
-import { needsPassiveRecording, needsScouting, pickScoutTarget } from "../behaviors/scout";
+import { needsPassiveRecording, needsScouting, scoutCandidatePool } from "../behaviors/scout";
 import type { Intent } from "../intents/types";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
@@ -42,8 +42,8 @@ export class Scouting extends Operation {
         recorded.add(scout.room);
       }
 
-      const target = this.nextTargetFor(colony, scout);
-      if (target) out.push({ kind: "setScoutTarget", creep: scout.id, targetRoom: target });
+      const candidates = this.candidatesFor(colony, scout);
+      if (candidates.length > 0) out.push({ kind: "setScoutTarget", creep: scout.id, candidates });
     }
 
     for (const visible of colony.visibleRooms) {
@@ -67,15 +67,16 @@ export class Scouting extends Operation {
     return candidate !== undefined && needsScouting(candidate, colony.tick);
   }
 
-  // The room to (re)assign, or undefined to leave it travelling (mid-route reassignment would thrash the route).
-  private nextTargetFor(colony: ColonySnapshot, scout: SnapCreep): string | undefined {
+  // The candidate rooms to (re)assign from, or [] to leave it travelling (mid-route reassignment would
+  // thrash the route). execute.ts picks the nearest of these via Game.map.findRoute.
+  private candidatesFor(colony: ColonySnapshot, scout: SnapCreep): string[] {
     const assigned = scout.memory.scoutTarget;
     const stillTravelling = assigned !== undefined && assigned !== scout.room;
-    if (stillTravelling) return undefined;
+    if (stillTravelling) return [];
     // Exclude the room the scout stands in (recorded this tick, not re-targeted) and the colony's own
     // home room: it's a scoutTargets entry (distance 0) for passive-recording purposes only, and
     // already has permanent vision, so a scout must never be dispatched to sit in it.
     const elsewhere = colony.scoutTargets.filter(t => t.room !== scout.room && t.room !== colony.name);
-    return pickScoutTarget(elsewhere, scout.room, colony.tick, scout.memory.lastRoom);
+    return scoutCandidatePool(elsewhere, colony.tick, scout.memory.lastRoom);
   }
 }

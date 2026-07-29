@@ -8,21 +8,23 @@ import { snapCreep } from "../../fixtures";
 
 const refKeyOf = (ref: NodeRef | undefined) => (ref ? refKey(ref) : undefined);
 
-const idleHauler = (over: Partial<{ storeEnergy: number; storeCapacity: number }> = {}) =>
+const idleHauler = (over: Partial<{ storeEnergy: number; storeCapacity: number; x: number; y: number }> = {}) =>
   snapCreep("hauler", { storeEnergy: 0, storeCapacity: 100, ...over });
 
-const provider = (id: string, available: number): Provider => ({
+const provider = (id: string, available: number, pos: { x: number; y: number } | null = { x: 0, y: 0 }): Provider => ({
   ref: { kind: "structure", id: id as Id<AnyStoreStructure> },
   resource: RESOURCE_ENERGY,
   available,
-  urgency: 0
+  urgency: 0,
+  pos
 });
 
-const drop = (id: string, available: number): Provider => ({
+const drop = (id: string, available: number, pos: { x: number; y: number } | null = { x: 0, y: 0 }): Provider => ({
   ref: { kind: "dropped", id: id as Id<Resource> },
   resource: RESOURCE_ENERGY,
   available,
-  urgency: 1
+  urgency: 1,
+  pos
 });
 
 const consumer = (id: string, wanted: number, priority = 50): Consumer => ({
@@ -78,6 +80,51 @@ describe("allocate", () => {
     expect(refKeyOf(task?.next?.from)).not.toBe(refKeyOf(task?.from));
     // The chain terminates in a single deliver of the full 200 to the consumer.
     expect(task?.next?.next).toEqual({ kind: "deliver", to: { kind: "structure", id: "sink" }, resource: RESOURCE_ENERGY, amount: 200 });
+  });
+
+  describe("nearest-provider-that-can-fill selection", () => {
+    it("picks the nearer provider that alone can fill the creep's capacity, over a larger but farther one", () => {
+      const creep = idleHauler({ storeCapacity: 100, x: 0, y: 0 });
+      const near = provider("near", 150, { x: 2, y: 2 }); // smaller, but still covers the 100 needed
+      const far = provider("far", 1000, { x: 40, y: 40 }); // far larger, but a much longer trip
+      const result = allocate([far, near], [consumer("sink", 100)], [creep], emptyReserved());
+
+      expect(result[creep.id]).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "near" }, amount: 100 });
+    });
+
+    it("still falls back to largest-first chaining when no single provider can fill capacity alone, ignoring distance", () => {
+      // Neither provider alone covers the 150 needed, so the trip must combine both regardless of
+      // which is nearer — a nearby-but-small provider is not worth a special-case single-leg pick here.
+      const creep = idleHauler({ storeCapacity: 150, x: 0, y: 0 });
+      const nearSmall = provider("nearSmall", 60, { x: 1, y: 1 });
+      const farBig = provider("farBig", 100, { x: 30, y: 30 });
+      const result = allocate([nearSmall, farBig], [consumer("sink", 150)], [creep], emptyReserved());
+
+      const task = result[creep.id];
+      // Largest-available-first fallback still drains "farBig" first, same as pre-nearest-fill behavior.
+      expect(task).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "farBig" }, amount: 100 });
+      expect(task?.next).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "nearSmall" }, amount: 50 });
+    });
+
+    it("applies nearest-that-can-fill to the speculative decaying-source pickup too", () => {
+      const creep = idleHauler({ storeEnergy: 0, storeCapacity: 100, x: 0, y: 0 });
+      const nearSmaller = drop("near", 120, { x: 3, y: 3 });
+      const farBigger = drop("far", 500, { x: 25, y: 25 });
+      const result = allocate([farBigger, nearSmaller], [], [creep], emptyReserved());
+
+      expect(result[creep.id]).toMatchObject({ kind: "pickup", from: { kind: "dropped", id: "near" }, amount: 100 });
+    });
+
+    it("ignores a provider with unknown position (e.g. remote energy) when ranking by distance", () => {
+      // A remote provider (pos: null) can still fill the need, but since it's not comparable to the
+      // creep's position it must lose to a positioned provider that also qualifies, even if farther.
+      const creep = idleHauler({ storeCapacity: 100, x: 0, y: 0 });
+      const remote = provider("remote", 1000, null);
+      const home = provider("home", 100, { x: 20, y: 20 });
+      const result = allocate([remote, home], [consumer("sink", 100)], [creep], emptyReserved());
+
+      expect(result[creep.id]).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "home" }, amount: 100 });
+    });
   });
 
   it("stops chaining pickups at the consumer's demand, not the creep's full capacity", () => {

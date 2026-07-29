@@ -55,6 +55,30 @@ describe("pickRemotes", () => {
     expect(rooms).toEqual(["W2N1"]); // nearest wins the single slot this call; "far" waits its turn
   });
 
+  it("trusts the candidate's own room-graph distance instead of re-deriving it from room names", () => {
+    // A room only connects N/S/E/W, so a diagonal neighbour is a real 2 hops away even though its name
+    // alone (e.g. via Game.map.getRoomLinearDistance) would suggest 1. pickRemotes must rank by whatever
+    // scoutGraph.ts's BFS actually measured (ScoutCandidate.distance), not recompute from the room names.
+    const trueNeighbour = {
+      room: "W2N1",
+      distance: 1,
+      type: "normal" as const,
+      info: scouted({ sources: [{ id: "straight" as Id<Source>, x: 25, y: 25 }] })
+    };
+    const diagonal = {
+      room: "W2N2",
+      distance: 2, // real BFS hop count for a room only reachable via two crossings
+      type: "normal" as const,
+      info: scouted({ sources: [{ id: "diagonal" as Id<Source>, x: 25, y: 25 }] })
+    };
+    const rooms = pickRemotes({
+      candidates: [diagonal, trueNeighbour],
+      home: homeState(),
+      currentlySelected: []
+    }).map(r => r.room);
+    expect(rooms).toEqual(["W2N1"]); // the true (1-hop) neighbour wins the single slot, not the diagonal one
+  });
+
   it("adds only one never-before-selected source per call, even when several are newly profitable", () => {
     // One adjacent room packed with many profitable sources, none yet selected: only one is added.
     const packed = scoutTarget(

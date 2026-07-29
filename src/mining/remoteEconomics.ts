@@ -13,8 +13,10 @@ export interface EconomyContext {
   claimerBodyCost: number; // energy to spawn one claimer (reserves a whole room)
 }
 
-// Energy a single source yields per tick: reserved rooms regen twice as fast as neutral ones.
-function grossHarvest(reserved: boolean): number {
+// Energy a single source yields per tick: reserved rooms regen twice as fast as neutral ones. Exported
+// so Logistics' fleet sizing (src/logistics/fleet.ts) prices a remote source's income off the same
+// regen-cap formula as the profitability check here, instead of re-deriving it from the raw constants.
+export function grossHarvest(reserved: boolean): number {
   const capacity = reserved ? SOURCE_ENERGY_CAPACITY : SOURCE_ENERGY_NEUTRAL_CAPACITY;
   return capacity / ENERGY_REGEN_TIME; // reserved => 10/tick, unreserved => 5/tick
 }

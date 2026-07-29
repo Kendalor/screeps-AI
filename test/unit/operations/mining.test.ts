@@ -646,7 +646,7 @@ describe("Mining.intents — remote selection", () => {
 
   it("emits setRemotes on the throttle tick, selecting a scouted profitable neighbour", () => {
     const snap = colonySnap({
-      tick: 100, // a multiple of remoteSelectionEvery (100)
+      tick: 1000, // a multiple of remoteSelectionEvery (1000)
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
       energyCapacity: 800,
@@ -675,7 +675,7 @@ describe("Mining.intents — remote selection", () => {
 
   it("stays silent when no neighbour pays off (no noisy empty write every throttle tick)", () => {
     const snap = colonySnap({
-      tick: 100,
+      tick: 1000,
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
       energyCapacity: 800,
@@ -688,7 +688,7 @@ describe("Mining.intents — remote selection", () => {
 
   it("stays silent with no spawns at all — no capacity to staff anything new", () => {
     const snap = colonySnap({
-      tick: 100,
+      tick: 1000,
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
       energyCapacity: 800,
@@ -704,7 +704,7 @@ describe("Mining.intents — remote selection", () => {
     // creeps so even a small remote-miner body can't fit underneath — headroom must read false.
     const saturating = snapCreeps(50, i => snapCreep({ id: `sat_${i}` as Id<Creep>, role: "upgrader", body: Array(10).fill(WORK) }));
     const snap = colonySnap({
-      tick: 100,
+      tick: 1000,
       anchor: { x: 25, y: 25 },
       controllerLevel: 3,
       energyCapacity: 800,

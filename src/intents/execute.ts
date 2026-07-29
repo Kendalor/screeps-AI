@@ -2,7 +2,8 @@
 
 import { log } from "../lib/log";
 import { roomType } from "../lib/roomName";
-import type { RouteMemory, ScoutInfo } from "../memory/schema";
+import { findRemotePath, serializeRemotePath } from "../lib/remotePath";
+import type { RemoteMemory, RemoteSourceMemory, RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
 
 // The farthest the scouting frontier grows, in rooms. Legacy's MAX_RANGE. Lives here because
@@ -126,11 +127,13 @@ function act(intent: Intent): ScreepsReturnCode {
     case "setScoutTarget": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
+      const target = nearestScoutCandidate(creep.room.name, intent.candidates);
+      if (!target) return ERR_NOT_FOUND;
       // Recorded before overwriting scoutTarget so the next pick can avoid sending the scout straight
       // back here — without it, two rooms mutually nearest each other ping-pong a scout forever.
       creep.memory.lastRoom = creep.room.name;
-      creep.memory.scoutTarget = intent.targetRoom;
-      creep.memory.route = routeTo(creep.room.name, intent.targetRoom);
+      creep.memory.scoutTarget = target;
+      creep.memory.route = routeTo(creep.room.name, target);
       return OK;
     }
     case "advanceScoutRadius": {
@@ -140,7 +143,7 @@ function act(intent: Intent): ScreepsReturnCode {
     }
     case "setRemotes": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
-      mem.remotes = intent.remotes;
+      mem.remotes = intent.remotes.map(room => resolveRemoteRoom(intent.room, room, mem.anchor)).filter(hasSourcesLeft);
       return OK;
     }
     case "recordSourceSpot": {
@@ -177,6 +180,56 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
     ...(owner ? { owner } : {}),
     hostile: owner !== undefined && !c?.my
   };
+}
+
+// Fills in each source's real haul distance, replacing pickRemotes' cheap ranking estimate with the
+// ground truth for whatever actually got selected. Reuses a room-memory-cached path when one exists
+// (see ScoutedSource.paths); otherwise computes it once via PathFinder and caches it there for every
+// future call. A source PathFinder can't reach at all (no anchor yet, or genuinely no route) is dropped
+// — better to retry next throttle tick than commit to a haul that can never be walked.
+function resolveRemoteRoom(home: string, room: RemoteMemory, anchor: { x: number; y: number } | undefined): RemoteMemory {
+  const roomMem = (Memory.rooms ??= {})[room.room];
+  const sources: RemoteSourceMemory[] = [];
+  for (const s of room.sources) {
+    const scouted = roomMem?.scouted?.sources.find(sc => sc.id === s.id);
+    const cached = scouted?.paths?.[home];
+    if (cached !== undefined) {
+      sources.push({ ...s, distance: cached.length });
+      continue;
+    }
+    if (!anchor) continue; // no anchor placed yet; retry once building has one
+    const path = findRemotePath(new RoomPosition(anchor.x, anchor.y, home), new RoomPosition(s.x, s.y, room.room));
+    if (!path) {
+      log.warn(`setRemotes: no path ${home} -> ${room.room} source ${s.id}, dropping`);
+      continue;
+    }
+    const serialized = serializeRemotePath(new RoomPosition(anchor.x, anchor.y, home), path);
+    if (scouted) (scouted.paths ??= {})[home] = serialized;
+    sources.push({ ...s, distance: serialized.length });
+  }
+  return { ...room, sources };
+}
+
+function hasSourcesLeft(room: RemoteMemory): boolean {
+  return room.sources.length > 0;
+}
+
+// Nearest of `candidates` from `from`, measured by Game.map.findRoute's real room-graph hop count —
+// never a Chebyshev/linear-distance estimate, which misprices a diagonal room as adjacent when the map
+// only actually connects a room to its N/S/E/W neighbours. Ties (and rooms findRoute can't reach) break
+// by name, for determinism across scouts/ticks.
+function nearestScoutCandidate(from: string, candidates: readonly string[]): string | undefined {
+  let best: string | undefined;
+  let bestHops = Infinity;
+  for (const room of candidates) {
+    const route = Game.map.findRoute(from, room);
+    const hops = route === ERR_NO_PATH ? Infinity : route.length;
+    if (hops < bestHops || (hops === bestHops && best !== undefined && room.localeCompare(best) < 0)) {
+      best = room;
+      bestHops = hops;
+    }
+  }
+  return best;
 }
 
 // Room-by-room route via Game.map.findRoute; on failure, falls back to just the destination.

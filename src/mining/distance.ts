@@ -1,14 +1,13 @@
-// Route-length estimate home storage -> remote source, in tiles. This is the single distance metric
-// both remoteEconomics (haul upkeep) and Logistics (round-trip sizing) must share, or they disagree on
-// whether a remote pays off. Pure — plain numbers, no Game.*.
+// Route-length estimate home storage -> remote source, in tiles. This is the cheap ranking metric
+// pickRemotes uses to sort/filter every scouted candidate every throttle tick without touching Game.* —
+// the real PathFinder path (see src/lib/remotePath.ts) is only computed once, for whichever source
+// actually gets selected, and cached from then on. Both remoteEconomics (haul upkeep) and Logistics
+// (round-trip sizing) key off whichever of the two is currently recorded.
 //
-// First cut is the handoff's estimate (a): rooms-apart * one crossing + how far each endpoint sits into
-// its own room. No vision dependency, so it works off scout memory before any creep enters the remote.
-// TODO(remote): replace with the real road path length (uses remote terrain — needs vision or a cached
-// path) once benchmarks show this estimate mispricing far remotes.
+// rooms-apart * one crossing + how far each endpoint sits into its own room. No vision dependency, so it
+// works off scout memory before any creep enters the remote.
 
 import type { XY } from "../lib/geometry";
-import { roomLinearDistance } from "../lib/roomName";
 
 // Tiles to cross one room. A room is 50x50; a straight traversal edge-to-edge is ~50 tiles.
 export const ROOM_CROSSING_TILES = 50;
@@ -22,13 +21,14 @@ function insetFromCenter(p: XY): number {
 }
 
 export interface RemoteDistanceInput {
-  home: string; // home room name (where storage/anchor is)
-  remote: string; // the remote room the source lives in
+  // Real room-graph hops home -> remote (see scoutGraph.ts's BFS) — never a Chebyshev/linear-distance
+  // recomputation, which misprices a diagonal room as distance 1 even though a room only connects to
+  // its N/S/E/W neighbours.
+  roomDistance: number;
   source: XY; // source position in the remote room's coordinate space
   storage: XY; // home storage/anchor position in the home room's coordinate space
 }
 
 export function remoteDistanceEstimate(input: RemoteDistanceInput): number {
-  const rooms = roomLinearDistance(input.home, input.remote);
-  return rooms * ROOM_CROSSING_TILES + insetFromCenter(input.source) + insetFromCenter(input.storage);
+  return input.roomDistance * ROOM_CROSSING_TILES + insetFromCenter(input.source) + insetFromCenter(input.storage);
 }

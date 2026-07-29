@@ -37,8 +37,10 @@ export type Intent =
   // `passive`: recorded from ambient vision, not a scout's assigned survey — execute.ts skips re-finding
   // static data (sources/mineral) already on record, refreshing only tick/owner/hostile.
   | { kind: "recordScout"; room: string; passive?: boolean }
-  // Planner picks the target room; execute.ts computes the route and writes it into creep memory.
-  | { kind: "setScoutTarget"; creep: Id<Creep>; targetRoom: string }
+  // Planner narrows to the viable candidate rooms (pure filter, no distance ranking); execute.ts picks
+  // the nearest by Game.map.findRoute (real room-graph hops from the scout's *current* room, since only
+  // it can reach Game.map) and writes the target + route into creep memory.
+  | { kind: "setScoutTarget"; creep: Id<Creep>; candidates: string[] }
   // Emitted when the current scouting radius is fully surveyed; execute.ts owns the Memory write and cap.
   | { kind: "advanceScoutRadius" }
   // pickRemotes decides which remote rooms/sources to mine (throttled); execute.ts owns the

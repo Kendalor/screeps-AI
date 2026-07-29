@@ -1,6 +1,8 @@
 // Stubs the Screeps global constants for unit tests; @types/screeps declares them as
 // ambient globals normally provided by the game engine at runtime. Add as src/ needs more.
 
+import { parseRoomName } from "../src/lib/roomName";
+
 // A per-tile registry the RoomPosition stub reads for lookFor(). Tests populate it via
 // stubTile(); it's cleared each stubGame() so state never leaks between tests.
 const tileLooks = new Map<string, Record<string, unknown[]>>();
@@ -11,7 +13,25 @@ export function stubTile(roomName: string, x: number, y: number, looks: Record<s
 
 export function clearTiles(): void {
   tileLooks.clear();
+  pathFinderSearch = undefined;
 }
+
+// Room-name-relative tile in a flat world coordinate space (rooms tile edge-to-edge, W/E and N/S
+// mirrored around the origin — the same lattice roomLinearDistance's axis() encodes at room granularity).
+// Lets getDirectionTo below work correctly across a room boundary, not just within one room.
+function worldX(roomName: string, tileX: number): number {
+  const { wx, x } = parseRoomName(roomName);
+  return wx === "E" ? x * 50 + tileX : tileX - 50 * (x + 1);
+}
+function worldY(roomName: string, tileY: number): number {
+  const { wy, y } = parseRoomName(roomName);
+  return wy === "S" ? y * 50 + tileY : tileY - 50 * (y + 1);
+}
+
+const DIRECTION_BY_DELTA: Record<string, number> = {
+  "0,-1": 1, "1,-1": 2, "1,0": 3, "1,1": 4,
+  "0,1": 5, "-1,1": 6, "-1,0": 7, "-1,-1": 8
+};
 
 class RoomPositionStub {
   constructor(
@@ -22,10 +42,36 @@ class RoomPositionStub {
   lookFor(type: string): unknown[] {
     return tileLooks.get(`${this.roomName}:${this.x}:${this.y}`)?.[type] ?? [];
   }
+  getDirectionTo(target: { x: number; y: number; roomName: string }): number {
+    const dx = Math.sign(worldX(target.roomName, target.x) - worldX(this.roomName, this.x));
+    const dy = Math.sign(worldY(target.roomName, target.y) - worldY(this.roomName, this.y));
+    return DIRECTION_BY_DELTA[`${dx},${dy}`];
+  }
+}
+
+// PathFinder.search is scripted per-test via stubPathFinder(); tests that don't call it will error loudly
+// if code under test reaches PathFinder.search anyway, rather than silently returning nonsense.
+interface PathFinderResultStub {
+  path: RoomPositionStub[];
+  incomplete: boolean;
+  ops: number;
+  cost: number;
+}
+let pathFinderSearch: ((origin: unknown, goal: unknown, opts: unknown) => PathFinderResultStub) | undefined;
+
+export function stubPathFinder(fn: (origin: unknown, goal: unknown, opts: unknown) => PathFinderResultStub): void {
+  pathFinderSearch = fn;
 }
 
 Object.assign(globalThis, {
   RoomPosition: RoomPositionStub,
+
+  PathFinder: {
+    search: (origin: unknown, goal: unknown, opts: unknown): PathFinderResultStub => {
+      if (!pathFinderSearch) throw new Error("PathFinder.search called without stubPathFinder()");
+      return pathFinderSearch(origin, goal, opts);
+    }
+  },
 
   OK: 0,
   ERR_NOT_OWNER: -1,

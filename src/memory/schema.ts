@@ -116,6 +116,13 @@ export interface ScoutedSource {
   id: Id<Source>;
   x: number;
   y: number;
+  // Real PathFinder path from a home room's anchor to this source, serialized (one direction digit per
+  // tile, Traveler-style — see src/lib/remotePath.ts), keyed by that home room's name. Computed once, at
+  // remote-selection time, and kept forever after: a source's position and a home's anchor never move,
+  // so neither does the answer. Lives here (not ColonyMemory) because it's the *source*'s fact, not the
+  // colony's — a second colony scouting the same room reuses nothing of a first colony's anchor-relative
+  // path, but the cache still only ever needs one entry per home that has actually computed it.
+  paths?: Partial<Record<string, string>>;
 }
 
 // How far out the frontier has pushed — the one piece of scouting state a tick cannot rederive. The todo list itself

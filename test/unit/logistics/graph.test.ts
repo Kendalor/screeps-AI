@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { consumers, providers } from "../../../src/logistics/graph";
-import { colonySnap, containerAt, dropAt, remoteEnergyAt, sinkAt, snapCreep, tombstoneAt, towerAt } from "../../fixtures";
+import { colonySnap, containerAt, dropAt, remoteEnergyAt, sinkAt, snapCreep, structureAt, tombstoneAt, towerAt } from "../../fixtures";
 
 describe("providers", () => {
   it("treats a source container holding energy as a provider", () => {
@@ -10,7 +10,7 @@ describe("providers", () => {
     const result = providers(colonySnap({ containers: [container], controller: { x: 25, y: 25 } }));
 
     expect(result).toEqual([
-      { ref: { kind: "structure", id: container.id }, resource: RESOURCE_ENERGY, available: 300, urgency: 0.15 }
+      { ref: { kind: "structure", id: container.id }, resource: RESOURCE_ENERGY, available: 300, urgency: 0.15, pos: { x: 10, y: 10 } }
     ]);
   });
 
@@ -29,7 +29,9 @@ describe("providers", () => {
     const drop = dropAt(15, 15, 100);
     const result = providers(colonySnap({ drops: [drop] }));
 
-    expect(result).toEqual([{ ref: { kind: "dropped", id: drop.id }, resource: RESOURCE_ENERGY, available: 100, urgency: 1 }]);
+    expect(result).toEqual([
+      { ref: { kind: "dropped", id: drop.id }, resource: RESOURCE_ENERGY, available: 100, urgency: 1, pos: { x: 15, y: 15 } }
+    ]);
   });
 
   it("excludes a dropped pile below the worthwhile floor", () => {
@@ -62,12 +64,13 @@ describe("providers", () => {
     expect(providers(colonySnap({ remoteEnergy: [remote] }))).toEqual([]);
   });
 
-  it("withholds remote energy while the home spawn system is still short", () => {
-    // energyAvailable < energyCapacity => a home spawn deficit; a cross-room haul must not be offered.
+  it("still offers remote energy while the home spawn system is short", () => {
+    // energyAvailable < energyCapacity => a home spawn deficit; remote is still offered as an extra
+    // option — allocate.ts's nearest-fill already prefers home providers when one alone covers the trip.
     const remote = remoteEnergyAt("W2N1", 200, "dropped");
     const snap = colonySnap({ remoteEnergy: [remote], energyAvailable: 200, energyCapacity: 550 });
 
-    expect(providers(snap).some(p => p.ref.kind === "dropped" && p.ref.id === remote.id)).toBe(false);
+    expect(providers(snap).some(p => p.ref.kind === "dropped" && p.ref.id === remote.id)).toBe(true);
   });
 
   it("includes a tombstone's energy above the worthwhile floor", () => {
@@ -75,7 +78,7 @@ describe("providers", () => {
     const result = providers(colonySnap({ tombstones: [tombstone] }));
 
     expect(result).toEqual([
-      { ref: { kind: "tombstone", id: tombstone.id }, resource: RESOURCE_ENERGY, available: 100, urgency: 1 }
+      { ref: { kind: "tombstone", id: tombstone.id }, resource: RESOURCE_ENERGY, available: 100, urgency: 1, pos: { x: 15, y: 15 } }
     ]);
   });
 
@@ -95,7 +98,8 @@ describe("providers", () => {
       ref: { kind: "structure", id: storageId },
       resource: RESOURCE_ENERGY,
       available: 5000,
-      urgency: 0
+      urgency: 0,
+      pos: null
     });
   });
 
@@ -105,6 +109,21 @@ describe("providers", () => {
       colonySnap({ storageId, storageEnergy: 5000, storageCapacity: 10000, energyAvailable: 50, energyCapacity: 50 })
     );
     expect(result.some(p => p.ref.kind === "structure" && p.ref.id === storageId)).toBe(false);
+  });
+
+  it("resolves storage's position from the matching structure, for nearest-fill pickup selection", () => {
+    const storageStruct = structureAt(12, 8, STRUCTURE_STORAGE, { id: storageId as unknown as Id<Structure> });
+    const result = providers(
+      colonySnap({
+        storageId,
+        storageEnergy: 5000,
+        storageCapacity: 10000,
+        energyAvailable: 30,
+        energyCapacity: 50,
+        structures: [storageStruct]
+      })
+    );
+    expect(result).toContainEqual(expect.objectContaining({ pos: { x: 12, y: 8 } }));
   });
 
   it("does not offer empty storage as a provider", () => {

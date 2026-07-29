@@ -1,6 +1,8 @@
-// The scout behaviour's pure core: whether a room's data has gone stale, and which room to scout next.
+// The scout behaviour's pure core: whether a room's data has gone stale, and which rooms are still
+// viable to scout next. Picking the *nearest* of those viable rooms needs Game.map.findRoute, which
+// only execute.ts can reach — see scoutCandidatePool's note below.
 
-import { roomLinearDistance, type RoomType } from "../lib/roomName";
+import type { RoomType } from "../lib/roomName";
 import type { ScoutInfo } from "../memory/schema";
 import type { ScoutCandidate } from "../snapshot/types";
 
@@ -35,24 +37,20 @@ export function needsScouting(candidate: ScoutCandidate, now = 0): boolean {
   return now - info.tick >= staleAfter(candidate.type);
 }
 
-// Nearest candidate still needing scouting, from the scout's *current* room (not home) so it keeps pushing outward; ties broken by name for determinism.
+// Rooms still worth dispatching a scout to. Deliberately unordered/undistanced: ranking these by
+// "nearest from the scout's current room" needs Game.map.findRoute (real room-graph hops, not a
+// Chebyshev estimate that misprices a diagonal room as adjacent when the map only connects N/S/E/W
+// neighbours), which only execute.ts can reach — so this stays a pure filter and execute.ts does the
+// final pick.
 // `avoid` is the room the scout just came from: with only two adjacent stale rooms in range, each is
 // forever the other's nearest candidate, so without this a scout ping-pongs between them indefinitely.
 // Skipped only when it's the sole remaining candidate, so real progress never stalls.
-export function pickScoutTarget(
-  todo: readonly ScoutCandidate[],
-  from: string,
-  now: number,
-  avoid?: string
-): string | undefined {
+export function scoutCandidatePool(todo: readonly ScoutCandidate[], now: number, avoid?: string): string[] {
   const open = todo.filter(t => needsScouting(t, now));
-  if (open.length === 0) return undefined;
+  if (open.length === 0) return [];
 
   const preferred = avoid ? open.filter(t => t.room !== avoid) : open;
   const pool = preferred.length > 0 ? preferred : open;
 
-  return pool
-    .slice()
-    .sort((a, b) => roomLinearDistance(from, a.room) - roomLinearDistance(from, b.room) || a.room.localeCompare(b.room))[0]
-    .room;
+  return pool.map(t => t.room);
 }

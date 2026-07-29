@@ -107,8 +107,9 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordScout" }));
   });
 
-  // A scout with no target gets the nearest unscouted room assigned.
-  it("assigns an unassigned scout its nearest unscouted target", () => {
+  // A scout with no target gets the pool of unscouted rooms as candidates — execute.ts picks the
+  // nearest of those via Game.map.findRoute.
+  it("assigns an unassigned scout the pool of unscouted candidates", () => {
     const scout = snapCreep("scout", { room: "W1N1", memory: { op: "scouting:W1N1" } });
     const snap = colonySnap({
       creeps: [scout],
@@ -117,11 +118,11 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).toContainEqual({
       kind: "setScoutTarget",
       creep: scout.id,
-      targetRoom: "W1N2"
+      candidates: ["W1N3", "W1N2"]
     });
   });
 
-  // A scout that reached its target (standing in it) is reassigned the next room.
+  // A scout that reached its target (standing in it) is reassigned from the remaining candidates.
   it("reassigns a scout that has arrived at its target", () => {
     const scout = snapCreep("scout", {
       room: "W1N2",
@@ -134,14 +135,15 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).toContainEqual({
       kind: "setScoutTarget",
       creep: scout.id,
-      targetRoom: "W2N1"
+      candidates: ["W2N1"]
     });
   });
 
   // Two adjacent rooms, each other's nearest stale candidate (e.g. two highways restaling faster than
   // the rest of the frontier), must not trap the scout in an infinite back-and-forth: having just
-  // arrived from W1N2, it should push on to a third stale room rather than bouncing straight back.
-  it("does not send a scout back to the room it just came from while another stale room exists", () => {
+  // arrived from W1N2, the candidate pool should push on to the third stale room rather than including
+  // the one just left.
+  it("excludes the room a scout just came from while another stale room exists", () => {
     const scout = snapCreep("scout", {
       room: "W1N3",
       memory: { op: "scouting:W1N1", scoutTarget: "W1N3", lastRoom: "W1N2" }
@@ -153,7 +155,7 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).toContainEqual({
       kind: "setScoutTarget",
       creep: scout.id,
-      targetRoom: "W1N4"
+      candidates: ["W1N4"]
     });
   });
 
@@ -209,7 +211,7 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).toContainEqual({
       kind: "setScoutTarget",
       creep: scout.id,
-      targetRoom: "W1N2"
+      candidates: ["W1N2"]
     });
   });
 });

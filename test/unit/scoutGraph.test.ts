@@ -43,6 +43,23 @@ describe("scoutCandidatesAround", () => {
     expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2"]);
   });
 
+  it("distances a diagonal room by real room-graph hops, not Game.map.getRoomLinearDistance's Chebyshev shortcut", () => {
+    // W1N1 -> W2N1 (east) -> W2N2 (south): a room only connects to its N/S/E/W neighbours, so W2N2 is 2
+    // hops away even though its Chebyshev distance from W1N1 is 1 — the exact mispricing that let
+    // pickRemotes prefer an unreachable-in-one-hop diagonal room over a true neighbour.
+    stubGame();
+    stubMap({
+      W1N1: { "3": "W2N1" },
+      W2N1: { "7": "W1N1", "5": "W2N2" },
+      W2N2: { "1": "W2N1" }
+    });
+
+    const out = scoutCandidatesAround("W1N1", 2);
+
+    expect(out.find(c => c.room === "W2N1")?.distance).toBe(1);
+    expect(out.find(c => c.room === "W2N2")?.distance).toBe(2);
+  });
+
   it("excludes rooms behind a closed/novice boundary, but still includes the origin", () => {
     stubGame();
     (globalThis as { Game: { map: unknown } }).Game.map = {

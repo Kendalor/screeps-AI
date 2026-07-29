@@ -3,6 +3,7 @@
 // Reuses targets.ts's belowFillTo/isWorthwhile-shaped math so "is this container full/worth a trip" is
 // asked once, not reinvented here — same reasoning, snapshot-pure instead of live-object.
 
+import type { XY } from "../lib/geometry";
 import type { ColonySnapshot, SnapContainer, SnapCreep, SnapDrop, SnapTombstone, SnapTower } from "../snapshot/types";
 import type { NodeRef } from "./types";
 
@@ -11,6 +12,9 @@ export interface Provider {
   resource: ResourceConstant;
   available: number; // energy sitting there right now
   urgency: number; // decay risk / overflow risk — dropped piles and near-full containers rank high
+  // Where to range-check a creep against, for allocate.ts's nearest-that-can-fill pickup selection.
+  // Null for a remote provider (cross-room; not comparable to a home creep's x/y in the same metric).
+  pos: XY | null;
 }
 
 export interface Consumer {
@@ -83,7 +87,8 @@ export function providers(colony: ColonySnapshot): Provider[] {
       ref: { kind: "structure", id: c.id as Id<AnyStoreStructure> },
       resource: RESOURCE_ENERGY,
       available: c.storeEnergy,
-      urgency: c.storeCapacity > 0 ? c.storeEnergy / c.storeCapacity : 0
+      urgency: c.storeCapacity > 0 ? c.storeEnergy / c.storeCapacity : 0,
+      pos: { x: c.x, y: c.y }
     });
   }
 
@@ -93,7 +98,8 @@ export function providers(colony: ColonySnapshot): Provider[] {
       ref: { kind: "dropped", id: d.id },
       resource: RESOURCE_ENERGY,
       available: d.amount,
-      urgency: 1 // ground energy decays — always treated as urgent once past the worthwhile floor
+      urgency: 1, // ground energy decays — always treated as urgent once past the worthwhile floor
+      pos: { x: d.x, y: d.y }
     });
   }
 
@@ -105,7 +111,8 @@ export function providers(colony: ColonySnapshot): Provider[] {
       ref: { kind: "tombstone", id: t.id },
       resource: RESOURCE_ENERGY,
       available: t.storeEnergy,
-      urgency: 1
+      urgency: 1,
+      pos: { x: t.x, y: t.y }
     });
   }
 
@@ -114,32 +121,34 @@ export function providers(colony: ColonySnapshot): Provider[] {
   // decays (urgency 1); a remote container doesn't. Same worthwhile floor as a home drop, since a tiny
   // remote pile isn't worth a cross-room trip either.
   //
-  // Gated on the home spawn system having no deficit: a cross-room round trip must never be chosen while
-  // home spawns/extensions are still hungry (invariant: never regress local stability). When home is
-  // short, the home providers above cover it and remote hauling waits — the remote energy is still there
-  // next tick (or decays slowly), but a hungry home spawn can't.
-  if (spawnSystemDeficit(colony) === 0) {
-    for (const r of colony.remoteEnergy) {
-      if (r.amount < DROP_WORTHWHILE_FLOOR) continue;
-      const ref: NodeRef =
-        r.kind === "container"
-          ? { kind: "structure", id: r.id as Id<AnyStoreStructure> }
-          : r.kind === "tombstone"
-            ? { kind: "tombstone", id: r.id as Id<Tombstone> }
-            : { kind: "dropped", id: r.id as Id<Resource> };
-      out.push({ ref, resource: RESOURCE_ENERGY, available: r.amount, urgency: r.kind === "container" ? 0.5 : 1 });
-    }
+  // NOT gated on the home spawn system's deficit: a hungry home spawn doesn't stop a transport creep
+  // from being offered a remote pile too — allocate.ts's nearest-fill still prefers home providers
+  // whenever one alone can cover the trip (remote entries carry pos: null, so nearest-fill skips them
+  // entirely), so this only ever adds remote as a same-tick option, never displaces a closer home pickup.
+  for (const r of colony.remoteEnergy) {
+    if (r.amount < DROP_WORTHWHILE_FLOOR) continue;
+    const ref: NodeRef =
+      r.kind === "container"
+        ? { kind: "structure", id: r.id as Id<AnyStoreStructure> }
+        : r.kind === "tombstone"
+          ? { kind: "tombstone", id: r.id as Id<Tombstone> }
+          : { kind: "dropped", id: r.id as Id<Resource> };
+    // Cross-room: no position comparable to a home creep's x/y, so nearest-fill selection (allocate.ts)
+    // skips these and only the largest-first fallback ever picks them.
+    out.push({ ref, resource: RESOURCE_ENERGY, available: r.amount, urgency: r.kind === "container" ? 0.5 : 1, pos: null });
   }
 
   // Storage as a source, but only while the spawn system is short: this is the drain direction the
   // supply role used to own — buffer out to keep spawning alive. When the spawn system is full,
   // storage is a sink instead (see consumers), never both. Lowest urgency: stored energy doesn't decay.
   if (colony.storageId && colony.storageEnergy > 0 && spawnSystemDeficit(colony) > 0) {
+    const storageStruct = colony.structures.find(s => s.type === "storage");
     out.push({
       ref: { kind: "structure", id: colony.storageId as Id<AnyStoreStructure> },
       resource: RESOURCE_ENERGY,
       available: colony.storageEnergy,
-      urgency: 0
+      urgency: 0,
+      pos: storageStruct ? { x: storageStruct.x, y: storageStruct.y } : null
     });
   }
 

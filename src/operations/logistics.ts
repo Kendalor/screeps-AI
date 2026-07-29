@@ -78,7 +78,7 @@ export class Logistics extends Operation {
     const income = harvestIncome(miners, colony, config);
     if (income <= 0) return 0;
 
-    const roundTrip = 2 * haulDistance(colony, config);
+    const roundTrip = 2 * haulDistance(miners, colony, config);
     // Over-provision carry (round up): the exact steady-state figure runs too lean once respawn
     // gaps and en-route drops are accounted for, so buy a margin (config.carryMargin).
     const neededCarry = Math.ceil(income * roundTrip * config.carryMargin);

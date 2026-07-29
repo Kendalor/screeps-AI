@@ -66,7 +66,7 @@ export function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
         id: src.id,
         x: src.x,
         y: src.y,
-        distance: remoteDistanceEstimate({ home: home.name, remote: cand.room, source: src, storage: home.storage })
+        distance: remoteDistanceEstimate({ roomDistance: cand.distance, source: src, storage: home.storage })
       });
     }
   }

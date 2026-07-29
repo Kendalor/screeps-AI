@@ -2,12 +2,14 @@
 // with no double-booking. Matches the codebase's existing style (targets.ts's resolveTarget is also
 // greedy, not a solver) rather than introducing a new optimizer.
 //
-// Provider/Consumer carry no position (SnapCreep has none either — a snapshot fact, not an oversight
-// here), so "nearest provider" isn't computable at this layer. Picks the largest available provider
-// per pickup instead, mirroring hauler.ts's own `prefer: "largest"` default for its gather step.
-// Which of {nearest, largest-capacity-first} allocation order performs better is the plan's open
-// question 1 — worth a benchmark once there's a real workload, not resolved by guessing here.
+// Pickup selection resolves the plan's former open question 1 ({nearest, largest-capacity-first}):
+// a creep's first choice is the NEAREST provider that alone has enough to fill its trip (see
+// pickNearestFillingProvider) — a short trip to a source that covers the whole load beats a longer one
+// to a bigger pile. Only when no single provider can fill the trip alone does it fall back to
+// largest-available-first chaining (pickLargestProvider/pickLargestDecayingProvider), mirroring
+// hauler.ts's own `prefer: "largest"` default, to combine as few providers as possible.
 
+import { range, type XY } from "../lib/geometry";
 import type { DeepReadonly, SnapCreep } from "../snapshot/types";
 import type { Consumer, Provider } from "./graph";
 import type { LogisticsTask, NodeRef } from "./types";
@@ -82,7 +84,7 @@ export function allocate(
     const fillTarget = Math.min(capacity, wantOpen);
     if (fillTarget <= 0) continue;
 
-    const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget);
+    const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget, creep);
     if (pickups.length === 0) continue;
     const loaded = pickups.reduce((sum, p) => sum + p.amount, 0);
 
@@ -114,7 +116,9 @@ export function allocate(
     const free = creep.storeCapacity - creep.storeEnergy;
     if (free <= 0) continue;
 
-    const provider = pickLargestDecayingProvider(providers, providerRemaining);
+    const provider =
+      pickNearestFillingProvider(providers, providerRemaining, RESOURCE_ENERGY, creep, free, isDecaying) ??
+      pickLargestDecayingProvider(providers, providerRemaining);
     if (!provider) continue;
 
     const providerKey = refKey(provider.ref);
@@ -128,21 +132,25 @@ export function allocate(
   return out;
 }
 
-// Greedily draw `fillTarget` from the largest available providers in turn, decrementing each in
-// `remaining` as it's claimed so the same energy is never handed to two legs. Returns one entry per
-// provider tapped ({ref, amount}); stops as soon as the target is met or providers run dry. Largest-
-// first mirrors the single-pickup pass's pickLargestProvider (and hauler.ts's `prefer: "largest"`),
-// keeping trips short by preferring fuller sources first.
+// Greedily draw `fillTarget` from providers in turn, decrementing each in `remaining` as it's claimed
+// so the same energy is never handed to two legs. Returns one entry per provider tapped
+// ({ref, amount}); stops as soon as the target is met or providers run dry. Each leg first tries the
+// NEAREST provider (to `from`, the creep's own position) that alone still has enough left to cover the
+// remaining need — a short trip that fully covers the load beats a longer one to a bigger pile. Only
+// when nothing qualifies (need > every provider's remaining) does it fall back to largest-available-
+// first (pickLargestProvider, mirroring hauler.ts's `prefer: "largest"`), which combines as few
+// providers as possible to fill the remainder.
 function buildPickupChain(
   providers: readonly Provider[],
   remaining: Map<string, number>,
   resource: ResourceConstant,
-  fillTarget: number
+  fillTarget: number,
+  from: XY
 ): { ref: NodeRef; amount: number }[] {
   const out: { ref: NodeRef; amount: number }[] = [];
   let need = fillTarget;
   while (need > 0) {
-    const provider = pickLargestProvider(providers, remaining, resource);
+    const provider = pickNearestFillingProvider(providers, remaining, resource, from, need) ?? pickLargestProvider(providers, remaining, resource);
     if (!provider) break;
     const key = refKey(provider.ref);
     const take = Math.min(need, remaining.get(key) ?? 0);
@@ -152,6 +160,36 @@ function buildPickupChain(
     need -= take;
   }
   return out;
+}
+
+// Among providers that alone still have at least `need` left, returns the nearest to `from` (the
+// creep's own position). A provider with `pos: null` (a remote/cross-room source — not comparable to a
+// home creep's x/y in the same range metric) is never picked here; it only ever gets tapped via the
+// largest-first fallback. Ties (equal range) keep the first-encountered candidate, matching the
+// tie-break every other picker in this file uses.
+function pickNearestFillingProvider(
+  providers: readonly Provider[],
+  remaining: Map<string, number>,
+  resource: ResourceConstant,
+  from: XY,
+  need: number,
+  filter?: (ref: NodeRef) => boolean
+): Provider | undefined {
+  let best: Provider | undefined;
+  let bestRange = Infinity;
+  for (const p of providers) {
+    if (p.resource !== resource) continue;
+    if (filter && !filter(p.ref)) continue;
+    if (!p.pos) continue;
+    const left = remaining.get(refKey(p.ref)) ?? 0;
+    if (left < need) continue;
+    const r = range(from, p.pos);
+    if (r < bestRange) {
+      best = p;
+      bestRange = r;
+    }
+  }
+  return best;
 }
 
 // Total energy the currently-reservable consumers still want, in priority order — the ceiling on how

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { execute } from "../../src/intents/execute";
-import { clearTiles, stubTile } from "../constants";
+import { clearTiles, stubPathFinder, stubTile } from "../constants";
 import { stubGame } from "../helpers";
 
 // A spawn whose room reports all-open terrain (no walls), so spawnExitDirections sees every
@@ -153,17 +153,66 @@ describe("actuator", () => {
     expect(creep.memory.op).toBeUndefined();
   });
 
-  it("writes the selected remotes into colony memory", () => {
-    stubGame();
-    (globalThis as Record<string, unknown>).Memory = { colonies: {} };
+  // setRemotes replaces pickRemotes' cheap ranking-time distance estimate with the ground-truth
+  // PathFinder path, computed once and cached on the *remote* room's memory (indexed by home room name)
+  // so a future call never re-runs PathFinder for a source whose position — and whose home anchor —
+  // hasn't moved.
+  describe("setRemotes", () => {
+    function memoryWithAnchor(anchor?: { x: number; y: number }): void {
+      (globalThis as Record<string, unknown>).Memory = {
+        colonies: { W1N1: { sources: {}, remotes: [], danger: 0, ...(anchor ? { anchor } : {}) } },
+        rooms: { W2N1: { scouted: { tick: 0, type: "normal", sources: [{ id: "s1", x: 25, y: 25 }], hostile: false } } }
+      };
+    }
+    type ColoniesMemory = { colonies: Record<string, { remotes: { room: string; sources: { id: string; distance: number }[] }[] }>; rooms: Record<string, { scouted: { sources: { paths?: Record<string, string> }[] } }> };
+    const mem = () => (globalThis as unknown as { Memory: ColoniesMemory }).Memory;
 
-    const remotes = [
-      { room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 60 }] }
-    ];
-    execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+    it("computes and caches a real PathFinder distance for a newly selected source", () => {
+      stubGame();
+      memoryWithAnchor({ x: 25, y: 25 });
+      const path = [new RoomPosition(26, 25, "W1N1"), new RoomPosition(0, 25, "W2N1"), new RoomPosition(1, 25, "W2N1")];
+      stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
 
-    const mem = (globalThis as { Memory: { colonies: Record<string, { remotes: unknown }> } }).Memory.colonies.W1N1;
-    expect(mem.remotes).toEqual(remotes);
+      // pickRemotes' own estimate (999) must be discarded in favour of the real path's length.
+      const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
+      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+
+      expect(mem().colonies.W1N1.remotes[0].sources[0].distance).toBe(path.length);
+      expect(mem().rooms.W2N1.scouted.sources[0].paths?.W1N1).toHaveLength(path.length);
+    });
+
+    it("reuses a cached path instead of calling PathFinder again", () => {
+      stubGame();
+      memoryWithAnchor({ x: 25, y: 25 });
+      mem().rooms.W2N1.scouted.sources[0].paths = { W1N1: "121" }; // pre-cached, length 3
+      // No stubPathFinder() call: PathFinder.search would throw if this test hit it.
+
+      const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
+      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+
+      expect(mem().colonies.W1N1.remotes[0].sources[0].distance).toBe(3);
+    });
+
+    it("drops a source PathFinder can't reach at all", () => {
+      stubGame();
+      memoryWithAnchor({ x: 25, y: 25 });
+      stubPathFinder(() => ({ path: [], incomplete: true, ops: 2000, cost: 0 }));
+
+      const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
+      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+
+      expect(mem().colonies.W1N1.remotes).toEqual([]);
+    });
+
+    it("drops a newly-selected source when the home has no anchor yet, without calling PathFinder", () => {
+      stubGame();
+      memoryWithAnchor(undefined);
+
+      const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
+      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+
+      expect(mem().colonies.W1N1.remotes).toEqual([]);
+    });
   });
 
   it("keeps a previously recorded container id when this tick resolved none", () => {
@@ -295,10 +344,41 @@ describe("actuator — scouting", () => {
       findRoute: () => [{ room: "W1N2" }, { room: "W1N3" }]
     };
 
-    execute([{ kind: "setScoutTarget", creep: "scout1" as Id<Creep>, targetRoom: "W1N3" }]);
+    execute([{ kind: "setScoutTarget", creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }]);
 
     expect(creep.memory.scoutTarget).toBe("W1N3");
     expect(creep.memory.route).toEqual({ dest: "W1N3", rooms: ["W1N2", "W1N3"], index: 0 });
+  });
+
+  // The whole point of routing this through Game.map.findRoute rather than a linear-distance estimate:
+  // a candidate that's Chebyshev-closer but reached by a longer real route must lose to one with fewer
+  // actual room-graph hops.
+  it("picks the candidate with the fewest findRoute hops, not the Chebyshev-nearest one", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    const findRoute = vi.fn((_from: string, dest: string) =>
+      dest === "W1N2" ? [{ room: "W1N9" }, { room: "W1N8" }, { room: "W1N2" }] : [{ room: "W1N3" }]
+    );
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+
+    execute([{ kind: "setScoutTarget", creep: "scout1" as Id<Creep>, candidates: ["W1N2", "W1N3"] }]);
+
+    expect(creep.memory.scoutTarget).toBe("W1N3");
+    expect(creep.memory.route).toEqual({ dest: "W1N3", rooms: ["W1N3"], index: 0 });
+  });
+
+  it("breaks a findRoute tie deterministically by room name", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      findRoute: () => [{ room: "X" }]
+    };
+
+    execute([{ kind: "setScoutTarget", creep: "scout1" as Id<Creep>, candidates: ["W2N1", "W1N2"] }]);
+
+    expect(creep.memory.scoutTarget).toBe("W1N2");
   });
 
   it("grows the scouting radius, capped, on advanceScoutRadius", () => {
