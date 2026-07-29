@@ -95,6 +95,27 @@ Object.assign(globalThis, {
   // A WORK part harvests this much energy per tick, from screeps/common constants.
   HARVEST_POWER: 2,
 
+  // Creep lifespan in ticks, from screeps/common constants — the horizon body-cost upkeep amortizes over.
+  CREEP_LIFE_TIME: 1500,
+
+  // Energy a source refills per regen cycle: 3000 for an owned/reserved room, 1500 for a neutral one.
+  SOURCE_ENERGY_CAPACITY: 3000,
+  SOURCE_ENERGY_NEUTRAL_CAPACITY: 1500,
+  ENERGY_REGEN_TIME: 300, // so reserved => 3000/300 = 10/tick, unreserved => 1500/300 = 5/tick
+
+  // A CARRY part holds this much, from screeps/common constants — sizes the haul body.
+  CARRY_CAPACITY: 50,
+
+  // Road decay: loses ROAD_DECAY_AMOUNT hits every ROAD_DECAY_TIME ticks (on plain terrain).
+  ROAD_DECAY_AMOUNT: 100,
+  ROAD_DECAY_TIME: 1000,
+
+  // Container decay: loses CONTAINER_DECAY hits every CONTAINER_DECAY_TIME ticks. Remote (unowned)
+  // rooms use the shorter unowned interval; the owned interval is 5x longer.
+  CONTAINER_DECAY: 5000,
+  CONTAINER_DECAY_TIME: 100,
+  CONTAINER_DECAY_TIME_OWNED: 500,
+
   // Hits repaired per energy spent, from screeps/common constants — the metrics repair-energy conversion.
   REPAIR_POWER: 100,
 
