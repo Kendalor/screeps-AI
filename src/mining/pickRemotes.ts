@@ -24,6 +24,11 @@ export interface PickRemotesInput {
 // Below this, energyCapacity can't build a miner worth sending (RCL2 with all extensions = 550).
 const MIN_ENERGY_CAPACITY = 550;
 
+// Cap on total selected remote sources, so autonomous selection can never over-commit the spawn with an
+// unbounded remote fleet. Nearest-first, so the cap keeps the cheapest energy. A coarse ceiling — the
+// real spawn-capacity signal is the handoff's open question; this is the safety net until then.
+const MAX_REMOTE_SOURCES = 6;
+
 // One scouted source flattened with the room it lives in and its computed haul distance.
 interface Candidate {
   room: string;
@@ -64,13 +69,13 @@ export function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
     c => netEnergy({ ...c, room: c.room, openTiles: 0, reserved: false, danger: 0 }, ctx) > 0
   );
 
-  // Nearest-first, so a spawn-capacity ceiling (applied by the caller via how many it acts on) keeps the
-  // cheapest energy.
+  // Nearest-first, then capped: the spawn-capacity ceiling keeps the cheapest energy and can't over-commit.
   worthwhile.sort((a, b) => a.distance - b.distance);
+  const capped = worthwhile.slice(0, MAX_REMOTE_SOURCES);
 
   // Group surviving sources back into per-room RemoteMemory entries.
   const byRoom = new Map<string, RemoteMemory>();
-  for (const c of worthwhile) {
+  for (const c of capped) {
     let entry = byRoom.get(c.room);
     if (!entry) {
       entry = { room: c.room, sources: [], reserved: false };

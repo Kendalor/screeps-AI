@@ -48,4 +48,16 @@ describe("pickRemotes", () => {
     const rooms = pickRemotes({ candidates: [far, near], home: homeState() }).map(r => r.room);
     expect(rooms).toEqual(["W2N1", "W3N1"]);
   });
+
+  it("caps the total selected sources so autonomous selection can't over-commit the spawn", () => {
+    // One adjacent room (distance 1, all near+profitable) packed with many sources: more than the cap
+    // survive the economics, so the cap is what bounds the selection.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({ sources: Array.from({ length: 12 }, (_, i) => ({ id: `s${i}` as Id<Source>, x: 25, y: 25 })) })
+    );
+    const selected = pickRemotes({ candidates: [packed], home: homeState() });
+    const total = selected.reduce((n, r) => n + r.sources.length, 0);
+    expect(total).toBe(6); // MAX_REMOTE_SOURCES — capped even though 12 were profitable
+  });
 });
