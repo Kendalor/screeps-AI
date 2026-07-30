@@ -15,6 +15,10 @@ export interface Provider {
   // Where to range-check a creep against, for allocate.ts's nearest-that-can-fill pickup selection.
   // Null for a remote provider (cross-room; not comparable to a home creep's x/y in the same metric).
   pos: XY | null;
+  // Cross-room source: allocate.ts must not chain a deliver onto a pickup chain that draws from one of
+  // these — the creep needs a travelHome leg first so the consumer isn't reserved for the whole
+  // cross-room trip home. Absent (falsy) for every home provider.
+  remote?: boolean;
 }
 
 export interface Consumer {
@@ -135,7 +139,7 @@ export function providers(colony: ColonySnapshot): Provider[] {
           : { kind: "dropped", id: r.id as Id<Resource> };
     // Cross-room: no position comparable to a home creep's x/y, so nearest-fill selection (allocate.ts)
     // skips these and only the largest-first fallback ever picks them.
-    out.push({ ref, resource: RESOURCE_ENERGY, available: r.amount, urgency: r.kind === "container" ? 0.5 : 1, pos: null });
+    out.push({ ref, resource: RESOURCE_ENERGY, available: r.amount, urgency: r.kind === "container" ? 0.5 : 1, pos: null, remote: true });
   }
 
   // Storage as a source, but only while the spawn system is short: this is the drain direction the

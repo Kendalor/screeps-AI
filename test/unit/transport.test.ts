@@ -362,6 +362,69 @@ describe("runTransport", () => {
     expect(travelTargets).toHaveLength(0);
   });
 
+  describe("travelHome task", () => {
+    it("travels toward the home room without acting when still outside it", () => {
+      stubGame({});
+      (Memory as unknown as { colonies: Record<string, { anchor: { x: number; y: number } }> }).colonies = {
+        W1N1: { anchor: { x: 20, y: 20 } }
+      };
+      const { creep, calls, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: { current: { kind: "travelHome", resource: RESOURCE_ENERGY, amount: 80 } }
+        },
+        used: 80,
+        free: 0
+      });
+      (creep.room as unknown as { name: string }).name = "W2N1"; // still away from home
+
+      runTransport(creep);
+
+      expect(travelTargets).toEqual([{ x: 20, y: 20 }]);
+      expect(calls).toEqual({ withdraw: 0, pickup: 0, transfer: 0 });
+      expect(creep.memory.logistics?.current).toMatchObject({ kind: "travelHome" }); // task stays until arrival
+    });
+
+    it("falls back to the room center when no bunker anchor is known yet", () => {
+      stubGame({});
+      (Memory as unknown as { colonies: Record<string, unknown> }).colonies = {};
+      const { creep, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: { current: { kind: "travelHome", resource: RESOURCE_ENERGY, amount: 80 } }
+        },
+        used: 80,
+        free: 0
+      });
+      (creep.room as unknown as { name: string }).name = "W2N1";
+
+      runTransport(creep);
+
+      expect(travelTargets).toEqual([{ x: 25, y: 25 }]);
+    });
+
+    it("completes and clears the task once the creep is back in its home room", () => {
+      stubGame({});
+      (Memory as unknown as { colonies: Record<string, unknown> }).colonies = {};
+      const { creep, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: { current: { kind: "travelHome", resource: RESOURCE_ENERGY, amount: 80 } }
+        },
+        used: 80,
+        free: 0
+      }); // room defaults to memory.home (W1N1) — already arrived
+
+      runTransport(creep);
+
+      expect(travelTargets).toHaveLength(0);
+      expect(creep.memory.logistics?.current).toBeUndefined();
+    });
+  });
+
   it("resolves a spawnSystem ref to the nearest structure that can still take energy", () => {
     const ext = { id: "ext1", pos: { x: 5, y: 5 }, structureType: STRUCTURE_EXTENSION, store: { getFreeCapacity: () => 50 } };
     stubGame({});

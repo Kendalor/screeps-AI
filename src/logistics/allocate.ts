@@ -68,6 +68,13 @@ export function allocate(
     // wasted trip back through a provider it doesn't need. Spread it across as many consumers as it
     // takes to empty the creep (e.g. a 200-energy creep filling four 50-cap extensions in one trip).
     if (creep.storeEnergy > 0) {
+      // Still out in a remote room: don't pick (and reserve) a consumer yet — that would park a
+      // spawn/extension reservation for the whole cross-room trip home. Head home first; a deliver
+      // gets chosen fresh, against live demand, once a later tick finds it idle inside the home room.
+      if (creep.room !== creep.home) {
+        out[creep.id] = { kind: "travelHome", resource: RESOURCE_ENERGY, amount: creep.storeEnergy };
+        continue;
+      }
       const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, creep.storeEnergy);
       const chain = linkDelivers(delivers);
       if (chain) out[creep.id] = chain;
@@ -87,6 +94,18 @@ export function allocate(
     const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget, creep);
     if (pickups.length === 0) continue;
     const loaded = pickups.reduce((sum, p) => sum + p.amount, 0);
+
+    // Any leg of this trip draws from a remote (cross-room) provider: queue the pickup(s) alone, with
+    // no deliver chained on — see the byLoadedFirst travelHome branch above for why. consumerRemaining
+    // is deliberately left untouched (nothing was reserved), so other creeps still see full demand.
+    if (pickups.some(p => p.remote)) {
+      let remoteChain: LogisticsTask | undefined;
+      for (let i = pickups.length - 1; i >= 0; i--) {
+        remoteChain = { kind: "pickup", from: pickups[i].ref, resource: RESOURCE_ENERGY, amount: pickups[i].amount, next: remoteChain };
+      }
+      if (remoteChain) out[creep.id] = remoteChain;
+      continue;
+    }
 
     // Spread the load across consumers (highest priority first) — a chain of delivers, one per sink,
     // each reserved so no other creep is sent to a sink this trip will fill. Providers were reserved in
@@ -146,8 +165,8 @@ function buildPickupChain(
   resource: ResourceConstant,
   fillTarget: number,
   from: XY
-): { ref: NodeRef; amount: number }[] {
-  const out: { ref: NodeRef; amount: number }[] = [];
+): { ref: NodeRef; amount: number; remote?: boolean }[] {
+  const out: { ref: NodeRef; amount: number; remote?: boolean }[] = [];
   let need = fillTarget;
   while (need > 0) {
     const provider = pickNearestFillingProvider(providers, remaining, resource, from, need) ?? pickLargestProvider(providers, remaining, resource);
@@ -156,7 +175,7 @@ function buildPickupChain(
     const take = Math.min(need, remaining.get(key) ?? 0);
     if (take <= 0) break;
     remaining.set(key, (remaining.get(key) ?? 0) - take);
-    out.push({ ref: provider.ref, amount: take });
+    out.push({ ref: provider.ref, amount: take, remote: provider.remote });
     need -= take;
   }
   return out;

@@ -24,16 +24,22 @@ function minerBody(energy: number, ctx: BodyContext): BodyPartConstant[] {
   const workTarget = ctx.remote && !ctx.reserved ? REMOTE_UNRESERVED_WORK : SOURCE_SATURATING_WORK;
   const carry: 0 | 1 = energy >= MIN_CARRY_ENERGY ? 1 : 0;
 
-  // WORK is sized off energy alone (one MOVE + the flat CARRY reserved up front) so it never eats into
-  // either of those two parts once affordable.
-  const reserved = BODYPART_COST[MOVE] + carry * BODYPART_COST[CARRY];
-  const work = Math.min(workTarget, Math.max(1, Math.floor((energy - reserved) / BODYPART_COST[WORK])));
-
   // A remote can't assume a road home yet, so it needs the full 1 MOVE per non-MOVE part to keep
   // fatigue at zero; a local miner rides the bunker's paved roads and gets by on half that.
   const moveRatio = ctx.remote ? 1 : 0.5;
-  const spare = energy - bodyCost([...parts(WORK, work), ...parts(CARRY, carry)]);
-  const move = Math.max(1, Math.min(Math.ceil(work * moveRatio), Math.floor(spare / BODYPART_COST[MOVE])));
+
+  // Search down from the WORK ceiling for the richest count whose MOVE ratio still fits the budget —
+  // sizing WORK first and handing MOVE the leftovers (as a naive split would) can max out WORK while
+  // starving MOVE, silently breaking the zero-fatigue guarantee above right when a remote needs it most.
+  let work = 1;
+  for (let w = workTarget; w >= 1; w--) {
+    const move = Math.max(1, Math.ceil(w * moveRatio));
+    if (bodyCost([...parts(WORK, w), ...parts(CARRY, carry), ...parts(MOVE, move)]) <= energy) {
+      work = w;
+      break;
+    }
+  }
+  const move = Math.max(1, Math.ceil(work * moveRatio));
 
   return [...parts(WORK, work), ...parts(CARRY, carry), ...parts(MOVE, move)];
 }

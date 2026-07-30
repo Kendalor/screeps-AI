@@ -34,6 +34,15 @@ const consumer = (id: string, wanted: number, priority = 50): Consumer => ({
   priority
 });
 
+const remoteProvider = (id: string, available: number): Provider => ({
+  ref: { kind: "dropped", id: id as Id<Resource> },
+  resource: RESOURCE_ENERGY,
+  available,
+  urgency: 1,
+  pos: null,
+  remote: true
+});
+
 describe("allocate", () => {
   it("assigns only one of two idle creeps when the consumer's demand is smaller than their combined capacity", () => {
     const creepA = idleHauler();
@@ -271,6 +280,73 @@ describe("allocate", () => {
       const full = idleHauler({ storeEnergy: 100, storeCapacity: 100 });
       const result = allocate([drop("d1", 500)], [], [full], emptyReserved());
       expect(result[full.id]).toBeUndefined();
+    });
+  });
+
+  describe("remote (cross-room) providers defer the deliver commitment", () => {
+    it("queues a remote pickup alone, with no deliver chained on", () => {
+      const creep = idleHauler({ storeEnergy: 0, storeCapacity: 100 });
+      const result = allocate([remoteProvider("remote1", 1000)], [consumer("sink", 100)], [creep], emptyReserved());
+
+      expect(result[creep.id]).toEqual({
+        kind: "pickup",
+        from: { kind: "dropped", id: "remote1" },
+        resource: RESOURCE_ENERGY,
+        amount: 100
+      });
+      expect(result[creep.id]?.to).toBeUndefined();
+      expect(result[creep.id]?.next).toBeUndefined();
+    });
+
+    it("leaves consumer demand fully open on a later tick since a remote pickup reserves nothing", () => {
+      // Tick 1: a creep is sent to a remote pile. Its task has no deliver leg chained on.
+      const remoteCreep = idleHauler({ storeEnergy: 0, storeCapacity: 100 });
+      const firstResult = allocate([remoteProvider("remote1", 1000)], [consumer("sink", 100)], [remoteCreep], emptyReserved());
+      const remoteTask = firstResult[remoteCreep.id];
+      expect(remoteTask?.next).toBeUndefined();
+
+      // Fold that task the same way index.ts's foldReserved would every following tick: walking its
+      // pickup/deliver legs. With no deliver leg, nothing lands in reserved.consumers.
+      const reserved: ReservedAmounts = emptyReserved();
+      for (let leg = remoteTask; leg; leg = leg.next) {
+        if (leg.kind === "deliver" && leg.to) reserved.consumers[refKey(leg.to)] = (reserved.consumers[refKey(leg.to)] ?? 0) + leg.amount;
+      }
+
+      // Tick 2 (or any later tick while the remote creep is still mid-trip): a home-fed creep still
+      // sees the sink's full, unreserved demand.
+      const homeCreep = idleHauler({ storeEnergy: 0, storeCapacity: 100 });
+      const result = allocate([provider("home1", 1000)], [consumer("sink", 100)], [homeCreep], reserved);
+
+      expect(result[homeCreep.id]).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "home1" }, amount: 100 });
+      expect(result[homeCreep.id]?.next).toEqual({
+        kind: "deliver",
+        to: { kind: "structure", id: "sink" },
+        resource: RESOURCE_ENERGY,
+        amount: 100
+      });
+    });
+
+    it("sends a loaded creep still outside its home room home first, instead of committing to a deliver", () => {
+      const creep = snapCreep("hauler", { storeEnergy: 80, storeCapacity: 100, home: "W1N1", room: "W2N1" });
+      const result = allocate([provider("home1", 1000)], [consumer("sink", 200)], [creep], emptyReserved());
+
+      expect(result[creep.id]).toEqual({ kind: "travelHome", resource: RESOURCE_ENERGY, amount: 80 });
+    });
+
+    it("does not reserve the consumer for a creep sent home first, leaving demand open for a creep already home", () => {
+      const awayCreep = snapCreep("hauler", { storeEnergy: 80, storeCapacity: 100, home: "W1N1", room: "W2N1" });
+      const homeCreep = snapCreep("hauler", { storeEnergy: 100, storeCapacity: 100, home: "W1N1", room: "W1N1" });
+      const result = allocate([provider("home1", 1000)], [consumer("sink", 100)], [awayCreep, homeCreep], emptyReserved());
+
+      expect(result[awayCreep.id]).toEqual({ kind: "travelHome", resource: RESOURCE_ENERGY, amount: 80 });
+      expect(result[homeCreep.id]).toMatchObject({ kind: "deliver", to: { kind: "structure", id: "sink" }, amount: 100 });
+    });
+
+    it("still gives a loaded creep already home its deliver normally", () => {
+      const creep = snapCreep("hauler", { storeEnergy: 50, storeCapacity: 100, home: "W1N1", room: "W1N1" });
+      const result = allocate([provider("home1", 1000)], [consumer("sink", 100)], [creep], emptyReserved());
+
+      expect(result[creep.id]).toEqual({ kind: "deliver", to: { kind: "structure", id: "sink" }, resource: RESOURCE_ENERGY, amount: 50 });
     });
   });
 

@@ -13,7 +13,7 @@ export type NodeRef =
   | { kind: "creep"; id: Id<Creep> };
 
 export interface LogisticsTask {
-  kind: "pickup" | "deliver";
+  kind: "pickup" | "deliver" | "travelHome";
   from?: NodeRef; // pickup: where to withdraw/pickup from
   to?: NodeRef; // deliver: where to transfer to
   resource: ResourceConstant;
@@ -23,7 +23,13 @@ export interface LogisticsTask {
   // pickup(A) -> pickup(B) -> deliver(consumer) when no single provider fills the creep for that
   // consumer (see allocate.ts). runTransport promotes `next` to `current` the instant the current leg
   // completes (see behaviors/transport.ts). The terminal deliver has no `next` of its own; the creep
-  // goes idle after it and gets re-planned fresh. Every pickup in the chain also carries the consumer
-  // in its own `to` so foldReserved can read the destination off `current` without walking the chain.
+  // goes idle after it and gets re-planned fresh.
+  //
+  // "travelHome" is deliberately NOT chained onto a pickup: it is assigned on its own, once a loaded
+  // creep is found sitting outside its home room (see allocate.ts's byLoadedFirst pass). It reserves
+  // nothing — no `from`/`to` — so foldReserved skips it entirely; a deliver only gets picked (and its
+  // consumer reserved) once the creep is re-planned from inside the home room. This is what keeps a
+  // 60-tick remote-return trip from parking a spawn/extension reservation for the whole trip: the
+  // reservation window is only the short walk from the room edge to the sink, not the cross-room haul.
   next?: LogisticsTask;
 }

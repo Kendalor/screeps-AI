@@ -57,6 +57,13 @@ function consumerFull(target: RoomObject, resource: ResourceConstant): boolean {
   return false;
 }
 
+// Where a travelHome task heads: the bunker anchor once one's been recorded, else the room center — the
+// exact spot doesn't matter, Traveler only needs a target in the home room to route the cross-room path.
+function homeRoomWaypoint(creep: Creep): RoomPosition {
+  const anchor = typeof Memory !== "undefined" ? Memory.colonies?.[creep.memory.home]?.anchor : undefined;
+  return anchor ? new RoomPosition(anchor.x, anchor.y, creep.memory.home) : new RoomPosition(25, 25, creep.memory.home);
+}
+
 function resolveNode(creep: Creep, ref: NodeRef): RoomObject | null {
   switch (ref.kind) {
     case "structure":
@@ -105,6 +112,18 @@ export function runTransport(creep: Creep): void {
   if (!task) {
     // Nothing assigned this tick — planLogistics runs upstream, not from here. Loiter near the bunker.
     parkNearBunker(creep);
+    return;
+  }
+
+  // A loaded creep still out in a remote room: just head for the home room. No `from`/`to` to resolve —
+  // the deliver consumer is deliberately left unpicked until a later tick finds it idle back home (see
+  // allocate.ts), so a spawn/extension reservation never spans the whole cross-room trip.
+  if (task.kind === "travelHome") {
+    if (creep.room.name === creep.memory.home) {
+      advanceOrPark(creep);
+      return;
+    }
+    creep.travelTo(homeRoomWaypoint(creep));
     return;
   }
 
