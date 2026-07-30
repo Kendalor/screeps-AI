@@ -1,9 +1,10 @@
 // planLogistics: the one per-tick entry point Logistics.intents() calls. Wires graph + allocate +
 // reserved-folding — thin by design, since the interesting logic already lives in graph.ts/allocate.ts.
 
+import { buildCostMatrix } from "../layouts/roads";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { allocate, emptyReserved, refKey, type ReservedAmounts } from "./allocate";
-import { consumers, providers } from "./graph";
+import { consumers, providers, storageOverflow } from "./graph";
 import type { LogisticsTask } from "./types";
 
 export interface LogisticsPlan {
@@ -47,6 +48,11 @@ export function planLogistics(colony: ColonySnapshot): LogisticsPlan {
   if (idle.length === 0) return { assignments: {} };
 
   const reserved = foldReserved(transportCreeps);
-  const assignments = allocate(providers(colony), consumers(colony), idle, reserved);
+  // Built once per tick and reused across every idle creep's pickup search below — same terrain/
+  // structure snapshot data the layouts/roads.ts road-planning callers already build a matrix from, so
+  // this is no extra Game access, just the same cost matrix asked for repeatedly in one place instead
+  // of once per creep.
+  const costMatrix = buildCostMatrix({ terrain: colony.terrain, structures: colony.structures });
+  const assignments = allocate(providers(colony), consumers(colony), idle, reserved, storageOverflow(colony), costMatrix);
   return { assignments };
 }

@@ -128,7 +128,12 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     sourceMemory: {},
     structures: [],
     sites: [],
+    remoteStructures: {},
+    remoteSites: {},
+    remoteDanger: {},
+    siteSummary: [],
     constructionProgress: 0,
+    remoteConstructionProgress: 0,
     scoutTargets: [],
     visibleRooms: [],
     ...over

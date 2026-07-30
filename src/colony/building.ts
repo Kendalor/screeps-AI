@@ -15,8 +15,8 @@ import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
 
-// Cap open sites low so a small pre-storage workforce finishes structures instead of smearing effort across the backlog.
-const FOCUS_SITE_CAP = 2;
+// Cap open sites so a small pre-storage workforce finishes structures instead of smearing effort across the backlog.
+const FOCUS_SITE_CAP = 20;
 // At most one container construction site open at a time: a container is a big single-creep haul, so opening a
 // second before the first is built just splits the builder's effort. Existing (built) containers don't count —
 // only concurrent container *sites*. Containers still reach one-per-source over time, one at a time.
@@ -37,6 +37,51 @@ const ROAD_PRIORITY = 99;
 function typePriority(type: BuildableStructureConstant): number {
   if (type === ROAD) return ROAD_PRIORITY;
   return TYPE_PRIORITY[type] ?? DEFAULT_TYPE_PRIORITY;
+}
+
+// Room resolution for a claim: absent means the colony's own home room (every pre-existing producer —
+// bunker layout, controller path — is implicitly home and never sets this).
+function roomOf(p: PlacedStructure, colony: ColonySnapshot): string {
+  return p.room ?? colony.name;
+}
+
+// The structures/sites actually standing in a room, home or remote. A remote room's arrays are only
+// ever populated when it has vision this tick (see snapshot/colony.ts); Mining itself only claims a
+// remote tile while its room is visible, so a claim reaching here for an invisible remote room never
+// happens — `?? []` is just the safe default, not a case this is expected to hit.
+function structuresAt(colony: ColonySnapshot, room: string): readonly SnapStructure[] {
+  return room === colony.name ? colony.structures : (colony.remoteStructures[room] ?? []);
+}
+function sitesAt(colony: ColonySnapshot, room: string): readonly SnapStructure[] {
+  return room === colony.name ? colony.sites : (colony.remoteSites[room] ?? []);
+}
+
+// Genuinely built — not merely sited. This is what "is this source's group finished" gates on: a group
+// with an open site but nothing built yet must still hold back the next group, or two groups end up
+// building in parallel again, defeating the one-at-a-time point.
+function builtAt(colony: ColonySnapshot, p: PlacedStructure): boolean {
+  return structuresAt(colony, roomOf(p, colony)).some(sameSpot(p));
+}
+
+// Built or sited — the dedup check before placing a new site (don't place on top of either).
+function existingAt(colony: ColonySnapshot, p: PlacedStructure): boolean {
+  return builtAt(colony, p) || sitesAt(colony, roomOf(p, colony)).some(sameSpot(p));
+}
+
+// Holds back every source group but the first not-yet-fully-built one, so a colony finishes one
+// source's container+road before starting the next's — the same reasoning MAX_CONTAINER_SITES already
+// applies to local containers, generalized to whole routes (local and remote alike) and to more than
+// one at a time. Group order is first-appearance order in `claimed`, which mirrors Mining's own emission
+// order (local sources, then colony.remoteSources — pickRemotes' own selection order): no new ranking
+// metric invented here. Claims with no sourceId (bunker layout, controller path) are never touched.
+function gateSourceGroups(colony: ColonySnapshot, claimed: readonly PlacedStructure[]): PlacedStructure[] {
+  const order: Id<Source>[] = [];
+  for (const p of claimed) {
+    if (p.sourceId !== undefined && !order.includes(p.sourceId)) order.push(p.sourceId);
+  }
+  const firstIncomplete = order.find(id => claimed.some(p => p.sourceId === id && !builtAt(colony, p)));
+  if (firstIncomplete === undefined) return claimed as PlacedStructure[]; // every group already built, or none exist
+  return claimed.filter(p => p.sourceId === undefined || p.sourceId === firstIncomplete);
 }
 
 export function planBuilding(colony: ColonySnapshot, operations: Operation[]): Intent[] {
@@ -66,15 +111,17 @@ export function claimsOf(colony: ColonySnapshot, operations: Operation[]): Place
 export function wantedStructures(colony: ColonySnapshot, claimed: PlacedStructure[] = []): PlacedStructure[] {
   const anchor = colony.anchor;
   if (!anchor) return [];
+  // One source group (local or remote) at a time — see gateSourceGroups.
+  const gated = gateSourceGroups(colony, claimed);
   // Bias extension growth toward this room's sources — shortens the miner->filler leg.
   const atRcl = buildableAtRcl(GOAL, colony.controllerLevel, { anchor, sources: colony.sources });
   const stamped = stampLayout(atRcl, anchor);
   const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
   // Bunker roads wait for the capacity gate; an operation's claimed roads (e.g. Mining's source
   // access) are never capacity- or adjacency-gated — claimed is the gate.
-  const rawBuildable = [...(roadReady ? stamped : stamped.filter(p => p.type !== ROAD)), ...claimed];
+  const rawBuildable = [...(roadReady ? stamped : stamped.filter(p => p.type !== ROAD)), ...gated];
   // Roads are gated after the merge, so a road adjacent to an operation's container counts as served.
-  const buildable = gateRoads(rawBuildable, colony, claimed);
+  const buildable = gateRoads(rawBuildable, colony, gated);
   // Ties within a type keep buildableAtRcl's original build-sequence order, so extension growth stays contiguous.
   return buildable
     .map((p, i) => ({ p, i }))
@@ -84,26 +131,32 @@ export function wantedStructures(colony: ColonySnapshot, claimed: PlacedStructur
 
 function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
   const anchor = colony.anchor!;
-  // Full RCL8 goal, not this RCL's subset — a higher-tier structure built pre-downgrade must not read as stale.
-  const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...claimed];
+  // Full RCL8 goal, not this RCL's subset — a higher-tier structure built pre-downgrade must not read as
+  // stale. Only home-room claims: demolition never touches a remote room (no goal-layout concept exists
+  // there), so a remote claim coincidentally sharing (x,y,type) with a home structure must not shield it.
+  const homeClaimed = claimed.filter(p => roomOf(p, colony) === colony.name);
+  const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...homeClaimed];
   const prioritised = wantedStructures(colony, claimed);
 
   const cap = Math.min(FOCUS_SITE_CAP, MAX_CONSTRUCTION_SITES);
-  let budget = cap - colony.sites.length;
+  // The shared budget counts every site this colony actually owns (home + selected remote rooms), not
+  // just placement attempts — siteSummary is vision-independent (Game.constructionSites), so a remote
+  // site still counts even on a tick its room isn't visible.
+  let budget = cap - colony.siteSummary.length;
   // Only concurrent container *sites* are limited; built containers don't count against the cap.
-  let containerSites = colony.sites.filter(s => s.type === "container").length;
+  let containerSites = colony.siteSummary.filter(s => s.type === "container").length;
   const out: Intent[] = [];
   for (const placement of prioritised) {
     if (budget <= 0) break;
     if (placement.type === "container" && containerSites >= MAX_CONTAINER_SITES) continue;
-    const exists = colony.structures.some(sameSpot(placement)) || colony.sites.some(sameSpot(placement));
-    if (exists) continue;
-    out.push({ kind: "placeSite", room: colony.name, x: placement.x, y: placement.y, type: placement.type });
+    if (existingAt(colony, placement)) continue;
+    out.push({ kind: "placeSite", room: roomOf(placement, colony), x: placement.x, y: placement.y, type: placement.type });
     if (placement.type === "container") containerSites++;
     budget--;
   }
 
-  // Tear down structures present but not part of the goal layout. Spawns are never auto-demolished — colony-fatal if wrong.
+  // Tear down structures present but not part of the goal layout. Spawns are never auto-demolished —
+  // colony-fatal if wrong. Home room only, as above.
   for (const structure of colony.structures) {
     if (structure.type === "spawn") continue;
     if (goalAtAnchor.some(sameSpot(structure))) continue;
@@ -117,13 +170,16 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
 // a served structure. An operation's own claimed roads (e.g. Mining's multi-tile source access path) bypass this —
 // most of a path's tiles sit between structures, not next to one, so adjacency alone would strip the middle out.
 function gateRoads(buildable: PlacedStructure[], colony: ColonySnapshot, claimed: PlacedStructure[]): PlacedStructure[] {
-  const claimedRoads = new Set(claimed.filter(p => p.type === ROAD).map(p => `${p.x},${p.y}`));
-  const servedTiles = [
-    ...colony.structures.filter(s => s.type !== ROAD),
+  const key = (p: PlacedStructure) => `${roomOf(p, colony)},${p.x},${p.y}`;
+  const claimedRoads = new Set(claimed.filter(p => p.type === ROAD).map(key));
+  // Room-scoped: a tile in one room must never read as "served" by a structure that merely shares its
+  // (x,y) in a different room.
+  const servedTiles: PlacedStructure[] = [
+    ...colony.structures.filter(s => s.type !== ROAD).map(s => ({ x: s.x, y: s.y, type: s.type, room: colony.name })),
     ...buildable.filter(s => s.type !== ROAD)
   ];
   return buildable.filter(
-    p => p.type !== ROAD || claimedRoads.has(`${p.x},${p.y}`) || servedTiles.some(s => range(p, s) === 1)
+    p => p.type !== ROAD || claimedRoads.has(key(p)) || servedTiles.some(s => roomOf(s, colony) === roomOf(p, colony) && range(p, s) === 1)
   );
 }
 
@@ -145,9 +201,12 @@ function sameSpot(a: PlacedStructure) {
 // anything left to build" signal, and it stays non-empty across those between-placement gaps.
 export function hasOutstandingConstruction(colony: ColonySnapshot, claimed: PlacedStructure[]): boolean {
   if (colony.sites.length > 0) return true;
-  return wantedStructures(colony, claimed).some(
-    p => !colony.structures.some(sameSpot(p)) && !colony.sites.some(sameSpot(p))
-  );
+  // Home-room claims only: whether a local "builder" should ever go work a remote site is the builder-
+  // dispatch question this feature deliberately defers. The miner already builds/repairs its own remote
+  // container (behaviors/roles/miner.ts), so nothing here needs to know about remote backlog at all.
+  return wantedStructures(colony, claimed)
+    .filter(p => roomOf(p, colony) === colony.name)
+    .some(p => !existingAt(colony, p));
 }
 
 // A structure worth a repairer: decayed below the shared repair floor (src/lib/repairable.ts) — the

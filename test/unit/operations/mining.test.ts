@@ -411,7 +411,7 @@ describe("Mining.structures", () => {
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
     const spot = expectedSpot(anchor, source);
-    expect(mining.structures(snap)).toContainEqual({ x: spot.x, y: spot.y, type: "container" });
+    expect(mining.structures(snap)).toContainEqual({ x: spot.x, y: spot.y, type: "container", sourceId: source.id });
   });
 
   it("declares a container per source", () => {
@@ -458,7 +458,7 @@ describe("Mining.structures", () => {
 
     const spot = expectedSpot(anchor, source);
     expect(mining.structures(snap).filter(s => s.type !== "road")).toEqual([
-      { x: spot.x, y: spot.y, type: "link" }
+      { x: spot.x, y: spot.y, type: "link", sourceId: source.id }
     ]);
   });
 
@@ -479,6 +479,23 @@ describe("Mining.structures", () => {
     for (const r of roads) expect(onRoute.has(`${r.x},${r.y}`)).toBe(true);
     // The container tile is the route's last step and is never also claimed as road.
     expect(roads).not.toContainEqual({ x: route.structurePos.x, y: route.structurePos.y, type: "road" });
+  });
+
+  // Placement priority within a type falls back to claim order (see colony/building.ts's stable sort),
+  // so the order roads are claimed in is the order their sites get placed in. Claiming source-outward
+  // means a builder paves the tiles nearest the source first, not the ones next to the anchor.
+  it("claims road tiles source-outward, nearest the container first", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
+
+    const roads = mining.structures(snap, plannedAt(anchor, 3, [source])).filter(s => s.type === "road");
+    expect(roads.length).toBeGreaterThan(1);
+
+    // The first claimed road tile must be closer (or equally close) to the source than the last —
+    // the reversed, source-outward order, not the old anchor-outward one.
+    const toSource = (p: { x: number; y: number }) => Math.max(Math.abs(p.x - source.x), Math.abs(p.y - source.y));
+    expect(toSource(roads[0])).toBeLessThan(toSource(roads[roads.length - 1]));
   });
 
   // Two structures on one tile is not a plan planBuilding can execute.
@@ -543,6 +560,109 @@ describe("Mining.structures", () => {
     const snap = colonySnap({ anchor: null, sources: [sourceAt(20, 10)], controllerLevel: 3 });
 
     expect(mining.structures(snap)).toEqual([]);
+  });
+});
+
+// A remote route reuses the already-computed cross-room PathFinder path cached on the source (see
+// remote-mining-progress/construction plan) instead of layouts/roads.ts's local-only cost matrix, and
+// only claims while the remote room actually has vision this tick.
+describe("Mining.structures — remote sources", () => {
+  const anchor = { x: 10, y: 10 };
+  const route = [
+    { room: "W1N1", x: 11, y: 10 }, // home-room portion of the path
+    { room: "W2N1", x: 2, y: 10 },
+    { room: "W2N1", x: 1, y: 10 } // last tile: the container spot, range 1 of the source
+  ];
+
+  it("claims a container and road for a remote source's cached route when the room is visible", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+
+    const claims = mining.structures(snap);
+    expect(claims).toContainEqual({ x: 1, y: 10, room: "W2N1", type: "container", sourceId: source.id });
+    expect(claims).toContainEqual({ x: 11, y: 10, room: "W1N1", type: "road", sourceId: source.id });
+    expect(claims).toContainEqual({ x: 2, y: 10, room: "W2N1", type: "road", sourceId: source.id });
+    // The container tile itself is never also claimed as a road.
+    expect(claims.filter(c => c.type === "road")).toHaveLength(2);
+  });
+
+  // A route cached before remotePath.ts's exit-tile exclusion existed (or one that just never gets
+  // recomputed for a long time — the cache only refreshes on the throttled setRemotes tick) can still
+  // have an exit tile baked in. Skipping it here too means that stale cache self-heals immediately,
+  // rather than leaving the source's whole group permanently "incomplete" for gateSourceGroups.
+  it("never claims a road on a room's exit tile, even if the cached route still contains one", () => {
+    const routeWithExit = [
+      { room: "W1N1", x: 11, y: 10 },
+      { room: "W1N1", x: 49, y: 10 }, // exit tile, W1N1 side
+      { room: "W2N1", x: 0, y: 10 }, // exit tile, W2N1 side
+      { room: "W2N1", x: 1, y: 10 }
+    ];
+    const source = remoteSourceAt(2, 10, "W2N1", { route: routeWithExit });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+
+    const claims = mining.structures(snap);
+    expect(claims.some(c => c.x === 49 && c.room === "W1N1")).toBe(false);
+    expect(claims.some(c => c.x === 0 && c.room === "W2N1")).toBe(false);
+    expect(claims.filter(c => c.type === "road")).toHaveLength(1);
+  });
+
+  it("claims nothing for a remote source with no cached route yet", () => {
+    const source = remoteSourceAt(2, 10, "W2N1");
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+
+    expect(mining.structures(snap)).toEqual([]);
+  });
+
+  it("claims nothing for a remote room without vision this tick, even with a cached route", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: {} // W2N1 absent: no vision this tick
+    });
+
+    expect(mining.structures(snap)).toEqual([]);
+  });
+
+  it("dedups remote claims by room, not just x/y, against an unrelated home-room claim at the same coordinates", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+    // A home-room claim sharing (x,y) with the remote container tile must not block it — different rooms.
+    const homeClaimSameCoords: PlacedStructure = { x: 1, y: 10, type: "extension" };
+
+    const claims = mining.structures(snap, [homeClaimSameCoords]);
+    expect(claims).toContainEqual({ x: 1, y: 10, room: "W2N1", type: "container", sourceId: source.id });
   });
 });
 
@@ -638,6 +758,140 @@ describe("Mining.intents", () => {
   });
 });
 
+// The remote-route equivalent of recordSourceSpot's container bookkeeping — closes the loop so
+// RemoteSourceMemory.containerId (already read by buildRemoteSources/Logistics) actually gets written.
+describe("Mining.intents — remote container recording", () => {
+  const anchor = { x: 10, y: 10 };
+  const route = [
+    { room: "W1N1", x: 11, y: 10 },
+    { room: "W2N1", x: 1, y: 10 } // container spot
+  ];
+
+  it("records a remote container's id once one is visible at the route's spot", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route });
+    const container = containerAt(1, 10);
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [{ id: container.id, x: 1, y: 10, type: "container" }] }
+    });
+
+    expect(mining.intents(snap)).toContainEqual({
+      kind: "recordRemoteContainer",
+      room: "W1N1",
+      remoteRoom: "W2N1",
+      source: source.id,
+      container: container.id
+    });
+  });
+
+  it("emits nothing for a remote room without vision this tick", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [source],
+      remoteStructures: {}
+    });
+
+    expect(mining.intents(snap).filter(i => i.kind === "recordRemoteContainer")).toEqual([]);
+  });
+
+  it("emits nothing when no container structure sits on the route's spot yet", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+
+    expect(mining.intents(snap).filter(i => i.kind === "recordRemoteContainer")).toEqual([]);
+  });
+
+  it("emits nothing once the container id already matches what's recorded", () => {
+    const container = containerAt(1, 10);
+    const source = remoteSourceAt(2, 10, "W2N1", { route, containerId: container.id });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [{ id: container.id, x: 1, y: 10, type: "container" }] }
+    });
+
+    expect(mining.intents(snap).filter(i => i.kind === "recordRemoteContainer")).toEqual([]);
+  });
+});
+
+// Persists a remote room's live danger read (see RemoteMemory.dangerUntil) so losing vision of an
+// invaded remote doesn't silently reset it to "safe" — see snapshot.remoteDanger, the fresh-this-tick
+// counterpart to the memory-blended SnapRemoteSource.danger.
+describe("Mining.intents — remote danger recording", () => {
+  it("emits the fresh dangerUntil for a remote room with vision this tick", () => {
+    const source = remoteSourceAt(2, 10, "W2N1");
+    const snap = colonySnap({
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [source],
+      remoteDanger: { W2N1: 5500 }
+    });
+
+    expect(mining.intents(snap)).toContainEqual({
+      kind: "recordRemoteDanger",
+      room: "W1N1",
+      remoteRoom: "W2N1",
+      dangerUntil: 5500
+    });
+  });
+
+  it("emits an all-clear (undefined) when this tick's vision shows no hostiles", () => {
+    const source = remoteSourceAt(2, 10, "W2N1");
+    const snap = colonySnap({
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [source],
+      remoteDanger: { W2N1: undefined }
+    });
+
+    expect(mining.intents(snap)).toContainEqual({
+      kind: "recordRemoteDanger",
+      room: "W1N1",
+      remoteRoom: "W2N1",
+      dangerUntil: undefined
+    });
+  });
+
+  it("emits nothing for a remote room without vision this tick", () => {
+    const source = remoteSourceAt(2, 10, "W2N1");
+    const snap = colonySnap({
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [source],
+      remoteDanger: {}
+    });
+
+    expect(mining.intents(snap).filter(i => i.kind === "recordRemoteDanger")).toEqual([]);
+  });
+
+  it("emits only once per room even when several of its sources are selected", () => {
+    const a = remoteSourceAt(2, 10, "W2N1");
+    const b = remoteSourceAt(3, 10, "W2N1");
+    const snap = colonySnap({
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [a, b],
+      remoteDanger: { W2N1: 5500 }
+    });
+
+    expect(mining.intents(snap).filter(i => i.kind === "recordRemoteDanger")).toHaveLength(1);
+  });
+});
+
 // Step 8: autonomous remote selection. Mining emits a setRemotes intent on its throttle tick, driven by
 // pickRemotes over the scouted neighbours — no hand-seed. Off-tick it's silent so the cached set is stable.
 describe("Mining.intents — remote selection", () => {
@@ -714,5 +968,50 @@ describe("Mining.intents — remote selection", () => {
     });
 
     expect(setRemotesOf(snap)).toEqual([]);
+  });
+
+  it("fires on the full-reevaluation tick and can evict a stale source even though it isn't new", () => {
+    // remoteReevaluateEvery (5000) is itself a multiple of remoteSelectionEvery (1000), so this tick
+    // would fire regardless — the real thing under test is that it runs in reevaluate mode, which is
+    // only observable via eviction: a previously-selected-but-now-worse source loses its slot to a
+    // better one once the cap is full, which the plain append-only throttle could never do.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: Array.from({ length: 6 }, (_, i) => ({
+          id: `worse${i}` as Id<Source>,
+          x: 25,
+          y: 25,
+          paths: { W1N1: "1".repeat(80) }
+        }))
+      })
+    );
+    const better = scoutTarget(
+      "W3N1",
+      scouted({ sources: [{ id: "better" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } }] })
+    );
+    const snap = colonySnap({
+      tick: 5000,
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      spawns: [spawn()],
+      remoteSources: Array.from({ length: 6 }, (_, i) => ({
+        id: `worse${i}` as Id<Source>,
+        room: "W2N1",
+        x: 25,
+        y: 25,
+        distance: 80,
+        openTiles: 1,
+        reserved: false,
+        danger: 0
+      })),
+      scoutTargets: [packed, better]
+    });
+
+    const [intent] = setRemotesOf(snap);
+    expect(intent).toBeDefined();
+    const ids = intent.remotes.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("better");
   });
 });

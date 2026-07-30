@@ -56,6 +56,24 @@ function snapCreep(c: Creep): SnapCreep {
 function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visibleRooms: VisibleRoom[]): ColonySnapshot {
   const controller = room.controller!;
   const myCreeps = room.find(FIND_MY_CREEPS);
+  const remotes = Memory.colonies[room.name]?.remotes ?? [];
+  const vision = remoteRoomVision(remotes, controller.owner?.username);
+  const remoteStructures: Partial<Record<string, SnapStructure[]>> = {};
+  const remoteSites: Partial<Record<string, SnapStructure[]>> = {};
+  const remoteDanger: Partial<Record<string, number | undefined>> = {};
+  for (const [roomName, live] of Object.entries(vision)) {
+    if (!live) continue;
+    remoteStructures[roomName] = live.structures;
+    remoteSites[roomName] = live.sites;
+    remoteDanger[roomName] = live.dangerUntil;
+  }
+  // Vision-independent: an owned site exists regardless of whether we currently see the room it's in,
+  // so the shared construction budget (colony/building.ts) can count a remote site even between the
+  // ticks a creep gives it vision. Scoped to this colony's own rooms — Game.constructionSites is
+  // empire-wide across every colony the player owns.
+  const ownRooms = new Set([room.name, ...remotes.map(r => r.room)]);
+  const ownSites = Object.values(Game.constructionSites).filter(s => ownRooms.has(s.pos.roomName));
+  const siteSummary = ownSites.map(s => ({ room: s.pos.roomName, type: s.structureType }));
   return {
     name: room.name,
     tick,
@@ -92,11 +110,8 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     energyAvailable: room.energyAvailable,
     energyCapacity: room.energyCapacityAvailable,
     sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
-    remoteSources: buildRemoteSources(
-      Memory.colonies[room.name]?.remotes ?? [],
-      remoteRoomVision(Memory.colonies[room.name]?.remotes ?? [], controller.owner?.username)
-    ),
-    remoteEnergy: remoteEnergyFor(Memory.colonies[room.name]?.remotes ?? []),
+    remoteSources: buildRemoteSources(remotes, vision, tick),
+    remoteEnergy: remoteEnergyFor(remotes),
     drops: room.find(FIND_DROPPED_RESOURCES).map(d => ({ id: d.id, x: d.pos.x, y: d.pos.y, amount: d.amount })),
     tombstones: room
       .find(FIND_TOMBSTONES)
@@ -127,8 +142,15 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
       .filter((s): s is AnyStructure & { structureType: BuildableStructureConstant } => s.structureType !== STRUCTURE_CONTROLLER)
       .map(snapStructure),
     sites: room.find(FIND_MY_CONSTRUCTION_SITES).map(snapStructure),
-    constructionProgress: room
-      .find(FIND_CONSTRUCTION_SITES)
+    remoteStructures,
+    remoteSites,
+    remoteDanger,
+    siteSummary,
+    constructionProgress: ownSites
+      .filter(s => s.pos.roomName === room.name)
+      .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0),
+    remoteConstructionProgress: ownSites
+      .filter(s => s.pos.roomName !== room.name)
       .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0),
     // Rooms within the current scouting radius; radius grows as the frontier is exhausted.
     scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1),
@@ -164,11 +186,24 @@ function remoteRoomVision(
     }
 
     const reservation = room.controller?.reservation;
+    const hostiles = room.find(FIND_HOSTILE_CREEPS);
+    // How long the room should still be considered dangerous once we lose vision of it: the latest tick
+    // any current hostile is expected to still be alive. A creep with no ticksToLive (some invader-core
+    // spawned units) is treated as permanent until seen gone, so it can't under-count danger.
+    const dangerUntil = hostiles.length === 0
+      ? undefined
+      : hostiles.reduce((latest, c) => Math.max(latest, Game.time + (c.ticksToLive ?? CREEP_LIFE_TIME)), 0);
     out[remote.room] = {
       reserved: reservation !== undefined && reservation.username === me,
-      danger: room.find(FIND_HOSTILE_CREEPS).length,
+      danger: hostiles.length,
+      dangerUntil,
       openTilesBySource,
-      containerBySource
+      containerBySource,
+      structures: room
+        .find(FIND_STRUCTURES)
+        .filter((s): s is AnyStructure & { structureType: BuildableStructureConstant } => s.structureType !== STRUCTURE_CONTROLLER)
+        .map(snapStructure),
+      sites: room.find(FIND_MY_CONSTRUCTION_SITES).map(snapStructure)
     };
   }
   return out;

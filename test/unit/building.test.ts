@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
 import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
 import { colony } from "../../src/colony";
-import { colonySnap, snapCreep, sourceAt } from "../fixtures";
+import { wantedStructures } from "../../src/colony/building";
+import { colonySnap, remoteSourceAt, snapCreep, sourceAt } from "../fixtures";
 import { Mining } from "../../src/operations/mining";
 import { buildableAtRcl } from "../../src/layouts/goal";
-import { stampLayout } from "../../src/layouts/stamp";
+import { stampLayout, type PlacedStructure } from "../../src/layouts/stamp";
 import type { GoalLayout } from "../../src/layouts/sync";
 import GOAL_JSON from "../../src/layouts/Base_2.json";
 import type { XY } from "../../src/lib/geometry";
@@ -90,7 +91,7 @@ describe("building planner", () => {
     );
   });
 
-  it("places only RCL2-buildable structural sites (no RCL3+ type, no roads), within the focus cap", () => {
+  it("places only RCL2-buildable structural sites (no RCL3+ type, no roads)", () => {
     const snap = colony(
       colonySnap({
         anchor: { x: 25, y: 25 },
@@ -104,7 +105,7 @@ describe("building planner", () => {
     const intents = snap.building();
 
     expect(intents.every(i => i.kind === "placeSite")).toBe(true);
-    expect(intents).toHaveLength(2);
+    expect(intents.length).toBeGreaterThan(0);
     const types = new Set(intents.map(i => i.kind === "placeSite" && i.type));
     expect([...types].some(t => t === "road")).toBe(false);
     expect(
@@ -123,15 +124,21 @@ describe("building planner", () => {
   });
 
   it("emits nothing further once the room is already at the focus site cap", () => {
-    const sites: SnapStructure[] = [
-      { x: 1, y: 0, type: "extension" },
-      { x: 2, y: 0, type: "extension" },
-      { x: 3, y: 0, type: "extension" },
-      { x: 4, y: 0, type: "extension" }
-    ];
+    // 20 open sites already — matches FOCUS_SITE_CAP, so no budget remains regardless of type.
+    const sites: SnapStructure[] = Array.from({ length: 20 }, (_, i) => ({
+      x: i,
+      y: 0,
+      type: "extension" as const
+    }));
 
     const snap = colony(
-      colonySnap({ anchor: { x: 25, y: 25 }, controllerLevel: 2, structures: [], sites })
+      colonySnap({
+        anchor: { x: 25, y: 25 },
+        controllerLevel: 2,
+        structures: [],
+        sites,
+        siteSummary: sites.map(s => ({ room: "W1N1", type: s.type }))
+      })
     );
 
     expect(snap.building().filter(i => i.kind === "placeSite")).toEqual([]);
@@ -178,15 +185,29 @@ describe("building planner focus policy", () => {
   const placeSites = (intents: Intent[]) =>
     intents.filter((i): i is Extract<Intent, { kind: "placeSite" }> => i.kind === "placeSite");
 
-  it("places at most 2 construction sites at a time", () => {
-    const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] }));
+  it("places at most 20 construction sites at a time", () => {
+    // RCL3's non-road backlog from empty exceeds the cap, so the cap itself is what's under test.
+    const snap = colony(colonySnap({ anchor, controllerLevel: 8, structures: [], sites: [] }));
 
-    expect(placeSites(snap.building())).toHaveLength(2);
+    expect(placeSites(snap.building()).length).toBeLessThanOrEqual(20);
+    expect(placeSites(snap.building()).length).toBe(20);
   });
 
-  it("counts existing sites against the cap of 2", () => {
-    const oneOpen: SnapStructure[] = [{ x: 10, y: 10, type: "road" }];
-    const snap = colony(colonySnap({ anchor, controllerLevel: 3, structures: [], sites: oneOpen }));
+  it("counts existing sites against the cap of 20", () => {
+    const nineteenOpen: SnapStructure[] = Array.from({ length: 19 }, (_, i) => ({
+      x: i,
+      y: 10,
+      type: "road" as const
+    }));
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 8,
+        structures: [],
+        sites: nineteenOpen,
+        siteSummary: nineteenOpen.map(s => ({ room: "W1N1", type: s.type }))
+      })
+    );
 
     expect(placeSites(snap.building())).toHaveLength(1);
   });
@@ -222,7 +243,8 @@ describe("building planner focus policy", () => {
     const [firstContainer] = minedStructures(base);
     const snap = colony({
       ...base,
-      sites: [{ x: firstContainer.x, y: firstContainer.y, type: "container" }]
+      sites: [{ x: firstContainer.x, y: firstContainer.y, type: "container" }],
+      siteSummary: [{ room: "W1N1", type: "container" }]
     });
 
     const placed = placeSites(snap.building());
@@ -237,7 +259,7 @@ describe("building planner focus policy", () => {
   });
 
   it("places no container sites below the container energy-capacity gate", () => {
-    for (const capacity of [300, 799]) {
+    for (const capacity of [300, 549]) {
       const snap = colony(
         colonySnap({
           anchor,
@@ -271,6 +293,9 @@ describe("building planner focus policy", () => {
     const withTower = [
       ...allNonRoadStructuresAt(anchor, 3).filter(s => s.type === "tower")
     ];
+    // Squeeze the budget down to 1 (19 sites already open elsewhere) so extensions and the
+    // container claim genuinely compete for a single slot, same as they did under the old cap.
+    const crowding = Array.from({ length: 19 }, (_, i) => ({ room: "W9N9", type: "rampart" as const }));
     const snap = colony(
       colonySnap({
         anchor,
@@ -278,18 +303,21 @@ describe("building planner focus policy", () => {
         energyCapacity: 800,
         sources: [sourceAt(20, 10)],
         structures: withTower,
-        sites: []
+        sites: [],
+        siteSummary: crowding
       })
     );
     const placed = placeSites(snap.building());
-    expect(placed.every(i => i.type === "extension")).toBe(true);
-    expect(placed.some(i => i.type === "container")).toBe(false);
+    expect(placed).toHaveLength(1);
+    expect(placed[0].type).toBe("extension");
   });
 
   it("places no roads below 800 energy capacity", () => {
     for (const capacity of [300, 550, 799]) {
+      // No local source: isolates the bunker's own road grid from Mining's source-access roads,
+      // which are deliberately exempt from this gate (see the bypass test below).
       const snap = colony(
-        colonySnap({ anchor, controllerLevel: 3, energyCapacity: capacity, structures: [], sites: [] })
+        colonySnap({ anchor, controllerLevel: 3, energyCapacity: capacity, sources: [], structures: [], sites: [] })
       );
       expect(placeSites(snap.building()).some(i => i.type === "road")).toBe(false);
     }
@@ -325,6 +353,133 @@ describe("building planner focus policy", () => {
 
     const placed = placeSites(snap.building());
     expect(placed.some(i => i.type === "road")).toBe(true);
+  });
+});
+
+// A remote route reuses the same claim/placement pipeline as a local source, but the arbiter must
+// target the tile's own room, dedup against remote-room vision (not the home room's structures/sites),
+// and count the shared budget from siteSummary rather than the home-only sites count.
+describe("building planner — remote construction", () => {
+  const anchor = { x: 25, y: 25 };
+  const placeSites = (intents: Intent[]) =>
+    intents.filter((i): i is Extract<Intent, { kind: "placeSite" }> => i.kind === "placeSite");
+  const route = [
+    { room: "W1N1", x: 26, y: 25 },
+    { room: "W2N1", x: 0, y: 25 },
+    { room: "W2N1", x: 1, y: 25 } // container spot
+  ];
+  const built = allNonRoadStructuresAt(anchor, 3);
+
+  it("places a remote claim's site in its own room, not the colony's home room", () => {
+    const source = remoteSourceAt(2, 25, "W2N1", { route });
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 800,
+        sources: [],
+        structures: built,
+        sites: [],
+        remoteSources: [source],
+        remoteStructures: { W2N1: [] }
+      })
+    );
+
+    const placed = placeSites(snap.building());
+    expect(placed).toContainEqual(
+      expect.objectContaining({ room: "W2N1", x: 1, y: 25, type: "container" })
+    );
+  });
+
+  it("does not re-place a remote structure that's already built", () => {
+    const source = remoteSourceAt(2, 25, "W2N1", { route });
+    const remoteContainer: SnapStructure = { id: "cont1" as Id<StructureContainer>, x: 1, y: 25, type: "container" };
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 800,
+        sources: [],
+        structures: built,
+        sites: [],
+        remoteSources: [source],
+        remoteStructures: { W2N1: [remoteContainer] }
+      })
+    );
+
+    const placed = placeSites(snap.building());
+    expect(placed.some(i => i.room === "W2N1" && i.type === "container")).toBe(false);
+  });
+
+  it("counts a remote site against the shared budget even without live vision of its room this tick", () => {
+    // No local claims and no home sites, but siteSummary already shows the budget fully spent (19
+    // elsewhere + 1 remote site) — the shared FOCUS_SITE_CAP must still read that remote site even
+    // though remoteSites/remoteStructures report no vision of W2N1 this tick.
+    const crowding = Array.from({ length: 19 }, () => ({ room: "W9N9", type: "rampart" as const }));
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 300,
+        sources: [],
+        structures: [],
+        sites: [],
+        siteSummary: [...crowding, { room: "W2N1", type: "container" }]
+      })
+    );
+
+    expect(placeSites(snap.building()).length).toBe(0);
+  });
+});
+
+// The arbiter finishes one source's entire claimed group (container + its road tiles) before opening
+// sites for another's — MAX_CONTAINER_SITES already serialized containers this way; this generalizes it
+// to whole routes, local and remote alike, via PlacedStructure.sourceId.
+describe("building planner — one source group at a time", () => {
+  const anchor = { x: 25, y: 25 };
+  const groupA = [
+    { x: 30, y: 25, type: "container" as const, sourceId: "srcA" as Id<Source> },
+    { x: 31, y: 25, type: "road" as const, sourceId: "srcA" as Id<Source> }
+  ];
+  const groupB = [
+    { x: 40, y: 25, type: "container" as const, sourceId: "srcB" as Id<Source> },
+    { x: 41, y: 25, type: "road" as const, sourceId: "srcB" as Id<Source> }
+  ];
+
+  it("holds back a later group's claims entirely while an earlier group is unbuilt", () => {
+    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, structures: [], sites: [] });
+
+    const claimed: PlacedStructure[] = [...groupA, ...groupB];
+    const wanted = wantedStructures(snap, claimed);
+
+    expect(wanted.some(p => p.sourceId === "srcA")).toBe(true);
+    expect(wanted.some(p => p.sourceId === "srcB")).toBe(false);
+  });
+
+  it("releases the next group once the earlier one is fully built", () => {
+    const snap = colonySnap({
+      anchor,
+      controllerLevel: 3,
+      energyCapacity: 800,
+      // Group A's tiles are both already standing.
+      structures: groupA.map(p => ({ x: p.x, y: p.y, type: p.type })),
+      sites: []
+    });
+
+    const claimed: PlacedStructure[] = [...groupA, ...groupB];
+    const wanted = wantedStructures(snap, claimed);
+
+    expect(wanted.some(p => p.sourceId === "srcB")).toBe(true);
+  });
+
+  it("never holds back an ungrouped claim (no sourceId), regardless of group state", () => {
+    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, structures: [], sites: [] });
+    const ungrouped: PlacedStructure = { x: 35, y: 25, type: "extension" };
+
+    const claimed: PlacedStructure[] = [...groupA, ...groupB, ungrouped];
+    const wanted = wantedStructures(snap, claimed);
+
+    expect(wanted).toContainEqual(ungrouped);
   });
 });
 

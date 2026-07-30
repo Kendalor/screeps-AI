@@ -5,7 +5,7 @@ import type { ColonyMetricsMemory, RoleName } from "../../src/memory/schema";
 import type { RoleTarget } from "../../src/operations/operation";
 import type { SnapStructure } from "../../src/snapshot/types";
 import type { CreepRequest } from "../../src/spawn/request";
-import { colonySnap, containerAt, dropAt, snapCreeps, spawn } from "../fixtures";
+import { colonySnap, containerAt, dropAt, remoteEnergyAt, snapCreeps, spawn } from "../fixtures";
 
 // A blank harvest window per test — the persisted state collectMetrics folds into.
 const mem = (): ColonyMetricsMemory => ({ harvestSamples: [] });
@@ -156,6 +156,24 @@ describe("metrics: energy levels", () => {
     const m = collect(colonySnap({ drops: [dropAt(10, 10, 40), dropAt(11, 11, 60)] }));
     expect(m.energy.dropped).toBe(100);
   });
+
+  it("sums remote energy across all remote containers/drops/tombstones", () => {
+    const m = collect(
+      colonySnap({
+        remoteEnergy: [
+          remoteEnergyAt("W2N1", 200, "container"),
+          remoteEnergyAt("W2N1", 50, "dropped"),
+          remoteEnergyAt("W3N1", 30, "tombstone")
+        ]
+      })
+    );
+    expect(m.energy.remoteEnergy).toBe(280);
+  });
+
+  it("reads 0 remote energy without remote vision", () => {
+    const m = collect(colonySnap());
+    expect(m.energy.remoteEnergy).toBe(0);
+  });
 });
 
 describe("metrics: harvest rate", () => {
@@ -214,6 +232,11 @@ describe("metrics: controller and construction", () => {
     const m = collect(colonySnap({ constructionProgress: 8_000 }));
     expect(m.construction.remaining).toBe(8_000);
   });
+
+  it("reports outstanding remote construction work separately from home", () => {
+    const m = collect(colonySnap({ constructionProgress: 8_000, remoteConstructionProgress: 500 }));
+    expect(m.construction).toEqual({ remaining: 8_000, remoteRemaining: 500 });
+  });
 });
 
 describe("metrics: repair", () => {
@@ -226,15 +249,16 @@ describe("metrics: repair", () => {
     hits,
     hitsMax
   });
+  const noRemote = { remoteDecay: 0, remoteActionable: 0 };
 
   it("counts sub-100% decay even above the repair floor, but nothing is actionable yet", () => {
     const snap = colonySnap({ structures: [struct("road", 4_500, 5_000)] }); // 90%: 500 decayed, above 80%
-    expect(collect(snap).repair).toEqual({ decay: 500, actionable: 0 });
+    expect(collect(snap).repair).toEqual({ decay: 500, actionable: 0, ...noRemote });
   });
 
   it("counts fully-healthy structures as neither decay nor actionable", () => {
     const snap = colonySnap({ structures: [struct("road", 5_000, 5_000)] });
-    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0 });
+    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0, ...noRemote });
   });
 
   it("reports both the total decay and the actionable subset past the floor", () => {
@@ -245,17 +269,30 @@ describe("metrics: repair", () => {
       ]
     });
     // decay = 4,000 + 10,000; actionable = just the road's 4,000.
-    expect(collect(snap).repair).toEqual({ decay: 14_000, actionable: 4_000 });
+    expect(collect(snap).repair).toEqual({ decay: 14_000, actionable: 4_000, ...noRemote });
   });
 
   it("ignores structure types that are not repairable (walls/ramparts)", () => {
     const snap = colonySnap({ structures: [struct("rampart", 1, 300_000_000)] });
-    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0 });
+    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0, ...noRemote });
   });
 
   it("ignores construction sites (no hits to restore)", () => {
     const snap = colonySnap({ structures: [{ type: "road", x: 0, y: 0 }] });
-    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0 });
+    expect(collect(snap).repair).toEqual({ decay: 0, actionable: 0, ...noRemote });
+  });
+
+  it("tallies decay across a visible remote room separately from home", () => {
+    const snap = colonySnap({
+      structures: [struct("road", 4_500, 5_000)], // home: 500 decayed, not actionable
+      remoteStructures: { W2N1: [struct("road", 1_000, 5_000)] } // remote: 4,000 decayed, actionable
+    });
+    expect(collect(snap).repair).toEqual({ decay: 500, actionable: 0, remoteDecay: 4_000, remoteActionable: 4_000 });
+  });
+
+  it("reads no remote decay for a remote room without vision", () => {
+    const snap = colonySnap({ structures: [struct("road", 4_500, 5_000)] });
+    expect(collect(snap).repair).toEqual({ decay: 500, actionable: 0, ...noRemote });
   });
 });
 

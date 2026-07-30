@@ -5,6 +5,10 @@ import type { GoalPlacement } from "./sync";
 
 export interface PlacedStructure extends XY {
   type: BuildableStructureConstant;
+  // Both optional and additive: every existing producer (bunker layout stamping, controller road/
+  // container claims) is implicitly home-room and ungrouped, so none of them need to change.
+  room?: string; // defaults to the colony's home room when absent
+  sourceId?: Id<Source>; // which source's route this tile belongs to, if any — see colony/building.ts
 }
 
 // Largest bunker footprint across all RCL layouts, so anchors never need re-anchoring on expansion.

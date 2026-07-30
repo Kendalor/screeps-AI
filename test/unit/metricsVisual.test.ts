@@ -10,10 +10,10 @@ function metrics(over: Partial<ColonyMetrics> = {}): ColonyMetrics {
     census: [],
     operations: [],
     buildings: [],
-    energy: { available: 300, capacity: 300, storage: 0, dropped: 0, harvestPerTick: undefined },
+    energy: { available: 300, capacity: 300, storage: 0, dropped: 0, remoteEnergy: 0, harvestPerTick: undefined },
     controller: { level: 1, progress: 0, progressTotal: 0 },
-    construction: { remaining: 0 },
-    repair: { decay: 0, actionable: 0 },
+    construction: { remaining: 0, remoteRemaining: 0 },
+    repair: { decay: 0, actionable: 0, remoteDecay: 0, remoteActionable: 0 },
     safeMode: { active: 0, count: 0, available: false },
     spawns: { total: 1, busy: 0, parts: 0, capacity: 500, load: 0 },
     ...over
@@ -73,7 +73,7 @@ describe("metricsVisual: census", () => {
     expect(joined(ops)).toContain("5/0");
   });
 
-  it("colours a surplus role like an understaffed one, not like a met one", () => {
+  it("colours a surplus role like a met one, not like an understaffed one", () => {
     const ops = panelOps(
       metrics({
         census: [
@@ -87,8 +87,8 @@ describe("metricsVisual: census", () => {
     const builder = textOps.find(o => o.text.includes("builder"))!;
     const miner = textOps.find(o => o.text.includes("miner"))!;
     const hauler = textOps.find(o => o.text.includes("hauler"))!;
-    expect(builder.color).toBe(miner.color); // both flagged
-    expect(builder.color).not.toBe(hauler.color); // met role differs
+    expect(builder.color).toBe(hauler.color); // both satisfied (current >= desired)
+    expect(builder.color).not.toBe(miner.color); // short role differs
   });
 });
 
@@ -123,7 +123,7 @@ describe("metricsVisual: buildings", () => {
 describe("metricsVisual: energy", () => {
   it("shows storage, dropped and spawn energy with separators", () => {
     const ops = panelOps(
-      metrics({ energy: { available: 250, capacity: 550, storage: 120_000, dropped: 340, harvestPerTick: 6 } })
+      metrics({ energy: { available: 250, capacity: 550, storage: 120_000, dropped: 340, remoteEnergy: 0, harvestPerTick: 6 } })
     );
     const all = joined(ops);
     expect(all).toContain("120,000");
@@ -131,13 +131,29 @@ describe("metricsVisual: energy", () => {
     expect(all).toContain("250/550");
   });
 
+  it("shows remote energy when there is any", () => {
+    const ops = panelOps(
+      metrics({ energy: { available: 0, capacity: 0, storage: 0, dropped: 0, remoteEnergy: 2_500, harvestPerTick: undefined } })
+    );
+    expect(joined(ops)).toContain("remote     2,500");
+  });
+
+  it("omits the remote energy line when there is none", () => {
+    const ops = panelOps(metrics());
+    expect(joined(ops).toLowerCase()).not.toContain("remote");
+  });
+
   it("shows a dash for harvest rate before it is known", () => {
-    const ops = panelOps(metrics({ energy: { available: 0, capacity: 0, storage: 0, dropped: 0, harvestPerTick: undefined } }));
+    const ops = panelOps(
+      metrics({ energy: { available: 0, capacity: 0, storage: 0, dropped: 0, remoteEnergy: 0, harvestPerTick: undefined } })
+    );
     expect(joined(ops)).toMatch(/harvest\/t\s+—/);
   });
 
   it("shows harvest rate to one decimal once known", () => {
-    const ops = panelOps(metrics({ energy: { available: 0, capacity: 0, storage: 0, dropped: 0, harvestPerTick: 6.04 } }));
+    const ops = panelOps(
+      metrics({ energy: { available: 0, capacity: 0, storage: 0, dropped: 0, remoteEnergy: 0, harvestPerTick: 6.04 } })
+    );
     expect(joined(ops)).toContain("6.0");
   });
 });
@@ -154,23 +170,35 @@ describe("metricsVisual: progress", () => {
   });
 
   it("shows construction work left with its energy in brackets", () => {
-    const ops = panelOps(metrics({ construction: { remaining: 8_000 } }));
+    const ops = panelOps(metrics({ construction: { remaining: 8_000, remoteRemaining: 0 } }));
     expect(joined(ops)).toContain("8,000 left [8,000e]");
   });
 
+  it("shows remote construction work left as an additional line", () => {
+    const ops = panelOps(metrics({ construction: { remaining: 0, remoteRemaining: 2_000 } }));
+    expect(joined(ops)).toContain("2,000 left [2,000e]");
+  });
+
+  it("omits the remote construction line when there is none", () => {
+    const ops = panelOps(metrics({ construction: { remaining: 8_000, remoteRemaining: 0 } }));
+    const lines = joined(ops).split("\n").filter(l => l.includes("left"));
+    expect(lines).toHaveLength(1);
+  });
+
   it("omits the repair line when nothing has decayed at all", () => {
-    expect(joined(panelOps(metrics({ repair: { decay: 0, actionable: 0 } })))).not.toMatch(/repair/i);
+    const ops = panelOps(metrics({ repair: { decay: 0, actionable: 0, remoteDecay: 0, remoteActionable: 0 } }));
+    expect(joined(ops)).not.toMatch(/repair/i);
   });
 
   it("shows decayed hits before anything reaches the repair floor, with no energy call-out", () => {
-    const ops = panelOps(metrics({ repair: { decay: 8_500, actionable: 0 } }));
+    const ops = panelOps(metrics({ repair: { decay: 8_500, actionable: 0, remoteDecay: 0, remoteActionable: 0 } }));
     const all = joined(ops);
     expect(all).toContain("8.5k hits"); // compact k/m form
     expect(all).not.toContain("to fix"); // nothing actionable -> no energy figure
   });
 
   it("renders decay dim while nothing is actionable", () => {
-    const ops = panelOps(metrics({ repair: { decay: 500, actionable: 0 } }));
+    const ops = panelOps(metrics({ repair: { decay: 500, actionable: 0, remoteDecay: 0, remoteActionable: 0 } }));
     const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
     const dim = textOps.find(o => o.text.includes("storage"))!; // a known-DIM energy detail line
     const repair = textOps.find(o => o.text.includes("repair"))!;
@@ -178,7 +206,7 @@ describe("metricsVisual: progress", () => {
   });
 
   it("flags actionable repair in warn colour with the fixable hits and their energy (hits/100)", () => {
-    const ops = panelOps(metrics({ repair: { decay: 14_000, actionable: 12_000 } }));
+    const ops = panelOps(metrics({ repair: { decay: 14_000, actionable: 12_000, remoteDecay: 0, remoteActionable: 0 } }));
     const all = joined(ops);
     expect(all).toContain("14k hits"); // total decay leads the line, compact form
     // 12,000 actionable -> "12k"; energy = 12,000 / REPAIR_POWER (100) = 120.
@@ -190,6 +218,13 @@ describe("metricsVisual: progress", () => {
       .filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text")
       .find(o => o.text.includes("miner"))!; // a known-WARN row
     expect(repair.color).toBe(census.color);
+  });
+
+  it("shows remote decay as an additional line, independent of the home repair line", () => {
+    const ops = panelOps(metrics({ repair: { decay: 0, actionable: 0, remoteDecay: 3_000, remoteActionable: 1_000 } }));
+    const all = joined(ops);
+    expect(all).toContain("3k hits");
+    expect(all).toContain("1k to fix [10e]"); // 1,000 / REPAIR_POWER (100) = 10
   });
 });
 

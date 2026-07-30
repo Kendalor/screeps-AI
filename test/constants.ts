@@ -144,6 +144,10 @@ Object.assign(globalThis, {
   // Creep lifespan in ticks, from screeps/common constants — the horizon body-cost upkeep amortizes over.
   CREEP_LIFE_TIME: 1500,
 
+  // A creep with a CLAIM part lives a shorter life than normal, from screeps/common constants — the
+  // horizon a claimer's body cost actually amortizes over (not CREEP_LIFE_TIME).
+  CREEP_CLAIM_LIFE_TIME: 600,
+
   // Energy a source refills per regen cycle: 3000 for an owned/reserved room, 1500 for a neutral one.
   SOURCE_ENERGY_CAPACITY: 3000,
   SOURCE_ENERGY_NEUTRAL_CAPACITY: 1500,

@@ -1,11 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { pickRemotes } from "../../../src/mining/pickRemotes";
+import { pickRemotes as pickRemotesRaw } from "../../../src/mining/pickRemotes";
 import { scoutTarget, scouted } from "../../fixtures";
 
 // A home state that comfortably affords miners/claimers and has spawn headroom, so gates 2 and 3 pass
 // and only the economics/nearest-first ranking is under test unless a case overrides it.
-function homeState(over: Partial<Parameters<typeof pickRemotes>[0]["home"]> = {}) {
+function homeState(over: Partial<Parameters<typeof pickRemotesRaw>[0]["home"]> = {}) {
   return { name: "W1N1", storage: { x: 25, y: 25 }, energyCapacity: 800, spawnHeadroom: true, ...over };
+}
+
+// Defaults to today's append-only mode (reevaluate: false) so existing tests don't all need to spell it
+// out; tests exercising the periodic full re-rank pass `reevaluate: true` explicitly.
+function pickRemotes(input: Omit<Parameters<typeof pickRemotesRaw>[0], "reevaluate"> & { reevaluate?: boolean }) {
+  return pickRemotesRaw({ reevaluate: false, ...input });
 }
 
 describe("pickRemotes", () => {
@@ -45,14 +51,14 @@ describe("pickRemotes", () => {
     expect(pickRemotes({ candidates, home: homeState(), currentlySelected: [] })).toEqual([]);
   });
 
-  it("ranks nearer rooms before farther ones, but only adds one new source per call", () => {
+  it("ranks nearer rooms before farther ones, but only commits one new room per call", () => {
     const near = scoutTarget("W2N1", scouted({ sources: [{ id: "near" as Id<Source>, x: 25, y: 25 }] }));
     const far = scoutTarget("W3N1", scouted({ sources: [{ id: "far" as Id<Source>, x: 25, y: 25 }] }));
     // Pass far first to prove ordering is by distance, not input order.
     const rooms = pickRemotes({ candidates: [far, near], home: homeState(), currentlySelected: [] }).map(
       r => r.room
     );
-    expect(rooms).toEqual(["W2N1"]); // nearest wins the single slot this call; "far" waits its turn
+    expect(rooms).toEqual(["W2N1"]); // nearest wins the single room slot this call; "far" waits its turn
   });
 
   it("trusts the candidate's own room-graph distance instead of re-deriving it from room names", () => {
@@ -79,18 +85,30 @@ describe("pickRemotes", () => {
     expect(rooms).toEqual(["W2N1"]); // the true (1-hop) neighbour wins the single slot, not the diagonal one
   });
 
-  it("adds only one never-before-selected source per call, even when several are newly profitable", () => {
-    // One adjacent room packed with many profitable sources, none yet selected: only one is added.
+  it("commits every worthwhile source in a newly-selected room together, not one at a time", () => {
+    // One adjacent room packed with many profitable sources, none yet selected: all of them are added,
+    // since entering the room (scouting, eventual reservation) is a one-time cost paid regardless of how
+    // many of its sources get mined — capped only by the overall source ceiling below.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({ sources: Array.from({ length: 4 }, (_, i) => ({ id: `s${i}` as Id<Source>, x: 25, y: 25 })) })
+    );
+    const selected = pickRemotes({ candidates: [packed], home: homeState(), currentlySelected: [] });
+    const total = selected.reduce((n, r) => n + r.sources.length, 0);
+    expect(total).toBe(4);
+  });
+
+  it("caps a newly-committed room's sources at the overall ceiling, not the room's full source count", () => {
     const packed = scoutTarget(
       "W2N1",
       scouted({ sources: Array.from({ length: 12 }, (_, i) => ({ id: `s${i}` as Id<Source>, x: 25, y: 25 })) })
     );
     const selected = pickRemotes({ candidates: [packed], home: homeState(), currentlySelected: [] });
     const total = selected.reduce((n, r) => n + r.sources.length, 0);
-    expect(total).toBe(1); // MAX_NEW_REMOTES_PER_SELECTION — one trickled in even though 12 were profitable
+    expect(total).toBe(6); // MAX_REMOTE_SOURCES — the room has 12 worthwhile sources but the cap is 6
   });
 
-  it("keeps previously-selected sources and trickles in one more, up to the overall cap", () => {
+  it("keeps previously-selected sources and adds the next new room's sources, up to the overall cap", () => {
     const packed = scoutTarget(
       "W2N1",
       scouted({ sources: Array.from({ length: 12 }, (_, i) => ({ id: `s${i}` as Id<Source>, x: 25, y: 25 })) })
@@ -98,8 +116,106 @@ describe("pickRemotes", () => {
     const alreadyHave = ["s0", "s1", "s2", "s3", "s4"] as Id<Source>[];
     const selected = pickRemotes({ candidates: [packed], home: homeState(), currentlySelected: alreadyHave });
     const ids = selected.flatMap(r => r.sources.map(s => s.id));
-    expect(ids).toHaveLength(6); // MAX_REMOTE_SOURCES — the 5 kept plus exactly one new one
+    expect(ids).toHaveLength(6); // MAX_REMOTE_SOURCES — the 5 kept plus one more from the same room
     for (const id of alreadyHave) expect(ids).toContain(id);
+  });
+
+  it("adds a same-room sibling of an already-selected source even though a farther room got in first", () => {
+    // Reproduces a real selection artifact: room W2N1 has two sources, only the farther one (within the
+    // room) got selected on an earlier call, and a farther ROOM (W3N1) is already committed too. Once
+    // W2N1 is already a selected room, its nearer sibling source should join it — it must not need to wait
+    // behind W3N1 as if it were an unrelated, never-before-seen room competing for the single new-room slot.
+    const w2n1 = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: [
+          { id: "w2n1_far" as Id<Source>, x: 25, y: 40 }, // farther from centre, already selected
+          { id: "w2n1_near" as Id<Source>, x: 25, y: 30 } // nearer, not yet selected
+        ]
+      })
+    );
+    const w3n1 = scoutTarget("W3N1", scouted({ sources: [{ id: "w3n1_src" as Id<Source>, x: 25, y: 25 }] }));
+    const alreadyHave = ["w2n1_far", "w3n1_src"] as Id<Source>[];
+    const selected = pickRemotes({
+      candidates: [w2n1, w3n1],
+      home: homeState(),
+      currentlySelected: alreadyHave
+    });
+    const ids = selected.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("w2n1_near");
+  });
+
+  it("excludes a candidate farther than MAX_REMOTE_HOPS even when otherwise near/profitable", () => {
+    // A source placed at the room's dead centre so its tile-inset distance is tiny — profitable and
+    // "near" by raw tile math — but the room itself is beyond the hop cap, which must win regardless.
+    const tooFar = scoutTarget("W5N1", scouted({ sources: [{ id: "far_room" as Id<Source>, x: 25, y: 25 }] }));
+    const rooms = pickRemotes({ candidates: [tooFar], home: homeState(), currentlySelected: [] });
+    expect(rooms).toEqual([]);
+  });
+
+  it("prices and ranks by a candidate's cached real path distance instead of the tile-inset estimate", () => {
+    // Two rooms at the same room-graph hop distance, so remoteDistanceEstimate would rank them purely by
+    // tile inset (both sources sit at the same in-room position, so the estimate would tie them and fall
+    // back to input order). A real cached path makes W3N1's source the true nearest despite that tie.
+    const withEstimateOnly = scoutTarget(
+      "W2N1",
+      scouted({ sources: [{ id: "estimate_only" as Id<Source>, x: 25, y: 25 }] })
+    );
+    const withRealPath = scoutTarget(
+      "W3N1",
+      scouted({
+        sources: [{ id: "real_path" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } }] // real length 1, tiny
+      })
+    );
+    const rooms = pickRemotes({
+      candidates: [withEstimateOnly, withRealPath],
+      home: homeState(),
+      currentlySelected: []
+    }).map(r => r.room);
+    expect(rooms).toEqual(["W3N1"]); // real_path's cached distance (1) beats the estimate, wins the slot
+  });
+
+  it("full re-evaluation can evict a previously-selected source in favor of a newly-better one", () => {
+    // 6 previously-selected sources already fill the cap, all with a costly cached real distance — a
+    // farther room only just discovered, but with a much cheaper cached distance, must be able to bump
+    // the single worst of them out on a full re-rank. Without reevaluate, all 6 are kept unconditionally
+    // (append-only) and "better" would have to wait for its own new-room slot instead of ever displacing
+    // one of them.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: Array.from({ length: 6 }, (_, i) => ({
+          id: `worse${i}` as Id<Source>,
+          x: 25,
+          y: 25,
+          paths: { W1N1: "1".repeat(80) } // costly real distance, still profitable but the weakest link
+        }))
+      })
+    );
+    const better = scoutTarget(
+      "W3N1",
+      scouted({ sources: [{ id: "better" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } }] }) // real distance 1
+    );
+    const alreadyHave = Array.from({ length: 6 }, (_, i) => `worse${i}`) as Id<Source>[];
+
+    // Without reevaluate: all 6 "worse" sources are kept unconditionally; "better" can't get in at all
+    // since the cap is already full and only kept sources are preserved in append-only mode.
+    const appendOnly = pickRemotes({ candidates: [packed, better], home: homeState(), currentlySelected: alreadyHave });
+    const appendOnlyIds = appendOnly.flatMap(r => r.sources.map(s => s.id));
+    expect(appendOnlyIds).toHaveLength(6);
+    expect(appendOnlyIds).not.toContain("better");
+
+    // With reevaluate: everything competes on equal footing; "better"'s real distance of 1 beats every
+    // "worse" source's real distance of 80, so it displaces the worst of them.
+    const reevaluated = pickRemotesRaw({
+      candidates: [packed, better],
+      home: homeState(),
+      currentlySelected: alreadyHave,
+      reevaluate: true
+    });
+    const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toHaveLength(6);
+    expect(ids).toContain("better");
   });
 
   it("never drops an already-selected source even past the cap on re-rank", () => {

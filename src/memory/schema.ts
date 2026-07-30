@@ -29,6 +29,14 @@ declare global {
     logistics?: { current?: LogisticsTask };
     scoutTarget?: string; // room a scout is assigned to reach; cleared by moveToRoom on arrival
     targetRoom?: string; // a remote worker's permanent destination room (its source's room); NOT cleared on arrival, unlike scoutTarget
+    // A builder's current cross-room construction assignment (home or a remote room with outstanding
+    // sites), owned by operations/building.ts. Not cleared on arrival like scoutTarget: the builder keeps
+    // working sites in this room until Building reassigns it once the room's backlog clears.
+    buildTargetRoom?: string;
+    // The repairer equivalent of buildTargetRoom: a repair creep's current cross-room upkeep assignment
+    // (home or a remote room with tower-uncovered decay), owned by operations/repairing.ts. Same
+    // not-cleared-on-arrival rule — the repairer keeps working this room until Repairing reassigns it.
+    repairTargetRoom?: string;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
   }
@@ -67,6 +75,11 @@ export interface RemoteMemory {
   room: string;
   sources: RemoteSourceMemory[]; // the sources selected for mining in this room (a room may have unmined far sources)
   reserved: boolean; // are we currently reserving it (recomputed, cached to avoid thrash)
+  // Game.time until which the room should still be treated as dangerous, even without current vision.
+  // Set from the last-seen hostiles' own ticksToLive (see remoteRoomVision), so a room stays flagged for
+  // exactly as long as the invader that chased our vision away is expected to still be standing in it —
+  // not forever, and not reset to "safe" the instant the creep that saw it dies. Absent/past means safe.
+  dangerUntil?: number;
 }
 
 // A selected remote source and the facts about it that survive across ticks without vision. Live per-tick
@@ -79,6 +92,19 @@ export interface RemoteSourceMemory {
   distance: number; // route length home->source, computed once at selection time (see mining/distance.ts)
   containerId?: Id<StructureContainer>;
   spot?: { x: number; y: number }; // mining position, recorded like a local source's
+  // Copy of the source's own cached route (see ScoutedSource.route below), so the snapshot's remote
+  // join only ever reads ColonyMemory and never reaches into Memory.rooms directly — same reasoning
+  // that already justifies caching `distance` here instead of re-deriving it from the source's record.
+  route?: RemoteRouteTile[];
+}
+
+// One tile of a cached home->remote-source path, tagged with the room it's in — a path can cross
+// several rooms (home, transit, the remote room itself), and construction claims need to know which
+// room each tile belongs to.
+export interface RemoteRouteTile {
+  room: string;
+  x: number;
+  y: number;
 }
 
 // A room-by-room route and how far along it the creep is; `index` is the next room to enter.
@@ -123,6 +149,13 @@ export interface ScoutedSource {
   // colony's — a second colony scouting the same room reuses nothing of a first colony's anchor-relative
   // path, but the cache still only ever needs one entry per home that has actually computed it.
   paths?: Partial<Record<string, string>>;
+  // The same cached path as `paths`, as a room-tagged tile list instead of a direction-digit string —
+  // the shape construction claims need (a claim must know which room a tile is in), computed at the same
+  // time from the same PathFinder result so there's never a second path-finding call. Kept alongside
+  // `paths` rather than replacing it, since nothing has ever needed to decode the digit string back into
+  // positions (see remote-mining-progress/construction plan) and duplicating a small cache is cheaper
+  // than risking that decode (cross-room direction math is exactly what broke scout-ping-pong before).
+  route?: Partial<Record<string, RemoteRouteTile[]>>;
 }
 
 // How far out the frontier has pushed — the one piece of scouting state a tick cannot rederive. The todo list itself

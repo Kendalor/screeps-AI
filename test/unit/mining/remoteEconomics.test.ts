@@ -40,10 +40,11 @@ describe("worthReserving", () => {
   });
 
   it("is worth reserving a room with a mined source: +5/tick dwarfs a cheap claimer's upkeep", () => {
-    // NB: this contradicts the handoff's guessed "1 source not worth, 2 worth" break-even. With the real
-    // constants a claimer amortizes to ~0.43 energy/tick while reserving lifts a source by +5/tick, so a
-    // single mined source already justifies reserving. The handoff's threshold was an approximation; the
-    // economics module is the source of truth (its first live validation is step 7's benchmark).
+    // NB: this contradicts the handoff's guessed "1 source not worth, 2 worth" break-even. A claimer
+    // amortizes over CREEP_CLAIM_LIFE_TIME (600, not the usual 1500) to ~1.08 energy/tick while reserving
+    // lifts a source by +5/tick, so a single mined source already justifies reserving. The handoff's
+    // threshold was an approximation; the economics module is the source of truth (its first live
+    // validation is step 7's benchmark).
     const one = [remoteSourceAt(25, 25, "W2N1", { distance: 50 })];
     expect(worthReserving(one, ctx)).toBe(true);
   });

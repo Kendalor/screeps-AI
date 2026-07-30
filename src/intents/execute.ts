@@ -2,7 +2,7 @@
 
 import { log } from "../lib/log";
 import { roomType } from "../lib/roomName";
-import { findRemotePath, serializeRemotePath } from "../lib/remotePath";
+import { resolvePathToSource } from "../lib/remotePath";
 import type { RemoteMemory, RemoteSourceMemory, RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
 
@@ -76,6 +76,18 @@ function act(intent: Intent): ScreepsReturnCode {
       creep.memory.op = undefined;
       return OK;
     }
+    case "setBuildTargetRoom": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      creep.memory.buildTargetRoom = intent.room;
+      return OK;
+    }
+    case "setRepairTargetRoom": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      creep.memory.repairTargetRoom = intent.room;
+      return OK;
+    }
     case "assignLogisticsTask": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
@@ -124,6 +136,12 @@ function act(intent: Intent): ScreepsReturnCode {
       mem.scouted = observeRoom(room, intent.passive ? mem.scouted : undefined);
       return OK;
     }
+    case "recordSourcePath": {
+      const scouted = (Memory.rooms ??= {})[intent.room]?.scouted?.sources.find(sc => sc.id === intent.source);
+      if (!scouted) return ERR_NOT_FOUND; // scouting emitted this off a snapshot that's since gone stale
+      const resolved = resolvePathToSource(intent.home, intent.anchor, intent.room, scouted);
+      return resolved ? OK : ERR_NOT_FOUND; // no route at all: nothing to cache, retry next scouting pass
+    }
     case "setScoutTarget": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
@@ -143,7 +161,19 @@ function act(intent: Intent): ScreepsReturnCode {
     }
     case "setRemotes": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
-      mem.remotes = intent.remotes.map(room => resolveRemoteRoom(intent.room, room, mem.anchor)).filter(hasSourcesLeft);
+      // A re-selection replaces the whole array, but dangerUntil is a live-derived fact about a room, not
+      // part of what pickRemotes decides — carry it over so a mid-invasion reselection doesn't heal it.
+      const priorDangerUntil = new Map(mem.remotes.map(r => [r.room, r.dangerUntil]));
+      mem.remotes = intent.remotes
+        .map(room => resolveRemoteRoom(intent.room, room, mem.anchor))
+        .filter(hasSourcesLeft)
+        .map(room => ({ ...room, dangerUntil: priorDangerUntil.get(room.room) }));
+      return OK;
+    }
+    case "recordRemoteDanger": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const remote = mem.remotes.find(r => r.room === intent.remoteRoom);
+      if (remote) remote.dangerUntil = intent.dangerUntil;
       return OK;
     }
     case "recordSourceSpot": {
@@ -153,6 +183,12 @@ function act(intent: Intent): ScreepsReturnCode {
       // Only ever add an id — a tick with no vision must not wipe an existing handle.
       if (intent.container) source.containerId = intent.container;
       if (intent.link) source.linkId = intent.link;
+      return OK;
+    }
+    case "recordRemoteContainer": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const source = mem.remotes.find(r => r.room === intent.remoteRoom)?.sources.find(s => s.id === intent.source);
+      if (source) source.containerId = intent.container; // only ever adds an id, same rule as recordSourceSpot
       return OK;
     }
     default:
@@ -192,20 +228,15 @@ function resolveRemoteRoom(home: string, room: RemoteMemory, anchor: { x: number
   const sources: RemoteSourceMemory[] = [];
   for (const s of room.sources) {
     const scouted = roomMem?.scouted?.sources.find(sc => sc.id === s.id);
-    const cached = scouted?.paths?.[home];
-    if (cached !== undefined) {
-      sources.push({ ...s, distance: cached.length });
-      continue;
-    }
-    if (!anchor) continue; // no anchor placed yet; retry once building has one
-    const path = findRemotePath(new RoomPosition(anchor.x, anchor.y, home), new RoomPosition(s.x, s.y, room.room));
-    if (!path) {
+    // No scouted record to cache onto, or no anchor yet to path from: nothing to resolve this tick,
+    // retry next throttle tick rather than dropping the source outright.
+    if (!scouted || !anchor) continue;
+    const resolved = resolvePathToSource(home, anchor, room.room, scouted);
+    if (!resolved) {
       log.warn(`setRemotes: no path ${home} -> ${room.room} source ${s.id}, dropping`);
       continue;
     }
-    const serialized = serializeRemotePath(new RoomPosition(anchor.x, anchor.y, home), path);
-    if (scouted) (scouted.paths ??= {})[home] = serialized;
-    sources.push({ ...s, distance: serialized.length });
+    sources.push({ ...s, distance: resolved.distance, route: resolved.route });
   }
   return { ...room, sources };
 }

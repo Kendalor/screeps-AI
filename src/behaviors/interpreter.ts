@@ -140,14 +140,27 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
 }
 
 // Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
-function moveToRoom(creep: Creep, step: { room?: string; to?: "scoutTarget" | "targetRoom" }): StepResult {
+function moveToRoom(
+  creep: Creep,
+  step: { room?: string; to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" }
+): StepResult {
   const dest =
-    step.to === "scoutTarget" ? creep.memory.scoutTarget : step.to === "targetRoom" ? creep.memory.targetRoom : step.room;
+    step.to === "scoutTarget"
+      ? creep.memory.scoutTarget
+      : step.to === "targetRoom"
+        ? creep.memory.targetRoom
+        : step.to === "buildTargetRoom"
+          ? creep.memory.buildTargetRoom
+          : step.to === "repairTargetRoom"
+            ? creep.memory.repairTargetRoom
+            : step.room;
   if (!dest) return { acted: false, didAct: false }; // nothing to move toward — step is a no-op, advance past it
 
   if (creep.room.name === dest) {
     // Arrived. Clear a consumed scout target and its route so the next assignment starts clean. A
-    // targetRoom (a remote miner's permanent destination) is NOT cleared — the creep works there for life.
+    // targetRoom (a remote miner's permanent destination), buildTargetRoom (reassigned by Building,
+    // not self-clearing), and repairTargetRoom (reassigned by Repairing, same rule) are NOT cleared —
+    // the creep keeps working there until told otherwise.
     if (step.to === "scoutTarget") {
       creep.memory.scoutTarget = undefined;
       creep.memory.route = undefined;

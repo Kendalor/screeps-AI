@@ -17,7 +17,7 @@ export interface SnapTower {
 }
 
 import type { XY } from "../lib/geometry";
-import type { RoleName, ScoutInfo } from "../memory/schema";
+import type { RemoteRouteTile, RoleName, ScoutInfo } from "../memory/schema";
 import type { RoomType } from "../lib/roomName";
 
 export interface SnapSpawn {
@@ -98,6 +98,11 @@ export interface SnapRemoteSource extends XY {
   containerId?: Id<StructureContainer>; // its drop container once built (in the remote room)
   reserved: boolean; // is the room currently reserved by us (10/tick) or not (5/tick)
   danger: number; // hostile presence in the room; > 0 means stop staffing/reserving
+  // The cached home->source path (see RemoteSourceMemory.route), room-tagged tile by tile. Absent until
+  // resolveRemoteRoom has computed it at least once (e.g. selected but no anchor yet). Mining turns this
+  // into container/road construction claims instead of re-deriving a path with the local-only cost-matrix
+  // pather in layouts/roads.ts.
+  route?: RemoteRouteTile[];
 }
 
 export interface SnapDrop extends XY {
@@ -179,7 +184,29 @@ export interface ColonySnapshot {
   sourceMemory: Partial<Record<Id<Source>, SnapSourceMemory>>; // keyed by source id; missing means nothing recorded yet
   structures: SnapStructure[];
   sites: SnapStructure[];
-  constructionProgress: number; // total work remaining across all sites in the room
+  // Built structures/sites in a *remote* room, keyed by room name — present only for a remote room with
+  // vision this tick (a creep is standing in it), same live-or-nothing rule remoteEnergy/remote vision
+  // already follow. Lets the construction arbiter dedup a remote claim against what's really there,
+  // without ever needing a persistent "what's built in this room" cache — the room simply isn't visible
+  // when there's nothing to dedup against.
+  remoteStructures: Partial<Record<string, SnapStructure[]>>;
+  remoteSites: Partial<Record<string, SnapStructure[]>>;
+  // This tick's fresh danger read for a remote room, keyed by room name — present only with live vision,
+  // same rule as remoteStructures/remoteSites. Mining diffs this against RemoteMemory.dangerUntil (via
+  // colony.remoteSources) to know when to emit recordRemoteDanger; the resolved 0/1 SnapRemoteSource.danger
+  // isn't enough for that since it's already blended with the memory fallback.
+  remoteDanger: Partial<Record<string, number | undefined>>;
+  // Every construction site this colony currently owns across its own rooms (this colony's home room
+  // plus its selected remote rooms), read from Game.constructionSites — vision-independent, unlike
+  // remoteSites above, since a site's existence is known to its owner regardless of current visibility.
+  // This is what the construction arbiter's shared budget counts against, so a site sitting in a remote
+  // room with no vision this tick still consumes its share of the cap.
+  siteSummary: { room: string; type: BuildableStructureConstant }[];
+  constructionProgress: number; // total work remaining across all sites in the home room
+  // Same, but for sites in this colony's selected remote rooms — vision-independent like siteSummary
+  // (Game.constructionSites carries progress/progressTotal regardless of current room vision), so this
+  // stays accurate even between the ticks a remote room has no creep standing in it.
+  remoteConstructionProgress: number;
   scoutTargets: ScoutCandidate[]; // rooms within scouting radius; empty until the frontier is walked
   visibleRooms: VisibleRoom[]; // every room with vision this tick, regardless of scouting radius
 }

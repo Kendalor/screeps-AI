@@ -1,8 +1,8 @@
 // Pure fixture tests, no Game mocking — a hand-built ColonySnapshot in, Provider[]/Consumer[] out.
 
 import { describe, expect, it } from "vitest";
-import { consumers, providers } from "../../../src/logistics/graph";
-import { colonySnap, containerAt, dropAt, remoteEnergyAt, sinkAt, snapCreep, structureAt, tombstoneAt, towerAt } from "../../fixtures";
+import { consumers, providers, storageOverflow } from "../../../src/logistics/graph";
+import { colonySnap, containerAt, dropAt, remoteEnergyAt, remoteSourceAt, sinkAt, snapCreep, structureAt, tombstoneAt, towerAt } from "../../fixtures";
 
 describe("providers", () => {
   it("treats a source container holding energy as a provider", () => {
@@ -71,6 +71,32 @@ describe("providers", () => {
     const snap = colonySnap({ remoteEnergy: [remote], energyAvailable: 200, energyCapacity: 550 });
 
     expect(providers(snap).some(p => p.ref.kind === "dropped" && p.ref.id === remote.id)).toBe(true);
+  });
+
+  it("attaches the matching remote source's cached route length as remoteDistance for a container", () => {
+    // allocate.ts's nearest-fill needs a real-path-comparable distance for a remote provider (pos:
+    // null rules out a live path search across rooms) — the container sits on one specific source's
+    // drop spot, matched by containerId, so its route length is exact rather than a same-room guess.
+    const source = remoteSourceAt(10, 10, "W2N1", { containerId: "cont1" as Id<StructureContainer>, distance: 42 });
+    const remote = remoteEnergyAt("W2N1", 200, "container", "cont1");
+    const result = providers(colonySnap({ remoteSources: [source], remoteEnergy: [remote] }));
+
+    expect(result).toContainEqual(expect.objectContaining({ remote: true, remoteDistance: 42 }));
+  });
+
+  it("falls back to any source in the room for a dropped pile with no container to match against", () => {
+    const source = remoteSourceAt(10, 10, "W2N1", { distance: 17 });
+    const remote = remoteEnergyAt("W2N1", 200, "dropped");
+    const result = providers(colonySnap({ remoteSources: [source], remoteEnergy: [remote] }));
+
+    expect(result).toContainEqual(expect.objectContaining({ remote: true, remoteDistance: 17 }));
+  });
+
+  it("leaves remoteDistance undefined when no remote source is recorded for that room", () => {
+    const remote = remoteEnergyAt("W2N1", 200, "dropped");
+    const result = providers(colonySnap({ remoteEnergy: [remote] }));
+
+    expect(result[0]?.remoteDistance).toBeUndefined();
   });
 
   it("includes a tombstone's energy above the worthwhile floor", () => {
@@ -239,19 +265,20 @@ describe("consumers", () => {
 
   const storageId = "storage1" as Id<StructureStorage>;
 
-  it("wants storage's free capacity as the lowest-priority overflow sink once the spawn system is full", () => {
-    // Spawn full, so storage is the overflow buffer: 10000 - 4000 = 6000 free, ranked below upgrader (30).
+  it("wants storage's free capacity as an overflow sink ranked above builder/upgrader once the spawn system is full", () => {
+    // Spawn full, so storage is the overflow buffer: 10000 - 4000 = 6000 free, ranked above upgrader (30) —
+    // storage should absorb transport's load ahead of the pre-storage hand-to-creep fallback.
     const result = consumers(
       colonySnap({ storageId, storageEnergy: 4000, storageCapacity: 10000, energyAvailable: 50, energyCapacity: 50 })
     );
     const storageConsumer = result.find(c => c.ref.kind === "structure" && c.ref.id === storageId);
-    expect(storageConsumer).toEqual({ ref: { kind: "structure", id: storageId }, resource: RESOURCE_ENERGY, wanted: 6000, priority: 20 });
+    expect(storageConsumer).toEqual({ ref: { kind: "structure", id: storageId }, resource: RESOURCE_ENERGY, wanted: 6000, priority: 70 });
 
     const upgrader = snapCreep("upgrader", { storeEnergy: 20, storeCapacity: 100, x: 25, y: 25 });
     const upgraderConsumer = consumers(colonySnap({ creeps: [upgrader], controller: { x: 25, y: 25 } })).find(
       c => c.ref.kind === "creep"
     );
-    expect(upgraderConsumer!.priority).toBeGreaterThan(storageConsumer!.priority);
+    expect(storageConsumer!.priority).toBeGreaterThan(upgraderConsumer!.priority);
   });
 
   it("does not treat storage as a sink while the spawn system still wants energy", () => {
@@ -267,5 +294,47 @@ describe("consumers", () => {
       colonySnap({ storageId, storageEnergy: 10000, storageCapacity: 10000, energyAvailable: 50, energyCapacity: 50 })
     );
     expect(result.some(c => c.ref.kind === "structure" && c.ref.id === storageId)).toBe(false);
+  });
+
+  it("stops offering builder/upgrader as direct sinks once storage exists, even while storage itself is full", () => {
+    // Storage full (not a sink itself this tick) but still present: transport should NOT fall back to
+    // hand-feeding builder/upgrader directly — that pre-storage fallback is retired once storage exists.
+    const builder = snapCreep("builder", { storeEnergy: 20, storeCapacity: 100 });
+    const upgrader = snapCreep("upgrader", { storeEnergy: 20, storeCapacity: 100, x: 25, y: 25 });
+    const result = consumers(
+      colonySnap({
+        storageId,
+        storageEnergy: 10000,
+        storageCapacity: 10000,
+        energyAvailable: 50,
+        energyCapacity: 50,
+        creeps: [builder, upgrader],
+        controller: { x: 25, y: 25 }
+      })
+    );
+    expect(result.some(c => c.ref.kind === "creep")).toBe(false);
+  });
+});
+
+// storageOverflow is the escape hatch for a loaded transport creep that found no live consumer this
+// tick: unlike consumers()/providers() above, it is NOT gated on the spawn-deficit invariant, since it's
+// only ever used by allocate.ts as a delivery target for cargo the creep already carries — never a
+// pickup source — so it can't recreate the self-feeding loop that gate exists to prevent.
+describe("storageOverflow", () => {
+  const storageId = "storage1" as Id<StructureStorage>;
+
+  it("reports storage's free capacity regardless of a spawn-system deficit", () => {
+    const result = storageOverflow(
+      colonySnap({ storageId, storageEnergy: 4000, storageCapacity: 10000, energyAvailable: 30, energyCapacity: 50 })
+    );
+    expect(result).toEqual({ ref: { kind: "structure", id: storageId }, free: 6000 });
+  });
+
+  it("returns null when there is no storage yet", () => {
+    expect(storageOverflow(colonySnap({}))).toBeNull();
+  });
+
+  it("returns null when storage is already full", () => {
+    expect(storageOverflow(colonySnap({ storageId, storageEnergy: 10000, storageCapacity: 10000 }))).toBeNull();
   });
 });

@@ -254,3 +254,63 @@ describe("Scouting passive recording", () => {
     expect(records[0]).toEqual({ kind: "recordScout", room: "W1N2" }); // active wins, no passive flag
   });
 });
+
+// pickRemotes ranks/prices on a source's real PathFinder distance when it's cached, falling back to a
+// cheap estimate otherwise (see mining/pickRemotes.ts) — so scouting precomputes that real distance for
+// every in-range scouted source ahead of time, rather than pickRemotes ever calling PathFinder itself.
+describe("Scouting source-path precompute", () => {
+  it("emits recordSourcePath for an in-range scouted source with no cached path yet", () => {
+    const snap = colonySnap({
+      anchor: { x: 25, y: 25 },
+      scoutTargets: [scoutTarget("W1N2", scouted({ sources: [{ id: "s1" as Id<Source>, x: 10, y: 10 }] }))]
+    });
+    expect(scouting.intents(snap)).toContainEqual({
+      kind: "recordSourcePath",
+      home: "W1N1",
+      room: "W1N2",
+      anchor: { x: 25, y: 25 },
+      source: "s1"
+    });
+  });
+
+  it("stays silent for a source that already has a cached path for this home room", () => {
+    const snap = colonySnap({
+      anchor: { x: 25, y: 25 },
+      scoutTargets: [
+        scoutTarget(
+          "W1N2",
+          scouted({ sources: [{ id: "s1" as Id<Source>, x: 10, y: 10, paths: { W1N1: "121" } }] })
+        )
+      ]
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordSourcePath" }));
+  });
+
+  it("stays silent with no anchor placed yet", () => {
+    const snap = colonySnap({
+      anchor: null,
+      scoutTargets: [scoutTarget("W1N2", scouted({ sources: [{ id: "s1" as Id<Source>, x: 10, y: 10 }] }))]
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordSourcePath" }));
+  });
+
+  it("skips a candidate beyond MAX_REMOTE_HOPS even with an anchor and a source", () => {
+    const tooFar = {
+      room: "W5N1",
+      distance: 4, // MAX_REMOTE_HOPS is 3
+      type: "normal" as const,
+      info: scouted({ sources: [{ id: "s1" as Id<Source>, x: 10, y: 10 }] })
+    };
+    const snap = colonySnap({ anchor: { x: 25, y: 25 }, scoutTargets: [tooFar] });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordSourcePath" }));
+  });
+
+  it("skips the home room and unscouted candidates", () => {
+    const snap = colonySnap({
+      name: "W1N1",
+      anchor: { x: 25, y: 25 },
+      scoutTargets: [scoutTarget("W1N1", scouted()), scoutTarget("W1N3") /* no info */]
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordSourcePath" }));
+  });
+});

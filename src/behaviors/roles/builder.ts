@@ -9,7 +9,7 @@ const B_300_BODY: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE]; // 300
 // From 350 the base gains a third MOVE (WORK,CARRY,CARRY,MOVE,MOVE,MOVE = 350), then extends by
 // WORK,MOVE sets — each set keeps the body move-balanced while adding build throughput.
 const B_350_BODY: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE, MOVE]; // 350
-const EXT_SET: BodyPartConstant[] = [WORK, MOVE]; // 150
+const EXT_SET: BodyPartConstant[] = [WORK,CARRY, MOVE]; // 200
 // Cap the total body at 1200 energy: 350 base + 5 WORK,MOVE sets (5*150 = 750) = 1100, the most sets
 // that fit under 1200. A sixth set would cost 1250, so the body tops out at 16 parts / 1100 energy.
 const MAX_BODY_COST = 1200;
@@ -61,6 +61,10 @@ export class Builder extends Role {
       }
     },
     { do: "harvest", from: { find: "source" } },
+    // Building assigns buildTargetRoom to wherever the colony's nearest outstanding site backlog is
+    // (home or a remote room); a no-op once already there (moveToRoom completes instantly, falling
+    // through to build the same tick). Absent target (no backlog anywhere) makes this step a pure no-op.
+    { do: "moveToRoom", to: "buildTargetRoom" },
     { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
   ];
 }

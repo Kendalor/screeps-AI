@@ -21,6 +21,13 @@ export type Intent =
   // Repurpose a live creep in place — an idle builder with no construction left becomes a repairer or
   // upgrader instead of drop-mining out its remaining life. execute.ts owns the memory.role write.
   | { kind: "setCreepRole"; creep: Id<Creep>; role: RoleName }
+  // A builder's cross-room construction assignment — picked by operations/building.ts off siteSummary
+  // (already vision-independent, room-name-only distance ranking), so unlike setScoutTarget the room is
+  // resolved in the planner itself; execute.ts just writes it. See CreepMemory.buildTargetRoom.
+  | { kind: "setBuildTargetRoom"; creep: Id<Creep>; room: string }
+  // The repairer equivalent, picked by operations/repairing.ts off tower-uncovered decay across the
+  // colony's rooms. See CreepMemory.repairTargetRoom.
+  | { kind: "setRepairTargetRoom"; creep: Id<Creep>; room: string }
   // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
   // execute.ts owns the memory write" split as setCreepRole above).
   | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }
@@ -33,10 +40,26 @@ export type Intent =
       container?: Id<StructureContainer>;
       link?: Id<StructureLink>;
     }
+  // The remote-route equivalent of recordSourceSpot, for the one field a remote source actually needs
+  // persisted (see RemoteSourceMemory.containerId — spot/route are already cached elsewhere). A separate
+  // kind rather than reusing recordSourceSpot: that one writes ColonyMemory.sources (flat, local-only),
+  // while this writes ColonyMemory.remotes[].sources[] (nested under the selected remote room).
+  | { kind: "recordRemoteContainer"; room: string; remoteRoom: string; source: Id<Source>; container: Id<StructureContainer> }
+  // Persists a remote room's live danger read (see RemoteRoomVision.dangerUntil) so it survives losing
+  // vision — execute.ts writes it onto ColonyMemory.remotes[].dangerUntil. Unlike recordRemoteContainer
+  // this can move the value down (to undefined) as well as up: it's only ever emitted when vision exists,
+  // so an all-clear read is just as much ground truth as a hostile one.
+  | { kind: "recordRemoteDanger"; room: string; remoteRoom: string; dangerUntil: number | undefined }
   // Planner decides a room is worth recording; execute.ts reads the live room to build the observation.
   // `passive`: recorded from ambient vision, not a scout's assigned survey — execute.ts skips re-finding
   // static data (sources/mineral) already on record, refreshing only tick/owner/hostile.
   | { kind: "recordScout"; room: string; passive?: boolean }
+  // Precomputes and caches a scouted source's real home->source PathFinder distance (see
+  // ScoutedSource.paths/.route) before pickRemotes ever runs, so selection ranks/prices sources on the
+  // ground truth instead of the cheap remoteDistanceEstimate fallback. Emitted for scouted sources within
+  // MAX_REMOTE_HOPS that don't have a cached path yet; execute.ts owns the actual PathFinder call and
+  // Memory write via the same resolvePathToSource helper resolveRemoteRoom already uses post-selection.
+  | { kind: "recordSourcePath"; home: string; room: string; anchor: { x: number; y: number }; source: Id<Source> }
   // Planner narrows to the viable candidate rooms (pure filter, no distance ranking); execute.ts picks
   // the nearest by Game.map.findRoute (real room-graph hops from the scout's *current* room, since only
   // it can reach Game.map) and writes the target + route into creep memory.

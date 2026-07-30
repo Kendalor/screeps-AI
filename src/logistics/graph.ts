@@ -19,6 +19,12 @@ export interface Provider {
   // these — the creep needs a travelHome leg first so the consumer isn't reserved for the whole
   // cross-room trip home. Absent (falsy) for every home provider.
   remote?: boolean;
+  // Cached home anchor -> remote source route length (SnapRemoteSource.distance), the real-path
+  // distance mining/distance.ts or remotePath.ts already computed once for this source. Present only
+  // when `remote` is true — allocate.ts's nearest-fill picker uses it in place of a live path search
+  // (which `pos: null` rules out for a cross-room target), so a remote pile can now win a nearest-fill
+  // decision instead of only ever being reached via the largest-first fallback.
+  remoteDistance?: number;
 }
 
 export interface Consumer {
@@ -41,13 +47,16 @@ const PRIORITY = {
   // collapsed to whatever a creep could personally harvest, once maxHaulers:0 meant transport was
   // efficient enough to leave drops=0/containers=0 permanently). Builder ranks above upgrader per
   // explicit direction — a stalled build blocks the room's economy longer than slower upgrading does.
+  // Pre-storage only: consumers() below emits these two exclusively while colony.storageId is unset.
   builder: 40,
   upgrader: 30,
-  // Storage is the overflow buffer: the lowest-priority sink, taken only when every live consumer
-  // above is satisfied. It is the inverse of the source-side gate below — storage is a sink exactly
-  // when the spawn system has no deficit, and a source exactly when it does, so it is never both in
-  // the same tick and can never feed itself in a loop.
-  storage: 20
+  // Storage is the sink once it exists: builder/upgrader (above) are the pre-storage fallback so a
+  // creep isn't left to self-harvest before storage is built, but consumers() stops emitting them the
+  // moment storage exists — transport should always feed storage rather than hand-feeding creeps
+  // directly. Still below spawn/tower/controller-container. It is the inverse of the source-side gate
+  // below — storage is a sink exactly when the spawn system has no deficit, and a source exactly when
+  // it does, so it is never both in the same tick and can never feed itself in a loop.
+  storage: 70
 } as const;
 
 // The controller container is topped to a floor (not filled to 100%) so upgraders draining it for
@@ -137,9 +146,23 @@ export function providers(colony: ColonySnapshot): Provider[] {
         : r.kind === "tombstone"
           ? { kind: "tombstone", id: r.id as Id<Tombstone> }
           : { kind: "dropped", id: r.id as Id<Resource> };
+    // A container sits on one specific source's drop spot — match it by containerId for the exact
+    // route length. A ground pile/tombstone isn't tied to one source, so fall back to any source
+    // already selected in that room (remoteEnergyFor only ever scans a room pickRemotes chose, so one
+    // is always present once remoteEnergy itself is non-empty for that room).
+    const bySource = colony.remoteSources.find(s => s.room === r.room && s.containerId === r.id);
+    const anyInRoom = colony.remoteSources.find(s => s.room === r.room);
     // Cross-room: no position comparable to a home creep's x/y, so nearest-fill selection (allocate.ts)
-    // skips these and only the largest-first fallback ever picks them.
-    out.push({ ref, resource: RESOURCE_ENERGY, available: r.amount, urgency: r.kind === "container" ? 0.5 : 1, pos: null, remote: true });
+    // compares remoteDistance instead of pos for these.
+    out.push({
+      ref,
+      resource: RESOURCE_ENERGY,
+      available: r.amount,
+      urgency: r.kind === "container" ? 0.5 : 1,
+      pos: null,
+      remote: true,
+      remoteDistance: (bySource ?? anyInRoom)?.distance
+    });
   }
 
   // Storage as a source, but only while the spawn system is short: this is the drain direction the
@@ -210,21 +233,27 @@ export function consumers(colony: ColonySnapshot): Consumer[] {
   }
 
   // Lowest tiers: builder and upgrader as direct creep sinks, so they don't fall back to self-harvest
-  // once transport has already claimed every ground pile — builder ranked above upgrader.
-  for (const c of colony.creeps) {
-    if (c.role !== "builder") continue;
-    pushCreepConsumer(out, c, PRIORITY.builder);
-  }
-  for (const c of colony.creeps) {
-    if (c.role !== "upgrader") continue;
-    if (!isNearControllerPos(colony, c)) continue; // only upgraders at the controller are viable sinks
-    pushCreepConsumer(out, c, PRIORITY.upgrader);
+  // once transport has already claimed every ground pile — builder ranked above upgrader. Only while
+  // there's no storage yet: once storage exists, transport should always feed it instead of hand-
+  // feeding creeps directly — storage is never further away than the creeps it would otherwise chase,
+  // and a creep needing energy can draw from storage itself rather than waiting on a transport delivery.
+  if (!colony.storageId) {
+    for (const c of colony.creeps) {
+      if (c.role !== "builder") continue;
+      pushCreepConsumer(out, c, PRIORITY.builder);
+    }
+    for (const c of colony.creeps) {
+      if (c.role !== "upgrader") continue;
+      if (!isNearControllerPos(colony, c)) continue; // only upgraders at the controller are viable sinks
+      pushCreepConsumer(out, c, PRIORITY.upgrader);
+    }
   }
 
-  // Storage as the overflow buffer, lowest priority of all: taken only once every live consumer above
-  // is satisfied. Gated on the spawn system being full — the exact inverse of the source-side gate, so
-  // storage is a sink or a source but never both in the same tick (it can't feed itself). When spawn is
-  // short, storage is a source (see providers) and skipped here.
+  // Storage as the overflow buffer, once it exists builder/upgrader are no longer emitted as
+  // consumers at all (see the storageId gate above) — this is the sole sink transport falls to below
+  // spawn/tower/controller-container. Gated on the spawn system being full — the exact inverse of the
+  // source-side gate, so storage is a sink or a source but never both in the same tick (it can't feed
+  // itself). When spawn is short, storage is a source (see providers) and skipped here.
   if (colony.storageId && spawnSystemDeficit(colony) === 0) {
     const wanted = colony.storageCapacity - colony.storageEnergy;
     if (wanted > 0) {
@@ -238,6 +267,25 @@ export function consumers(colony: ColonySnapshot): Consumer[] {
   }
 
   return out;
+}
+
+export interface StorageOverflow {
+  ref: NodeRef;
+  free: number;
+}
+
+// Storage's raw free capacity right now, regardless of the spawnSystemDeficit gate consumers() applies
+// above. Used only by allocate.ts as a last-resort dump for a creep that already carries energy (from a
+// decaying pile, or a target that went stale) and found no live consumer for it this tick — never as a
+// pickup source in that same leg, so it can't recreate the withdraw-then-redeposit loop the gate exists
+// to prevent. Without this, a creep stuck in that spot sits on unrouted cargo (or worse, the speculative
+// pass sends it to fetch yet MORE energy) any tick the spawn system has even a token deficit — which is
+// most ticks in an actively-spawning colony, since the gate is all-or-nothing on the aggregate deficit.
+export function storageOverflow(colony: ColonySnapshot): StorageOverflow | null {
+  if (!colony.storageId) return null;
+  const free = colony.storageCapacity - colony.storageEnergy;
+  if (free <= 0) return null;
+  return { ref: { kind: "structure", id: colony.storageId as Id<AnyStoreStructure> }, free };
 }
 
 function isNearControllerPos(colony: ColonySnapshot, c: SnapCreep): boolean {

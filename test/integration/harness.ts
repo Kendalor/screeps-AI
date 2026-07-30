@@ -416,7 +416,12 @@ export class BootedColony {
         .filter(o => o.type !== "controller" && o.type !== "source" && o.type !== "mineral" && o.type !== "creep")
         .map(o => ({ x: o.x, y: o.y, type: o.type as BuildableStructureConstant })),
       sites: [],
+      remoteStructures: {},
+      remoteSites: {},
+      remoteDanger: {},
+      siteSummary: [],
       constructionProgress: 0,
+      remoteConstructionProgress: 0,
       // The layout planners this snapshot feeds never read scout targets; scouting demand is sized by
       // the running bot in-engine, not seeded.
       scoutTargets: [],

@@ -112,6 +112,15 @@ export interface RoadPathResult {
   structurePos: XY;
 }
 
+// Real walkable-tile distance from `from` to within `range` of `to` — terrain/structure-aware, unlike
+// a Chebyshev/linear-distance guess. Same A* this module already uses for road planning, repurposed as
+// a plain distance query. Infinity when `to` is unreachable (e.g. walled off), so callers can treat it
+// like a missing candidate rather than special-casing an empty path.
+export function pathDistance(from: XY, to: XY, range: number, cm: RoadCostMatrix): number {
+  const path = findPath(from, to, range, cm);
+  return path.length === 0 ? Infinity : path.length - 1;
+}
+
 function roadPathTo(anchor: XY, target: XY, range: number, costMatrix: RoadCostMatrix): RoadPathResult {
   const path = findPath(anchor, target, range, costMatrix);
   const structurePos = path[path.length - 1];

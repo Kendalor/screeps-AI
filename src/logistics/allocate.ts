@@ -9,10 +9,15 @@
 // largest-available-first chaining (pickLargestProvider/pickLargestDecayingProvider), mirroring
 // hauler.ts's own `prefer: "largest"` default, to combine as few providers as possible.
 
-import { range, type XY } from "../lib/geometry";
+import type { XY } from "../lib/geometry";
+import { pathDistance, RoadCostMatrix } from "../layouts/roads";
 import type { DeepReadonly, SnapCreep } from "../snapshot/types";
-import type { Consumer, Provider } from "./graph";
+import type { Consumer, Provider, StorageOverflow } from "./graph";
 import type { LogisticsTask, NodeRef } from "./types";
+
+// Withdraw/pickup/transfer all act at range 1 (see behaviors/actions.ts's actOnResolved default) — the
+// same range a real trip needs, so the path-distance query below matches what the creep will actually walk.
+const PICKUP_RANGE = 1;
 
 export interface ReservedAmounts {
   providers: Partial<Record<string, number>>; // keyed by NodeRef identity string, amount already claimed
@@ -43,9 +48,18 @@ export function allocate(
   providers: readonly Provider[],
   consumers: readonly Consumer[],
   idleCreeps: readonly SnapCreep[],
-  reserved: ReservedAmounts
+  reserved: ReservedAmounts,
+  storageOverflow: StorageOverflow | null = null,
+  // Terrain/structure-aware cost matrix for the home room, built once by the caller (see
+  // logistics/index.ts) so every pickNearestFillingProvider call this tick reuses the same matrix
+  // instead of rebuilding it per creep. Defaults to an all-open matrix (no walls/structures) so callers
+  // that don't care about obstacles — most existing tests — get plain walkable-distance behavior.
+  costMatrix: RoadCostMatrix = new RoadCostMatrix()
 ): Record<Id<Creep>, LogisticsTask> {
   const out: Record<Id<Creep>, LogisticsTask> = {};
+  // Mutable across this whole call so two loaded creeps in the same tick don't both dump into storage
+  // past its real free capacity — decremented as the fallback below claims it.
+  let overflowFree = storageOverflow?.free ?? 0;
 
   const consumerRemaining = new Map<string, number>();
   const sortedConsumers = [...consumers].sort((a, b) => b.priority - a.priority || b.wanted - a.wanted);
@@ -76,6 +90,17 @@ export function allocate(
         continue;
       }
       const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, creep.storeEnergy);
+      const delivered = delivers.reduce((sum, d) => sum + d.amount, 0);
+      const leftover = creep.storeEnergy - delivered;
+      // No live consumer wanted (all of) what this creep carries: dump the rest into storage rather
+      // than stranding it on the creep or, worse, letting the speculative pass below send it to fetch
+      // even MORE energy on top of what it can't deliver. Never a pickup, so this can't reintroduce the
+      // withdraw-then-redeposit loop storage's consumer-side gate (above) guards against.
+      if (leftover > 0 && storageOverflow && overflowFree > 0 && !delivers.some(d => refKey(d.ref) === refKey(storageOverflow.ref))) {
+        const dump = Math.min(leftover, overflowFree);
+        overflowFree -= dump;
+        delivers.push({ ref: storageOverflow.ref, amount: dump });
+      }
       const chain = linkDelivers(delivers);
       if (chain) out[creep.id] = chain;
       continue;
@@ -91,7 +116,7 @@ export function allocate(
     const fillTarget = Math.min(capacity, wantOpen);
     if (fillTarget <= 0) continue;
 
-    const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget, creep);
+    const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget, creep, costMatrix);
     if (pickups.length === 0) continue;
     const loaded = pickups.reduce((sum, p) => sum + p.amount, 0);
 
@@ -136,7 +161,7 @@ export function allocate(
     if (free <= 0) continue;
 
     const provider =
-      pickNearestFillingProvider(providers, providerRemaining, RESOURCE_ENERGY, creep, free, isDecaying) ??
+      pickNearestFillingProvider(providers, providerRemaining, RESOURCE_ENERGY, creep, free, costMatrix, isDecaying) ??
       pickLargestDecayingProvider(providers, providerRemaining);
     if (!provider) continue;
 
@@ -164,12 +189,14 @@ function buildPickupChain(
   remaining: Map<string, number>,
   resource: ResourceConstant,
   fillTarget: number,
-  from: XY
+  from: XY,
+  costMatrix: RoadCostMatrix
 ): { ref: NodeRef; amount: number; remote?: boolean }[] {
   const out: { ref: NodeRef; amount: number; remote?: boolean }[] = [];
   let need = fillTarget;
   while (need > 0) {
-    const provider = pickNearestFillingProvider(providers, remaining, resource, from, need) ?? pickLargestProvider(providers, remaining, resource);
+    const provider =
+      pickNearestFillingProvider(providers, remaining, resource, from, need, costMatrix) ?? pickLargestProvider(providers, remaining, resource);
     if (!provider) break;
     const key = refKey(provider.ref);
     const take = Math.min(need, remaining.get(key) ?? 0);
@@ -182,30 +209,35 @@ function buildPickupChain(
 }
 
 // Among providers that alone still have at least `need` left, returns the nearest to `from` (the
-// creep's own position). A provider with `pos: null` (a remote/cross-room source — not comparable to a
-// home creep's x/y in the same range metric) is never picked here; it only ever gets tapped via the
-// largest-first fallback. Ties (equal range) keep the first-encountered candidate, matching the
-// tie-break every other picker in this file uses.
+// creep's own position) by real walkable-tile path distance, not Chebyshev/linear range — a wall
+// between the creep and a "close" provider makes it lose to a farther-but-reachable one, same as a
+// creep would actually experience. A home provider (`pos` set) is path-found against `costMatrix`; a
+// remote provider (`pos: null`, `remote: true`) uses its cached anchor->source route length instead —
+// its real position lives in a different room's coordinate space, not comparable to `from` by any
+// single path search here, so the precomputed distance stands in for it. A provider with neither
+// (`pos: null` and no `remoteDistance`) is skipped; it only ever gets tapped via the largest-first
+// fallback. Ties (equal distance) keep the first-encountered candidate, matching the tie-break every
+// other picker in this file uses.
 function pickNearestFillingProvider(
   providers: readonly Provider[],
   remaining: Map<string, number>,
   resource: ResourceConstant,
   from: XY,
   need: number,
+  costMatrix: RoadCostMatrix,
   filter?: (ref: NodeRef) => boolean
 ): Provider | undefined {
   let best: Provider | undefined;
-  let bestRange = Infinity;
+  let bestDistance = Infinity;
   for (const p of providers) {
     if (p.resource !== resource) continue;
     if (filter && !filter(p.ref)) continue;
-    if (!p.pos) continue;
     const left = remaining.get(refKey(p.ref)) ?? 0;
     if (left < need) continue;
-    const r = range(from, p.pos);
-    if (r < bestRange) {
+    const d = p.remote ? (p.remoteDistance ?? Infinity) : p.pos ? pathDistance(from, p.pos, PICKUP_RANGE, costMatrix) : Infinity;
+    if (d < bestDistance) {
       best = p;
-      bestRange = r;
+      bestDistance = d;
     }
   }
   return best;

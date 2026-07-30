@@ -4,6 +4,7 @@
 import { roleDef } from "../behaviors/roles";
 import { needsPassiveRecording, needsScouting, scoutCandidatePool } from "../behaviors/scout";
 import type { Intent } from "../intents/types";
+import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
@@ -52,12 +53,37 @@ export class Scouting extends Operation {
       out.push({ kind: "recordScout", room: visible.room, passive: true });
     }
 
+    out.push(...this.pathPrecompute(colony));
+
     // Nothing left in range to survey — push the frontier out one ring (execute.ts caps at MAX_SCOUT_RANGE).
     // Home room excluded: it's never dispatch-worthy, so it must not block the frontier from advancing.
     const nothingToDo =
       scouts.length > 0 && !colony.scoutTargets.some(t => t.room !== colony.name && needsScouting(t, colony.tick));
     if (nothingToDo) out.push({ kind: "advanceScoutRadius" });
 
+    return out;
+  }
+
+  // Emits recordSourcePath for every scouted source within remote-mining range that doesn't have a real
+  // path cached yet, so pickRemotes can rank/price on the ground truth instead of the cheap estimate by
+  // the time it runs. Bounded to MAX_REMOTE_HOPS: precomputing for the whole scouting frontier (which
+  // grows well past remote-mining range for unrelated map-awareness reasons) would waste PathFinder calls
+  // on rooms that could never be selected anyway.
+  private pathPrecompute(colony: ColonySnapshot): Intent[] {
+    if (!colony.anchor) return []; // no anchor yet; nothing to path from (mirrors resolveRemoteRoom's guard)
+    const anchor = colony.anchor;
+    const out: Intent[] = [];
+    for (const cand of colony.scoutTargets) {
+      if (cand.room === colony.name) continue;
+      if (cand.type !== "normal") continue;
+      if (cand.distance > MAX_REMOTE_HOPS) continue;
+      const info = cand.info;
+      if (!info) continue;
+      for (const src of info.sources) {
+        if (src.paths?.[colony.name] !== undefined) continue; // already cached
+        out.push({ kind: "recordSourcePath", home: colony.name, room: cand.room, anchor, source: src.id });
+      }
+    }
     return out;
   }
 

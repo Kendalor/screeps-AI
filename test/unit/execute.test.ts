@@ -140,6 +140,81 @@ describe("actuator", () => {
     expect(mem.sources.src1).toEqual({ spot: { x: 19, y: 11 }, containerId: "cont1" });
   });
 
+  it("persists a remote source's container id into its selected-remote memory entry", () => {
+    stubGame();
+    (globalThis as Record<string, unknown>).Memory = {
+      colonies: {
+        W1N1: {
+          sources: {},
+          danger: 0,
+          remotes: [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 40 }] }]
+        }
+      }
+    };
+
+    execute([
+      { kind: "recordRemoteContainer", room: "W1N1", remoteRoom: "W2N1", source: "s1" as Id<Source>, container: "cont1" as Id<StructureContainer> }
+    ]);
+
+    const mem = (globalThis as { Memory: { colonies: Record<string, { remotes: { room: string; sources: { id: string; containerId?: string }[] }[] }> } })
+      .Memory.colonies.W1N1;
+    expect(mem.remotes[0].sources[0].containerId).toBe("cont1");
+  });
+
+  it("does nothing when the remote source named isn't currently selected", () => {
+    stubGame();
+    (globalThis as Record<string, unknown>).Memory = {
+      colonies: { W1N1: { sources: {}, danger: 0, remotes: [] } }
+    };
+
+    execute([
+      { kind: "recordRemoteContainer", room: "W1N1", remoteRoom: "W2N1", source: "s1" as Id<Source>, container: "cont1" as Id<StructureContainer> }
+    ]);
+
+    const mem = (globalThis as { Memory: { colonies: Record<string, { remotes: unknown[] }> } }).Memory.colonies.W1N1;
+    expect(mem.remotes).toEqual([]);
+  });
+
+  it("persists a remote room's dangerUntil into its selected-remote memory entry", () => {
+    stubGame();
+    (globalThis as Record<string, unknown>).Memory = {
+      colonies: {
+        W1N1: {
+          sources: {},
+          danger: 0,
+          remotes: [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 40 }] }]
+        }
+      }
+    };
+
+    execute([{ kind: "recordRemoteDanger", room: "W1N1", remoteRoom: "W2N1", dangerUntil: 1500 }]);
+
+    const mem = (globalThis as { Memory: { colonies: Record<string, { remotes: { room: string; dangerUntil?: number }[] }> } })
+      .Memory.colonies.W1N1;
+    expect(mem.remotes[0].dangerUntil).toBe(1500);
+  });
+
+  it("clears a remote room's dangerUntil when this tick's vision reads it clear", () => {
+    stubGame();
+    (globalThis as Record<string, unknown>).Memory = {
+      colonies: {
+        W1N1: {
+          sources: {},
+          danger: 0,
+          remotes: [
+            { room: "W2N1", reserved: false, dangerUntil: 1500, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 40 }] }
+          ]
+        }
+      }
+    };
+
+    execute([{ kind: "recordRemoteDanger", room: "W1N1", remoteRoom: "W2N1", dangerUntil: undefined }]);
+
+    const mem = (globalThis as { Memory: { colonies: Record<string, { remotes: { room: string; dangerUntil?: number }[] }> } })
+      .Memory.colonies.W1N1;
+    expect(mem.remotes[0].dangerUntil).toBeUndefined();
+  });
+
   it("repurposes a creep: sets the new role and clears task and op stamp", () => {
     const creep = {
       memory: { home: "W1N1", role: "builder", op: "building:W1N1", task: { step: 2, target: "x" } } as CreepMemory
@@ -164,13 +239,23 @@ describe("actuator", () => {
         rooms: { W2N1: { scouted: { tick: 0, type: "normal", sources: [{ id: "s1", x: 25, y: 25 }], hostile: false } } }
       };
     }
-    type ColoniesMemory = { colonies: Record<string, { remotes: { room: string; sources: { id: string; distance: number }[] }[] }>; rooms: Record<string, { scouted: { sources: { paths?: Record<string, string> }[] } }> };
+    type ColoniesMemory = {
+      colonies: Record<string, { remotes: { room: string; sources: { id: string; distance: number; route?: { room: string; x: number; y: number }[] }[] }[] }>;
+      rooms: Record<string, { scouted: { sources: { paths?: Record<string, string>; route?: Record<string, { room: string; x: number; y: number }[]> }[] } }>;
+    };
     const mem = () => (globalThis as unknown as { Memory: ColoniesMemory }).Memory;
 
-    it("computes and caches a real PathFinder distance for a newly selected source", () => {
+    it("computes and caches a real PathFinder distance and route for a newly selected source", () => {
       stubGame();
       memoryWithAnchor({ x: 25, y: 25 });
-      const path = [new RoomPosition(26, 25, "W1N1"), new RoomPosition(0, 25, "W2N1"), new RoomPosition(1, 25, "W2N1")];
+      // (49,25)/(0,25) are the exit tiles on each side of the crossing — real, but excluded from
+      // the buildable route cache (see remotePath.ts's isExitTile); distance/paths still count them.
+      const path = [
+        new RoomPosition(26, 25, "W1N1"),
+        new RoomPosition(49, 25, "W1N1"),
+        new RoomPosition(0, 25, "W2N1"),
+        new RoomPosition(1, 25, "W2N1")
+      ];
       stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
 
       // pickRemotes' own estimate (999) must be discarded in favour of the real path's length.
@@ -179,18 +264,40 @@ describe("actuator", () => {
 
       expect(mem().colonies.W1N1.remotes[0].sources[0].distance).toBe(path.length);
       expect(mem().rooms.W2N1.scouted.sources[0].paths?.W1N1).toHaveLength(path.length);
+      const route = mem().rooms.W2N1.scouted.sources[0].route?.W1N1;
+      expect(route).toEqual([
+        { room: "W1N1", x: 26, y: 25 },
+        { room: "W2N1", x: 1, y: 25 }
+      ]);
+      expect(mem().colonies.W1N1.remotes[0].sources[0].route).toEqual(route);
     });
 
     it("reuses a cached path instead of calling PathFinder again", () => {
       stubGame();
       memoryWithAnchor({ x: 25, y: 25 });
       mem().rooms.W2N1.scouted.sources[0].paths = { W1N1: "121" }; // pre-cached, length 3
+      mem().rooms.W2N1.scouted.sources[0].route = { W1N1: [{ room: "W2N1", x: 1, y: 25 }] };
       // No stubPathFinder() call: PathFinder.search would throw if this test hit it.
 
       const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
       execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
 
       expect(mem().colonies.W1N1.remotes[0].sources[0].distance).toBe(3);
+      expect(mem().colonies.W1N1.remotes[0].sources[0].route).toEqual([{ room: "W2N1", x: 1, y: 25 }]);
+    });
+
+    it("recomputes when only the digit-string cache predates the route cache", () => {
+      stubGame();
+      memoryWithAnchor({ x: 25, y: 25 });
+      mem().rooms.W2N1.scouted.sources[0].paths = { W1N1: "121" }; // pre-existing cache, no route sibling
+      const path = [new RoomPosition(26, 25, "W1N1")];
+      stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
+
+      const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
+      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+
+      expect(mem().colonies.W1N1.remotes[0].sources[0].distance).toBe(path.length);
+      expect(mem().rooms.W2N1.scouted.sources[0].route?.W1N1).toEqual([{ room: "W1N1", x: 26, y: 25 }]);
     });
 
     it("drops a source PathFinder can't reach at all", () => {
@@ -212,6 +319,68 @@ describe("actuator", () => {
       execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
 
       expect(mem().colonies.W1N1.remotes).toEqual([]);
+    });
+
+    it("carries a room's dangerUntil forward across a re-selection instead of resetting it", () => {
+      stubGame();
+      memoryWithAnchor({ x: 25, y: 25 });
+      mem().rooms.W2N1.scouted.sources[0].paths = { W1N1: "121" };
+      mem().rooms.W2N1.scouted.sources[0].route = { W1N1: [{ room: "W2N1", x: 1, y: 25 }] };
+      // A prior invasion flagged this room dangerous; pickRemotes' own output never carries dangerUntil.
+      (mem().colonies.W1N1.remotes as { room: string; reserved: boolean; dangerUntil?: number; sources: unknown[] }[]) = [
+        { room: "W2N1", reserved: false, dangerUntil: 5000, sources: [] }
+      ];
+
+      const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
+      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+
+      expect((mem().colonies.W1N1.remotes[0] as { dangerUntil?: number }).dangerUntil).toBe(5000);
+    });
+  });
+
+  // recordSourcePath is the pre-selection twin of setRemotes' own path resolution: scouting emits it for
+  // an in-range scouted source so pickRemotes can rank/price on the real distance instead of the cheap
+  // estimate. Same resolvePathToSource helper under the hood, same cache.
+  describe("recordSourcePath", () => {
+    function memoryWithScouted(): void {
+      (globalThis as Record<string, unknown>).Memory = {
+        colonies: {},
+        rooms: { W2N1: { scouted: { tick: 0, type: "normal", sources: [{ id: "s1", x: 25, y: 25 }], hostile: false } } }
+      };
+    }
+    const roomMem = () =>
+      (globalThis as unknown as {
+        Memory: { rooms: Record<string, { scouted: { sources: { paths?: Record<string, string> }[] } }> };
+      }).Memory.rooms;
+
+    it("computes and caches a real path for a scouted source", () => {
+      stubGame();
+      memoryWithScouted();
+      const path = [new RoomPosition(26, 25, "W1N1"), new RoomPosition(1, 25, "W2N1")];
+      stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
+
+      execute([
+        { kind: "recordSourcePath", home: "W1N1", room: "W2N1", anchor: { x: 25, y: 25 }, source: "s1" as Id<Source> }
+      ]);
+
+      expect(roomMem().W2N1.scouted.sources[0].paths?.W1N1).toHaveLength(path.length);
+    });
+
+    it("does nothing when the scouted source can no longer be found", () => {
+      stubGame();
+      memoryWithScouted();
+
+      execute([
+        {
+          kind: "recordSourcePath",
+          home: "W1N1",
+          room: "W2N1",
+          anchor: { x: 25, y: 25 },
+          source: "gone" as Id<Source>
+        }
+      ]);
+
+      expect(roomMem().W2N1.scouted.sources[0].paths).toBeUndefined();
     });
   });
 

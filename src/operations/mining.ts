@@ -10,6 +10,7 @@ import type { Intent } from "../intents/types";
 import GOAL_JSON from "../layouts/Base_2.json";
 import { plannedObstacles } from "../layouts/goal";
 import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../layouts/roads";
+import { isExitTile } from "../lib/remotePath";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import type { BodyContext } from "../behaviors/types";
@@ -26,6 +27,11 @@ const config = {
   workPerSource: SOURCE_SATURATING_WORK, // shared with miner.ts's body cap so the two can't drift apart
   // Remote selection is cached; re-rank only occasionally so the active set is stable, not thrashing.
   remoteSelectionEvery: 1000,
+  // Full re-evaluation is much rarer: it's the only pass that can evict a previously-selected source
+  // (e.g. one that's gone stale, or a nearer room scouted since), so it deliberately fires far less often
+  // than the append-only 1000-tick selection above — thrashing the active set on every throttle tick
+  // would fight the haul/road infrastructure already built around it.
+  remoteReevaluateEvery: 5000,
   // Don't attempt remote mining until the home economy is established — a stable, snapshot-derivable
   // proxy for "the spawn can take on more creeps". TODO(remote): a real spawn-busy-fraction signal.
   remoteFromRcl: 3
@@ -144,18 +150,48 @@ export class Mining extends Operation {
     const out: PlacedStructure[] = [];
     // Tiles already claimed by layout, a sibling, or an earlier source this loop. Built structures
     // are deliberately excluded — a claim isn't "place a site," so dropping it once built would make
-    // Mining demolish its own container the tick after it went up.
-    const taken = new Set(planned.map(p => `${p.x},${p.y}`));
+    // Mining demolish its own container the tick after it went up. Keyed by room too: a remote route
+    // can share (x,y) with a home-room tile without being the same tile.
+    const taken = new Set(planned.map(p => `${p.room ?? colony.name},${p.x},${p.y}`));
     const claim = (p: PlacedStructure): void => {
-      const key = `${p.x},${p.y}`;
+      const key = `${p.room ?? colony.name},${p.x},${p.y}`;
       if (taken.has(key)) return;
       taken.add(key);
       out.push(p);
     };
 
-    for (const [, route] of this.sourceRoutes(colony, planned)) {
-      claim({ x: route.structurePos.x, y: route.structurePos.y, type });
-      for (const tile of route.path.slice(0, -1)) claim({ x: tile.x, y: tile.y, type: ROAD }); // last tile is the container, first is the anchor
+    for (const [source, route] of this.sourceRoutes(colony, planned)) {
+      claim({ x: route.structurePos.x, y: route.structurePos.y, type, sourceId: source.id });
+      // Claimed source-outward (reversed from path order, which runs anchor->source) so a builder
+      // paves the tiles nearest the source first and works back toward the anchor.
+      const roadTiles = route.path.slice(0, -1); // last tile is the container, first is the anchor
+      for (let i = roadTiles.length - 1; i >= 0; i--) {
+        const tile = roadTiles[i];
+        claim({ x: tile.x, y: tile.y, type: ROAD, sourceId: source.id });
+      }
+    }
+
+    // Remote routes reuse the already-computed cross-room PathFinder path (see resolveRemoteRoom in
+    // intents/execute.ts) instead of layouts/roads.ts's local-only cost matrix, which has no notion of
+    // leaving the room at all. Only claimed while the remote room actually has vision this tick — that's
+    // also exactly when we can tell what's already built there (colony.remoteStructures), so no separate
+    // "what already exists in a remote room" tracking is needed.
+    for (const source of colony.remoteSources) {
+      const route = source.route;
+      if (!route || route.length === 0) continue;
+      if (colony.remoteStructures[source.room] === undefined) continue;
+
+      const container = route[route.length - 1];
+      claim({ x: container.x, y: container.y, room: container.room, type, sourceId: source.id });
+      // Same source-outward ordering as the local route above. Exit tiles are skipped here (not just
+      // at cache-computation time in remotePath.ts's toRouteTiles) so a route cached before that
+      // exclusion existed still self-heals: Screeps refuses a construction site on an exit tile, and an
+      // un-droppable claim there would read as permanently unbuilt, stalling gateSourceGroups forever.
+      const roadTiles = route.slice(0, -1).filter(tile => !isExitTile(tile));
+      for (let i = roadTiles.length - 1; i >= 0; i--) {
+        const tile = roadTiles[i];
+        claim({ x: tile.x, y: tile.y, room: tile.room, type: ROAD, sourceId: source.id });
+      }
     }
     return out;
   }
@@ -188,6 +224,49 @@ export class Mining extends Operation {
         ...(container ? { container: container.id } : {})
       });
     }
+
+    // Remote container id: the one fact about a remote route that isn't already cached elsewhere
+    // (spot/route come from the selection-time PathFinder path, not live vision). Only ever adds an id,
+    // same non-destructive rule as recordSourceSpot above, and only ever checked when the remote room
+    // has vision this tick — exactly when colony.remoteStructures actually has something to find.
+    for (const source of colony.remoteSources) {
+      const route = source.route;
+      if (!route || route.length === 0) continue;
+      const live = colony.remoteStructures[source.room];
+      if (!live) continue;
+
+      const spot = route[route.length - 1];
+      const container = live.find(s => s.type === "container" && s.x === spot.x && s.y === spot.y);
+      if (!container?.id || source.containerId === container.id) continue;
+
+      out.push({
+        kind: "recordRemoteContainer",
+        room: colony.name,
+        remoteRoom: source.room,
+        source: source.id,
+        container: container.id as Id<StructureContainer>
+      });
+    }
+
+    // Remote danger: persist this tick's fresh read (see RemoteMemory.dangerUntil) so it survives losing
+    // vision. Only emitted with live vision behind it (colony.remoteDanger is populated exactly then, same
+    // rule as remoteStructures/remoteSites), so unlike recordRemoteContainer's append-only id, it's safe to
+    // move the cached value down as well as up — an all-clear read is real information too. No memory-side
+    // dedup is possible here (the snapshot has no read-back of ColonyMemory.remotes[].dangerUntil), so this
+    // writes every vision tick; execute.ts's assignment is a cheap, idempotent overwrite either way.
+    const dangerSeen = new Set<string>();
+    for (const source of colony.remoteSources) {
+      if (dangerSeen.has(source.room)) continue;
+      if (!(source.room in colony.remoteDanger)) continue; // no vision this tick
+      dangerSeen.add(source.room);
+
+      out.push({
+        kind: "recordRemoteDanger",
+        room: colony.name,
+        remoteRoom: source.room,
+        dangerUntil: colony.remoteDanger[source.room]
+      });
+    }
     return out;
   }
 
@@ -197,12 +276,17 @@ export class Mining extends Operation {
    * non-empty — a colony with no worthwhile scouted neighbour stays silent (its remotes are already [],
    * so writing [] would be pure noise every throttle tick). Gated to its throttle tick.
    *
-   * NOTE: this never *clears* a previously-selected remote that has gone unprofitable. The staffing gates
-   * downstream (danger>0, netEnergy re-check) already stop working a bad remote, and a stale memory entry
-   * is re-evaluated on the next non-empty selection; a dedicated clear path is a future refinement.
+   * Two throttle cadences fire this, at different tick moduli: the frequent one (remoteSelectionEvery)
+   * runs in append-only mode — previously-selected sources are always kept, at most one new room's worth
+   * is added. The much rarer one (remoteReevaluateEvery) runs a full re-rank that can evict a
+   * previously-selected source in favor of a genuinely better one (e.g. real path data that's since
+   * arrived, or a closer room only just scouted) — see pickRemotes' `reevaluate` flag. Structures/miners
+   * already built for an evicted source aren't cleaned up here; staffing gates downstream stop working a
+   * source once it drops out of colony.remoteSources.
    */
   private remoteSelection(colony: ColonySnapshot): Intent | undefined {
-    if (colony.tick % config.remoteSelectionEvery !== 0) return undefined;
+    const reevaluate = colony.tick % config.remoteReevaluateEvery === 0;
+    if (colony.tick % config.remoteSelectionEvery !== 0 && !reevaluate) return undefined;
 
     const remotes = pickRemotes({
       candidates: colony.scoutTargets,
@@ -212,7 +296,8 @@ export class Mining extends Operation {
         energyCapacity: colony.energyCapacity,
         spawnHeadroom: colony.controllerLevel >= config.remoteFromRcl
       },
-      currentlySelected: colony.remoteSources.map(s => s.id)
+      currentlySelected: colony.remoteSources.map(s => s.id),
+      reevaluate
     });
     if (remotes.length === 0) return undefined;
     return { kind: "setRemotes", room: colony.name, remotes };

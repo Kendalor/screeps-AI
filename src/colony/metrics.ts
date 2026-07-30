@@ -2,6 +2,7 @@
 // Pure over its inputs, unit-testable without Game; rendering is a separate concern (metricsVisual.ts).
 // Harvest rate is the one stored exception — see harvestRate() for why a window, not a running total.
 
+import { roleDef } from "../behaviors/roles";
 import type { PlacedStructure } from "../layouts/stamp";
 import { needsRepair, REPAIRABLE } from "../lib/repairable";
 import type { RoleName } from "../memory/schema";
@@ -41,6 +42,7 @@ export interface ColonyMetrics {
     capacity: number; // the "can I afford a body" ceiling
     storage: number; // 0 before storage is built
     dropped: number; // total energy sitting on the ground
+    remoteEnergy: number; // energy sitting in remote rooms (containers/drops/tombstones) awaiting haul-home
     harvestPerTick?: number; // realized income over the persisted window; undefined until 2 samples exist
   };
   controller: {
@@ -49,15 +51,25 @@ export interface ColonyMetrics {
     progressTotal: number; // progress to the next level; 0 at max RCL. progressTotal - progress = work left
   };
   construction: {
-    remaining: number; // total build points left across all sites; 0 when nothing is building. 1 point = 1 energy
+    remaining: number; // home-room build points left across all sites; 0 when nothing is building. 1 point = 1 energy
+    // Same, but for this colony's selected remote rooms — additive, not included in `remaining` (same
+    // split as energy.remoteEnergy vs energy.dropped). Vision-independent: a remote site's progress is
+    // known from Game.constructionSites even on a tick its room isn't visible.
+    remoteRemaining: number;
   };
   repair: {
     // Total hits of decay across all repairable structures below 100% — visible upkeep, shown before it
-    // reaches the repairer's action floor. 1 energy per REPAIR_POWER (100) hits.
+    // reaches the repairer's action floor. 1 energy per REPAIR_POWER (100) hits. Home room only.
     decay: number;
     // The subset of that decay past the repair floor (REPAIR_BELOW) — the hits a repairer would actually
     // be dispatched to restore. <= decay; 0 while everything is above the floor even if some has decayed.
     actionable: number;
+    // Same two figures, but for this colony's selected remote rooms — additive, not included in
+    // decay/actionable above. Only ever non-zero for a remote room we currently have vision of (same
+    // vision rule as remoteEnergy/remoteSources); a remote miner already self-repairs its own container,
+    // so this mostly surfaces road decay nobody is dispatched to fix yet.
+    remoteDecay: number;
+    remoteActionable: number;
   };
   safeMode: {
     active: number; // ticks remaining, 0 when not active
@@ -110,7 +122,9 @@ function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[], targets: 
       // Prefer the reported target; fall back to the request-derived denominator when none is reported.
       desired: target[role] ?? (current[role] ?? 0) + (wanted[role] ?? 0)
     }))
-    .sort((a, b) => b.desired - a.desired || a.role.localeCompare(b.role));
+    // Default spawn priority order (roleDef), highest first; roles with no def (e.g. sitter, pioneer)
+    // sort last, alphabetically among themselves.
+    .sort((a, b) => (roleDef(b.role)?.priority ?? -Infinity) - (roleDef(a.role)?.priority ?? -Infinity) || a.role.localeCompare(b.role));
 }
 
 // Built vs. targeted per structure type; a type appears if either count is > 0. Sorted most-remaining first.
@@ -210,6 +224,7 @@ export function collectMetrics(
       capacity: snapshot.energyCapacity,
       storage: snapshot.storageEnergy,
       dropped: snapshot.drops.reduce((sum, d) => sum + d.amount, 0),
+      remoteEnergy: snapshot.remoteEnergy.reduce((sum, e) => sum + e.amount, 0),
       harvestPerTick: harvestRate(mem, snapshot.tick, totalSourceEnergy(snapshot))
     },
     controller: {
@@ -218,9 +233,14 @@ export function collectMetrics(
       progressTotal: snapshot.controllerProgressTotal
     },
     construction: {
-      remaining: snapshot.constructionProgress
+      remaining: snapshot.constructionProgress,
+      remoteRemaining: snapshot.remoteConstructionProgress
     },
-    repair: repairRemainingFor(snapshot.structures),
+    repair: (() => {
+      const home = repairRemainingFor(snapshot.structures);
+      const remote = repairRemainingFor(Object.values(snapshot.remoteStructures).flatMap(s => s ?? []));
+      return { decay: home.decay, actionable: home.actionable, remoteDecay: remote.decay, remoteActionable: remote.actionable };
+    })(),
     safeMode: {
       active: snapshot.safeModeActive, // ticks remaining, 0 when not active
       count: snapshot.safeModeCount, // activations banked for later

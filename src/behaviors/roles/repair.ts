@@ -27,7 +27,12 @@ export class Repair extends Role {
   // Refills from the nearest energy source when empty; self-harvest is the last resort. A repairer with
   // nothing left to repair falls through to gather/harvest and idles topped-up — the Building operation
   // converts it back once real work reappears.
+  // Repairing assigns repairTargetRoom to wherever the colony's nearest outstanding decay is (home or a
+  // remote room); a no-op once already there (moveToRoom completes instantly, falling through to repair
+  // the same tick). Absent target (no decay anywhere) makes this step a pure no-op, same as builder's
+  // buildTargetRoom step.
   static override readonly steps: Step[] = [
+    { do: "moveToRoom", to: "repairTargetRoom" },
     { do: "repair", at: { find: "structure", type: REPAIRABLE, where: "damaged", repairBelow: 0.5, prefer: "mostDamaged" } },
     { do: "repair", at: { find: "structure", type: REPAIRABLE, where: "damaged", prefer: "nearest" } },
     {

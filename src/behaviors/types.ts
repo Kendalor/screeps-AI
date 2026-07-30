@@ -70,7 +70,7 @@ export type Step = ({
     | { do: "repair"; at: TargetSpec; upTo?: number }
     | { do: "upgrade" }
     | { do: "reserve" } // reserve the current room's controller — a claimer's whole job, once it has arrived
-    | { do: "moveToRoom"; room?: string; to?: "scoutTarget" | "targetRoom" } // static room, or "scoutTarget"/"targetRoom" to read the destination + memory.route from creep memory
+    | { do: "moveToRoom"; room?: string; to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" } // static room, or "scoutTarget"/"targetRoom"/"buildTargetRoom"/"repairTargetRoom" to read the destination + memory.route from creep memory
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
   );
 

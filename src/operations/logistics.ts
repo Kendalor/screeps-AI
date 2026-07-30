@@ -30,11 +30,13 @@ const config = {
   sourceRegenPerTick: 10, // shared ceiling with mining.ts — a room can't harvest past source regen
   roomIncomeCap: 20, // room ceiling on harvestable income (two sources) — mirrors mining.ts
   energyPerCarry: 50, // one CARRY part
-  carryMargin: 1.5, // over-provision required carry by 50% — a transporter's task set is larger than a
+  carryMargin: 1.2, // over-provision required carry by 20% — a transporter's task set is larger than a
   // hauler's (source->spawn/ext plus controller/tower top-off), so the plain income x round-trip figure
-  // under-counts the true transport load; bump the factor here pending a proper task-aware calculation
+  // under-counts the true transport load; bump the factor here pending a proper task-aware calculation.
+  // Now that maxTransport (below) scales with remote income too, the margin can run leaner — it no
+  // longer has to compensate for the cap silently swallowing remote-driven demand.
   defaultHaulDistance: 10, // fallback before an anchor is known
-  maxTransport: 6, // same measured ceiling mining.ts caps haulers at — more doesn't clear backlog faster
+  maxTransport: 12, // raised from mining.ts's old local-only hauler ceiling (6) — remote sources add income/distance the original cap never accounted for
   minTransportEnergy: 150, // one CARRY,CARRY,MOVE set — cheapest useful body
   bootstrapEnergy: 300 // base spawn capacity, always affordable — size the FIRST transport off this
 } as const;

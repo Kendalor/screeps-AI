@@ -4,7 +4,8 @@
 // All rates are energy/tick so they compose by addition. A source is worth mining when its harvest
 // yield beats the summed upkeep of the miner, the return haul, and the road+container it needs. All
 // constants come from the game's BODYPART_COST / *_DECAY / CREEP_LIFE_TIME etc. — never hardcoded here,
-// so a server with tweaked constants reprices correctly.
+// so a server with tweaked constants reprices correctly. A claimer amortizes over CREEP_CLAIM_LIFE_TIME
+// instead — a CLAIM part shortens a creep's life to 600 ticks, not the usual 1500.
 
 import type { SnapRemoteSource } from "../snapshot/types";
 
@@ -24,6 +25,12 @@ export function grossHarvest(reserved: boolean): number {
 // A body's spawn cost spread over its life is its steady-state energy/tick upkeep.
 function amortize(bodyCost: number): number {
   return bodyCost / CREEP_LIFE_TIME;
+}
+
+// A CLAIM part shortens a creep's life to CREEP_CLAIM_LIFE_TIME (600), not the usual CREEP_LIFE_TIME
+// (1500) — a claimer must be replaced 2.5x more often, so its upkeep needs its own amortization horizon.
+function amortizeClaimer(bodyCost: number): number {
+  return bodyCost / CREEP_CLAIM_LIFE_TIME;
 }
 
 // CARRY parts needed to keep `yieldPerTick` energy flowing over a round trip of `distance` tiles, priced
@@ -58,7 +65,7 @@ export function netEnergy(source: SnapRemoteSource, ctx: EconomyContext): number
 export function worthReserving(roomSources: readonly SnapRemoteSource[], ctx: EconomyContext): boolean {
   const marginalPerSource = grossHarvest(true) - grossHarvest(false); // +5/tick
   const marginalGain = marginalPerSource * roomSources.length;
-  return marginalGain > amortize(ctx.claimerBodyCost);
+  return marginalGain > amortizeClaimer(ctx.claimerBodyCost);
 }
 
 // Concrete costs for the default RCL2 bodies, so tests and the selector share one baseline. A container

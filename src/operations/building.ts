@@ -3,6 +3,8 @@
 import { countPart } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
 import { roleDef } from "../behaviors/roles";
+import { roomLinearDistance } from "../lib/roomName";
+import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { Operation, type RoleTarget } from "./operation";
@@ -39,6 +41,15 @@ function builderBodyWork(colony: ColonySnapshot): number {
   return Math.max(1, countPart(body, WORK));
 }
 
+// Colony-wide outstanding progress: home-room sites plus any remote room's (siteSummary/remoteConstructionProgress
+// are vision-independent-for-siteSummary-but-not-for-progress; a remote room with no vision this tick still shows
+// up in siteSummary, just without a progress figure until a creep is standing in it again). Builders dispatch off
+// siteSummary already (see buildTargetRoomIntents below), so demand has to count the same backlog or a remote-only
+// backlog spawns nobody to go work it.
+function totalConstructionProgress(colony: ColonySnapshot): number {
+  return colony.constructionProgress + colony.remoteConstructionProgress;
+}
+
 // WORK needed to clear outstanding progress, translated into a creep headcount against the current
 // body's WORK-per-creep, then capped at maxBuilders — never a raw headcount off progress directly.
 //
@@ -46,13 +57,40 @@ function builderBodyWork(colony: ColonySnapshot): number {
 // buffer to draw down, extra builders just out-spend the haulers and stall on empty. With storage the
 // cap lifts — a build blitz can spend the buffer down and refill afterwards, so the backlog drives it.
 function wantedBuilders(colony: ColonySnapshot): number {
-  if (colony.constructionProgress <= 0) return 0;
-  let wantedWork = Math.ceil(colony.constructionProgress / config.progressPerWork);
+  const totalProgress = totalConstructionProgress(colony);
+  if (totalProgress <= 0) return 0;
+  let wantedWork = Math.ceil(totalProgress / config.progressPerWork);
   if (colony.storageEnergy <= 0) {
     wantedWork = Math.min(wantedWork, Math.max(1, sustainableBuildWork(colony)));
   }
   const bodies = Math.ceil(wantedWork / builderBodyWork(colony));
   return Math.min(config.maxBuilders, bodies);
+}
+
+// Every room this colony currently owns a construction site in, nearest first — siteSummary is
+// vision-independent (Game.constructionSites), so a remote room's backlog counts even without a creep
+// standing in it right now. roomLinearDistance (pure Chebyshev, no Game.map) is the same cheap ranking
+// pickRemotes/scoutCandidatesAround use for a first-pass distance estimate; a builder crossing rooms
+// doesn't need a real pathed distance the way remote staffing economics do.
+function roomsWithSites(colony: ColonySnapshot): string[] {
+  const rooms = new Set(colony.siteSummary.map(s => s.room));
+  return [...rooms].sort((a, b) => roomLinearDistance(colony.name, a) - roomLinearDistance(colony.name, b));
+}
+
+// Reassign only a builder whose current room has run dry — keeps every other builder's assignment
+// stable tick to tick instead of re-ranking the whole cohort (and thrashing) every time any room's
+// backlog changes. A builder with no candidate room at all (nothing left anywhere) simply keeps
+// whatever it had; the role's moveToRoom step no-ops until Building has somewhere to send it again.
+function buildTargetRoomIntents(colony: ColonySnapshot): Intent[] {
+  const candidates = roomsWithSites(colony);
+  if (candidates.length === 0) return [];
+  const out: Intent[] = [];
+  for (const creep of colony.creeps) {
+    if (creep.role !== "builder") continue;
+    if (creep.memory.buildTargetRoom && candidates.includes(creep.memory.buildTargetRoom)) continue;
+    out.push({ kind: "setBuildTargetRoom", creep: creep.id, room: candidates[0] });
+  }
+  return out;
 }
 
 export class Building extends Operation {
@@ -65,5 +103,10 @@ export class Building extends Operation {
   /** Report the true builder target (0 once construction is done), so census shows any surplus as `N/0`. */
   public override roleTargets(colony: ColonySnapshot): RoleTarget[] {
     return [{ role: "builder", target: wantedBuilders(colony) }];
+  }
+
+  /** Keeps every live builder's cross-room assignment pointed at a room with outstanding sites. */
+  public override intents(colony: ColonySnapshot): Intent[] {
+    return buildTargetRoomIntents(colony);
   }
 }

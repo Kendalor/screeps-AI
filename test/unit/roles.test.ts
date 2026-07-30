@@ -104,17 +104,21 @@ describe("repair body", () => {
 describe("repair role", () => {
   it("prefers the most-damaged structure below 50% hits, falls back to the nearest damaged one, then refills", () => {
     const steps = roleDef("repair")?.steps ?? [];
+    // Cross-room assignment first, mirroring builder's buildTargetRoom step — a no-op once already there.
+    const moveStep = steps[0];
+    expect(moveStep.do).toBe("moveToRoom");
+    expect(moveStep.do === "moveToRoom" && moveStep.to).toBe("repairTargetRoom");
     // Tier 1: an emergency-level target (<50% hits), most damaged first — worth crossing the room for.
-    const first = steps[0];
+    const first = steps[1];
     expect(first.do).toBe("repair");
     expect(first.do === "repair" && first.at).toMatchObject({ where: "damaged", repairBelow: 0.5, prefer: "mostDamaged" });
     // Tier 2: any decay at all, nearest first — mopping up minor damage stays local instead of crisscrossing.
-    const second = steps[1];
+    const second = steps[2];
     expect(second.do).toBe("repair");
     expect(second.do === "repair" && second.at).toMatchObject({ where: "damaged", prefer: "nearest" });
     expect(second.do === "repair" && (second.at as { repairBelow?: number }).repairBelow).toBeUndefined();
     // Gather sits ahead of self-harvest so a repairer draws from stores/drops before mining itself.
-    expect(steps.map(s => s.do)).toEqual(["repair", "repair", "gather", "harvest"]);
+    expect(steps.map(s => s.do)).toEqual(["moveToRoom", "repair", "repair", "gather", "harvest"]);
   });
 });
 
@@ -149,6 +153,7 @@ describe("builder role", () => {
         }
       },
       { do: "harvest", from: { find: "source" } },
+      { do: "moveToRoom", to: "buildTargetRoom" },
       { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
     ]);
     // A hauler drained mid-run can't deliver its load to the spawn/extensions, so the builder must

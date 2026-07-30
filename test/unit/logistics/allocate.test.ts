@@ -3,8 +3,9 @@
 import { describe, expect, it } from "vitest";
 import { allocate, emptyReserved, refKey, type ReservedAmounts } from "../../../src/logistics/allocate";
 import type { Consumer, Provider } from "../../../src/logistics/graph";
+import { buildCostMatrix } from "../../../src/layouts/roads";
 import type { NodeRef } from "../../../src/logistics/types";
-import { snapCreep } from "../../fixtures";
+import { openTerrain, snapCreep } from "../../fixtures";
 
 const refKeyOf = (ref: NodeRef | undefined) => (ref ? refKey(ref) : undefined);
 
@@ -59,6 +60,58 @@ describe("allocate", () => {
     const result = allocate([provider("src", 1000)], [consumer("sink", 200)], [creep], emptyReserved());
 
     expect(result[creep.id]).toEqual({ kind: "deliver", to: { kind: "structure", id: "sink" }, resource: RESOURCE_ENERGY, amount: 40 });
+  });
+
+  describe("storage overflow fallback", () => {
+    const overflowRef = { kind: "structure", id: "storage1" as Id<AnyStoreStructure> } as const;
+
+    it("dumps a loaded creep's leftover into storage when no consumer wants it, instead of leaving it unassigned", () => {
+      const creep = idleHauler({ storeEnergy: 40 });
+      const result = allocate([], [], [creep], emptyReserved(), { ref: overflowRef, free: 1000 });
+
+      expect(result[creep.id]).toEqual({ kind: "deliver", to: overflowRef, resource: RESOURCE_ENERGY, amount: 40 });
+    });
+
+    it("tops off real consumer demand first, only dumping the remainder into storage", () => {
+      const creep = idleHauler({ storeEnergy: 40 });
+      const result = allocate([], [consumer("sink", 10)], [creep], emptyReserved(), { ref: overflowRef, free: 1000 });
+
+      expect(result[creep.id]).toEqual({
+        kind: "deliver",
+        to: { kind: "structure", id: "sink" },
+        resource: RESOURCE_ENERGY,
+        amount: 10,
+        next: { kind: "deliver", to: overflowRef, resource: RESOURCE_ENERGY, amount: 30 }
+      });
+    });
+
+    it("leaves the creep unassigned when there is no storage overflow to fall back on", () => {
+      const creep = idleHauler({ storeEnergy: 40 });
+      const result = allocate([], [], [creep], emptyReserved());
+
+      expect(result[creep.id]).toBeUndefined();
+    });
+
+    it("does not dump more than storage's real free capacity across two creeps in the same tick", () => {
+      const creepA = idleHauler({ storeEnergy: 40 });
+      const creepB = idleHauler({ storeEnergy: 40 });
+      const result = allocate([], [], [creepA, creepB], emptyReserved(), { ref: overflowRef, free: 50 });
+
+      const totalDumped = [creepA, creepB].reduce((sum, c) => sum + (result[c.id]?.amount ?? 0), 0);
+      expect(totalDumped).toBeLessThanOrEqual(50);
+      // One of the two gets nothing further to dump once storage's free capacity is exhausted.
+      expect([result[creepA.id]?.amount, result[creepB.id]?.amount]).toContain(10);
+    });
+
+    it("does not chain a duplicate storage leg when storage is already a normal consumer", () => {
+      const creep = idleHauler({ storeEnergy: 40 });
+      const result = allocate([], [{ ref: overflowRef, resource: RESOURCE_ENERGY, wanted: 40, priority: 70 }], [creep], emptyReserved(), {
+        ref: overflowRef,
+        free: 1000
+      });
+
+      expect(result[creep.id]).toEqual({ kind: "deliver", to: overflowRef, resource: RESOURCE_ENERGY, amount: 40 });
+    });
   });
 
   it("pairs a pickup with its deliver as `next` so the creep flows straight through with no idle tick", () => {
@@ -133,6 +186,40 @@ describe("allocate", () => {
       const result = allocate([remote, home], [consumer("sink", 100)], [creep], emptyReserved());
 
       expect(result[creep.id]).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "home" }, amount: 100 });
+    });
+
+    it("prefers a real-path-farther provider once a wall blocks the Chebyshev-nearer one, given a cost matrix", () => {
+      // "walled" sits at Chebyshev range 3 from the creep — closer in a straight line than "open" at
+      // range 20 — but a solid ring at range 2 seals off every tile within pickup range (1) of it, so
+      // no path reaches it at all. Chebyshev would wrongly pick "walled"; real path distance must skip
+      // it as unreachable and fall through to "open" instead.
+      const terrain = openTerrain();
+      for (let x = 8; x <= 12; x++) {
+        for (let y = 8; y <= 12; y++) {
+          if (Math.max(Math.abs(x - 10), Math.abs(y - 10)) === 2) terrain[x * 50 + y] = 0;
+        }
+      }
+      const costMatrix = buildCostMatrix({ terrain, structures: [] });
+
+      const creep = idleHauler({ storeCapacity: 100, x: 0, y: 0 });
+      const walled = provider("walled", 1000, { x: 10, y: 10 });
+      const open = provider("open", 100, { x: 20, y: 0 });
+      const result = allocate([walled, open], [consumer("sink", 100)], [creep], emptyReserved(), null, costMatrix);
+
+      expect(result[creep.id]).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "open" }, amount: 100 });
+    });
+
+    it("lets a remote provider's cached route distance win a nearest-fill pick over a farther home path", () => {
+      // "farHome" is a real path of 29 tiles away (30 minus the range-1 stop); "remote"'s cached
+      // anchor->source route is only 5 tiles, and remoteDistance now makes it comparable at all
+      // (previously pos: null excluded it from this comparison entirely).
+      const creep = idleHauler({ storeCapacity: 100, x: 0, y: 0 });
+      const farHome = provider("farHome", 100, { x: 30, y: 0 });
+      const remote: Provider = { ...remoteProvider("remote", 1000), remoteDistance: 5 };
+      const result = allocate([farHome, remote], [consumer("sink", 100)], [creep], emptyReserved());
+
+      // A remote pickup never chains a deliver (see the travelHome-first rule), so only the pickup itself is checked.
+      expect(result[creep.id]).toMatchObject({ kind: "pickup", from: { kind: "dropped", id: "remote" }, amount: 100 });
     });
   });
 

@@ -57,7 +57,7 @@ export function panelOps(m: ColonyMetrics): VisualOp[] {
   p.line("Census", HEADING);
   if (m.census.length === 0) p.line("(no creeps)", DIM, 0.5);
   for (const row of m.census) {
-    const staffed = row.current === row.desired;
+    const staffed = row.current >= row.desired;
     p.line(`${row.role.padEnd(10)} ${row.current}/${row.desired}`, staffed ? OK : WARN, 0.5);
   }
 
@@ -66,6 +66,7 @@ export function panelOps(m: ColonyMetrics): VisualOp[] {
   p.line(`spawn      ${fmt(m.energy.available)}/${fmt(m.energy.capacity)}`, DIM, 0.5);
   p.line(`storage    ${fmt(m.energy.storage)}`, DIM, 0.5);
   p.line(`dropped    ${fmt(m.energy.dropped)}`, DIM, 0.5);
+  if (m.energy.remoteEnergy > 0) p.line(`remote     ${fmt(m.energy.remoteEnergy)}`, DIM, 0.5);
   p.line(
     `harvest/t  ${m.energy.harvestPerTick === undefined ? "—" : m.energy.harvestPerTick.toFixed(1)}`,
     DIM,
@@ -95,6 +96,13 @@ export function panelOps(m: ColonyMetrics): VisualOp[] {
   if (m.construction.remaining > 0) {
     p.line(`building   ${fmt(m.construction.remaining)} left [${fmt(m.construction.remaining)}e]`, DIM, 0.5);
   }
+  if (m.construction.remoteRemaining > 0) {
+    p.line(
+      `remote bld ${fmt(m.construction.remoteRemaining)} left [${fmt(m.construction.remoteRemaining)}e]`,
+      DIM,
+      0.75
+    );
+  }
   // Repair upkeep, shown as soon as anything has decayed at all (not only past the repairer's floor).
   // `decay` is the visible total; the WARN colour and the "(Ne to fix)" energy figure track `actionable`
   // — the subset a repairer would actually restore — so a healthy-but-decaying colony reads dim with no
@@ -103,6 +111,14 @@ export function panelOps(m: ColonyMetrics): VisualOp[] {
     const actionableEnergy = m.repair.actionable / REPAIR_POWER;
     const suffix = m.repair.actionable > 0 ? ` (${kmb(m.repair.actionable)} to fix [${fmt(actionableEnergy)}e])` : "";
     p.line(`repair     ${kmb(m.repair.decay)} hits${suffix}`, m.repair.actionable > 0 ? WARN : DIM, 0.5);
+  }
+  // Remote decay: same figures, additive to the home line above, and never actioned by a dispatched
+  // repairer today (see ColonyMetrics.repair) — still WARN when past the floor so it isn't missed.
+  if (m.repair.remoteDecay > 0) {
+    const remoteActionableEnergy = m.repair.remoteActionable / REPAIR_POWER;
+    const remoteSuffix =
+      m.repair.remoteActionable > 0 ? ` (${kmb(m.repair.remoteActionable)} to fix [${fmt(remoteActionableEnergy)}e])` : "";
+    p.line(`remote rep ${kmb(m.repair.remoteDecay)} hits${remoteSuffix}`, m.repair.remoteActionable > 0 ? WARN : DIM, 0.75);
   }
 
   // Safe mode: highlight when actually active.

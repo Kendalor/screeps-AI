@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Building } from "../../../src/operations/building";
-import { colonySnap, snapCreeps, sourceAt } from "../../fixtures";
+import { colonySnap, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
 
 describe("builder workforce", () => {
   const building = new Building("W1N1");
@@ -54,6 +54,19 @@ describe("builder workforce", () => {
     expect(building.desiredCreeps(snap)).toEqual([]);
   });
 
+  it("scales builder demand off remote-room progress too, even with no home backlog", () => {
+    // constructionProgress (home) is 0; only remoteConstructionProgress carries the backlog.
+    expect(
+      building.desiredCreeps(colonySnap({ constructionProgress: 0, remoteConstructionProgress: 3_000, storageEnergy: 200_000 }))
+    ).toHaveLength(3);
+  });
+
+  it("sums home and remote progress toward the same quota", () => {
+    expect(
+      building.desiredCreeps(colonySnap({ constructionProgress: 2_000, remoteConstructionProgress: 3_000, storageEnergy: 200_000 }))
+    ).toHaveLength(5);
+  });
+
   describe("roleTargets (metrics denominator)", () => {
     it("reports the true builder target, matching the quota", () => {
       const snap = colonySnap({ constructionProgress: 5_000, storageEnergy: 200_000 });
@@ -65,6 +78,65 @@ describe("builder workforce", () => {
       const snap = colonySnap({ constructionProgress: 0, storageEnergy: 200_000, creeps: snapCreeps("builder", 2) });
       expect(building.desiredCreeps(snap)).toEqual([]);
       expect(building.roleTargets(snap)).toEqual([{ role: "builder", target: 0 }]);
+    });
+  });
+
+  describe("intents (cross-room build target assignment)", () => {
+    it("does nothing when no room has any outstanding site", () => {
+      const creep = snapCreep("builder");
+      const snap = colonySnap({ siteSummary: [], creeps: [creep] });
+      expect(building.intents(snap)).toEqual([]);
+    });
+
+    it("assigns an unassigned builder to the nearest room with an outstanding site", () => {
+      const creep = snapCreep("builder");
+      const snap = colonySnap({
+        siteSummary: [
+          { room: "W3N1", type: "extension" }, // 2 rooms away
+          { room: "W1N1", type: "extension" } // home
+        ],
+        creeps: [creep]
+      });
+      expect(building.intents(snap)).toEqual([{ kind: "setBuildTargetRoom", creep: creep.id, room: "W1N1" }]);
+    });
+
+    it("prefers a nearer remote room's backlog over a farther one", () => {
+      const creep = snapCreep("builder");
+      const snap = colonySnap({
+        siteSummary: [
+          { room: "W3N1", type: "extension" }, // 2 rooms away
+          { room: "W2N1", type: "extension" } // 1 room away
+        ],
+        creeps: [creep]
+      });
+      expect(building.intents(snap)).toEqual([{ kind: "setBuildTargetRoom", creep: creep.id, room: "W2N1" }]);
+    });
+
+    it("leaves a builder's assignment alone while its current room still has a site", () => {
+      const creep = snapCreep("builder", { memory: { buildTargetRoom: "W2N1" } });
+      const snap = colonySnap({
+        siteSummary: [
+          { room: "W1N1", type: "extension" }, // home, nearer — but the builder already has a room
+          { room: "W2N1", type: "extension" }
+        ],
+        creeps: [creep]
+      });
+      expect(building.intents(snap)).toEqual([]);
+    });
+
+    it("reassigns a builder once its current room's backlog is gone", () => {
+      const creep = snapCreep("builder", { memory: { buildTargetRoom: "W2N1" } });
+      const snap = colonySnap({
+        siteSummary: [{ room: "W1N1", type: "extension" }], // W2N1's backlog cleared
+        creeps: [creep]
+      });
+      expect(building.intents(snap)).toEqual([{ kind: "setBuildTargetRoom", creep: creep.id, room: "W1N1" }]);
+    });
+
+    it("ignores non-builder creeps", () => {
+      const upgrader = snapCreep("upgrader");
+      const snap = colonySnap({ siteSummary: [{ room: "W1N1", type: "extension" }], creeps: [upgrader] });
+      expect(building.intents(snap)).toEqual([]);
     });
   });
 });
