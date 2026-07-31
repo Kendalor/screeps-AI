@@ -7,6 +7,7 @@
 // the time this runs — see kernel/tick.ts's SYSTEMS order.
 
 import type { LogisticsTask, NodeRef } from "../logistics/types";
+import { wrapFn } from "../lib/profiler";
 import { transferTo, withdrawOrPickup } from "./actions";
 
 const PARK_RADIUS = 3; // "near the bunker" — anywhere within this range of the anchor counts as parked
@@ -107,7 +108,7 @@ function advanceOrPark(creep: Creep): void {
   if (!next) parkNearBunker(creep);
 }
 
-export function runTransport(creep: Creep): void {
+export const runTransport = wrapFn(function runTransport(creep: Creep): void {
   const task = creep.memory.logistics?.current;
   if (!task) {
     // Nothing assigned this tick — planLogistics runs upstream, not from here. Loiter near the bunker.
@@ -176,4 +177,4 @@ export function runTransport(creep: Creep): void {
   // merely traveled toward the target this tick.
   const result = transferTo(creep, target, task.resource);
   if (result.didAct) advanceOrPark(creep);
-}
+}, "transport:runTransport");

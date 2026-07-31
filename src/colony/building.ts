@@ -7,6 +7,7 @@ import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
 import { needsRepair } from "../lib/repairable";
+import { wrapFn } from "../lib/profiler";
 import type { Intent } from "../intents/types";
 import type { Operation } from "../operations";
 import type { RoleName } from "../memory/schema";
@@ -92,11 +93,13 @@ export function planBuilding(colony: ColonySnapshot, operations: Operation[]): I
 
 // Gathered sequentially, not flatMap: each operation paths around the layout and around siblings' plans already claimed,
 // so two operations heading for nearby targets share a road instead of laying two. operationsFor()'s order is load-bearing.
-export function claimsOf(colony: ColonySnapshot, operations: Operation[]): PlacedStructure[] {
+// No anchor yet (very early boot, before resolveAnchor finds one) means no layout to claim against.
+export const claimsOf = wrapFn(function claimsOf(colony: ColonySnapshot, operations: Operation[]): PlacedStructure[] {
+  if (!colony.anchor) return [];
   // This level's buildable subset, not the full RCL8 goal — the full goal seals the anchor in, making it unpathable from itself.
   const planned: PlacedStructure[] = stampLayout(
-    plannedObstacles(GOAL, colony.controllerLevel, colony.anchor!, colony.sources),
-    colony.anchor!
+    plannedObstacles(GOAL, colony.controllerLevel, colony.anchor, colony.sources),
+    colony.anchor
   );
   const claimed: PlacedStructure[] = [];
   for (const op of operations) {
@@ -105,14 +108,14 @@ export function claimsOf(colony: ColonySnapshot, operations: Operation[]): Place
     planned.push(...claim);
   }
   return claimed;
-}
+}, "building:claimsOf");
 
 // Exported for integration benchmarks. `claimed` is already state-gated per operation, so this merges rather than re-gates.
 // `throttleGroups` defaults on (one source group in progress at a time, matching what placeAndDemolish
 // will actually place this tick). The metrics panel passes false: it wants the full plan across every
 // remote group as its "targeted" denominator, not just the group currently being worked on — otherwise
 // a finished group's structures would count as built with no target, and built could exceed targeted.
-export function wantedStructures(
+export const wantedStructures = wrapFn(function wantedStructures(
   colony: ColonySnapshot,
   claimed: PlacedStructure[] = [],
   throttleGroups = true
@@ -135,7 +138,7 @@ export function wantedStructures(
     .map((p, i) => ({ p, i }))
     .sort((a, b) => typePriority(a.p.type) - typePriority(b.p.type) || a.i - b.i)
     .map(e => e.p);
-}
+}, "building:wantedStructures");
 
 function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
   const anchor = colony.anchor!;
@@ -219,7 +222,7 @@ function sameSpot(a: PlacedStructure) {
 // stretch while a larger backlog still waits — converting then would strand real work. The planner's own
 // backlog (wantedStructures minus what's already built or already a site) is the authoritative "is there
 // anything left to build" signal, and it stays non-empty across those between-placement gaps.
-export function hasOutstandingConstruction(colony: ColonySnapshot, claimed: PlacedStructure[]): boolean {
+export const hasOutstandingConstruction = wrapFn(function hasOutstandingConstruction(colony: ColonySnapshot, claimed: PlacedStructure[]): boolean {
   if (colony.sites.length > 0) return true;
   // Home-room claims only: whether a local "builder" should ever go work a remote site is the builder-
   // dispatch question this feature deliberately defers. The miner already builds/repairs its own remote
@@ -227,7 +230,7 @@ export function hasOutstandingConstruction(colony: ColonySnapshot, claimed: Plac
   return wantedStructures(colony, claimed)
     .filter(p => roomOf(p, colony) === colony.name)
     .some(p => !existingAt(colony, p));
-}
+}, "building:hasOutstandingConstruction");
 
 // A structure worth a repairer: decayed below the shared repair floor (src/lib/repairable.ts) — the
 // same definition the repair role and tower repair use, so this, the role, and Defense never drift apart.
@@ -238,10 +241,10 @@ export function hasRepairWork(colony: ColonySnapshot): boolean {
 // Emits a role change for every owned builder once construction is finished: repair if anything is decaying,
 // upgrader otherwise. Pure — the setCreepRole actuator owns the memory write. `claimed` must be the same
 // operation claims planBuilding used this tick, so the backlog check agrees with what would be placed.
-export function repurposeIdleBuilders(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
+export const repurposeIdleBuilders = wrapFn(function repurposeIdleBuilders(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
   if (hasOutstandingConstruction(colony, claimed)) return [];
   const target: RoleName = hasRepairWork(colony) ? "repair" : "upgrader";
   return colony.creeps
     .filter(c => c.role === "builder" && c.room === colony.name)
     .map(c => ({ kind: "setCreepRole", creep: c.id, role: target }));
-}
+}, "building:repurposeIdleBuilders");

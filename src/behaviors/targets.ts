@@ -1,5 +1,6 @@
 // resolveTarget(spec) is the one place that searches for targets.
 
+import { wrapFn } from "../lib/profiler";
 import type { Prefer, TargetSpec } from "./types";
 
 export type Where = "notFull" | "hasEnergy" | "damaged";
@@ -224,7 +225,7 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
   return obj;
 }
 
-export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId>): RoomObject | null {
+export const resolveTarget = wrapFn(function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId>): RoomObject | null {
   if (locked) {
     const held = validLock(creep, locked, spec);
     if (held) return held;
@@ -243,7 +244,7 @@ export function resolveTarget(creep: Creep, spec: TargetSpec, locked?: Id<_HasId
   }
 
   return pickByPrefer(creep, spec, poolFor(creep, spec));
-}
+}, "targets:resolveTarget");
 
 // Candidate pool for one non-"any", non-"id", non-"controller" spec: found, where-filtered,
 // worthwhile-filtered (drops only), then share-capped with fallback to the full set at each stage.

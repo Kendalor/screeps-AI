@@ -313,4 +313,57 @@ describe("Scouting source-path precompute", () => {
     });
     expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordSourcePath" }));
   });
+
+  // The actual bug this negative cache fixes: a source PathFinder can never reach (e.g. a blocked
+  // border) has no `paths` entry to ever get cached, so without noPathAt this re-emits (and
+  // execute.ts re-runs PathFinder.search for) the exact same failing source every single tick forever.
+  describe("noPathAt backoff", () => {
+    it("stays silent for a source whose last search failed within the backoff window", () => {
+      const snap = colonySnap({
+        tick: 5000,
+        anchor: { x: 25, y: 25 },
+        scoutTargets: [
+          scoutTarget(
+            "W1N2",
+            scouted({ sources: [{ id: "s1" as Id<Source>, x: 10, y: 10, noPathAt: { W1N1: 4999 } }] })
+          )
+        ]
+      });
+      expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordSourcePath" }));
+    });
+
+    it("retries once the backoff window has elapsed", () => {
+      const snap = colonySnap({
+        tick: 30000,
+        anchor: { x: 25, y: 25 },
+        scoutTargets: [
+          scoutTarget(
+            "W1N2",
+            scouted({ sources: [{ id: "s1" as Id<Source>, x: 10, y: 10, noPathAt: { W1N1: 5000 } }] })
+          )
+        ]
+      });
+      expect(scouting.intents(snap)).toContainEqual({
+        kind: "recordSourcePath",
+        home: "W1N1",
+        room: "W1N2",
+        anchor: { x: 25, y: 25 },
+        source: "s1"
+      });
+    });
+
+    it("a noPathAt recorded for a DIFFERENT home doesn't block this home's precompute", () => {
+      const snap = colonySnap({
+        tick: 5000,
+        anchor: { x: 25, y: 25 },
+        scoutTargets: [
+          scoutTarget(
+            "W1N2",
+            scouted({ sources: [{ id: "s1" as Id<Source>, x: 10, y: 10, noPathAt: { W9N9: 4999 } }] })
+          )
+        ]
+      });
+      expect(scouting.intents(snap)).toContainEqual(expect.objectContaining({ kind: "recordSourcePath" }));
+    });
+  });
 });

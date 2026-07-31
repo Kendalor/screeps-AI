@@ -7,6 +7,7 @@
 // it's already available.
 
 import type { XY } from "../lib/geometry";
+import { wrapFn } from "../lib/profiler";
 import type { RemoteMemory } from "../memory/schema";
 import type { ScoutCandidate } from "../snapshot/types";
 import { remoteSourceLoadParts } from "./load";
@@ -71,7 +72,7 @@ interface Candidate {
   loadParts: number;
 }
 
-export function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
+export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
   const { home } = input;
 
   // Gate 2 (affordability) and gate 3 (spawn capacity) are room-wide: if either fails, attempt nothing.
@@ -169,4 +170,4 @@ export function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
     entry.sources.push({ id: c.id, x: c.x, y: c.y, distance: c.distance });
   }
   return [...byRoom.values()];
-}
+}, "planning:pickRemotes");

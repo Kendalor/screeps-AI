@@ -1,6 +1,8 @@
 // nextStep decides step advancement as a pure function, testable without a creep; runStep is the actuator that touches the game API.
 
 import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
+import { wrapFn } from "../lib/profiler";
+import { stepOffRoad } from "./roadAvoidance";
 import { resolveTarget } from "./targets";
 import type { Step, TargetSpec } from "./types";
 
@@ -95,7 +97,19 @@ export interface StepResult {
 // one _trav slot per creep, not one per pipeline, so a bonus step that's out of range must never call
 // it: doing so would silently overwrite the primary step's own in-flight destination, every tick,
 // forever. An out-of-range bonus step under allowTravel:false simply does nothing this tick.
-export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTravel = true): StepResult {
+// doNotBlockRoads: a role opts in (Role.doNotBlockRoads, mirroring Role.sweep) so build/repair/upgrade
+// steer off a road tile once in range, rather than parking on it for the whole job and blocking travel.
+export interface RunStepOptions {
+  doNotBlockRoads?: boolean;
+}
+
+export const runStep = wrapFn(function runStep(
+  creep: Creep,
+  step: Step,
+  locked?: Id<_HasId>,
+  allowTravel = true,
+  opts?: RunStepOptions
+): StepResult {
   switch (step.do) {
     case "harvest":
       // No free-capacity guard here (unlike withdraw/pickup): the engine lets a full miner keep
@@ -123,12 +137,13 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
         locked,
         t => creep.build(t as ConstructionSite),
         3,
-        allowTravel
+        allowTravel,
+        opts?.doNotBlockRoads
       );
     case "repair":
-      return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3, allowTravel);
+      return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3, allowTravel, opts?.doNotBlockRoads);
     case "upgrade":
-      return upgradeStep(creep, locked, allowTravel);
+      return upgradeStep(creep, locked, allowTravel, opts?.doNotBlockRoads);
     case "reserve":
       return reserveStep(creep, locked, allowTravel);
     case "attack":
@@ -140,7 +155,8 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
       creep.travelTo(new RoomPosition(step.pos.x, step.pos.y, creep.room.name));
       return { acted: true, didAct: false };
   }
-}
+},
+"interpreter:runStep");
 
 // Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
 function moveToRoom(
@@ -194,11 +210,16 @@ function actOn(
   locked: Id<_HasId> | undefined,
   action: (t: RoomObject) => number,
   range = 1,
-  allowTravel = true
+  allowTravel = true,
+  doNotBlockRoads = false
 ): StepResult {
   const target = resolveTarget(creep, spec, locked);
   if (!target) return { acted: false, didAct: false };
-  return actOnResolved(creep, target, action, range, allowTravel);
+  const result = actOnResolved(creep, target, action, range, allowTravel);
+  if (allowTravel && doNotBlockRoads && result.didAct) {
+    stepOffRoad(creep, (target as { pos: RoomPosition }).pos, range);
+  }
+  return result;
 }
 
 // Resolves a spec, then hands the concrete target to an actions.ts shim (which does its own
@@ -257,7 +278,7 @@ function harvestStep(
 const UPGRADE_RANGE = 3;
 const CONTROLLER_CONTAINER_RANGE = 2; // range of the controller the controller container sits within
 
-function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean, doNotBlockRoads = false): StepResult {
   const controller = resolveTarget(creep, { find: "controller" }, locked);
   if (!controller) return { acted: false, didAct: false };
   const controllerPos = (controller as StructureController).pos;
@@ -270,7 +291,13 @@ function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: 
   }
 
   creep.upgradeController(controller as StructureController);
-  if (allowTravel) drawCloserToController(creep, controllerPos);
+  if (allowTravel) {
+    // drawCloserToController already claims the one good standing tile (the container); only fall back
+    // to stepOffRoad when it left the creep in place, so the two nudges never both issue travelTo the
+    // same tick (see runStep's allowTravel doc on the single _trav slot per creep).
+    const drewCloser = drawCloserToController(creep, controllerPos);
+    if (!drewCloser && doNotBlockRoads) stepOffRoad(creep, controllerPos, UPGRADE_RANGE);
+  }
   return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
 }
 
@@ -349,19 +376,26 @@ function fleeSpot(from: { x: number; y: number; roomName: string }, threat: { x:
 }
 
 // Nudge an in-range upgrader toward a better standing tile: the free controller container if there is
-// one, else in against the controller itself. No-ops (no re-path) once already well placed.
-function drawCloserToController(creep: Creep, controllerPos: RoomPosition): void {
+// one, else in against the controller itself. No-ops (no re-path) once already well placed. Returns
+// whether it actually issued a travelTo this tick, so a caller with a second, lower-priority nudge
+// (stepOffRoad) knows whether the creep's single travelTo slot is already spoken for.
+function drawCloserToController(creep: Creep, controllerPos: RoomPosition): boolean {
   const container = controllerPos
     .findInRange(FIND_STRUCTURES, CONTROLLER_CONTAINER_RANGE, { filter: s => s.structureType === STRUCTURE_CONTAINER })[0] as
     | StructureContainer
     | undefined;
 
   if (container && isFreeForCreep(container.pos, creep)) {
-    if (!creep.pos.isEqualTo(container.pos)) creep.travelTo(container.pos);
-    return;
+    if (creep.pos.isEqualTo(container.pos)) return false;
+    creep.travelTo(container.pos);
+    return true;
   }
   // No container to stand on: bunch up against the controller so the pack isn't strung out along range 3.
-  if (!creep.pos.inRangeTo(controllerPos, 1)) creep.travelTo(controllerPos, { range: 1 });
+  if (!creep.pos.inRangeTo(controllerPos, 1)) {
+    creep.travelTo(controllerPos, { range: 1 });
+    return true;
+  }
+  return false;
 }
 
 // A tile is free for this creep if nothing else is standing there — a creep already on it (this one

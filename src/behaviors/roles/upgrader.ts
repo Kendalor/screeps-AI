@@ -29,6 +29,7 @@ function upgraderBody(energy: number): BodyPartConstant[] {
 
 export class Upgrader extends Role {
   static override readonly priority = 60;
+  static override readonly doNotBlockRoads = true;
   static override body(energy: number): BodyPartConstant[] {
     return upgraderBody(energy);
   }

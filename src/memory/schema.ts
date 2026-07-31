@@ -161,6 +161,13 @@ export interface ScoutedSource {
   // positions (see remote-mining-progress/construction plan) and duplicating a small cache is cheaper
   // than risking that decode (cross-room direction math is exactly what broke scout-ping-pong before).
   route?: Partial<Record<string, RemoteRouteTile[]>>;
+  // Negative cache: the tick a PathFinder search from this home last came back incomplete (no route —
+  // e.g. terrain/vision blocks every crossing). Without this, a genuinely unreachable source has no way
+  // to ever get marked "already tried" the way a successful search marks itself via `paths`/`route`, so
+  // scouting/pathPrecompute would re-run the same failing PathFinder.search every tick forever. Bounded
+  // backoff (see NO_PATH_RETRY_AFTER in lib/remotePath.ts) rather than permanent, so a route that opens
+  // up later (new vision, a wall that was actually just unexplored terrain) is retried eventually.
+  noPathAt?: Partial<Record<string, number>>;
 }
 
 // How far out the frontier has pushed — the one piece of scouting state a tick cannot rederive. The todo list itself
@@ -175,6 +182,7 @@ export interface ExpansionMemory {
 
 export interface StatsMemory {
   version: number;
+  cpu?: Record<string, number>; // last tick's CPU per kernel system name, written by kernel/stats.ts
 }
 
 // A short window of (tick, total source energy) samples; harvest rate is diffed oldest-vs-newest. A ring rather than a

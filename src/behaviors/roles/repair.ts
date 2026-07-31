@@ -17,6 +17,7 @@ function repairBody(energy: number): BodyPartConstant[] {
 
 export class Repair extends Role {
   static override readonly priority = 64; // just below builder; upkeep matters less than new construction
+  static override readonly doNotBlockRoads = true;
   static override body(energy: number): BodyPartConstant[] {
     return repairBody(energy);
   }

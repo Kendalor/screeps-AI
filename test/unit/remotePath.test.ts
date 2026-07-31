@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { findRemotePath, remoteRouteTileKey, resolvePathToSource, serializeRemotePath, toRouteTiles } from "../../src/lib/remotePath";
+import {
+  findRemotePath,
+  NO_PATH_RETRY_AFTER,
+  remoteRouteTileKey,
+  resolvePathToSource,
+  serializeRemotePath,
+  toRouteTiles
+} from "../../src/lib/remotePath";
 import { clearTiles, stubPathFinder } from "../constants";
 import type { ScoutedSource } from "../../src/memory/schema";
 
@@ -137,7 +144,7 @@ describe("resolvePathToSource", () => {
       route: { W1N1: [{ room: "W2N1", x: 1, y: 25 }] }
     };
     // No stubPathFinder(): PathFinder.search would throw if this hit it.
-    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted);
+    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, undefined, 100);
     expect(result).toEqual({ distance: 3, route: [{ room: "W2N1", x: 1, y: 25 }] });
   });
 
@@ -151,7 +158,7 @@ describe("resolvePathToSource", () => {
     const path = [new RoomPosition(26, 25, "W1N1")];
     stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
 
-    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted);
+    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, undefined, 100);
 
     expect(result).toEqual({ distance: path.length, route: [{ room: "W1N1", x: 26, y: 25 }] });
     expect(scouted.paths?.W1N1).toHaveLength(path.length);
@@ -163,22 +170,23 @@ describe("resolvePathToSource", () => {
     const path = [new RoomPosition(26, 25, "W1N1"), new RoomPosition(1, 25, "W2N1")];
     stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
 
-    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted);
+    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, undefined, 100);
 
     expect(result?.distance).toBe(path.length);
     expect(scouted.paths?.W1N1).toBeDefined();
     expect(scouted.route?.W1N1).toBeDefined();
   });
 
-  it("returns undefined and caches nothing when PathFinder can't reach the source", () => {
+  it("returns undefined, caches no route, but marks noPathAt when PathFinder can't reach the source", () => {
     const scouted: ScoutedSource = { id: "s1" as Id<Source>, x: 25, y: 25 };
     stubPathFinder(() => ({ path: [], incomplete: true, ops: 2000, cost: 0 }));
 
-    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted);
+    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, undefined, 100);
 
     expect(result).toBeUndefined();
     expect(scouted.paths).toBeUndefined();
     expect(scouted.route).toBeUndefined();
+    expect(scouted.noPathAt?.W1N1).toBe(100);
   });
 
   it("forwards `preferred` into the PathFinder call on a cache miss, so a sibling source's already-chosen route pulls this one onto it", () => {
@@ -191,7 +199,7 @@ describe("resolvePathToSource", () => {
       return { path, incomplete: false, ops: 10, cost: 10 };
     });
 
-    resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, preferred);
+    resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, preferred, 100);
 
     expect(sawRoomCallback).toBe(true);
   });
@@ -206,7 +214,50 @@ describe("resolvePathToSource", () => {
     };
     const preferred = new Set([remoteRouteTileKey({ room: "W2N1", x: 5, y: 5 })]);
     // No stubPathFinder(): PathFinder.search would throw if this hit it.
-    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, preferred);
+    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, preferred, 100);
     expect(result).toEqual({ distance: 3, route: [{ room: "W2N1", x: 1, y: 25 }] });
+  });
+
+  // The actual bug this session's profiling found live: without a negative cache, an unreachable
+  // source's PathFinder.search re-ran every single tick forever (~20% of all profiled colony CPU on
+  // a real server), since a failure had no way to mark itself "already tried" the way paths/route does.
+  describe("noPathAt backoff", () => {
+    it("skips PathFinder and returns undefined while inside the backoff window", () => {
+      const scouted: ScoutedSource = { id: "s1" as Id<Source>, x: 25, y: 25, noPathAt: { W1N1: 100 } };
+      // No stubPathFinder(): PathFinder.search would throw if this hit it.
+      const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, undefined, 100 + 100);
+      expect(result).toBeUndefined();
+    });
+
+    it("retries PathFinder once the backoff window has elapsed", () => {
+      const scouted: ScoutedSource = { id: "s1" as Id<Source>, x: 25, y: 25, noPathAt: { W1N1: 100 } };
+      const path = [new RoomPosition(26, 25, "W1N1")];
+      stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
+
+      const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, undefined, 100 + NO_PATH_RETRY_AFTER);
+
+      expect(result).toBeDefined();
+      expect(scouted.paths?.W1N1).toBeDefined();
+    });
+
+    it("clears a stale noPathAt once a route is found on retry", () => {
+      const scouted: ScoutedSource = { id: "s1" as Id<Source>, x: 25, y: 25, noPathAt: { W1N1: 100 } };
+      const path = [new RoomPosition(26, 25, "W1N1")];
+      stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
+
+      resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, undefined, 100 + NO_PATH_RETRY_AFTER);
+
+      expect(scouted.noPathAt?.W1N1).toBeUndefined();
+    });
+
+    it("doesn't let a stale noPathAt for a DIFFERENT home block this home's search", () => {
+      const scouted: ScoutedSource = { id: "s1" as Id<Source>, x: 25, y: 25, noPathAt: { W2N9: 100 } };
+      const path = [new RoomPosition(26, 25, "W1N1")];
+      stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
+
+      const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, undefined, 100);
+
+      expect(result).toBeDefined();
+    });
   });
 });

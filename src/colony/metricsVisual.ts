@@ -48,7 +48,7 @@ function trim(n: number): string {
 }
 
 /** Build the drawing ops for one colony's report. Exposed for tests; visualize() wraps it in an intent. */
-export function panelOps(m: ColonyMetrics): VisualOp[] {
+export function panelOps(m: ColonyMetrics, cpu?: Readonly<Record<string, number>>): VisualOp[] {
   const p = panel();
 
   p.line(`${m.room}  ·  RCL ${m.controller.level}  ·  tick ${m.tick}`, HEADING);
@@ -132,10 +132,22 @@ export function panelOps(m: ColonyMetrics): VisualOp[] {
   p.line("Operations", HEADING);
   for (const op of m.operations) p.line(op, DIM, 0.5);
 
+  // CPU, empire-wide (not per-colony) — shown only when the caller passes last tick's breakdown in,
+  // so a colony with no cpu data (e.g. under test) renders identically to before this was added.
+  if (cpu) {
+    p.line("CPU", HEADING);
+    const entries = Object.entries(cpu).filter(([name]) => name !== "total");
+    for (const [name, used] of entries.sort(([, a], [, b]) => b - a)) {
+      p.line(`${name.padEnd(10)} ${used.toFixed(2)}`, DIM, 0.5);
+    }
+    if (cpu.total !== undefined) p.line(`total      ${cpu.total.toFixed(2)} / ${Game.cpu.limit}`, OK, 0.5);
+  }
+
   return p.ops;
 }
 
-/** The full render: the report's panel as a single roomVisual intent for its room. */
-export function visualize(m: ColonyMetrics): Intent {
-  return { kind: "roomVisual", room: m.room, ops: panelOps(m) };
+/** The full render: the report's panel as a single roomVisual intent for its room. `cpu` is last
+ * tick's Memory.stats.cpu breakdown — empire-wide, so pass it for one colony only (the panel picks). */
+export function visualize(m: ColonyMetrics, cpu?: Readonly<Record<string, number>>): Intent {
+  return { kind: "roomVisual", room: m.room, ops: panelOps(m, cpu) };
 }

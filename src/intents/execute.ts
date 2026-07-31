@@ -1,28 +1,35 @@
 // The actuator: calls the game API and logs any non-OK result. Non-game side effects (e.g. recordSourceSpot's Memory write) live here too, so planners stay pure.
 
 import { log } from "../lib/log";
+import { recordManual, wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
 import { remoteRouteTileKey, resolvePathToSource } from "../lib/remotePath";
 import type { RemoteMemory, RemoteSourceMemory, RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
 
+declare const __PROFILER_ENABLED__: boolean;
+
 // The farthest the scouting frontier grows, in rooms. Legacy's MAX_RANGE. Lives here because
 // advanceScoutRadius owns the radius write and its bounds.
 const MAX_SCOUT_RANGE = 6;
 
-export function execute(intents: Intent[]): void {
+export const execute = wrapFn(function execute(intents: Intent[]): void {
   // Tiles chosen by a recordSourcePath/setRemotes resolution earlier in *this* batch — passed to the
   // next such resolution as `preferred` so a second source in the same remote room paths onto the
   // first one's corridor instead of an independent line beside it (see remotePath.ts's PREFERRED_TILE_COST).
   // Scoped to one execute() call: a fresh accumulator per tick per colony, never carried across calls.
   const resolvedRouteTiles = new Set<string>();
   for (const intent of intents) {
+    // Per-kind timing, gated the same as the rest of lib/profiler.ts (dead-code-eliminated when off) —
+    // act() is one large switch, so wrapFn's whole-function wrapping can't break it down by intent kind.
+    const start = __PROFILER_ENABLED__ ? Game.cpu.getUsed() : 0;
     const result = act(intent, resolvedRouteTiles);
+    if (__PROFILER_ENABLED__) recordManual(`execute:act:${intent.kind}`, Game.cpu.getUsed() - start);
     if (result !== OK) {
       log.warn(`intent failed (${result}): ${JSON.stringify(intent)}`);
     }
   }
-}
+}, "execute:execute");
 
 function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode {
   switch (intent.kind) {
@@ -150,7 +157,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
     case "recordSourcePath": {
       const scouted = (Memory.rooms ??= {})[intent.room]?.scouted?.sources.find(sc => sc.id === intent.source);
       if (!scouted) return ERR_NOT_FOUND; // scouting emitted this off a snapshot that's since gone stale
-      const resolved = resolvePathToSource(intent.home, intent.anchor, intent.room, scouted, resolvedRouteTiles);
+      const resolved = resolvePathToSource(intent.home, intent.anchor, intent.room, scouted, resolvedRouteTiles, Game.time);
       if (!resolved) return ERR_NOT_FOUND; // no route at all: nothing to cache, retry next scouting pass
       for (const tile of resolved.route) resolvedRouteTiles.add(remoteRouteTileKey(tile));
       return OK;
@@ -249,7 +256,7 @@ function resolveRemoteRoom(
     // No scouted record to cache onto, or no anchor yet to path from: nothing to resolve this tick,
     // retry next throttle tick rather than dropping the source outright.
     if (!scouted || !anchor) continue;
-    const resolved = resolvePathToSource(home, anchor, room.room, scouted, resolvedRouteTiles);
+    const resolved = resolvePathToSource(home, anchor, room.room, scouted, resolvedRouteTiles, Game.time);
     if (!resolved) {
       log.warn(`setRemotes: no path ${home} -> ${room.room} source ${s.id}, dropping`);
       continue;

@@ -18,6 +18,9 @@ import { defineConfig } from "vitest/config";
 // BOT_BUNDLE is already set — scripts/bench-parallel.mjs sets it itself when
 // running several benchmark processes at once, and that build must win).
 export default defineConfig({
+  define: {
+    __PROFILER_ENABLED__: "false"
+  },
   test: {
     environment: "node",
     include: ["test/benchmark/**/*.test.ts"],

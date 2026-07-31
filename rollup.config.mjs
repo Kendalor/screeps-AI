@@ -5,6 +5,7 @@ import clear from "rollup-plugin-clear";
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
+import replace from "@rollup/plugin-replace";
 import typescript from "@rollup/plugin-typescript";
 import screeps from "rollup-plugin-screeps";
 import copy from "rollup-plugin-copy";
@@ -17,6 +18,13 @@ if (!dest) {
 } else if ((cfg = JSON.parse(readFileSync("./screeps.json", "utf8"))[dest]) == null) {
   throw new Error("Invalid upload destination");
 }
+
+// PROFILE=1 npm run push-pserver builds with src/lib/profiler.ts's wrapping compiled in; every other
+// build (push-main, push-dev, plain bundle) compiles it out entirely — __PROFILER_ENABLED__ becomes a
+// literal `false`, so `if (!__PROFILER_ENABLED__) return;` dead-code-eliminates the wrapping, giving
+// zero runtime overhead in normal builds.
+const profilerEnabled = process.env.PROFILE === "1";
+if (profilerEnabled) console.log("Profiler ENABLED for this build");
 
 export default {
   input: "src/main.ts",
@@ -31,6 +39,10 @@ export default {
     resolve(),
     commonjs(),
     json(),
+    replace({
+      preventAssignment: true,
+      values: { __PROFILER_ENABLED__: JSON.stringify(profilerEnabled) }
+    }),
     typescript({ tsconfig: "./tsconfig.json" }),
     screeps({ config: cfg, dryRun: cfg == null }),
     ...(local

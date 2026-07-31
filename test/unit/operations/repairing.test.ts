@@ -47,6 +47,40 @@ describe("Repairing.desiredCreeps", () => {
     expect(repairing.desiredCreeps(snap)).toHaveLength(1);
   });
 
+  describe("scaling with backlog size (1 WORK part = REPAIR_POWER * CREEP_LIFE_TIME hits over its life)", () => {
+    it("still wants only 1 repairer for a small backlog", () => {
+      const snap = colonySnap({ towers: [], structures: [structureAt(10, 10, "road", { hits: 10_000, hitsMax: 150_000 })] });
+      expect(repairing.desiredCreeps(snap)).toHaveLength(1);
+    });
+
+    it("wants more repairers once the colony-wide backlog exceeds one WORK part's lifetime capacity", () => {
+      // 1 WORK part (300-energy body) restores REPAIR_POWER * CREEP_LIFE_TIME = 150,000 hits over its life.
+      // A 400,000-hit backlog needs ceil(400000/150000) = 3 WORK, i.e. 3 one-WORK-part repairers.
+      const snap = colonySnap({
+        towers: [],
+        structures: [structureAt(10, 10, "road", { hits: 100_000, hitsMax: 500_000 })]
+      });
+      expect(repairing.desiredCreeps(snap)).toHaveLength(3);
+    });
+
+    it("sums the backlog across home and remote rooms before sizing the fleet", () => {
+      const snap = colonySnap({
+        towers: [],
+        structures: [structureAt(10, 10, "road", { hits: 100_000, hitsMax: 250_000 })],
+        remoteStructures: { W2N1: [structureAt(10, 10, "road", { hits: 100_000, hitsMax: 250_000 })] }
+      });
+      expect(repairing.desiredCreeps(snap)).toHaveLength(2);
+    });
+
+    it("caps the fleet at maxRepairers regardless of how large the backlog is", () => {
+      const snap = colonySnap({
+        towers: [],
+        structures: [structureAt(10, 10, "road", { hits: 0, hitsMax: 10_000_000 })]
+      });
+      expect(repairing.desiredCreeps(snap)).toHaveLength(3);
+    });
+  });
+
   describe("roleTargets (metrics denominator)", () => {
     it("reports a target of 0 once towers take over, exposing surplus repairers", () => {
       const nearDecay = structureAt(12, 10, "road", { hits: 400, hitsMax: 1000 });
@@ -77,7 +111,7 @@ describe("Repairing.desiredCreeps", () => {
       expect(repairing.intents(snap)).toEqual([{ kind: "setRepairTargetRoom", creep: creep.id, room: "W1N1" }]);
     });
 
-    it("prefers a nearer remote room's decay over a farther one", () => {
+    it("prefers a nearer remote room's decay when backlogs are equal", () => {
       const creep = snapCreep("repair");
       const snap = colonySnap({
         structures: [],
@@ -88,6 +122,18 @@ describe("Repairing.desiredCreeps", () => {
         creeps: [creep]
       });
       expect(repairing.intents(snap)).toEqual([{ kind: "setRepairTargetRoom", creep: creep.id, room: "W2N1" }]);
+    });
+
+    it("prefers a farther room with a much worse backlog over a merely-nearer one with minor decay", () => {
+      const creep = snapCreep("repair");
+      const snap = colonySnap({
+        structures: [structureAt(10, 10, "road", { hits: 990, hitsMax: 1000 })], // home, nearest, barely decayed
+        remoteStructures: {
+          W3N1: [structureAt(10, 10, "spawn", { hits: 1000, hitsMax: 5000 })] // 2 rooms away, badly damaged
+        },
+        creeps: [creep]
+      });
+      expect(repairing.intents(snap)).toEqual([{ kind: "setRepairTargetRoom", creep: creep.id, room: "W3N1" }]);
     });
 
     it("leaves a repairer's assignment alone while its current room still has uncovered decay", () => {

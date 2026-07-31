@@ -37,6 +37,7 @@ function builderBody(energy: number): BodyPartConstant[] {
 
 export class Builder extends Role {
   static override readonly priority = 65;
+  static override readonly doNotBlockRoads = true;
   static override body(energy: number): BodyPartConstant[] {
     return builderBody(energy);
   }

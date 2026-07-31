@@ -4,6 +4,7 @@
 import { roleDef } from "../behaviors/roles";
 import { needsPassiveRecording, needsScouting, scoutCandidatePool } from "../behaviors/scout";
 import type { Intent } from "../intents/types";
+import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
@@ -81,6 +82,13 @@ export class Scouting extends Operation {
       if (!info) continue;
       for (const src of info.sources) {
         if (src.paths?.[colony.name] !== undefined) continue; // already cached
+        // A prior attempt already found no route and the backoff hasn't elapsed — skip re-emitting the
+        // intent at all (resolvePathToSource re-checks this too, but there's no reason to even dispatch
+        // one when this pure planner already knows the answer). See remotePath.ts's NO_PATH_RETRY_AFTER
+        // for why an unreachable source needs this: without it, a permanent PathFinder failure has no
+        // way to mark itself "already tried" and gets re-searched every tick forever.
+        const noPathAt = src.noPathAt?.[colony.name];
+        if (noPathAt !== undefined && colony.tick - noPathAt < NO_PATH_RETRY_AFTER) continue;
         out.push({ kind: "recordSourcePath", home: colony.name, room: cand.room, anchor, source: src.id });
       }
     }

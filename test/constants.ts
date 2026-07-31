@@ -42,10 +42,32 @@ class RoomPositionStub {
   lookFor(type: string): unknown[] {
     return tileLooks.get(`${this.roomName}:${this.x}:${this.y}`)?.[type] ?? [];
   }
+  isEqualTo(other: { x: number; y: number; roomName: string }): boolean {
+    return this.x === other.x && this.y === other.y && this.roomName === other.roomName;
+  }
+  // Real RoomPosition.inRangeTo accepts either a position or any RoomObject-shaped thing with a `.pos`.
+  inRangeTo(target: { x: number; y: number; roomName: string } | { pos: { x: number; y: number; roomName: string } }, range: number): boolean {
+    const other = "pos" in target ? target.pos : target;
+    return this.roomName === other.roomName && Math.max(Math.abs(this.x - other.x), Math.abs(this.y - other.y)) <= range;
+  }
   getDirectionTo(target: { x: number; y: number; roomName: string }): number {
     const dx = Math.sign(worldX(target.roomName, target.x) - worldX(this.roomName, this.x));
     const dy = Math.sign(worldY(target.roomName, target.y) - worldY(this.roomName, this.y));
     return DIRECTION_BY_DELTA[`${dx},${dy}`];
+  }
+  // Scans the stubbed tiles in the square around this position — only tiles set via stubTile() carry
+  // anything, everything else is empty, same as a freshly-generated room with no structures placed.
+  findInRange(find: number, range: number, opts?: { filter?: (o: { structureType?: string }) => boolean }): unknown[] {
+    const look = find === FIND_STRUCTURES ? "structure" : find === FIND_MY_CONSTRUCTION_SITES ? "constructionSite" : "structure";
+    const results: unknown[] = [];
+    for (let x = Math.max(0, this.x - range); x <= Math.min(49, this.x + range); x++) {
+      for (let y = Math.max(0, this.y - range); y <= Math.min(49, this.y + range); y++) {
+        for (const o of tileLooks.get(`${this.roomName}:${x}:${y}`)?.[look] ?? []) {
+          if (!opts?.filter || opts.filter(o as { structureType?: string })) results.push(o);
+        }
+      }
+    }
+    return results;
   }
 }
 

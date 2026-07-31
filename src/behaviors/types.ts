@@ -108,4 +108,7 @@ export interface RoleDef {
   priority: number;
   // Opt in to opportunistic en-route pickup while travelling to a gather target (behaviors/sweep.ts).
   sweep?: boolean;
+  // Opt in to stepping off a road tile once settled in to build/repair/upgrade, so the creep doesn't
+  // block travelling creeps for the whole job (behaviors/roadAvoidance.ts).
+  doNotBlockRoads?: boolean;
 }

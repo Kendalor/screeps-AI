@@ -3,6 +3,7 @@
 import { openHarvestTiles } from "../behaviors/targets";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import type { XY } from "../lib/geometry";
+import { wrapFn } from "../lib/profiler";
 import { buildRemoteSources, type RemoteRoomVision } from "../mining/remoteSources";
 import { censusByColony } from "./census";
 import { scoutCandidatesAround } from "./scoutGraph";
@@ -16,7 +17,7 @@ import type {
   VisibleRoom
 } from "./types";
 
-export function buildEmpireSnapshot(): EmpireSnapshot {
+export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): EmpireSnapshot {
   // One pass over all creeps -> grouped by home colony.
   const byColony = censusByColony(Object.values(Game.creeps).map(snapCreep));
   // Shared across colonies: every room with vision this tick, regardless of which colony (if any) owns it.
@@ -32,7 +33,7 @@ export function buildEmpireSnapshot(): EmpireSnapshot {
     colonies.push(buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms));
   }
   return { tick: Game.time, colonies };
-}
+}, "planning:buildEmpireSnapshot");
 
 // Body is filtered to living parts: a part at 0 hits harvests nothing and must not be counted.
 function snapCreep(c: Creep): SnapCreep {

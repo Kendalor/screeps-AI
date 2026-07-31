@@ -20,6 +20,11 @@ import { defineConfig } from "vitest/config";
 // this each worker's own bundleBot() call would shell out to rollup
 // independently and race on the single shared dist/main.js.
 export default defineConfig({
+  define: {
+    // Matches rollup.config.mjs's PROFILE-gated replace — some fixtures import src/ modules directly
+    // alongside the rollup-bundled bot, so this must be defined here too or that import throws.
+    __PROFILER_ENABLED__: "false"
+  },
   test: {
     environment: "node",
     include: ["test/integration/**/*.test.ts"],

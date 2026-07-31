@@ -57,10 +57,17 @@ export abstract class Operation {
    * over-staff (a role at or above its target simply emits no requests, so target = owned). Operations
    * whose target can drop *below* the live count — Building once sites finish, Upgrading as energy
    * falls — override this to report the true target so census can show the surplus (e.g. `5/0`).
+   *
+   * `requests` is the colony's already-computed desiredCreeps() output for every operation (see
+   * Colony.requests(), which caches it), filtered here to this operation's own slice via
+   * memory.op — the same ownership stamp `owned()` above uses. Reusing it instead of calling
+   * this.desiredCreeps(colony) again avoids a second full pass over every operation's demand purely to
+   * recompute a number the caller already had; the ownership filter makes it exactly equivalent.
    */
-  public roleTargets(colony: ColonySnapshot): RoleTarget[] {
+  public roleTargets(colony: ColonySnapshot, requests: readonly CreepRequest[] = this.desiredCreeps(colony)): RoleTarget[] {
     const by: Partial<Record<RoleName, number>> = {};
-    for (const r of this.desiredCreeps(colony)) {
+    for (const r of requests) {
+      if (r.memory.op !== undefined && r.memory.op !== this.name) continue;
       const role = r.memory.role;
       by[role] = (by[role] ?? 0) + 1;
     }

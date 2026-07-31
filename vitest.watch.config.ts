@@ -5,6 +5,9 @@ import { defineConfig } from "vitest/config";
 // a run to the terminal and are excluded from vitest.integration.config.ts,
 // so `npm run test:integration` never runs them. Use `npm run watch:integration`.
 export default defineConfig({
+  define: {
+    __PROFILER_ENABLED__: "false"
+  },
   test: {
     environment: "node",
     include: ["test/integration/watch/**/*.test.ts"],

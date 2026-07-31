@@ -2,6 +2,7 @@
 // reserved-folding — thin by design, since the interesting logic already lives in graph.ts/allocate.ts.
 
 import { buildCostMatrix } from "../layouts/roads";
+import { wrapFn } from "../lib/profiler";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { allocate, emptyReserved, refKey, type ReservedAmounts } from "./allocate";
 import { consumers, providers, storageOverflow } from "./graph";
@@ -42,7 +43,7 @@ function foldReserved(creeps: readonly SnapCreep[]): ReservedAmounts {
   return reserved;
 }
 
-export function planLogistics(colony: ColonySnapshot): LogisticsPlan {
+export const planLogistics = wrapFn(function planLogistics(colony: ColonySnapshot): LogisticsPlan {
   const transportCreeps = colony.creeps.filter(c => c.role === "transport");
   const idle = transportCreeps.filter(isIdle);
   if (idle.length === 0) return { assignments: {} };
@@ -55,4 +56,4 @@ export function planLogistics(colony: ColonySnapshot): LogisticsPlan {
   const costMatrix = buildCostMatrix({ terrain: colony.terrain, structures: colony.structures });
   const assignments = allocate(providers(colony), consumers(colony), idle, reserved, storageOverflow(colony), costMatrix);
   return { assignments };
-}
+}, "planning:planLogistics");

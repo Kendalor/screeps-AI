@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { advanceRoute, canCoFire, firstRunnableStep, nextStep, runStep, type CreepState } from "../../src/behaviors/interpreter";
 import type { Step } from "../../src/behaviors/types";
+import { clearTiles, stubTile } from "../constants";
 import { stubGame } from "../helpers";
+
+beforeEach(() => clearTiles());
 
 // A three-step loop: gather from a source, then spend on spawn, then upgrade.
 const STEPS: Step[] = [
@@ -181,6 +184,24 @@ function site(id: string): object {
   return { id, pos: { x: 10, y: 10 }, progress: 0, progressTotal: 100 };
 }
 
+// A build-in-range creep standing on a road, with a free non-road tile in range, to exercise the
+// doNotBlockRoads nudge threaded through runStep. Uses the shared RoomPosition/stubTile fixtures
+// (unlike the plain-object pos mocks elsewhere in this file) since stepOffRoad walks real terrain/lookFor.
+function roadSiteCreep(): { creep: Creep; traveled: RoomPosition[] } {
+  const traveled: RoomPosition[] = [];
+  const ROOM = "W1N1";
+  const s = { id: "siteA", pos: new RoomPosition(5, 5, ROOM), progress: 0, progressTotal: 100 };
+  stubTile(ROOM, 5, 5, { structure: [{ structureType: STRUCTURE_ROAD }] });
+
+  const creep = {
+    pos: new RoomPosition(5, 5, ROOM),
+    room: { find: () => [s] },
+    build: () => undefined,
+    travelTo: (p: RoomPosition) => traveled.push(p)
+  };
+  return { creep: creep as unknown as Creep, traveled };
+}
+
 // A full creep must not "act" on a withdraw/pickup step even when a valid target resolves (e.g. a
 // non-full storage) — otherwise the dispatch loop in creeps.ts locks onto it, travels there, and calls
 // withdraw() every tick even though it returns ERR_FULL and moves zero energy: the creep just shuttles
@@ -337,6 +358,28 @@ describe("runStep target reporting", () => {
 
     expect(used).toEqual({ acted: true, didAct: true, target: "locked" });
     expect((creep as unknown as { actedOn: string[] }).actedOn).toEqual(["locked"]);
+  });
+});
+
+describe("runStep doNotBlockRoads", () => {
+  it("steps off a road after building, when doNotBlockRoads is requested", () => {
+    const { creep, traveled } = roadSiteCreep();
+    stubGame({ objects: {} });
+
+    const result = runStep(creep, { do: "build" }, undefined, true, { doNotBlockRoads: true });
+
+    expect(result.didAct).toBe(true);
+    expect(traveled).toHaveLength(1);
+    expect(traveled[0].isEqualTo(new RoomPosition(5, 5, "W1N1"))).toBe(false);
+  });
+
+  it("does not nudge off a road when doNotBlockRoads is not requested", () => {
+    const { creep, traveled } = roadSiteCreep();
+    stubGame({ objects: {} });
+
+    runStep(creep, { do: "build" });
+
+    expect(traveled).toHaveLength(0);
   });
 });
 
@@ -613,6 +656,47 @@ describe("upgrade step: drawing closer to the controller", () => {
     expect(upgraded).toEqual(["controller1"]);
     expect(traveled).toEqual([]);
     expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+  });
+});
+
+// Uses the shared RoomPosition/stubTile fixtures (unlike upgradeCreep's plain-object mocks above) since
+// stepOffRoad needs real terrain/lookFor to pick a candidate tile.
+function upgradeRoadCreep(): { creep: Creep; traveled: RoomPosition[] } {
+  const traveled: RoomPosition[] = [];
+  const ROOM = "W1N1";
+  const controller = { id: "controller1", level: 2, pos: new RoomPosition(25, 25, ROOM) };
+  // Already adjacent to the controller, standing on a road, no container anywhere nearby.
+  stubTile(ROOM, 25, 26, { structure: [{ structureType: STRUCTURE_ROAD }] });
+
+  const creep = {
+    id: "me",
+    pos: new RoomPosition(25, 26, ROOM),
+    room: { controller },
+    memory: { task: { step: 0 } },
+    store: { getUsedCapacity: () => 50 },
+    upgradeController: () => undefined,
+    travelTo: (p: RoomPosition) => traveled.push(p)
+  };
+  return { creep: creep as unknown as Creep, traveled };
+}
+
+describe("upgrade step: doNotBlockRoads", () => {
+  it("steps off a road after upgrading when requested and no container claims the tile", () => {
+    const { creep, traveled } = upgradeRoadCreep();
+
+    const result = runStep(creep, { do: "upgrade" }, undefined, true, { doNotBlockRoads: true });
+
+    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+    expect(traveled).toHaveLength(1);
+    expect(traveled[0].isEqualTo(new RoomPosition(25, 26, "W1N1"))).toBe(false);
+  });
+
+  it("does not nudge off a road when doNotBlockRoads is not requested", () => {
+    const { creep, traveled } = upgradeRoadCreep();
+
+    runStep(creep, { do: "upgrade" });
+
+    expect(traveled).toHaveLength(0);
   });
 });
 

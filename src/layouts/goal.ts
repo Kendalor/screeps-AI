@@ -2,10 +2,11 @@
 // cap is below the goal's count, the lowest-`order` placements win, so extensions fill as a tight blob.
 
 import { range, type XY } from "../lib/geometry";
+import { wrapFn } from "../lib/profiler";
 import type { GoalLayout, GoalPlacement } from "./sync";
 
 // Re-grows the extension blob for one room, biased toward sources as a tiebreak only; contiguity stays a hard constraint.
-export function biasTowardSources(
+export const biasTowardSources = wrapFn(function biasTowardSources(
   placements: GoalPlacement[],
   anchor: XY,
   sources: XY[]
@@ -55,7 +56,7 @@ export function biasTowardSources(
   const reordered = new Map<GoalPlacement, number>();
   grown.forEach((e, i) => reordered.set(e, slots[i]));
   return [...placements].sort((a, b) => (reordered.get(a) ?? a.order) - (reordered.get(b) ?? b.order));
-}
+}, "goal:biasTowardSources");
 
 // Omitted (or sourceless) means the baked order is used as-is.
 export interface RoomContext {
@@ -67,11 +68,44 @@ export interface RoomContext {
  * Obstacle tiles for pathing: the buildable subset, not the full RCL8 goal (a solid 13x13 block
  * that would seal the anchor in against its own plan). Shared with building.ts so both path against the same plan.
  */
-export function plannedObstacles(goal: GoalLayout, rcl: number, anchor: XY, sources: XY[]): GoalPlacement[] {
+export const plannedObstacles = wrapFn(function plannedObstacles(goal: GoalLayout, rcl: number, anchor: XY, sources: XY[]): GoalPlacement[] {
   return buildableAtRcl(goal, rcl, { anchor, sources });
+}, "goal:plannedObstacles");
+
+// buildableAtRcl's real inputs are just `goal` (identity), `rcl`, and `room` (anchor+sources) — nothing
+// here depends on colony structures/creeps/tick, so unlike the layout claims that feed off it, the
+// *result* is stable across ticks whenever those three are unchanged. But it's called ~4x/tick from three
+// independent callers (claimsOf's plannedObstacles, wantedStructures' direct call reached from both
+// hasOutstandingConstruction and the metrics panel) that don't share state with each other, and
+// biasTowardSources' O(n^2) blob-growth over the goal's extensions dominates the cost — profiled at
+// 2.5ms/tick combined (buildableAtRcl+biasTowardSources), ~9% of colony CPU, on a live server for a
+// result that's the same as last tick's the vast majority of the time. Cached per (goal, rcl, anchor,
+// sources) fingerprint, same pattern as operations/mining.ts's sourceRoutes cache; module-scoped since
+// nothing here is a class instance that could hold it itself.
+const goalCache = new Map<string, GoalPlacement[]>();
+
+let nextGoalTag = 0;
+const goalTags = new WeakMap<GoalLayout, number>();
+
+function goalTag(goal: GoalLayout): number {
+  let tag = goalTags.get(goal);
+  if (tag === undefined) {
+    tag = nextGoalTag++;
+    goalTags.set(goal, tag);
+  }
+  return tag;
 }
 
-export function buildableAtRcl(goal: GoalLayout, rcl: number, room?: RoomContext): GoalPlacement[] {
+function buildableFingerprint(goal: GoalLayout, rcl: number, room?: RoomContext): string {
+  const roomKey = room ? `${room.anchor.x},${room.anchor.y}|${room.sources.map(s => `${s.x},${s.y}`).join(";")}` : "";
+  return `${goalTag(goal)}|${rcl}|${roomKey}`;
+}
+
+export const buildableAtRcl = wrapFn(function buildableAtRcl(goal: GoalLayout, rcl: number, room?: RoomContext): GoalPlacement[] {
+  const fingerprint = buildableFingerprint(goal, rcl, room);
+  const cached = goalCache.get(fingerprint);
+  if (cached) return cached;
+
   // Bias BEFORE capping, so a better-aimed extension can still make the cut.
   const ranked = room ? biasTowardSources(goal.placements, room.anchor, room.sources) : goal.placements;
   const rank = new Map(ranked.map((p, i) => [p, i]));
@@ -89,5 +123,7 @@ export function buildableAtRcl(goal: GoalLayout, rcl: number, room?: RoomContext
     const kept = [...placements].sort(byRank).slice(0, cap);
     out.push(...kept);
   }
-  return out.sort(byRank);
-}
+  const result = out.sort(byRank);
+  goalCache.set(fingerprint, result);
+  return result;
+}, "goal:buildableAtRcl");

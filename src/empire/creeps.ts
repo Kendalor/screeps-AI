@@ -13,8 +13,9 @@ import { roleDef } from "../behaviors/roles";
 import { sweepEnRoute } from "../behaviors/sweep";
 import { runTransport } from "../behaviors/transport";
 import type { Step } from "../behaviors/types";
+import { wrapFn } from "../lib/profiler";
 
-export function runCreepBehaviors(): void {
+export const runCreepBehaviors = wrapFn(function runCreepBehaviors(): void {
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
     if (creep.spawning) continue;
@@ -27,7 +28,7 @@ export function runCreepBehaviors(): void {
     }
     runOne(creep);
   }
-}
+}, "creeps:runCreepBehaviors");
 
 function storeOf(creep: Creep): { free: number; used: number } {
   return { free: creep.store.getFreeCapacity(), used: creep.store.getUsedCapacity() };
@@ -41,7 +42,7 @@ function atLockedTarget(creep: Creep, locked: Id<_HasId> | undefined): boolean {
   return !!obj?.pos && creep.pos.inRangeTo(obj.pos, 1);
 }
 
-function runOne(creep: Creep): void {
+const runOne = wrapFn(function runOne(creep: Creep): void {
   const def = roleDef(creep.memory.role);
   if (!def || def.steps.length === 0) return;
 
@@ -62,7 +63,7 @@ function runOne(creep: Creep): void {
 
   // A dead target costs no API call, so retry the next step immediately; bounded to one full pass.
   for (let i = 0; i < def.steps.length; i++) {
-    const result = runStep(creep, def.steps[step], task.target);
+    const result = runStep(creep, def.steps[step], task.target, true, { doNotBlockRoads: def.doNotBlockRoads });
 
     if (result.acted) {
       const state: CreepState = { step, ...storeOf(creep), targetGone: false, didAct: result.didAct };
@@ -79,7 +80,7 @@ function runOne(creep: Creep): void {
 
   // Every step in the loop came back with nothing to resolve — truly idle this tick.
   task.step = step;
-}
+}, "creeps:runOne");
 
 // The engine runs harvest/build/repair/upgrade (one WORK-part pipeline, mutually exclusive) independently
 // of transfer/withdraw/pickup (each its own CARRY-part pipeline) and of movement — so a second step from a

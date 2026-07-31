@@ -9,6 +9,10 @@ export abstract class Role {
   // Opt in to opportunistic en-route pickup (behaviors/sweep.ts): while travelling to a gather target,
   // detour a tile or two to grab loose piles passed near. Only movers that gather energy want this.
   static readonly sweep: boolean = false;
+  // Opt in to stepping off a road tile once settled in to build/repair/upgrade (behaviors/roadAvoidance.ts),
+  // so the creep doesn't block travelling creeps for the whole job. Only roles that park in place while
+  // working want this — movers (haulers, miners standing on their own container) don't need it.
+  static readonly doNotBlockRoads: boolean = false;
   static body(_energy: number, _ctx: BodyContext): BodyPartConstant[] {
     return [];
   }

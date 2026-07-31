@@ -12,6 +12,14 @@ import { visualize } from "./metricsVisual";
 export class Colony {
   public readonly operations: Operation[];
 
+  // Colony is reconstructed fresh every tick (see operationsFor above), so a plain instance field is
+  // exactly the right cache scope: no fingerprint/invalidation needed, it just can't outlive the tick
+  // that computed it. requests() is called 2-3x/tick per colony as-is — once by the spawn arbiter
+  // (empire/spawning.ts), again by metrics() below, and a third time indirectly for every operation
+  // that doesn't override roleTargets() (its default implementation calls desiredCreeps() itself) —
+  // all against the same unchanged snapshot, so every call after the first was pure waste.
+  private cachedRequests: CreepRequest[] | undefined;
+
   public constructor(public readonly snapshot: ColonySnapshot) {
     this.operations = operationsFor(snapshot.name);
   }
@@ -22,7 +30,7 @@ export class Colony {
 
   /** This colony's spawn demand; the empire arbiter sorts and routes across all colonies. Not sorted here. */
   public requests(): CreepRequest[] {
-    return this.operations.flatMap(op => op.desiredCreeps(this.snapshot));
+    return (this.cachedRequests ??= this.operations.flatMap(op => op.desiredCreeps(this.snapshot)));
   }
 
   /**
@@ -61,13 +69,16 @@ export class Colony {
     // not just the one building() is currently placing — otherwise a finished group's structures would
     // count as built with no target left to compare against.
     const targeted = wantedStructures(this.snapshot, claimsOf(this.snapshot, this.operations), false);
+    const requests = this.requests();
     const report = collectMetrics(
       this.snapshot,
-      this.requests(),
+      requests,
       this.operations.map(op => op.name),
       targeted,
       mem,
-      this.operations.flatMap(op => op.roleTargets(this.snapshot))
+      // Passing the already-computed requests through so roleTargets' default doesn't call
+      // desiredCreeps() a second time — see the comment on Operation.roleTargets.
+      this.operations.flatMap(op => op.roleTargets(this.snapshot, requests))
     );
     return [visualize(report, cpu)];
   }

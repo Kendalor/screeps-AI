@@ -1,0 +1,42 @@
+// A builder/repairer/upgrader that stops to work can end up parked on a road, blocking travelling
+// creeps for as long as the job takes. stepOffRoad nudges it onto a free non-road tile without
+// sacrificing range to the work target — same shape as interpreter.ts's drawCloserToController, but
+// keyed on road-avoidance rather than "closer is better".
+
+function isRoad(pos: RoomPosition): boolean {
+  return pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType === STRUCTURE_ROAD);
+}
+
+function isFreeForCreep(pos: RoomPosition, creep: Creep): boolean {
+  const occupant = pos.lookFor(LOOK_CREEPS)[0];
+  return !occupant || occupant.id === creep.id;
+}
+
+function isWalkable(pos: RoomPosition): boolean {
+  const terrain = Game.rooms[pos.roomName]?.getTerrain();
+  return !terrain || terrain.get(pos.x, pos.y) !== TERRAIN_MASK_WALL;
+}
+
+// Every in-room tile within `range` of workPos (a square, not just the boundary ring), nearest first —
+// so a free non-road tile right next to the creep's current spot wins over one at the far edge of range.
+function tilesInRange(workPos: RoomPosition, range: number, from: { x: number; y: number }): RoomPosition[] {
+  const tiles: RoomPosition[] = [];
+  for (let x = Math.max(0, workPos.x - range); x <= Math.min(49, workPos.x + range); x++) {
+    for (let y = Math.max(0, workPos.y - range); y <= Math.min(49, workPos.y + range); y++) {
+      tiles.push(new RoomPosition(x, y, workPos.roomName));
+    }
+  }
+  return tiles.sort(
+    (a, b) => Math.max(Math.abs(a.x - from.x), Math.abs(a.y - from.y)) - Math.max(Math.abs(b.x - from.x), Math.abs(b.y - from.y))
+  );
+}
+
+/** If the creep is standing on a road, step onto the nearest free non-road tile still within range of workPos. No-op otherwise. */
+export function stepOffRoad(creep: Creep, workPos: RoomPosition, range: number): void {
+  if (!isRoad(creep.pos)) return;
+
+  const candidate = tilesInRange(workPos, range, creep.pos).find(
+    pos => !pos.isEqualTo(creep.pos) && !isRoad(pos) && isWalkable(pos) && isFreeForCreep(pos, creep)
+  );
+  if (candidate) creep.travelTo(candidate);
+}

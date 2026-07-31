@@ -1,5 +1,6 @@
 // The list of what exists, not a rules engine.
 
+import { profileClass } from "../lib/profiler";
 import { Bootstrap } from "./bootstrap";
 import { Building } from "./building";
 import { Defense } from "./defense";
@@ -11,6 +12,14 @@ import { Reservation } from "./reservation";
 import { Scouting } from "./scouting";
 import { Supply } from "./supply";
 import { Upgrading } from "./upgrading";
+
+// Each is a real class whose intents()/desiredCreeps()/structures() run every tick over a fresh
+// snapshot — the "does the pure/stateless architecture recompute too much?" hypothesis lives here.
+// profileClass mutates the (ordinary, mutable) class prototype, unlike wrapFn's declaration-site
+// approach needed for plain functions — see lib/profiler.ts's file header for why the two differ.
+for (const op of [Bootstrap, Building, Defense, Logistics, Mining, Repairing, Reservation, Scouting, Supply, Upgrading]) {
+  profileClass(op);
+}
 
 export { Operation } from "./operation";
 export { Mining, CONTAINERS_FROM_ENERGY_CAPACITY } from "./mining";

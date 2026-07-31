@@ -18,6 +18,13 @@ const PLAIN_COST = 2;
 // picked, the same way layouts/roads.ts's buildCostMatrix prices a planned local road below bare terrain.
 const PREFERRED_TILE_COST = 1;
 
+// How long a "no route found" result is trusted before retrying — bounds the negative cache below
+// rather than caching a failure forever, in case terrain/vision conditions genuinely change (e.g. a
+// wall that was actually just an unexplored room border PathFinder couldn't see through yet). Far
+// shorter than the success cache (which is permanent — a found route never goes stale), since a retry
+// here is cheap insurance against a transient false negative, not a routine re-check.
+export const NO_PATH_RETRY_AFTER = 20000;
+
 // "room,x,y" — matches how callers (execute.ts) key the RemoteRouteTile sets they pass as `preferred`.
 function tileKey(roomName: string, x: number, y: number): string {
   return `${roomName},${x},${y}`;
@@ -97,27 +104,46 @@ export function toRouteTiles(path: readonly RoomPosition[]): RemoteRouteTile[] {
 // which caller gets there first. `sourceRoom` is the room the source itself lives in — ScoutedSource
 // doesn't carry its own room name (it's nested under that room's own ScoutInfo), so the caller, which
 // already knows which room it's iterating, supplies it.
+// `now`: the caller's current tick, for the negative-cache backoff below — a parameter, not a direct
+// Game.time read, so this module stays pure/testable without a live Game global (its existing
+// convention; see findRemotePath just above, which takes RoomPositions rather than reading Game itself).
 export function resolvePathToSource(
   home: string,
   anchor: XY,
   sourceRoom: string,
   scouted: ScoutedSource,
-  preferred?: ReadonlySet<string>
+  preferred: ReadonlySet<string> | undefined,
+  now: number
 ): { distance: number; route: RemoteRouteTile[] } | undefined {
   const cachedPath = scouted.paths?.[home];
   const cachedRoute = scouted.route?.[home];
   if (cachedPath !== undefined && cachedRoute !== undefined) {
     return { distance: cachedPath.length, route: cachedRoute };
   }
+  // A prior search already came back with no route, and the backoff window hasn't elapsed yet — skip
+  // re-running PathFinder.search on a result that's overwhelmingly likely to fail again. Without this,
+  // a genuinely unreachable source (blocked border, or any other permanent PathFinder.search failure)
+  // gets a full search re-run every single tick forever, since a failure has no other way to mark
+  // itself "already tried" the way a success does via paths/route (see execute:act:recordSourcePath in
+  // a live profile — this was ~20% of all profiled colony CPU on a single mid-size colony).
+  const noPathAt = scouted.noPathAt?.[home];
+  if (noPathAt !== undefined && now - noPathAt < NO_PATH_RETRY_AFTER) return undefined;
+
   const path = findRemotePath(
     new RoomPosition(anchor.x, anchor.y, home),
     new RoomPosition(scouted.x, scouted.y, sourceRoom),
     preferred
   );
-  if (!path) return undefined;
+  if (!path) {
+    (scouted.noPathAt ??= {})[home] = now;
+    return undefined;
+  }
   const serialized = serializeRemotePath(new RoomPosition(anchor.x, anchor.y, home), path);
   const route = toRouteTiles(path);
   (scouted.paths ??= {})[home] = serialized;
   (scouted.route ??= {})[home] = route;
+  // A route was found this time — clear any stale negative cache from an earlier failed attempt so a
+  // later re-check of this exact scouted object isn't confused by leftover noPathAt state.
+  if (scouted.noPathAt) delete scouted.noPathAt[home];
   return { distance: serialized.length, route };
 }
