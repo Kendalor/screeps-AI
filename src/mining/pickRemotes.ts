@@ -61,7 +61,7 @@ const MAX_REMOTE_SOURCES = 6;
 // (spawns * PARTS_PER_SPAWN)) past this fraction — the spawn(s) must stay able to keep up with local
 // roles, not just the remote fleet. Same 0..1 units as the metrics panel, so this ceiling reads directly
 // against what's on screen.
-const MAX_SPAWN_LOAD = 0.85;
+const MAX_SPAWN_LOAD = 0.65;
 
 // A room farther than this is never worth remote-mining, full stop — not every scouted room is a
 // realistic candidate, and the scouting frontier (Memory.scouting.radius) grows well past this for

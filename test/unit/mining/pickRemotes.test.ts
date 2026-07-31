@@ -142,10 +142,9 @@ describe("pickRemotes", () => {
     const reevaluated = pickRemotesRaw({
       candidates: [packed],
       // near costs 23 load parts, mid also 23 (both round up to the same small hauler headcount at
-      // these distances) — near+mid together (46) comfortably exceed a ceiling of 0.85*100=85 on their
-      // own, so this only isolates the local-load-netting behavior when localLoadParts (50) eats most of
-      // it first: budget = 85 - 50 = 35, enough for near (23) alone but not near+mid (46).
-      home: homeState({ spawnLoad: 0, spawnCapacity: 100, localLoadParts: 50 }),
+      // these distances). Ceiling is 0.65*100=65; localLoadParts (35) eats most of it, leaving a budget
+      // of 65-35=30 — enough for near (23) alone but not near+mid (46) together.
+      home: homeState({ spawnLoad: 0, spawnCapacity: 100, localLoadParts: 35 }),
       currentlySelected: alreadyHave,
       reevaluate: true
     });
