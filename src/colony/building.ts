@@ -7,6 +7,7 @@ import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
 import { range } from "../lib/geometry";
 import { needsRepair } from "../lib/repairable";
+import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import type { Intent } from "../intents/types";
 import type { Operation } from "../operations";
@@ -169,6 +170,9 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
   // Structures nobody wants at all: clear immediately, regardless of whether anything places this tick —
   // freeing the count/footprint has value on its own, with no replacement to wait on.
   for (const structure of unwanted) {
+    log.info(
+      `demolish (unwanted) ${structure.type}@${colony.name}(${structure.x},${structure.y}): not part of goal layout or claims`
+    );
     out.push({ kind: "removeStructure", room: colony.name, x: structure.x, y: structure.y, type: structure.type });
   }
 
@@ -180,7 +184,12 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
     // Clear the blocker in the same tick, immediately before the site — never ahead of the placement
     // actually happening, so a finished building isn't left demolished while its replacement waits its
     // turn in the backlog (see wantedStructures' focus-site budget).
-    if (blocker) out.push({ kind: "removeStructure", room: colony.name, x: blocker.x, y: blocker.y, type: blocker.type });
+    if (blocker) {
+      log.info(
+        `demolish (blocking) ${blocker.type}@${colony.name}(${blocker.x},${blocker.y}): replaced by ${placement.type} this tick`
+      );
+      out.push({ kind: "removeStructure", room: colony.name, x: blocker.x, y: blocker.y, type: blocker.type });
+    }
     out.push({ kind: "placeSite", room: roomOf(placement, colony), x: placement.x, y: placement.y, type: placement.type });
     if (placement.type === "container") containerSites++;
     budget--;

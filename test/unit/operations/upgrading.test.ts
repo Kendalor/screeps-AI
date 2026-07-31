@@ -200,4 +200,54 @@ describe("Upgrading.structures — controller container + road", () => {
     const taken = new Set(planned.map(p => `${p.x},${p.y}`));
     for (const c of second) expect(taken.has(`${c.x},${c.y}`)).toBe(false);
   });
+
+  // A live bug: the bunker's own road grid is seeded into `planned` before any operation runs (see
+  // claimsOf), unconditionally — not capacity-gated the way built roads are. If controllerContainerPath's
+  // A* happens to terminate on a tile that grid already claims as a road, the naive claim silently
+  // vanishes (the dedup drops it with nowhere else to go) rather than finding a free tile nearby — the
+  // container never gets claimed again, at any RCL, until the bunker layout around it changes.
+  it("still claims a container when its natural tile is already planned as a road", () => {
+    const natural = upgrading.structures(gated()).find(s => s.type === "container")!;
+    const planned = [{ x: natural.x, y: natural.y, type: "road" as const }];
+
+    const claimed = upgrading.structures(gated(), planned);
+    const containers = claimed.filter(s => s.type === "container");
+
+    expect(containers).toHaveLength(1);
+    expect({ x: containers[0].x, y: containers[0].y }).not.toEqual({ x: natural.x, y: natural.y });
+    expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("Upgrading.structures — link swap at RCL5", () => {
+  const anchor: XY = { x: 25, y: 25 };
+  const controller: XY = { x: 25, y: 40 };
+  const gated = (over: Parameters<typeof colonySnap>[0] = {}) =>
+    colonySnap({ anchor, controller, controllerLevel: 5, energyCapacity: 800, ...over });
+
+  it("claims a link instead of a container once the room reaches RCL5", () => {
+    const claimed = upgrading.structures(gated());
+
+    expect(claimed.filter(s => s.type === "container")).toHaveLength(0);
+    const links = claimed.filter(s => s.type === "link");
+    expect(links).toHaveLength(1);
+    expect(chebyshev(links[0], controller)).toBeLessThanOrEqual(2);
+  });
+
+  it("still below the gate, RCL4 keeps claiming a container", () => {
+    const claimed = upgrading.structures(gated({ controllerLevel: 4 }));
+
+    expect(claimed.filter(s => s.type === "link")).toHaveLength(0);
+    expect(claimed.filter(s => s.type === "container")).toHaveLength(1);
+  });
+
+  it("the link sits at the same spot the container would have, still roaded back to storage", () => {
+    const linkClaim = upgrading.structures(gated()).find(s => s.type === "link")!;
+    const containerClaim = upgrading.structures(gated({ controllerLevel: 4 })).find(s => s.type === "container")!;
+
+    expect({ x: linkClaim.x, y: linkClaim.y }).toEqual({ x: containerClaim.x, y: containerClaim.y });
+
+    const roads = upgrading.structures(gated()).filter(s => s.type === "road");
+    expect(roads.some(r => chebyshev(r, linkClaim) === 1)).toBe(true);
+  });
 });

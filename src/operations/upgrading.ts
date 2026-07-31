@@ -29,12 +29,17 @@ const upgraderConfig = {
   // Room energyCapacity at which the controller gets its own container + road (RCL2 + all five
   // extensions = 550). Before this the room can't spare the build; after it, the container ends the
   // upgraders' walk to storage.
-  containerFromEnergyCapacity: 550
+  containerFromEnergyCapacity: 550,
+  // RCL5 is when the first 2 links unlock — same moment the container stops being needed: a link at
+  // the controller receives straight from the core link, no hauler/road walk at all. Mirrors mining.ts's
+  // linkRcl swap (container -> link) for the source side.
+  linkRcl: 5
 } as const;
 
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
 const CONTAINER: BuildableStructureConstant = "container";
+const LINK: BuildableStructureConstant = "link";
 
 function wantedPreStorageUpgraders(colony: ColonySnapshot): number {
   // Only worth spawning once there's energy to draw from (container, drop, or storage/link).
@@ -110,9 +115,12 @@ export class Upgrading extends Operation {
   }
 
   /**
-   * The controller container (within range 2 of the controller, so an upgrader on it stays in upgrade
-   * range) and the road linking it to storage. Gated on energyCapacity, not RCL: 550 is RCL2 with all
-   * extensions, the point at which the room can spare the build. Claims only — never places sites.
+   * The controller container/link (within range 2 of the controller, so an upgrader standing on it
+   * stays in upgrade range) and the road linking it to storage. Gated on energyCapacity, not RCL: 550
+   * is RCL2 with all extensions, the point at which the room can spare the build. Below linkRcl (5,
+   * when the first links unlock) this claims a container; at/above it, a link at the same spot instead
+   * — same site the container would have sat on, same road in, but fed by transferEnergy rather than a
+   * hauler once something sends to it. Claims only — never places sites.
    */
   public override structures(colony: ColonySnapshot, planned: readonly PlacedStructure[] = []): PlacedStructure[] {
     if (colony.energyCapacity < upgraderConfig.containerFromEnergyCapacity || !colony.anchor) return [];
@@ -126,10 +134,20 @@ export class Upgrading extends Operation {
       terrain: colony.terrain,
       structures: [...colony.structures, ...planned]
     });
-    const route = controllerContainerPath(from, colony.controller, costMatrix);
-    if (!route.structurePos) return [];
 
     const taken = new Set(planned.map(p => `${p.x},${p.y}`));
+    // The A* endpoint can land on a tile the bunker's own road grid already claims — cheap to path
+    // through (ROAD_COST), so nothing steers the search away from ending there. A container can share
+    // a tile with a road in Screeps, but the claim still needs to win that tile, and a link can't stack
+    // with a road at all — so re-path with that endpoint blocked until landing on a tile nobody else
+    // wants yet. Bounded: each retry permanently blocks one more tile, and the search area is finite.
+    let route = controllerContainerPath(from, colony.controller, costMatrix);
+    for (let guard = 0; guard < 8 && route.structurePos && taken.has(`${route.structurePos.x},${route.structurePos.y}`); guard++) {
+      costMatrix.set(route.structurePos.x, route.structurePos.y, 255);
+      route = controllerContainerPath(from, colony.controller, costMatrix);
+    }
+    if (!route.structurePos || taken.has(`${route.structurePos.x},${route.structurePos.y}`)) return [];
+
     const out: PlacedStructure[] = [];
     const claim = (p: PlacedStructure): void => {
       const key = `${p.x},${p.y}`;
@@ -138,8 +156,9 @@ export class Upgrading extends Operation {
       out.push(p);
     };
 
-    claim({ x: route.structurePos.x, y: route.structurePos.y, type: CONTAINER });
-    // First tile is the storage side, last is the container — road covers everything between.
+    const structureType = colony.controllerLevel >= upgraderConfig.linkRcl ? LINK : CONTAINER;
+    claim({ x: route.structurePos.x, y: route.structurePos.y, type: structureType });
+    // First tile is the storage side, last is the container/link — road covers everything between.
     for (const tile of route.path.slice(1, -1)) claim({ x: tile.x, y: tile.y, type: ROAD });
     return out;
   }
