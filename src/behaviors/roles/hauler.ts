@@ -19,6 +19,7 @@ export class Hauler extends Role {
   static override readonly priority = 90;
   // Sweep loose piles passed near while travelling to a far miner container, so energy doesn't decay.
   static override readonly sweep = true;
+  static override readonly mover = true;
   static override body(energy: number): BodyPartConstant[] {
     return haulerBody(energy);
   }

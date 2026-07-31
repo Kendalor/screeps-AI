@@ -102,15 +102,6 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
     if (cand.distance > MAX_REMOTE_HOPS) continue; // too far to ever be worth mining
     const info = cand.info;
     if (!info) continue; // unscouted — no source data to decide on
-    // A room's mined sources are (near-)always worth jointly reserving once even one is selected — see
-    // remoteEconomics.ts's worthReserving and its test, "+5/tick dwarfs a cheap claimer's upkeep". Pricing
-    // candidates at the unreserved 5/tick rate they'd sit at only until Reservation catches up understates
-    // a room's real value, especially a multi-source room where the claimer's upkeep splits across every
-    // source mined there. Charge each candidate its fair share of that one claimer up front, split across
-    // the room's full source count (not just the ones that pass the filter below — that count isn't known
-    // yet and using it would be circular), so a room with more sources justifies marginal distance the
-    // same way reserving itself does.
-    const claimerShare = amortizeClaimer(ctx.claimerBodyCost) / info.sources.length;
     for (const src of info.sources) {
       const cachedPath = src.paths?.[home.name];
       const distance =
@@ -118,20 +109,52 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
           ? cachedPath.length
           : remoteDistanceEstimate({ roomDistance: cand.distance, source: src, storage: home.storage });
       const loadParts = remoteSourceLoadParts(home.energyCapacity, false, distance);
-      flat.push({ room: cand.room, id: src.id, x: src.x, y: src.y, distance, loadParts, claimerShare });
+      // claimerShare filled in below, once each room's own worthwhile-source count is known.
+      flat.push({ room: cand.room, id: src.id, x: src.x, y: src.y, distance, loadParts, claimerShare: 0 });
     }
   }
 
-  // Gate 1 (economics): keep only sources that pay off. reserved:true — a room with any mined source is
-  // (near-)always worth reserving in practice (see the claimerShare comment above), so pricing at the
-  // unreserved 5/tick rate a source only sits at until Reservation catches up would undercount its real
-  // value. Each candidate pays its own fair share of the room's claimer upkeep back out of that reserved
-  // yield, so the net still reflects the true marginal cost of adding this source.
-  const worthwhile = flat.filter(
-    c => netEnergy({ ...c, room: c.room, openTiles: 0, reserved: true, danger: 0 }, ctx) - c.claimerShare > 0
-  );
+  // Gate 1 (economics): keep only sources that pay off, priced at RESERVED yield (10/tick) rather than the
+  // unreserved 5/tick a source only sits at until Reservation catches up. A room with any mined source is
+  // (near-)always worth reserving in practice — see remoteEconomics.ts's worthReserving and its test,
+  // "+5/tick dwarfs a cheap claimer's upkeep" — so pricing at the unreserved rate would understate a room's
+  // real value. Each source pays its fair share of that ONE claimer back out of the reserved yield: shared
+  // across the room's own worthwhile-source count, computed per room in a first pass (a source's own net
+  // decides worthwhile-or-not independent of the room's shared claimer cost — the raw per-source economics,
+  // e.g. haul upkeep, don't depend on how many room-mates end up sharing the claim; only the shared cost
+  // itself, divided by however many end up sharing it, does).
+  const byRoomFlat = new Map<string, Candidate[]>();
+  for (const c of flat) {
+    const list = byRoomFlat.get(c.room);
+    if (list) list.push(c);
+    else byRoomFlat.set(c.room, [c]);
+  }
+  const worthwhile: Candidate[] = [];
+  for (const roomCandidates of byRoomFlat.values()) {
+    // First pass: which of this room's sources clear zero on their own merits, ignoring claim cost, to know
+    // how many will actually share it. A source too far to ever pay off doesn't get to shrink its room-mates'
+    // share by "participating" — only sources that already stand on their own remain in the split.
+    const ownMerit = roomCandidates.filter(
+      c => netEnergy({ ...c, room: c.room, openTiles: 0, reserved: true, danger: 0 }, ctx) > 0
+    );
+    if (ownMerit.length === 0) continue;
+    const claimerShare = amortizeClaimer(ctx.claimerBodyCost) / ownMerit.length;
+    for (const c of ownMerit) {
+      const net = netEnergy({ ...c, room: c.room, openTiles: 0, reserved: true, danger: 0 }, ctx) - claimerShare;
+      if (net > 0) worthwhile.push({ ...c, claimerShare });
+    }
+  }
 
   // Nearest-first, then capped: the spawn-capacity ceiling keeps the cheapest energy and can't over-commit.
+  // Nearest-first is room-safe, not just source-safe: within a real room (max ~48 tiles between two
+  // sources), finishing a started room by adding its farther sibling never loses to jumping straight to a
+  // farther, never-before-seen room instead — the extra haul/upkeep cost of dragging along a same-room
+  // sibling is always smaller than the claimer-share saved by not paying for a second room's reservation
+  // (verified by sweeping every same-room distance pair up to the 48-tile bound against every possible
+  // competing second-room distance — the worst-case margin across that whole sweep still favored finishing
+  // the room). This only holds within one room's real bounds; it is NOT a general "always prefer more
+  // sources" rule — a room farther out with a much better source can still win the cap outright (see the
+  // "full re-evaluation can evict..." test), it just can't be beaten by a same-room sibling's raw distance.
   worthwhile.sort((a, b) => a.distance - b.distance);
 
   const alreadySelected = new Set(input.currentlySelected);
@@ -149,13 +172,45 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
     // (ignoring what local roles already consume) let every candidate "fit" under cheap per-source
     // pricing even when local load alone was already near the ceiling — the real, pooled transport fleet
     // those sources actually drove then pushed total load well past 100% with nothing ever pruned.
+    //
+    // Room-grouped, not flat-per-source: admitting strictly nearest-first across the whole flat list would
+    // greedily interleave rooms (nearest source from room A, then room B's nearest, ...) whenever their
+    // sources' distances happen to interleave — e.g. two 2-source rooms at 50/70 and 51/71 would admit
+    // "one from each" under a 2-source budget, paying two full claimer shares, instead of finishing the
+    // nearer room (50+70, ONE shared claimer) which the sort's comment above proves is always the better
+    // total within one room's real bounds. A flat sort can't see that lookahead — only grouping by room
+    // and walking each room's own sources together can. Rooms are still ranked nearest-first by their own
+    // nearest source (so a genuinely better room, even a single-source one, can still win the cap outright
+    // — the "evict... in favor of..." test), but once a room is reached, its own sources are admitted
+    // nearest-first and PARTIALLY if the room's own remaining sources don't all fit (the "prunes...
+    // farthest first" test): only the sources that fit are taken, then the next room is tried with
+    // whatever budget remains, rather than skipping the room's affordable members entirely.
     let loadBudget = Math.max(0, MAX_SPAWN_LOAD * home.spawnCapacity - home.localLoadParts);
     capped = [];
+    const roomsInOrder: string[] = [];
+    const byRoomWorthwhile = new Map<string, Candidate[]>();
     for (const c of worthwhile) {
-      if (capped.length >= MAX_REMOTE_SOURCES) break;
-      if (c.loadParts > loadBudget) continue;
-      capped.push(c);
-      loadBudget -= c.loadParts;
+      let list = byRoomWorthwhile.get(c.room);
+      if (!list) {
+        list = [];
+        byRoomWorthwhile.set(c.room, list);
+        roomsInOrder.push(c.room); // worthwhile is sorted nearest-first, so first-seen == nearest source
+      }
+      list.push(c); // already nearest-first within the room, inherited from the flat sort above
+    }
+    outer: for (const room of roomsInOrder) {
+      for (const c of byRoomWorthwhile.get(room)!) {
+        if (capped.length >= MAX_REMOTE_SOURCES) break outer;
+        // `continue` (not `break`) so a room's later members still get a chance — but this can never let a
+        // farther source jump ahead of a nearer one it just skipped: load/.ts's transport headcount only
+        // grows or saturates with distance, so loadParts is monotonic non-decreasing within a room. If the
+        // nearer member didn't fit, no farther same-room member can either; in practice this behaves exactly
+        // like "stop at the room's first non-fitting member" (farthest-first pruning), just without relying
+        // on that monotonicity as an unstated assumption.
+        if (c.loadParts > loadBudget) continue;
+        capped.push(c);
+        loadBudget -= c.loadParts;
+      }
     }
   } else {
     // Never drop a source we've already committed to, even if it'd fall outside the cap on a re-rank (e.g.

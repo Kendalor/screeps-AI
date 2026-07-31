@@ -19,6 +19,12 @@ beforeEach(() => {
   clearTiles();
 });
 
+// stepOffRoad only bothers evacuating when a road-using ("mover") creep is within range to want the
+// tile — stub one nearby (a hauler, whose Role.mover is true) for every test that expects a step off.
+function stubNearbyMover(roomName: string, x: number, y: number): void {
+  stubTile(roomName, x, y, { creep: [{ id: "mover", memory: { role: "hauler" } }] });
+}
+
 describe("stepOffRoad", () => {
   it("does nothing when the creep is not standing on a road", () => {
     const creep = creepAt(25, 25);
@@ -28,8 +34,18 @@ describe("stepOffRoad", () => {
     expect(creep.travelTo).not.toHaveBeenCalled();
   });
 
-  it("steps onto the nearest free non-road tile in range when standing on a road", () => {
+  it("does nothing when standing on a road but no mover creep is nearby to want it", () => {
     stubTile(ROOM, 25, 25, { structure: [{ structureType: STRUCTURE_ROAD }] });
+    const creep = creepAt(25, 25);
+
+    stepOffRoad(creep, new RoomPosition(25, 25, ROOM), 3);
+
+    expect(creep.travelTo).not.toHaveBeenCalled();
+  });
+
+  it("steps onto the nearest free non-road tile in range when standing on a road and a mover is nearby", () => {
+    stubTile(ROOM, 25, 25, { structure: [{ structureType: STRUCTURE_ROAD }] });
+    stubNearbyMover(ROOM, 27, 27);
     const creep = creepAt(25, 25);
 
     stepOffRoad(creep, new RoomPosition(25, 25, ROOM), 3);
@@ -45,6 +61,7 @@ describe("stepOffRoad", () => {
     stubGame({ rooms: { [ROOM]: { getTerrain: () => ({ get: () => TERRAIN_MASK_WALL }) } } });
     // Only the creep's own tile is walkable (a road); every other tile in range is a wall.
     stubTile(ROOM, 25, 25, { structure: [{ structureType: STRUCTURE_ROAD }] });
+    stubNearbyMover(ROOM, 25, 25);
     const creep = creepAt(25, 25);
 
     stepOffRoad(creep, new RoomPosition(25, 25, ROOM), 1);
@@ -64,7 +81,8 @@ describe("stepOffRoad", () => {
       }
     });
     stubTile(ROOM, 25, 25, { structure: [{ structureType: STRUCTURE_ROAD }] });
-    stubTile(ROOM, 24, 25, { creep: [{ id: "other" }] }); // nearer candidate, but occupied
+    stubTile(ROOM, 24, 25, { creep: [{ id: "other", memory: { role: "builder" } }] }); // nearer candidate, but occupied
+    stubNearbyMover(ROOM, 25, 24); // within range-2 to trigger evacuation, but not a range-1 candidate tile
     const creep = creepAt(25, 25);
 
     stepOffRoad(creep, new RoomPosition(25, 25, ROOM), 1);

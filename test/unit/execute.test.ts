@@ -435,9 +435,14 @@ describe("actuator — scouting", () => {
   });
 
   it("marks a room hostile when its controller is owned by someone else", () => {
-    const room = stubScoutRoom("W1N2", { controller: { owner: { username: "Enemy" }, my: false } });
+    const room = stubScoutRoom("W1N2", {
+      controller: { pos: { x: 25, y: 25 }, owner: { username: "Enemy" }, my: false }
+    });
     stubGame({ time: 10, rooms: { W1N2: room } });
     (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      getRoomTerrain: () => ({ get: () => 0 })
+    };
 
     execute([{ kind: "recordScout", room: "W1N2" }]);
 
@@ -484,6 +489,87 @@ describe("actuator — scouting", () => {
     });
     expect(find).not.toHaveBeenCalledWith(FIND_SOURCES);
     expect(find).not.toHaveBeenCalledWith(FIND_MINERALS);
+  });
+
+  it("computes a bunker anchor for a room with a controller", () => {
+    // No sources (over.sources defaults elided) so the anchor is purely controller-driven.
+    const room = stubScoutRoom("W1N2", { sources: 0, controller: { pos: { x: 25, y: 25 } } });
+    stubGame({ time: 10, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      getRoomTerrain: () => ({ get: () => 0 }) // fully open room, every tile walkable
+    };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as {
+      Memory: { rooms: Record<string, { scouted?: { anchor?: { x: number; y: number }; anchorChecked?: boolean } }> };
+    }).Memory.rooms.W1N2;
+    expect(mem.scouted?.anchor).toEqual({ x: 25, y: 25 });
+    expect(mem.scouted?.anchorChecked).toBe(true);
+  });
+
+  it("does not compute an anchor for a room with no controller, and leaves anchorChecked unset", () => {
+    stubGame({ time: 10, rooms: { W1N2: stubScoutRoom("W1N2") } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    const getRoomTerrain = vi.fn();
+    (globalThis as { Game: { map: unknown } }).Game.map = { getRoomTerrain };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as {
+      Memory: { rooms: Record<string, { scouted?: { anchor?: unknown; anchorChecked?: boolean } }> };
+    }).Memory.rooms.W1N2;
+    expect(mem.scouted?.anchor).toBeUndefined();
+    expect(mem.scouted?.anchorChecked).toBeUndefined();
+    expect(getRoomTerrain).not.toHaveBeenCalled();
+  });
+
+  it("marks anchorChecked true (with anchor absent) when a controller room's terrain rejects every candidate", () => {
+    const room = stubScoutRoom("W1N2", { sources: 0, controller: { pos: { x: 25, y: 25 } } });
+    stubGame({ time: 10, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      getRoomTerrain: () => ({ get: () => TERRAIN_MASK_WALL }) // entirely wall, no bunker fits anywhere
+    };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as {
+      Memory: { rooms: Record<string, { scouted?: { anchor?: unknown; anchorChecked?: boolean } }> };
+    }).Memory.rooms.W1N2;
+    expect(mem.scouted?.anchor).toBeUndefined();
+    expect(mem.scouted?.anchorChecked).toBe(true);
+  });
+
+  it("reuses a cached anchor on re-scout instead of recomputing it", () => {
+    const room = stubScoutRoom("W1N2", { controller: { pos: { x: 25, y: 25 } } });
+    stubGame({ time: 1000, rooms: { W1N2: room } });
+    const getRoomTerrain = vi.fn(() => ({ get: () => 0 }));
+    (globalThis as { Game: { map: unknown } }).Game.map = { getRoomTerrain };
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: {
+        W1N2: {
+          scouted: {
+            tick: 10,
+            type: "normal",
+            sources: [{ id: "old0", x: 5, y: 5 }],
+            anchor: { x: 7, y: 7 },
+            anchorChecked: true,
+            hostile: false
+          }
+        }
+      }
+    };
+
+    execute([{ kind: "recordScout", room: "W1N2", passive: true }]);
+
+    const mem = (globalThis as {
+      Memory: { rooms: Record<string, { scouted?: { anchor?: unknown; anchorChecked?: boolean } }> };
+    }).Memory.rooms.W1N2;
+    expect(mem.scouted?.anchor).toEqual({ x: 7, y: 7 });
+    expect(mem.scouted?.anchorChecked).toBe(true);
+    expect(getRoomTerrain).not.toHaveBeenCalled();
   });
 
   it("a passive recording still does a full observe when the room was never scouted before", () => {

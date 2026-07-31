@@ -3,6 +3,25 @@
 // sacrificing range to the work target — same shape as interpreter.ts's drawCloserToController, but
 // keyed on road-avoidance rather than "closer is better".
 
+import { roleDef } from "./roles";
+
+const NEARBY_MOVER_RANGE = 2;
+
+// Cheap early-out: don't bother evacuating a road tile unless some road-using creep (Role.mover, e.g.
+// hauler/transport/supply/scout/defender) is actually nearby to want it. Most ticks nobody's within
+// range, so this skips the tile-search/travelTo work below entirely.
+function moverNearby(pos: RoomPosition, self: Creep): boolean {
+  for (let x = Math.max(0, pos.x - NEARBY_MOVER_RANGE); x <= Math.min(49, pos.x + NEARBY_MOVER_RANGE); x++) {
+    for (let y = Math.max(0, pos.y - NEARBY_MOVER_RANGE); y <= Math.min(49, pos.y + NEARBY_MOVER_RANGE); y++) {
+      const found = new RoomPosition(x, y, pos.roomName)
+        .lookFor(LOOK_CREEPS)
+        .some(creep => creep.id !== self.id && roleDef(creep.memory.role)?.mover);
+      if (found) return true;
+    }
+  }
+  return false;
+}
+
 function isRoad(pos: RoomPosition): boolean {
   return pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType === STRUCTURE_ROAD);
 }
@@ -34,6 +53,7 @@ function tilesInRange(workPos: RoomPosition, range: number, from: { x: number; y
 /** If the creep is standing on a road, step onto the nearest free non-road tile still within range of workPos. No-op otherwise. */
 export function stepOffRoad(creep: Creep, workPos: RoomPosition, range: number): void {
   if (!isRoad(creep.pos)) return;
+  if (!moverNearby(creep.pos, creep)) return;
 
   const candidate = tilesInRange(workPos, range, creep.pos).find(
     pos => !pos.isEqualTo(creep.pos) && !isRoad(pos) && isWalkable(pos) && isFreeForCreep(pos, creep)

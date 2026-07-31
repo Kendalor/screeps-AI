@@ -13,6 +13,10 @@ export abstract class Role {
   // so the creep doesn't block travelling creeps for the whole job. Only roles that park in place while
   // working want this — movers (haulers, miners standing on their own container) don't need it.
   static readonly doNotBlockRoads: boolean = false;
+  // Opt in as a road user (behaviors/roadAvoidance.ts): a role that spends its working life pathing
+  // between rooms/targets rather than parking on one tile. Gates whether a parked worker bothers
+  // stepping off a road at all — only set on roles that actually walk roads to do their job.
+  static readonly mover: boolean = false;
   static body(_energy: number, _ctx: BodyContext): BodyPartConstant[] {
     return [];
   }

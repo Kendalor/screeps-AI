@@ -5,6 +5,7 @@ import { Role } from "./role";
 export class Scout extends Role {
   // Below the whole economy (pure future value), but above the floor so a settled colony fields one.
   static override readonly priority = 30;
+  static override readonly mover = true;
   static override body(): BodyPartConstant[] {
     return [MOVE];
   }

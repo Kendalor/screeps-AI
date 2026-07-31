@@ -331,6 +331,53 @@ describe("pickRemotes", () => {
     expect(ids).toContain("better");
   });
 
+  it("reevaluate finishes a nearer room's 2nd source rather than jumping to a 2nd room's nearest, when budget only fits 2", () => {
+    // Two 2-source rooms with interleaved distances: room A's sources at 50/70, room B's at 51/71. A flat
+    // nearest-source sort (A@50, B@51, A@70, B@71) would greedily admit "one from each room" (A@50 + B@51)
+    // under a budget that only fits 2 sources — paying two full claimer shares (one per room, since each
+    // room ends up with only 1 mined source) instead of finishing room A (A@50 + A@70, ONE shared claimer).
+    // Within a real room's bounds (max ~48 tiles between two sources) finishing the nearer room is always
+    // the higher-value combination — see pickRemotes.ts's sort comment for the swept proof — so the budget
+    // must land on A@50+A@70, not A@50+B@51.
+    const roomA = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: [
+          { id: "a_near" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(50) } }, // distance 50
+          { id: "a_far" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(70) } } // distance 70
+        ]
+      })
+    );
+    const roomB = scoutTarget(
+      "W3N1",
+      scouted({
+        sources: [
+          { id: "b_near" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(51) } }, // distance 51
+          { id: "b_far" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(71) } } // distance 71
+        ]
+      })
+    );
+    const alreadyHave = ["a_near", "a_far", "b_near", "b_far"] as Id<Source>[];
+
+    // energyCapacity raised so a reserved-rate remote miner (6 WORK) is affordable; at these distances each
+    // candidate's own load-parts estimate is identical (43 — same hauler headcount rounds up the same way),
+    // isolating the room-vs-room ordering question from unrelated body-sizing effects. spawnCapacity sized
+    // (0.65 * 154 ≈ 100) so the budget covers exactly 2 sources' worth of load (86) but not 3 (129).
+    const home = homeState({ energyCapacity: 1800, spawnLoad: 0, spawnCapacity: 154, localLoadParts: 0 });
+    const reevaluated = pickRemotesRaw({
+      candidates: [roomA, roomB],
+      home,
+      currentlySelected: alreadyHave,
+      reevaluate: true
+    });
+    const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
+
+    expect(ids).toContain("a_near");
+    expect(ids).toContain("a_far"); // room A is finished, not just its nearer member
+    expect(ids).not.toContain("b_near"); // room B doesn't get to cherry-pick its nearest over A's 2nd source
+    expect(reevaluated.length).toBe(1); // only ONE room's claimer cost is ever paid, not two
+  });
+
   it("never drops an already-selected source even past the cap on re-rank", () => {
     // 6 already selected (at the cap); a nearer never-selected candidate shows up too. The existing 6
     // must all survive — the cap bounds new additions, not previously committed sources.

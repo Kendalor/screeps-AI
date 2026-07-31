@@ -4,6 +4,7 @@ import type { RoomType } from "../lib/roomName";
 import type { TaskState } from "../behaviors/types";
 import type { LogisticsTask } from "../logistics/types";
 import type { LogLevel } from "../lib/log";
+import type { XY } from "../lib/geometry";
 
 declare global {
   interface Memory {
@@ -146,6 +147,17 @@ export interface ScoutInfo {
   mineral?: MineralConstant; // the room's mineral, if any (normal/keeper rooms)
   owner?: string; // controller owner's username, if owned/reserved
   hostile: boolean; // owned by someone other than us
+  // Best bunker anchor for this room, if one fits (see layouts/stamp.ts) — normal rooms with a
+  // controller only. Computed once from terrain+controller+sources, which never change, and kept
+  // forever after like `sources`/`mineral`. The headline input for expansion: a room with no anchor
+  // can never be colonized.
+  anchor?: XY;
+  // Whether resolveScoutedAnchor has actually run for this room (true even when it found no fit).
+  // Without this, `anchor === undefined` is ambiguous between "no controller, never attempted" and
+  // "has a controller, terrain rejected every candidate" — a colonization picker needs to tell those
+  // apart (the latter is a real, permanent "no" for this room; the former just means check `type`
+  // instead). Absent/false on any record from before this field existed.
+  anchorChecked?: boolean;
 }
 
 // A source as seen from outside its room, before any colony claims it for mining.

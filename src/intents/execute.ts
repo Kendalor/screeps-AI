@@ -4,6 +4,7 @@ import { log } from "../lib/log";
 import { recordManual, wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
 import { remoteRouteTileKey, resolvePathToSource } from "../lib/remotePath";
+import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import type { RemoteMemory, RemoteSourceMemory, RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
 
@@ -242,14 +243,35 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
   const staticKnown = previous?.sources !== undefined;
   const mineral = staticKnown ? previous.mineral : room.find(FIND_MINERALS)[0]?.mineralType;
   const sources = staticKnown ? previous.sources : room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y }));
+  const anchorChecked = staticKnown ? previous.anchorChecked ?? false : c !== undefined;
+  const anchor = staticKnown ? previous.anchor : resolveScoutedAnchor(room, c, sources);
   return {
     tick: Game.time,
     type: roomType(room.name),
     sources,
     ...(mineral ? { mineral } : {}),
     ...(owner ? { owner } : {}),
+    ...(anchor ? { anchor } : {}),
+    ...(anchorChecked ? { anchorChecked } : {}),
     hostile: owner !== undefined && !c?.my
   };
+}
+
+// The bunker anchor for a scouted (not-yet-owned) room — same fit test as the home colony's own
+// resolveAnchor (snapshot/colony.ts), but keyed off a room this colony merely has vision of. Only a
+// room with a controller can ever host a bunker; terrain+controller+sources are immutable, so this is
+// computed once and cached on ScoutInfo.anchor forever after, same as `sources`/`mineral` above.
+// Undefined return means "no controller, never attempted" — distinguished from "attempted, no fit"
+// via observeRoom's separate anchorChecked flag, since both cases return undefined here.
+function resolveScoutedAnchor(
+  room: Room,
+  controller: StructureController | undefined,
+  sources: { x: number; y: number }[]
+): { x: number; y: number } | undefined {
+  if (!controller) return undefined;
+  const candidates = findAnchorCandidates(walkablePixelsForRoom(room.name));
+  const anchor = pickAnchor(candidates, { controller: { x: controller.pos.x, y: controller.pos.y }, sources });
+  return anchor ?? undefined;
 }
 
 // Fills in each source's real haul distance, replacing pickRemotes' cheap ranking estimate with the

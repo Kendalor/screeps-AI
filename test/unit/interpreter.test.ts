@@ -192,6 +192,8 @@ function roadSiteCreep(): { creep: Creep; traveled: RoomPosition[] } {
   const ROOM = "W1N1";
   const s = { id: "siteA", pos: new RoomPosition(5, 5, ROOM), progress: 0, progressTotal: 100 };
   stubTile(ROOM, 5, 5, { structure: [{ structureType: STRUCTURE_ROAD }] });
+  // stepOffRoad only evacuates when a road-using ("mover") creep is nearby to want the tile.
+  stubTile(ROOM, 6, 6, { creep: [{ id: "mover", memory: { role: "hauler" } }] });
 
   const creep = {
     pos: new RoomPosition(5, 5, ROOM),
@@ -667,6 +669,8 @@ function upgradeRoadCreep(): { creep: Creep; traveled: RoomPosition[] } {
   const controller = { id: "controller1", level: 2, pos: new RoomPosition(25, 25, ROOM) };
   // Already adjacent to the controller, standing on a road, no container anywhere nearby.
   stubTile(ROOM, 25, 26, { structure: [{ structureType: STRUCTURE_ROAD }] });
+  // stepOffRoad only evacuates when a road-using ("mover") creep is nearby to want the tile.
+  stubTile(ROOM, 24, 24, { creep: [{ id: "mover", memory: { role: "hauler" } }] });
 
   const creep = {
     id: "me",

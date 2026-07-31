@@ -111,4 +111,8 @@ export interface RoleDef {
   // Opt in to stepping off a road tile once settled in to build/repair/upgrade, so the creep doesn't
   // block travelling creeps for the whole job (behaviors/roadAvoidance.ts).
   doNotBlockRoads?: boolean;
+  // Opt in as a road user: a role that spends its working life pathing between rooms/targets rather
+  // than parking on one tile (behaviors/roadAvoidance.ts). stepOffRoad only evacuates for these —
+  // no point ceding a tile when nothing nearby actually wants to walk through it.
+  mover?: boolean;
 }

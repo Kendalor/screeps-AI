@@ -21,6 +21,7 @@ export class Defender extends Role {
   // (supply/transport/bootstrap all sit at 100). Below RECOVERY_PRIORITY, which stays the one thing that
   // can never be preempted.
   static override readonly priority = 110;
+  static override readonly mover = true;
   static override body(energy: number): BodyPartConstant[] {
     return defenderBody(energy);
   }

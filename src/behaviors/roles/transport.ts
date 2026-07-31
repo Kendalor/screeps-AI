@@ -12,6 +12,7 @@ export class Transport extends Role {
   // Once a drop exists, transport should win the very next spawn slot, full stop — no per-tick rank
   // math tied to live counts, which proved fragile (see docs/logistics-plan.md's maxHaulers:0 step 7).
   static override readonly priority = 100;
+  static override readonly mover = true;
   static override body(energy: number): BodyPartConstant[] {
     return haulerBody(energy);
   }
