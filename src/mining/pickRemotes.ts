@@ -22,6 +22,15 @@ export interface PickRemotesHome {
   // (spawns * PARTS_PER_SPAWN), see colony/metrics.ts) — comparable numbers, not a separate concept.
   spawnLoad: number; // current colony-wide fraction (0..1+) before any new remote source
   spawnCapacity: number; // parts these spawns can sustain (spawns.length * PARTS_PER_SPAWN); 0 disables selection
+  // Parts NOT attributable to any currently-selected remote source (local miners/haulers/upgraders/etc,
+  // plus the fixed local-hauling share of transport) — spawnLoad * spawnCapacity minus the summed
+  // remoteSourceLoadParts of every currently-selected source. reevaluate's budget is charged against
+  // (MAX_SPAWN_LOAD * spawnCapacity - localLoadParts), not the bare ceiling: spending the whole ceiling
+  // on remote-source estimates while ignoring what local roles already consume let a colony whose local
+  // load alone was already near/at the ceiling keep "fitting" a full remote fleet under cheap per-source
+  // estimates, even though the real (pooled, Logistics-sized) transport fleet those sources drove had
+  // already pushed total load well past 100%.
+  localLoadParts: number;
 }
 
 export interface PickRemotesInput {
@@ -122,7 +131,12 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
     // rather than exempting incumbents the way the append-only branch below does. Otherwise a colony
     // stuck over the ceiling (e.g. from a source that's grown costlier, or the ceiling itself dropping
     // as the colony's own local roles grew) would freeze there forever with no way back under it.
-    let loadBudget = MAX_SPAWN_LOAD * home.spawnCapacity;
+    //
+    // Budget nets out localLoadParts first: spending the bare ceiling on remote-source estimates alone
+    // (ignoring what local roles already consume) let every candidate "fit" under cheap per-source
+    // pricing even when local load alone was already near the ceiling — the real, pooled transport fleet
+    // those sources actually drove then pushed total load well past 100% with nothing ever pruned.
+    let loadBudget = Math.max(0, MAX_SPAWN_LOAD * home.spawnCapacity - home.localLoadParts);
     capped = [];
     for (const c of worthwhile) {
       if (capped.length >= MAX_REMOTE_SOURCES) break;

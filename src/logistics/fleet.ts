@@ -4,6 +4,7 @@
 // lives so neither operation duplicates the other's.
 
 import { countPart } from "../spawn/body";
+import { haulerBody } from "../behaviors/roles/hauler";
 import { range, type XY } from "../lib/geometry";
 import { grossHarvest } from "../mining/remoteEconomics";
 import type { ColonySnapshot, SnapCreep, SnapRemoteSource, SnapSource } from "../snapshot/types";
@@ -12,6 +13,9 @@ export interface IncomeConfig {
   sourceRegenPerTick: number;
   roomIncomeCap: number;
   defaultHaulDistance: number;
+  energyPerCarry: number;
+  carryMargin: number;
+  maxTransport: number;
 }
 
 interface SourceBucket {
@@ -98,5 +102,27 @@ export function haulDistance(miners: readonly SnapCreep[], colony: ColonySnapsho
 
   const weightedSum = local.income * local.distance + remotes.reduce((sum, b) => sum + b.income * b.distance, 0);
   return Math.max(1, weightedSum / totalIncome);
+}
+
+/**
+ * The transport fleet's real headcount for the given income/distance, exactly as Logistics.wantedTransport
+ * derives it (income x round trip, over-provisioned by carryMargin, divided into whole hauler bodies,
+ * capped at maxTransport) — the one place this arithmetic lives, so a caller pricing a hypothetical (e.g.
+ * pickRemotes sizing a candidate source's marginal cost) can't drift from what Logistics will actually
+ * spawn.
+ */
+export function wantedTransportHeadcount(income: number, distance: number, energyCapacity: number, config: IncomeConfig): number {
+  if (income <= 0) return 0;
+  const roundTrip = 2 * distance;
+  const neededCarry = Math.ceil(income * roundTrip * config.carryMargin);
+  const body = haulerBody(energyCapacity);
+  const perCreep = Math.max(1, countPart(body, CARRY)) * config.energyPerCarry;
+  return Math.min(config.maxTransport, Math.max(1, Math.ceil(neededCarry / perCreep)));
+}
+
+/** Body-part cost of `wantedTransportHeadcount`'s fleet — headcount x one hauler body's part count. */
+export function wantedTransportParts(income: number, distance: number, energyCapacity: number, config: IncomeConfig): number {
+  const headcount = wantedTransportHeadcount(income, distance, energyCapacity, config);
+  return headcount * haulerBody(energyCapacity).length;
 }
 

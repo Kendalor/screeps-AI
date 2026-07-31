@@ -15,11 +15,11 @@
 // something. Once it does exist, it should win the very next spawn slot outright. The gate keys off
 // providers only, NOT the live consumers() list, whose spawnSystem entry blinks out at a full spawn.
 
-import { countPart, orderBody } from "../spawn/body";
+import { orderBody } from "../spawn/body";
 import type { Intent } from "../intents/types";
 import { planLogistics } from "../logistics";
 import { providers } from "../logistics/graph";
-import { harvestIncome, haulDistance } from "../logistics/fleet";
+import { harvestIncome, haulDistance, wantedTransportHeadcount } from "../logistics/fleet";
 import { bodyContext } from "../spawn/bodyContext";
 import type { ColonySnapshot } from "../snapshot/types";
 import { fillTo, type CreepRequest } from "../spawn/request";
@@ -64,7 +64,7 @@ export class Logistics extends Operation {
     // subsequent ones off full capacity.
     const energyForBody = this.owned(colony, "transport").length === 0 ? config.bootstrapEnergy : colony.energyCapacity;
     const body = orderBody(roleDef("transport")?.body(energyForBody, bodyContext(colony)) ?? []);
-    const wanted = this.wantedTransport(colony, body);
+    const wanted = this.wantedTransport(colony, energyForBody);
     return fillTo(wanted, this.owned(colony, "transport").length, body, roleDef("transport")!.priority, {
       role: "transport",
       home: colony.name,
@@ -73,20 +73,13 @@ export class Logistics extends Operation {
   }
 
   /** How many transport creeps current income warrants: steady-state pile, capped. */
-  private wantedTransport(colony: ColonySnapshot, body: BodyPartConstant[]): number {
+  private wantedTransport(colony: ColonySnapshot, energyForBody: number): number {
     // Logistics doesn't own miners (Mining does) — read every miner in the colony, not this.owned(),
     // since there's no "logistics:room" stamp on a miner to filter by.
     const miners = colony.creeps.filter(c => c.role === "miner");
     const income = harvestIncome(miners, colony, config);
-    if (income <= 0) return 0;
-
-    const roundTrip = 2 * haulDistance(miners, colony, config);
-    // Over-provision carry (round up): the exact steady-state figure runs too lean once respawn
-    // gaps and en-route drops are accounted for, so buy a margin (config.carryMargin).
-    const neededCarry = Math.ceil(income * roundTrip * config.carryMargin);
-    const perCreep = Math.max(1, countPart(body, CARRY)) * config.energyPerCarry;
-
-    return Math.min(config.maxTransport, Math.max(1, Math.ceil(neededCarry / perCreep)));
+    const distance = haulDistance(miners, colony, config);
+    return wantedTransportHeadcount(income, distance, energyForBody, config);
   }
 
   /** Direct action, not arbitrated: runs planLogistics once per tick and emits one assignment intent per idle creep. */

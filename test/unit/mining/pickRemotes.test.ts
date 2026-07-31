@@ -12,6 +12,7 @@ function homeState(over: Partial<Parameters<typeof pickRemotesRaw>[0]["home"]> =
     energyCapacity: 800,
     spawnLoad: 0,
     spawnCapacity: 5 * 500,
+    localLoadParts: 0,
     ...over
   };
 }
@@ -107,8 +108,9 @@ describe("pickRemotes", () => {
     const reevaluated = pickRemotesRaw({
       candidates: [packed],
       // spawnCapacity small enough that all 3 sources' combined load parts overshoot MAX_SPAWN_LOAD *
-      // spawnCapacity, but near+mid together still fit — spawnLoad itself is irrelevant here since
-      // reevaluate re-derives the whole budget from spawnCapacity alone (see pickRemotes.ts).
+      // spawnCapacity, but near+mid together still fit. localLoadParts stays at homeState()'s default
+      // (0) here — the budget is charged purely against spawnCapacity, isolating the nearest-first
+      // eviction behavior from the local-load-netting case covered separately below.
       home: homeState({ spawnLoad: 0, spawnCapacity: 40 }),
       currentlySelected: alreadyHave,
       reevaluate: true
@@ -116,6 +118,40 @@ describe("pickRemotes", () => {
     const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
     expect(ids).toContain("near");
     expect(ids).not.toContain("far"); // the farthest/priciest is the one shed to fit the budget
+  });
+
+  it("reevaluate nets local load out of the budget, evicting even a source that fits its own estimate", () => {
+    // near+mid together cost well under MAX_SPAWN_LOAD * spawnCapacity on their own load-parts estimate
+    // alone (same fixture as the test above), but a big localLoadParts (local roles' real cost — the
+    // thing this test exists to cover) eats most of the ceiling first. Reevaluate must net that out
+    // before pricing candidates, or it would keep sources whose own estimate "fits" a budget that never
+    // accounted for what local roles already consume — the actual bug this fixes: a colony whose local
+    // load alone was already near the ceiling kept "fitting" a full remote fleet under cheap per-source
+    // pricing, even though real total load had already passed 100%.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: [
+          { id: "near" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } },
+          { id: "mid" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(5) } }
+        ]
+      })
+    );
+    const alreadyHave = ["near", "mid"] as Id<Source>[];
+
+    const reevaluated = pickRemotesRaw({
+      candidates: [packed],
+      // near costs 23 load parts, mid also 23 (both round up to the same small hauler headcount at
+      // these distances) — near+mid together (46) comfortably exceed a ceiling of 0.85*100=85 on their
+      // own, so this only isolates the local-load-netting behavior when localLoadParts (50) eats most of
+      // it first: budget = 85 - 50 = 35, enough for near (23) alone but not near+mid (46).
+      home: homeState({ spawnLoad: 0, spawnCapacity: 100, localLoadParts: 50 }),
+      currentlySelected: alreadyHave,
+      reevaluate: true
+    });
+    const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("near");
+    expect(ids).not.toContain("mid");
   });
 
   it("never mines the home room even if it appears as a candidate", () => {

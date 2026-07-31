@@ -6,6 +6,7 @@ import { countPart, orderBody } from "../spawn/body";
 import { roleDef } from "../behaviors/roles";
 import { REMOTE_UNRESERVED_WORK, SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
 import { pickRemotes } from "../mining/pickRemotes";
+import { remoteSourceLoadParts } from "../mining/load";
 import { PARTS_PER_SPAWN } from "../colony/metrics";
 import type { Intent } from "../intents/types";
 import GOAL_JSON from "../layouts/Base_2.json";
@@ -347,13 +348,29 @@ export class Mining extends Operation {
    * here would undercount every other operation's demand (haulers/transport in particular are often the
    * single largest contributor once remotes are running), letting this gate think there's headroom long
    * after the real, on-screen load has already passed the ceiling.
+   *
+   * `localLoadParts` is total load minus the summed remoteSourceLoadParts of every currently-selected
+   * remote source (same formula pickRemotes prices a candidate with) — what reevaluate's budget nets
+   * out first, so it prices new/kept remote candidates against real remaining headroom instead of the
+   * bare ceiling. Never negative: currently-selected sources' real (pooled, Logistics-sized) transport
+   * cost can exceed this per-source estimate's sum, in which case every part of that excess is correctly
+   * attributed to "local" rather than manufacturing negative local load.
    */
-  private spawnLoad(colony: ColonySnapshot, colonyRequestParts: number): { spawnLoad: number; spawnCapacity: number } {
+  private spawnLoad(
+    colony: ColonySnapshot,
+    colonyRequestParts: number
+  ): { spawnLoad: number; spawnCapacity: number; localLoadParts: number } {
     const livingParts = colony.creeps.reduce((sum, c) => sum + c.body.length, 0);
     const spawnCapacity = colony.spawns.length * PARTS_PER_SPAWN;
+    const totalParts = livingParts + colonyRequestParts;
+    const remoteLoadParts = colony.remoteSources.reduce(
+      (sum, s) => sum + remoteSourceLoadParts(colony.energyCapacity, s.reserved, s.distance),
+      0
+    );
     return {
-      spawnLoad: spawnCapacity > 0 ? (livingParts + colonyRequestParts) / spawnCapacity : 0,
-      spawnCapacity
+      spawnLoad: spawnCapacity > 0 ? totalParts / spawnCapacity : 0,
+      spawnCapacity,
+      localLoadParts: Math.max(0, totalParts - remoteLoadParts)
     };
   }
 
