@@ -45,6 +45,44 @@ function sourceStructureType(rcl: number): BuildableStructureConstant {
   return rcl >= config.linkRcl ? "link" : "container";
 }
 
+// sourceRoutes' real inputs are anchor, terrain (static once a room is seen) and structures/planned
+// (walkability) — everything else about a colony is irrelevant to a path search. Recomputing a full
+// cost matrix + PathFinder search per source, every tick, forever, was 2%+ of total colony CPU on a
+// live server for a route that's the same as last tick's the vast majority of the time (profiled via
+// lib/profiler.ts — Mining:intents/sourceRoutes/structures were consistently the largest tick-CPU
+// consumers even on a colony with ~0 living creeps). Cached per room, keyed on a cheap fingerprint of
+// what could actually move a path; a real change (new road/container built, a demolition, RCL-gated
+// link swap) invalidates it the very next tick it's read. `Mining` itself is reconstructed fresh every
+// tick (see operations/index.ts's operationsFor), so this cache lives at module scope instead.
+const routeCache = new Map<string, { fingerprint: string; routes: Map<SnapSource, RoadPathResult> }>();
+
+// Cheap identity tag for the terrain grid: real rooms rebuild their snapshot from the same underlying
+// terrain array every tick (it's static for the life of a room), so a same-instance check is enough to
+// confirm "this is still the same room's terrain as last time" without hashing 2500 bytes every tick.
+// A different array instance (a genuinely different room/scenario, e.g. between unit tests sharing a
+// room name) gets a fresh tag so the fingerprint below can't collide with unrelated terrain.
+let nextTerrainTag = 0;
+const terrainTags = new WeakMap<Uint8Array, number>();
+
+function terrainTag(terrain: Uint8Array): number {
+  let tag = terrainTags.get(terrain);
+  if (tag === undefined) {
+    tag = nextTerrainTag++;
+    terrainTags.set(terrain, tag);
+  }
+  return tag;
+}
+
+function routeFingerprint(colony: ColonySnapshot, planned: readonly PlacedStructure[]): string {
+  const anchor = colony.anchor;
+  // Position + type is enough to detect any walkability-relevant change; order is stable per tick
+  // since both colony.structures and planned are rebuilt fresh from the same snapshot/plan each time.
+  const structureKey = colony.structures.map(s => `${s.x},${s.y},${s.type}`).join(";");
+  const plannedKey = planned.map(p => `${p.x},${p.y},${p.type}`).join(";");
+  const sourceKey = colony.sources.map(s => `${s.id},${s.x},${s.y}`).join(";");
+  return `${anchor?.x},${anchor?.y}|${colony.controllerLevel}|${structureKey}|${plannedKey}|${sourceKey}|${terrainTag(colony.terrain)}`;
+}
+
 const workOf = (c: SnapCreep): number => countPart(c.body, WORK); // live WORK, spawning included
 
 export class Mining extends Operation {
@@ -195,10 +233,10 @@ export class Mining extends Operation {
   }
 
   /** Source-spot bookkeeping so roles skip re-pathing. Emitted only when the write would change something. */
-  public override intents(colony: ColonySnapshot): Intent[] {
+  public override intents(colony: ColonySnapshot, colonyRequestParts = 0): Intent[] {
     const out: Intent[] = [];
 
-    const remoteSelection = this.remoteSelection(colony);
+    const remoteSelection = this.remoteSelection(colony, colonyRequestParts);
     if (remoteSelection) out.push(remoteSelection);
 
     const planned = colony.anchor
@@ -282,7 +320,7 @@ export class Mining extends Operation {
    * already built for an evicted source aren't cleaned up here; staffing gates downstream stop working a
    * source once it drops out of colony.remoteSources.
    */
-  private remoteSelection(colony: ColonySnapshot): Intent | undefined {
+  private remoteSelection(colony: ColonySnapshot, colonyRequestParts: number): Intent | undefined {
     const reevaluate = colony.tick % config.remoteReevaluateEvery === 0;
     if (colony.tick % config.remoteSelectionEvery !== 0 && !reevaluate) return undefined;
 
@@ -292,7 +330,7 @@ export class Mining extends Operation {
         name: colony.name,
         storage: colony.anchor ?? colony.controller,
         energyCapacity: colony.energyCapacity,
-        ...this.spawnLoad(colony)
+        ...this.spawnLoad(colony, colonyRequestParts)
       },
       currentlySelected: colony.remoteSources.map(s => s.id),
       reevaluate
@@ -303,31 +341,37 @@ export class Mining extends Operation {
 
   /**
    * Same colony-fraction formula as the metrics panel's spawn `load` (colony/metrics.ts) — parts /
-   * (spawns * PARTS_PER_SPAWN) — so pickRemotes' 85% ceiling reads against the same number shown on
-   * screen. Operations can't reach siblings (see operation.ts), so this can only see colony-wide living
-   * parts plus Mining's own outstanding requests, not every operation's — a slight undercount of the
-   * metrics panel's true figure (which also folds in Logistics/Building/etc.'s requests), but the same
-   * self-contained boundary every operation respects, and living parts dominate the steady-state signal
-   * this gate cares about.
+   * (spawns * PARTS_PER_SPAWN) — so pickRemotes' 85% ceiling reads against the exact number shown on
+   * screen. `colonyRequestParts` is the colony-wide outstanding-request total, computed once by the
+   * orchestrator and handed in (see Operation.intents' doc comment) — using only Mining's own requests
+   * here would undercount every other operation's demand (haulers/transport in particular are often the
+   * single largest contributor once remotes are running), letting this gate think there's headroom long
+   * after the real, on-screen load has already passed the ceiling.
    */
-  private spawnLoad(colony: ColonySnapshot): { spawnLoad: number; spawnCapacity: number } {
+  private spawnLoad(colony: ColonySnapshot, colonyRequestParts: number): { spawnLoad: number; spawnCapacity: number } {
     const livingParts = colony.creeps.reduce((sum, c) => sum + c.body.length, 0);
-    const ownRequestParts = this.minerRequests(colony).reduce((sum, r) => sum + r.body.length, 0);
     const spawnCapacity = colony.spawns.length * PARTS_PER_SPAWN;
     return {
-      spawnLoad: spawnCapacity > 0 ? (livingParts + ownRequestParts) / spawnCapacity : 0,
+      spawnLoad: spawnCapacity > 0 ? (livingParts + colonyRequestParts) / spawnCapacity : 0,
       spawnCapacity
     };
   }
 
-  /** Shared route derivation so the recorded spot can never disagree with the built spot. */
+  /**
+   * Shared route derivation so the recorded spot can never disagree with the built spot. Cached at
+   * module scope per room (see routeCache above) — recomputes only when the fingerprint (anchor, RCL,
+   * structures/planned) actually changes, not every tick.
+   */
   private sourceRoutes(
     colony: ColonySnapshot,
     planned: readonly PlacedStructure[]
   ): Map<SnapSource, RoadPathResult> {
-    const out = new Map<SnapSource, RoadPathResult>();
     const anchor = colony.anchor;
-    if (!anchor) return out;
+    if (!anchor) return new Map();
+
+    const fingerprint = routeFingerprint(colony, planned);
+    const cached = routeCache.get(colony.name);
+    if (cached && cached.fingerprint === fingerprint) return cached.routes;
 
     // Containers/roads/ramparts are walkable, so a planned road is preferred — the reason two
     // operations share one route instead of laying parallel ones.
@@ -336,10 +380,12 @@ export class Mining extends Operation {
       structures: [...colony.structures, ...planned]
     });
 
+    const routes = new Map<SnapSource, RoadPathResult>();
     for (const source of colony.sources) {
       const route = sourceRoadPath(anchor, source, costMatrix);
-      if (route.structurePos) out.set(source, route);
+      if (route.structurePos) routes.set(source, route);
     }
-    return out;
+    routeCache.set(colony.name, { fingerprint, routes });
+    return routes;
   }
 }

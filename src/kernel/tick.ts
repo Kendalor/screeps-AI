@@ -19,7 +19,9 @@ interface SystemBase {
 /** Whether the loop runs this once for the empire or once per colony. */
 export interface ColonySystem extends SystemBase {
   scope: "colony";
-  run(colony: Colony): Intent[];
+  // `isFirst`: true for exactly one colony per tick, in iteration order — lets a system (metrics' CPU
+  // block) show empire-wide data once instead of repeating it on every colony's panel.
+  run(colony: Colony, isFirst: boolean): Intent[];
 }
 
 export interface EmpireSystem extends SystemBase {
@@ -44,12 +46,17 @@ export const SYSTEMS: System[] = [
   // `break` the loop under CPU pressure and skip creep behavior entirely.
   { name: "workforce", tier: 2, scope: "colony", run: c => c.maintainWorkforce() },
   { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() },
-  // Tier 3 but every tick, so the panel and harvest-rate window stay live rather than sampled.
-  { name: "metrics", tier: 3, scope: "colony", run: c => c.metrics() }
+  // Tier 3 but every tick, so the panel and harvest-rate window stay live rather than sampled. CPU is
+  // empire-wide and last-tick's (this tick's own total isn't known until after it finishes), so it's
+  // shown on only the first colony's panel rather than repeated on every room.
+  { name: "metrics", tier: 3, scope: "colony", run: (c, isFirst) => c.metrics(isFirst ? Memory.stats?.cpu : undefined) }
 ];
 
 function runOperations(colony: Colony): Intent[] {
-  return colony.operations.flatMap(op => op.intents(colony.snapshot));
+  // Computed once per tick and hand it to every operation — see Operation.intents' doc comment for why
+  // this doesn't violate the no-reaching-siblings rule.
+  const colonyRequestParts = colony.requestParts();
+  return colony.operations.flatMap(op => op.intents(colony.snapshot, colonyRequestParts));
 }
 
 // Wrapped so e.creeps() fits the Intent[]-returning System shape and shares CPU accounting.
@@ -60,9 +67,12 @@ function runCreeps(e: Empire): Intent[] {
 
 // `injected` isn't a default parameter — that would build the snapshot before cleanCreepMemory() below.
 export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
+  const tickStart = Game.cpu.getUsed();
   // Before the snapshot, so no system observes a half-cleaned Memory.
   cleanCreepMemory();
+  const snapshotStart = Game.cpu.getUsed();
   const world = injected ?? empire(buildEmpireSnapshot());
+  stats.record("snapshot", Game.cpu.getUsed() - snapshotStart);
   for (const sys of systems) {
     if (sys.interval && Game.time % sys.interval !== 0) continue;
     // Outside the colony loop, so under CPU pressure every colony drops tier-3 work together.
@@ -73,10 +83,12 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
     if (sys.scope === "empire") {
       runGuarded(sys.name, () => execute(sys.run(world)));
     } else {
-      for (const c of world.colonies) runGuarded(sys.name, () => execute(sys.run(c)));
+      world.colonies.forEach((c, i) => runGuarded(sys.name, () => execute(sys.run(c, i === 0))));
     }
     stats.record(sys.name, Game.cpu.getUsed() - before);
   }
+  stats.record("total", Game.cpu.getUsed() - tickStart);
+  stats.flush();
 }
 
 function runGuarded(name: string, fn: () => void): void {

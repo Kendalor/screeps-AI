@@ -25,6 +25,15 @@ export class Colony {
     return this.operations.flatMap(op => op.desiredCreeps(this.snapshot));
   }
 
+  /**
+   * Colony-wide outstanding-request body-part total — the same figure the metrics panel's spawn `load`
+   * numerator uses (see `collectMetrics`), computed once here so `intents()` can hand it to operations
+   * that need to gate against real total load rather than their own slice of it.
+   */
+  public requestParts(): number {
+    return this.requests().reduce((sum, r) => sum + r.body.length, 0);
+  }
+
   /** The construction arbiter for this colony. */
   public building(): Intent[] {
     return planBuilding(this.snapshot, this.operations);
@@ -40,8 +49,13 @@ export class Colony {
     return repurposeIdleBuilders(this.snapshot, claimsOf(this.snapshot, this.operations));
   }
 
-  /** Collects metrics and returns the roomVisual intent that paints the panel; the only stateful capability (harvest-rate window in Memory). */
-  public metrics(): Intent[] {
+  /**
+   * Collects metrics and returns the roomVisual intent that paints the panel; the only stateful
+   * capability (harvest-rate window in Memory). `cpu` is last tick's empire-wide Memory.stats.cpu
+   * breakdown — pass it for exactly one colony per tick (the caller picks) so the block isn't repeated
+   * on every room's panel.
+   */
+  public metrics(cpu?: Readonly<Record<string, number>>): Intent[] {
     const mem = (Memory.metrics[this.name] ??= { harvestSamples: [] });
     // Ungated (throttleGroups: false): the panel wants the full plan across every remote source group,
     // not just the one building() is currently placing — otherwise a finished group's structures would
@@ -55,7 +69,7 @@ export class Colony {
       mem,
       this.operations.flatMap(op => op.roleTargets(this.snapshot))
     );
-    return [visualize(report)];
+    return [visualize(report, cpu)];
   }
 }
 

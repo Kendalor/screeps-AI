@@ -537,6 +537,23 @@ describe("Mining.structures", () => {
     expect(containerOf(withPlan)).toEqual(containerOf(mining.structures(built, planned)));
   });
 
+  // sourceRoutes (the cost-matrix + PathFinder search behind structures()/intents()) is cached at
+  // module scope, keyed on anchor/RCL/structures/planned/sources/terrain — fields that don't affect
+  // the route (tick, energy, live creeps) must never perturb the cached result, and a genuine
+  // structural change (a container going from planned to built, tested above) must still invalidate it.
+  it("reuses the cached route across ticks that don't change anchor/structures/sources", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const planned = plannedAt(anchor, 3, [source]);
+    const base = { anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 };
+
+    const tick10 = colonySnap({ ...base, tick: 10, energyAvailable: 100 });
+    const tick20 = colonySnap({ ...base, tick: 20, energyAvailable: 800, creeps: snapCreeps("hauler", 3) });
+
+    const containerOf = (s: PlacedStructure[]) => s.find(p => p.type === "container");
+    expect(containerOf(mining.structures(tick10, planned))).toEqual(containerOf(mining.structures(tick20, planned)));
+  });
+
   // A spot that moves once the container exists makes building.ts demolish and
   // replace it forever.
   it("keeps declaring the same spot once the container is built there", () => {
@@ -895,8 +912,10 @@ describe("Mining.intents — remote danger recording", () => {
 // Step 8: autonomous remote selection. Mining emits a setRemotes intent on its throttle tick, driven by
 // pickRemotes over the scouted neighbours — no hand-seed. Off-tick it's silent so the cached set is stable.
 describe("Mining.intents — remote selection", () => {
-  const setRemotesOf = (snap: Parameters<Mining["intents"]>[0]) =>
-    mining.intents(snap).filter((i: Intent): i is Extract<Intent, { kind: "setRemotes" }> => i.kind === "setRemotes");
+  const setRemotesOf = (snap: Parameters<Mining["intents"]>[0], colonyRequestParts = 0) =>
+    mining
+      .intents(snap, colonyRequestParts)
+      .filter((i: Intent): i is Extract<Intent, { kind: "setRemotes" }> => i.kind === "setRemotes");
 
   it("emits setRemotes on the throttle tick, selecting a scouted profitable neighbour", () => {
     const snap = colonySnap({
@@ -968,6 +987,22 @@ describe("Mining.intents — remote selection", () => {
     });
 
     expect(setRemotesOf(snap)).toEqual([]);
+  });
+
+  it("stays silent when sibling operations' requests alone push colony-wide load past the ceiling", () => {
+    // No living creeps and no miner requests of Mining's own — a colony-blind check would see 0 load
+    // and wave a new remote through. colonyRequestParts is what the metrics panel's load figure is built
+    // from (every operation's desiredCreeps summed), so this must gate on it too, not just Mining's slice.
+    const snap = colonySnap({
+      tick: 1000,
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      spawns: [spawn()],
+      scoutTargets: [scoutTarget("W2N1", scouted({ sources: [{ id: "rs" as Id<Source>, x: 25, y: 25 }] }))]
+    });
+
+    expect(setRemotesOf(snap, 500)).toEqual([]);
   });
 
   it("fires on the full-reevaluation tick and can evict a stale source even though it isn't new", () => {

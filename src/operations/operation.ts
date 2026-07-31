@@ -98,8 +98,15 @@ export abstract class Operation {
    * Direct action, not arbitrated — runs every tick (tier 1). Per-tick work (link transfers, lab
    * reactions, tower assist) lives here; an operation gates its own periodic work via `colony.tick`
    * and returns nothing rather than re-emitting an identical write.
+   *
+   * `colonyRequestParts` is the colony-wide outstanding-request body-part total — every operation's
+   * `desiredCreeps` summed, the same figure `collectMetrics` uses for the spawn-load panel. Computed
+   * once by the orchestrator (`Colony`/`runOperations`), not fetched sideways: an operation still can't
+   * reach a sibling directly, it's just handed the one aggregate number a sibling-blind gate (Mining's
+   * spawn-load ceiling) needs to read the same load the panel shows instead of undercounting its own
+   * slice of it. Most operations have no use for it and ignore the parameter.
    */
-  public intents(_colony: ColonySnapshot): Intent[] {
+  public intents(_colony: ColonySnapshot, _colonyRequestParts: number = 0): Intent[] {
     return [];
   }
 }
