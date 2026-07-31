@@ -43,8 +43,10 @@ export class Colony {
   /** Collects metrics and returns the roomVisual intent that paints the panel; the only stateful capability (harvest-rate window in Memory). */
   public metrics(): Intent[] {
     const mem = (Memory.metrics[this.name] ??= { harvestSamples: [] });
-    // Same derivation as building(), so "targeted" never disagrees with what's actually placed.
-    const targeted = wantedStructures(this.snapshot, claimsOf(this.snapshot, this.operations));
+    // Ungated (throttleGroups: false): the panel wants the full plan across every remote source group,
+    // not just the one building() is currently placing — otherwise a finished group's structures would
+    // count as built with no target left to compare against.
+    const targeted = wantedStructures(this.snapshot, claimsOf(this.snapshot, this.operations), false);
     const report = collectMetrics(
       this.snapshot,
       this.requests(),

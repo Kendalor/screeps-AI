@@ -48,7 +48,7 @@ declare global {
 
     interface TravelState {
         stuckCount: number;
-        lastCoord: Coord;
+        lastCoord: Coord & { roomName: string };
         destination: RoomPosition;
         cpu: number;
     }
@@ -508,7 +508,11 @@ export class Traveler {
     private static deserializeState(travelData: TravelData, destination: RoomPosition): TravelState {
         const state = {} as TravelState;
         if (travelData.state) {
-            state.lastCoord = { x: travelData.state[STATE_PREV_X], y: travelData.state[STATE_PREV_Y] };
+            state.lastCoord = {
+                x: travelData.state[STATE_PREV_X],
+                y: travelData.state[STATE_PREV_Y],
+                roomName: travelData.state[STATE_PREV_ROOMNAME]
+            };
             state.cpu = travelData.state[STATE_CPU];
             state.stuckCount = travelData.state[STATE_STUCK];
             state.destination = new RoomPosition(travelData.state[STATE_DEST_X], travelData.state[STATE_DEST_Y],
@@ -522,15 +526,30 @@ export class Traveler {
 
     private static serializeState(creep: Creep, destination: RoomPosition, state: TravelState, travelData: TravelData) {
         travelData.state = [creep.pos.x, creep.pos.y, state.stuckCount, state.cpu, destination.x, destination.y,
-            destination.roomName];
+            destination.roomName, creep.pos.roomName];
     }
 
     private static isStuck(creep: Creep, state: TravelState): boolean {
         let stuck = false;
         if (state.lastCoord !== undefined) {
-            if (this.sameCoord(creep.pos, state.lastCoord)) {
+            // roomName is absent on a _trav.state array serialized before this field existed (in-flight
+            // creeps at deploy time) — RoomPosition throws on an undefined room name, so fall back to the
+            // old room-blind comparison for exactly one tick until serializeState below rewrites the
+            // array with all 8 slots and every following tick has it.
+            const knowsRoom = state.lastCoord.roomName !== undefined;
+            if (knowsRoom
+                ? this.samePos(creep.pos, new RoomPosition(state.lastCoord.x, state.lastCoord.y, state.lastCoord.roomName))
+                : this.sameCoord(creep.pos, state.lastCoord)) {
                 stuck = true;
-            } else if (this.isExit(creep.pos) && this.isExit(state.lastCoord)) {
+            } else if (
+                (!knowsRoom || creep.pos.roomName === state.lastCoord.roomName) &&
+                this.isExit(creep.pos) &&
+                this.isExit(state.lastCoord)
+            ) {
+                // Camped on an exit tile without moving rooms — genuinely stuck. A creep that DID change
+                // rooms this tick (both positions on an edge but roomName differs) just crossed the border
+                // successfully; treating that as stuck forced a repath every single border crossing,
+                // which reads as the creep bouncing back and forth between the two rooms forever.
                 stuck = true;
             }
         }
@@ -551,6 +570,7 @@ const STATE_CPU = 3;
 const STATE_DEST_X = 4;
 const STATE_DEST_Y = 5;
 const STATE_DEST_ROOMNAME = 6;
+const STATE_PREV_ROOMNAME = 7;
 
 Creep.prototype.travelTo = function (destination: RoomPosition | { pos: RoomPosition }, options?: TravelToOptions) {
     return Traveler.travelTo(this, destination, options);

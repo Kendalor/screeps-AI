@@ -108,11 +108,19 @@ export function claimsOf(colony: ColonySnapshot, operations: Operation[]): Place
 }
 
 // Exported for integration benchmarks. `claimed` is already state-gated per operation, so this merges rather than re-gates.
-export function wantedStructures(colony: ColonySnapshot, claimed: PlacedStructure[] = []): PlacedStructure[] {
+// `throttleGroups` defaults on (one source group in progress at a time, matching what placeAndDemolish
+// will actually place this tick). The metrics panel passes false: it wants the full plan across every
+// remote group as its "targeted" denominator, not just the group currently being worked on — otherwise
+// a finished group's structures would count as built with no target, and built could exceed targeted.
+export function wantedStructures(
+  colony: ColonySnapshot,
+  claimed: PlacedStructure[] = [],
+  throttleGroups = true
+): PlacedStructure[] {
   const anchor = colony.anchor;
   if (!anchor) return [];
   // One source group (local or remote) at a time — see gateSourceGroups.
-  const gated = gateSourceGroups(colony, claimed);
+  const gated = throttleGroups ? gateSourceGroups(colony, claimed) : claimed;
   // Bias extension growth toward this room's sources — shortens the miner->filler leg.
   const atRcl = buildableAtRcl(GOAL, colony.controllerLevel, { anchor, sources: colony.sources });
   const stamped = stampLayout(atRcl, anchor);
@@ -138,6 +146,14 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
   const goalAtAnchor = [...stampLayout(GOAL.placements, anchor), ...homeClaimed];
   const prioritised = wantedStructures(colony, claimed);
 
+  // Every home-room structure not part of the goal/claims. Split below into "blocking a wanted
+  // placement" (only cleared the instant its replacement site actually goes up) vs. "wanted nowhere"
+  // (over a type's count limit, or genuinely stale — torn down unconditionally since nothing waits on it).
+  const wantedAt = new Set(goalAtAnchor.map(p => `${colony.name},${p.x},${p.y}`));
+  const stale = colony.structures.filter(s => s.type !== "spawn" && !goalAtAnchor.some(sameSpot(s)));
+  const blocking = new Map(stale.filter(s => wantedAt.has(`${colony.name},${s.x},${s.y}`)).map(s => [`${colony.name},${s.x},${s.y}`, s]));
+  const unwanted = stale.filter(s => !wantedAt.has(`${colony.name},${s.x},${s.y}`));
+
   const cap = Math.min(FOCUS_SITE_CAP, MAX_CONSTRUCTION_SITES);
   // The shared budget counts every site this colony actually owns (home + selected remote rooms), not
   // just placement attempts — siteSummary is vision-independent (Game.constructionSites), so a remote
@@ -146,21 +162,25 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
   // Only concurrent container *sites* are limited; built containers don't count against the cap.
   let containerSites = colony.siteSummary.filter(s => s.type === "container").length;
   const out: Intent[] = [];
+
+  // Structures nobody wants at all: clear immediately, regardless of whether anything places this tick —
+  // freeing the count/footprint has value on its own, with no replacement to wait on.
+  for (const structure of unwanted) {
+    out.push({ kind: "removeStructure", room: colony.name, x: structure.x, y: structure.y, type: structure.type });
+  }
+
   for (const placement of prioritised) {
     if (budget <= 0) break;
     if (placement.type === "container" && containerSites >= MAX_CONTAINER_SITES) continue;
     if (existingAt(colony, placement)) continue;
+    const blocker = roomOf(placement, colony) === colony.name ? blocking.get(`${colony.name},${placement.x},${placement.y}`) : undefined;
+    // Clear the blocker in the same tick, immediately before the site — never ahead of the placement
+    // actually happening, so a finished building isn't left demolished while its replacement waits its
+    // turn in the backlog (see wantedStructures' focus-site budget).
+    if (blocker) out.push({ kind: "removeStructure", room: colony.name, x: blocker.x, y: blocker.y, type: blocker.type });
     out.push({ kind: "placeSite", room: roomOf(placement, colony), x: placement.x, y: placement.y, type: placement.type });
     if (placement.type === "container") containerSites++;
     budget--;
-  }
-
-  // Tear down structures present but not part of the goal layout. Spawns are never auto-demolished —
-  // colony-fatal if wrong. Home room only, as above.
-  for (const structure of colony.structures) {
-    if (structure.type === "spawn") continue;
-    if (goalAtAnchor.some(sameSpot(structure))) continue;
-    out.push({ kind: "removeStructure", room: colony.name, x: structure.x, y: structure.y, type: structure.type });
   }
 
   return out;

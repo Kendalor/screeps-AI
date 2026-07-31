@@ -218,7 +218,12 @@ export function collectMetrics(
     tick: snapshot.tick,
     census: censusFor(snapshot, requests, roleTargets),
     operations: operationNames,
-    buildings: buildingsFor(snapshot.structures, targeted),
+    // `targeted` includes remote-claimed structures (mining containers/roads), so `built` must count
+    // them too or a fully-built remote container reads as permanently missing (home-only undercount).
+    buildings: buildingsFor(
+      [...snapshot.structures, ...Object.values(snapshot.remoteStructures).flatMap(s => s ?? [])],
+      targeted
+    ),
     energy: {
       available: snapshot.energyAvailable,
       capacity: snapshot.energyCapacity,

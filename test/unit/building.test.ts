@@ -176,6 +176,81 @@ describe("building planner", () => {
     const removals = snap.building().filter(i => i.kind === "removeStructure");
     expect(removals).toEqual([]);
   });
+
+  it("clears a structure blocking a wanted tile in the same tick it places the replacement, not before", () => {
+    const anchor = { x: 25, y: 25 };
+    // A goal-planned extension tile occupied by the wrong type — nothing else built yet, so budget
+    // is wide open and the replacement site places this same tick.
+    const wantedExt = allNonRoadStructuresAt(anchor, 2).find(s => s.type === "extension")!;
+    const blocker: SnapStructure = { x: wantedExt.x, y: wantedExt.y, type: "rampart" };
+
+    const snap = colony(colonySnap({ anchor, controllerLevel: 2, structures: [blocker], sites: [] }));
+
+    const intents = snap.building();
+    const removeIdx = intents.findIndex(
+      i => i.kind === "removeStructure" && i.x === blocker.x && i.y === blocker.y && i.type === "rampart"
+    );
+    const placeIdx = intents.findIndex(
+      i => i.kind === "placeSite" && i.x === wantedExt.x && i.y === wantedExt.y && i.type === "extension"
+    );
+    expect(removeIdx).toBeGreaterThanOrEqual(0);
+    expect(placeIdx).toBeGreaterThanOrEqual(0);
+    // Removal must precede placement so the site actually succeeds in-game the same tick it's cleared.
+    expect(removeIdx).toBeLessThan(placeIdx);
+  });
+
+  it("does not clear a structure blocking a wanted tile while the focus-site budget has no room for the replacement", () => {
+    const anchor = { x: 25, y: 25 };
+    const wantedExt = allNonRoadStructuresAt(anchor, 2).find(s => s.type === "extension")!;
+    const blocker: SnapStructure = { x: wantedExt.x, y: wantedExt.y, type: "rampart" };
+    // 20 open sites elsewhere already exhaust FOCUS_SITE_CAP, so the extension's replacement site
+    // can never place this tick — the blocker must be left standing, not demolished ahead of need.
+    const sites: SnapStructure[] = Array.from({ length: 20 }, (_, i) => ({
+      x: i,
+      y: 0,
+      type: "extension" as const
+    }));
+
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 2,
+        structures: [blocker],
+        sites,
+        siteSummary: sites.map(s => ({ room: "W1N1", type: s.type }))
+      })
+    );
+
+    const intents = snap.building();
+    expect(intents.filter(i => i.kind === "placeSite")).toEqual([]);
+    expect(
+      intents.some(i => i.kind === "removeStructure" && i.x === blocker.x && i.y === blocker.y)
+    ).toBe(false);
+  });
+
+  it("still demolishes a structure nobody wants at all, even at the focus-site budget cap", () => {
+    const anchor = { x: 25, y: 25 };
+    // (35,35) is nowhere in the goal layout — genuinely stale, not blocking any pending placement.
+    const stale: SnapStructure = { x: 35, y: 35, type: "tower" };
+    const sites: SnapStructure[] = Array.from({ length: 20 }, (_, i) => ({
+      x: i,
+      y: 0,
+      type: "extension" as const
+    }));
+
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 2,
+        structures: [stale],
+        sites,
+        siteSummary: sites.map(s => ({ room: "W1N1", type: s.type }))
+      })
+    );
+
+    const removals = snap.building().filter(i => i.kind === "removeStructure");
+    expect(removals).toEqual([{ kind: "removeStructure", room: "W1N1", x: 35, y: 35, type: "tower" }]);
+  });
 });
 
 // Focused construction: at most 2 open sites at once, a type priority for which 2,
@@ -480,6 +555,16 @@ describe("building planner — one source group at a time", () => {
     const wanted = wantedStructures(snap, claimed);
 
     expect(wanted).toContainEqual(ungrouped);
+  });
+
+  it("throttleGroups: false includes every group's claims, not just the in-progress one — for the metrics panel's denominator", () => {
+    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, structures: [], sites: [] });
+
+    const claimed: PlacedStructure[] = [...groupA, ...groupB];
+    const wanted = wantedStructures(snap, claimed, false);
+
+    expect(wanted.some(p => p.sourceId === "srcA")).toBe(true);
+    expect(wanted.some(p => p.sourceId === "srcB")).toBe(true);
   });
 });
 

@@ -2,7 +2,7 @@
 
 import { log } from "../lib/log";
 import { roomType } from "../lib/roomName";
-import { resolvePathToSource } from "../lib/remotePath";
+import { remoteRouteTileKey, resolvePathToSource } from "../lib/remotePath";
 import type { RemoteMemory, RemoteSourceMemory, RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
 
@@ -11,15 +11,20 @@ import type { Intent } from "./types";
 const MAX_SCOUT_RANGE = 6;
 
 export function execute(intents: Intent[]): void {
+  // Tiles chosen by a recordSourcePath/setRemotes resolution earlier in *this* batch — passed to the
+  // next such resolution as `preferred` so a second source in the same remote room paths onto the
+  // first one's corridor instead of an independent line beside it (see remotePath.ts's PREFERRED_TILE_COST).
+  // Scoped to one execute() call: a fresh accumulator per tick per colony, never carried across calls.
+  const resolvedRouteTiles = new Set<string>();
   for (const intent of intents) {
-    const result = act(intent);
+    const result = act(intent, resolvedRouteTiles);
     if (result !== OK) {
       log.warn(`intent failed (${result}): ${JSON.stringify(intent)}`);
     }
   }
 }
 
-function act(intent: Intent): ScreepsReturnCode {
+function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode {
   switch (intent.kind) {
     case "towerAttack": {
       const tower = Game.getObjectById(intent.tower);
@@ -88,6 +93,12 @@ function act(intent: Intent): ScreepsReturnCode {
       creep.memory.repairTargetRoom = intent.room;
       return OK;
     }
+    case "setDefendTargetRoom": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      creep.memory.defendTargetRoom = intent.room;
+      return OK;
+    }
     case "assignLogisticsTask": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
@@ -139,8 +150,10 @@ function act(intent: Intent): ScreepsReturnCode {
     case "recordSourcePath": {
       const scouted = (Memory.rooms ??= {})[intent.room]?.scouted?.sources.find(sc => sc.id === intent.source);
       if (!scouted) return ERR_NOT_FOUND; // scouting emitted this off a snapshot that's since gone stale
-      const resolved = resolvePathToSource(intent.home, intent.anchor, intent.room, scouted);
-      return resolved ? OK : ERR_NOT_FOUND; // no route at all: nothing to cache, retry next scouting pass
+      const resolved = resolvePathToSource(intent.home, intent.anchor, intent.room, scouted, resolvedRouteTiles);
+      if (!resolved) return ERR_NOT_FOUND; // no route at all: nothing to cache, retry next scouting pass
+      for (const tile of resolved.route) resolvedRouteTiles.add(remoteRouteTileKey(tile));
+      return OK;
     }
     case "setScoutTarget": {
       const creep = Game.getObjectById(intent.creep);
@@ -165,7 +178,7 @@ function act(intent: Intent): ScreepsReturnCode {
       // part of what pickRemotes decides — carry it over so a mid-invasion reselection doesn't heal it.
       const priorDangerUntil = new Map(mem.remotes.map(r => [r.room, r.dangerUntil]));
       mem.remotes = intent.remotes
-        .map(room => resolveRemoteRoom(intent.room, room, mem.anchor))
+        .map(room => resolveRemoteRoom(intent.room, room, mem.anchor, resolvedRouteTiles))
         .filter(hasSourcesLeft)
         .map(room => ({ ...room, dangerUntil: priorDangerUntil.get(room.room) }));
       return OK;
@@ -223,7 +236,12 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
 // (see ScoutedSource.paths); otherwise computes it once via PathFinder and caches it there for every
 // future call. A source PathFinder can't reach at all (no anchor yet, or genuinely no route) is dropped
 // — better to retry next throttle tick than commit to a haul that can never be walked.
-function resolveRemoteRoom(home: string, room: RemoteMemory, anchor: { x: number; y: number } | undefined): RemoteMemory {
+function resolveRemoteRoom(
+  home: string,
+  room: RemoteMemory,
+  anchor: { x: number; y: number } | undefined,
+  resolvedRouteTiles: Set<string>
+): RemoteMemory {
   const roomMem = (Memory.rooms ??= {})[room.room];
   const sources: RemoteSourceMemory[] = [];
   for (const s of room.sources) {
@@ -231,11 +249,12 @@ function resolveRemoteRoom(home: string, room: RemoteMemory, anchor: { x: number
     // No scouted record to cache onto, or no anchor yet to path from: nothing to resolve this tick,
     // retry next throttle tick rather than dropping the source outright.
     if (!scouted || !anchor) continue;
-    const resolved = resolvePathToSource(home, anchor, room.room, scouted);
+    const resolved = resolvePathToSource(home, anchor, room.room, scouted, resolvedRouteTiles);
     if (!resolved) {
       log.warn(`setRemotes: no path ${home} -> ${room.room} source ${s.id}, dropping`);
       continue;
     }
+    for (const tile of resolved.route) resolvedRouteTiles.add(remoteRouteTileKey(tile));
     sources.push({ ...s, distance: resolved.distance, route: resolved.route });
   }
   return { ...room, sources };

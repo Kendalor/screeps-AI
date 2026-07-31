@@ -144,6 +144,18 @@ describe("metrics: buildings (buildingsFor)", () => {
     expect(m.buildings).toContainEqual({ type: "extension", built: 2, targeted: 5 });
     expect(m.buildings).toContainEqual({ type: "spawn", built: 1, targeted: 1 });
   });
+
+  it("collectMetrics counts remote-room structures as built, not just home-room ones", () => {
+    // Remote containers/roads are claimed structures included in `targeted` (see wantedStructures), so
+    // built structures standing in a remote room must count too or they read as permanently missing.
+    const snap = colonySnap({
+      structures: [...built("road", 1)],
+      remoteStructures: { W2N1: built("container", 2), W3N1: built("road", 1) }
+    });
+    const m = collect(snap, [], [], [...target("container", 8), ...target("road", 3)]);
+    expect(m.buildings).toContainEqual({ type: "container", built: 2, targeted: 8 });
+    expect(m.buildings).toContainEqual({ type: "road", built: 2, targeted: 3 });
+  });
 });
 
 describe("metrics: energy levels", () => {

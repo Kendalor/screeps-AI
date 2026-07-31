@@ -63,10 +63,28 @@ export function stubPathFinder(fn: (origin: unknown, goal: unknown, opts: unknow
   pathFinderSearch = fn;
 }
 
+// Minimal stand-in for the engine's PathFinder.CostMatrix — just enough get/set/clone for a
+// roomCallback to seed costs onto and for a test to read back what code under test set.
+class CostMatrixStub {
+  private readonly costs = new Map<number, number>();
+  set(x: number, y: number, cost: number): void {
+    this.costs.set(x * 50 + y, cost);
+  }
+  get(x: number, y: number): number {
+    return this.costs.get(x * 50 + y) ?? 0;
+  }
+  clone(): CostMatrixStub {
+    const copy = new CostMatrixStub();
+    for (const [k, v] of this.costs) copy.costs.set(k, v);
+    return copy;
+  }
+}
+
 Object.assign(globalThis, {
   RoomPosition: RoomPositionStub,
 
   PathFinder: {
+    CostMatrix: CostMatrixStub,
     search: (origin: unknown, goal: unknown, opts: unknown): PathFinderResultStub => {
       if (!pathFinderSearch) throw new Error("PathFinder.search called without stubPathFinder()");
       return pathFinderSearch(origin, goal, opts);

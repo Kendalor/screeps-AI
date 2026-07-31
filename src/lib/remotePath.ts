@@ -11,11 +11,48 @@
 import type { RemoteRouteTile, ScoutedSource } from "../memory/schema";
 import type { XY } from "./geometry";
 
-export function findRemotePath(anchor: RoomPosition, source: RoomPosition): RoomPosition[] | undefined {
+// Cost PathFinder gives a plain tile that isn't otherwise marked — mirrors the plainCost option below,
+// duplicated as a constant so preferredTileCost can undercut it deliberately rather than by coincidence.
+const PLAIN_COST = 2;
+// Cheaper than PLAIN_COST so PathFinder is pulled onto a tile another already-resolved source's route
+// picked, the same way layouts/roads.ts's buildCostMatrix prices a planned local road below bare terrain.
+const PREFERRED_TILE_COST = 1;
+
+// "room,x,y" — matches how callers (execute.ts) key the RemoteRouteTile sets they pass as `preferred`.
+function tileKey(roomName: string, x: number, y: number): string {
+  return `${roomName},${x},${y}`;
+}
+
+export function remoteRouteTileKey(tile: { room: string; x: number; y: number }): string {
+  return tileKey(tile.room, tile.x, tile.y);
+}
+
+// `preferred`: tiles (keyed via remoteRouteTileKey) that should cost less than plain terrain — the
+// already-chosen route of a sibling source resolved earlier in the same batch, so a second source
+// mined out of the same remote room converges onto the first one's corridor instead of pathing an
+// independent line beside it. Undefined/empty behaves exactly as before (no roomCallback needed).
+export function findRemotePath(
+  anchor: RoomPosition,
+  source: RoomPosition,
+  preferred?: ReadonlySet<string>
+): RoomPosition[] | undefined {
   const result = PathFinder.search(anchor, { pos: source, range: 1 }, {
-    plainCost: 2,
+    plainCost: PLAIN_COST,
     swampCost: 10,
-    maxRooms: 16
+    maxRooms: 16,
+    ...(preferred && preferred.size > 0
+      ? {
+          roomCallback: (roomName: string) => {
+            const matrix = new PathFinder.CostMatrix();
+            for (const key of preferred) {
+              if (!key.startsWith(`${roomName},`)) continue;
+              const [, x, y] = key.split(",");
+              matrix.set(Number(x), Number(y), PREFERRED_TILE_COST);
+            }
+            return matrix;
+          }
+        }
+      : {})
   });
   return result.incomplete ? undefined : result.path;
 }
@@ -64,7 +101,8 @@ export function resolvePathToSource(
   home: string,
   anchor: XY,
   sourceRoom: string,
-  scouted: ScoutedSource
+  scouted: ScoutedSource,
+  preferred?: ReadonlySet<string>
 ): { distance: number; route: RemoteRouteTile[] } | undefined {
   const cachedPath = scouted.paths?.[home];
   const cachedRoute = scouted.route?.[home];
@@ -73,7 +111,8 @@ export function resolvePathToSource(
   }
   const path = findRemotePath(
     new RoomPosition(anchor.x, anchor.y, home),
-    new RoomPosition(scouted.x, scouted.y, sourceRoom)
+    new RoomPosition(scouted.x, scouted.y, sourceRoom),
+    preferred
   );
   if (!path) return undefined;
   const serialized = serializeRemotePath(new RoomPosition(anchor.x, anchor.y, home), path);

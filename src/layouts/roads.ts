@@ -6,6 +6,10 @@ import type { PlacedStructure } from "./stamp";
 
 const IMPASSABLE = 255;
 const ROAD_COST = 1;
+// Strictly more than ROAD_COST so an A* tie always prefers reusing a built/planned road over cutting
+// a fresh line across raw ground — otherwise a route can drift off already-built infrastructure on
+// any equal-length alternative, stranding the old road unclaimed and getting it demolished as stale.
+const PLAIN_COST = 2;
 
 // A miner stands *on* its container while working, so it must not be treated as an obstacle.
 const WALKABLE_STRUCTURES = new Set<BuildableStructureConstant>(["road", "container", "rampart"]);
@@ -67,7 +71,7 @@ function findPath(from: XY, to: XY, range: number, cm: RoadCostMatrix): XY[] {
       if (cost >= IMPASSABLE) continue;
 
       const nKey = key(neighbor);
-      const tentativeG = (gScore.get(currentKey) ?? Infinity) + Math.max(cost, 1);
+      const tentativeG = (gScore.get(currentKey) ?? Infinity) + cost;
       if (tentativeG < (gScore.get(nKey) ?? Infinity)) {
         cameFrom.set(nKey, current);
         gScore.set(nKey, tentativeG);
@@ -151,9 +155,7 @@ export function buildCostMatrix(room: RoomFixture): RoadCostMatrix {
   const cm = new RoadCostMatrix();
   for (let x = 0; x < 50; x++) {
     for (let y = 0; y < 50; y++) {
-      if (room.terrain[x * 50 + y] === 0) {
-        cm.set(x, y, IMPASSABLE);
-      }
+      cm.set(x, y, room.terrain[x * 50 + y] === 0 ? IMPASSABLE : PLAIN_COST);
     }
   }
   for (const s of room.structures) {

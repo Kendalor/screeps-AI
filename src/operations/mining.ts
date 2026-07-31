@@ -6,6 +6,7 @@ import { countPart, orderBody } from "../spawn/body";
 import { roleDef } from "../behaviors/roles";
 import { REMOTE_UNRESERVED_WORK, SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
 import { pickRemotes } from "../mining/pickRemotes";
+import { PARTS_PER_SPAWN } from "../colony/metrics";
 import type { Intent } from "../intents/types";
 import GOAL_JSON from "../layouts/Base_2.json";
 import { plannedObstacles } from "../layouts/goal";
@@ -31,10 +32,7 @@ const config = {
   // (e.g. one that's gone stale, or a nearer room scouted since), so it deliberately fires far less often
   // than the append-only 1000-tick selection above — thrashing the active set on every throttle tick
   // would fight the haul/road infrastructure already built around it.
-  remoteReevaluateEvery: 5000,
-  // Don't attempt remote mining until the home economy is established — a stable, snapshot-derivable
-  // proxy for "the spawn can take on more creeps". TODO(remote): a real spawn-busy-fraction signal.
-  remoteFromRcl: 3
+  remoteReevaluateEvery: 5000
 } as const;
 
 // building.ts's gate on source containers is mining's knowledge of what it needs when.
@@ -294,13 +292,32 @@ export class Mining extends Operation {
         name: colony.name,
         storage: colony.anchor ?? colony.controller,
         energyCapacity: colony.energyCapacity,
-        spawnHeadroom: colony.controllerLevel >= config.remoteFromRcl
+        ...this.spawnLoad(colony)
       },
       currentlySelected: colony.remoteSources.map(s => s.id),
       reevaluate
     });
     if (remotes.length === 0) return undefined;
     return { kind: "setRemotes", room: colony.name, remotes };
+  }
+
+  /**
+   * Same colony-fraction formula as the metrics panel's spawn `load` (colony/metrics.ts) — parts /
+   * (spawns * PARTS_PER_SPAWN) — so pickRemotes' 85% ceiling reads against the same number shown on
+   * screen. Operations can't reach siblings (see operation.ts), so this can only see colony-wide living
+   * parts plus Mining's own outstanding requests, not every operation's — a slight undercount of the
+   * metrics panel's true figure (which also folds in Logistics/Building/etc.'s requests), but the same
+   * self-contained boundary every operation respects, and living parts dominate the steady-state signal
+   * this gate cares about.
+   */
+  private spawnLoad(colony: ColonySnapshot): { spawnLoad: number; spawnCapacity: number } {
+    const livingParts = colony.creeps.reduce((sum, c) => sum + c.body.length, 0);
+    const ownRequestParts = this.minerRequests(colony).reduce((sum, r) => sum + r.body.length, 0);
+    const spawnCapacity = colony.spawns.length * PARTS_PER_SPAWN;
+    return {
+      spawnLoad: spawnCapacity > 0 ? (livingParts + ownRequestParts) / spawnCapacity : 0,
+      spawnCapacity
+    };
   }
 
   /** Shared route derivation so the recorded spot can never disagree with the built spot. */

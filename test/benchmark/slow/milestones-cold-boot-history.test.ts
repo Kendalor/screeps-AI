@@ -108,7 +108,8 @@ const FINAL_SNAPSHOT_SPEC: BenchmarkSpec = {
   finalBuildingsBuilt: { direction: "higher", unit: "structures" },
   finalBuildingsWanted: { unit: "structures" },
   // How much of the run's remote-mining pipeline actually engaged by the last tick — a colony that
-  // stalled before RCL3 (config.remoteFromRcl) legitimately never selects a remote at all.
+  // stalled before affording MIN_ENERGY_CAPACITY (pickRemotes.ts, ~RCL3) legitimately never selects a
+  // remote at all.
   finalRemoteSources: { direction: "higher", unit: "sources" },
   finalRemoteRoomsReserved: { direction: "higher", unit: "rooms" }
 };
@@ -277,5 +278,5 @@ test(
     });
     expect(economyRegressions, formatResult(result)).toEqual([]);
   },
-  1_800_000
+  3_600_000
 );

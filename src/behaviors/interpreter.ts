@@ -18,7 +18,8 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   upgrade: "spend",
   reserve: "move", // a store-less claimer reserves for life — never self-completes, like a movement step
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
-  sit: "move"
+  sit: "move",
+  attack: "move" // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
 };
 
 // The engine's per-tick action pipelines (docs.screeps.com/simultaneous-actions.html): harvest/build/
@@ -130,6 +131,8 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
       return upgradeStep(creep, locked, allowTravel);
     case "reserve":
       return reserveStep(creep, locked, allowTravel);
+    case "attack":
+      return attackStep(creep, step.from, locked, allowTravel);
     case "moveToRoom":
       return allowTravel ? moveToRoom(creep, step) : { acted: false, didAct: false };
     case "sit":
@@ -142,7 +145,7 @@ export function runStep(creep: Creep, step: Step, locked?: Id<_HasId>, allowTrav
 // Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
 function moveToRoom(
   creep: Creep,
-  step: { room?: string; to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" }
+  step: { room?: string; to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" | "defendTargetRoom" }
 ): StepResult {
   const dest =
     step.to === "scoutTarget"
@@ -153,7 +156,9 @@ function moveToRoom(
           ? creep.memory.buildTargetRoom
           : step.to === "repairTargetRoom"
             ? creep.memory.repairTargetRoom
-            : step.room;
+            : step.to === "defendTargetRoom"
+              ? creep.memory.defendTargetRoom
+              : step.room;
   if (!dest) return { acted: false, didAct: false }; // nothing to move toward — step is a no-op, advance past it
 
   if (creep.room.name === dest) {
@@ -285,6 +290,62 @@ function reserveStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: 
 
   creep.reserveController(controller as StructureController);
   return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
+}
+
+const RANGED_ATTACK_RANGE = 3;
+
+// Engages the resolved hostile. A pure-melee body just closes to range 1 and swings. A body with
+// RANGED_ATTACK kites: fires whenever in range 3 (rangedAttack has no falloff worth chasing away from —
+// full damage anywhere inside 3), and if the hostile has closed past that into range 2 or less, flees
+// directly away from it instead of standing still, so a melee invader can never pin it down and trade
+// hits at point-blank. Only closes distance when the hostile is still outside range 3.
+function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  const target = resolveTarget(creep, spec, locked);
+  if (!target) return { acted: false, didAct: false };
+  const hostile = target as Creep;
+  const ranged = creep.getActiveBodyparts(RANGED_ATTACK) > 0;
+
+  if (!ranged) {
+    if (creep.pos.inRangeTo(hostile.pos, 1)) {
+      creep.attack(hostile);
+      return { acted: true, didAct: true, target: hostile.id };
+    }
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(hostile.pos, { range: 1 });
+    return { acted: true, didAct: false, target: hostile.id };
+  }
+
+  const inFiringRange = creep.pos.inRangeTo(hostile.pos, RANGED_ATTACK_RANGE);
+  if (inFiringRange) creep.rangedAttack(hostile);
+
+  if (allowTravel) {
+    if (creep.pos.getRangeTo(hostile.pos) < RANGED_ATTACK_RANGE) {
+      // Hostile has closed inside firing range — kite: step directly away from it, still firing this tick.
+      creep.travelTo(fleeSpot(creep.pos, hostile.pos), { range: 0 });
+    } else if (!inFiringRange) {
+      creep.travelTo(hostile.pos, { range: RANGED_ATTACK_RANGE });
+    }
+  }
+  return inFiringRange
+    ? { acted: true, didAct: true, target: hostile.id }
+    : { acted: true, didAct: false, target: hostile.id };
+}
+
+// A tile one step directly away from the threat, mirrored across the fighter's own position — travelTo
+// walks toward this point, which walks the fighter backward along the same line the hostile is closing on.
+// Pinned against a room edge (x/y already 0 or 49) the naive mirror clamps to the fighter's own tile —
+// a no-op destination that leaves it stuck on the border while the hostile keeps closing. When an axis
+// is wall-blocked, that axis holds still and the other axis alone carries the flee, sliding along the
+// edge instead of freezing against it; only if both axes are simultaneously blocked (a corner, with the
+// hostile bearing from outside the room) does the fighter have nowhere left to retreat.
+function fleeSpot(from: { x: number; y: number; roomName: string }, threat: { x: number; y: number }): RoomPosition {
+  const dx = Math.sign(from.x - threat.x) || 1;
+  const dy = Math.sign(from.y - threat.y) || 1;
+  const xBlocked = (from.x === 0 && dx < 0) || (from.x === 49 && dx > 0);
+  const yBlocked = (from.y === 0 && dy < 0) || (from.y === 49 && dy > 0);
+  const x = xBlocked ? from.x : Math.min(49, Math.max(0, from.x + dx));
+  const y = yBlocked ? from.y : Math.min(49, Math.max(0, from.y + dy));
+  return new RoomPosition(x, y, from.roomName);
 }
 
 // Nudge an in-range upgrader toward a better standing tile: the free controller container if there is

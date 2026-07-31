@@ -28,6 +28,9 @@ export type Intent =
   // The repairer equivalent, picked by operations/repairing.ts off tower-uncovered decay across the
   // colony's rooms. See CreepMemory.repairTargetRoom.
   | { kind: "setRepairTargetRoom"; creep: Id<Creep>; room: string }
+  // The defender equivalent, picked by operations/defense.ts off whichever rooms (home or remote) currently
+  // have hostiles. See CreepMemory.defendTargetRoom.
+  | { kind: "setDefendTargetRoom"; creep: Id<Creep>; room: string }
   // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
   // execute.ts owns the memory write" split as setCreepRole above).
   | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }

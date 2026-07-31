@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { findRemotePath, resolvePathToSource, serializeRemotePath, toRouteTiles } from "../../src/lib/remotePath";
+import { findRemotePath, remoteRouteTileKey, resolvePathToSource, serializeRemotePath, toRouteTiles } from "../../src/lib/remotePath";
 import { clearTiles, stubPathFinder } from "../constants";
 import type { ScoutedSource } from "../../src/memory/schema";
 
@@ -21,6 +21,49 @@ describe("findRemotePath", () => {
     const result = findRemotePath(new RoomPosition(25, 25, "W1N1"), new RoomPosition(1, 25, "W2N1"));
 
     expect(result).toBeUndefined();
+  });
+
+  it("passes no roomCallback when no preferred tiles are given", () => {
+    stubPathFinder((_origin, _goal, opts) => {
+      expect((opts as { roomCallback?: unknown }).roomCallback).toBeUndefined();
+      return { path: [], incomplete: false, ops: 1, cost: 0 };
+    });
+
+    findRemotePath(new RoomPosition(25, 25, "W1N1"), new RoomPosition(1, 25, "W2N1"));
+  });
+
+  it("passes no roomCallback when the preferred set is empty", () => {
+    stubPathFinder((_origin, _goal, opts) => {
+      expect((opts as { roomCallback?: unknown }).roomCallback).toBeUndefined();
+      return { path: [], incomplete: false, ops: 1, cost: 0 };
+    });
+
+    findRemotePath(new RoomPosition(25, 25, "W1N1"), new RoomPosition(1, 25, "W2N1"), new Set());
+  });
+
+  it("seeds a preferred tile's own room at a cost cheaper than plain terrain", () => {
+    const preferred = new Set([remoteRouteTileKey({ room: "W2N1", x: 10, y: 12 })]);
+    stubPathFinder((_origin, _goal, opts) => {
+      const roomCallback = (opts as { roomCallback: (roomName: string) => unknown }).roomCallback;
+      const matrix = roomCallback("W2N1") as { get(x: number, y: number): number };
+      expect(matrix.get(10, 12)).toBeGreaterThan(0);
+      expect(matrix.get(10, 12)).toBeLessThan((opts as { plainCost: number }).plainCost);
+      return { path: [], incomplete: false, ops: 1, cost: 0 };
+    });
+
+    findRemotePath(new RoomPosition(25, 25, "W1N1"), new RoomPosition(1, 25, "W2N1"), preferred);
+  });
+
+  it("does not seed a preferred tile into a different room's cost matrix", () => {
+    const preferred = new Set([remoteRouteTileKey({ room: "W2N1", x: 10, y: 12 })]);
+    stubPathFinder((_origin, _goal, opts) => {
+      const roomCallback = (opts as { roomCallback: (roomName: string) => unknown }).roomCallback;
+      const matrix = roomCallback("W1N1") as { get(x: number, y: number): number };
+      expect(matrix.get(10, 12)).toBe(0); // untouched — that tile belongs to W2N1, not W1N1
+      return { path: [], incomplete: false, ops: 1, cost: 0 };
+    });
+
+    findRemotePath(new RoomPosition(25, 25, "W1N1"), new RoomPosition(1, 25, "W2N1"), preferred);
   });
 });
 
@@ -136,5 +179,34 @@ describe("resolvePathToSource", () => {
     expect(result).toBeUndefined();
     expect(scouted.paths).toBeUndefined();
     expect(scouted.route).toBeUndefined();
+  });
+
+  it("forwards `preferred` into the PathFinder call on a cache miss, so a sibling source's already-chosen route pulls this one onto it", () => {
+    const scouted: ScoutedSource = { id: "s1" as Id<Source>, x: 25, y: 25 };
+    const preferred = new Set([remoteRouteTileKey({ room: "W2N1", x: 5, y: 5 })]);
+    const path = [new RoomPosition(26, 25, "W1N1")];
+    let sawRoomCallback = false;
+    stubPathFinder((_origin, _goal, opts) => {
+      sawRoomCallback = (opts as { roomCallback?: unknown }).roomCallback !== undefined;
+      return { path, incomplete: false, ops: 10, cost: 10 };
+    });
+
+    resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, preferred);
+
+    expect(sawRoomCallback).toBe(true);
+  });
+
+  it("never calls PathFinder on a cache hit, even with `preferred` given", () => {
+    const scouted: ScoutedSource = {
+      id: "s1" as Id<Source>,
+      x: 25,
+      y: 25,
+      paths: { W1N1: "121" },
+      route: { W1N1: [{ room: "W2N1", x: 1, y: 25 }] }
+    };
+    const preferred = new Set([remoteRouteTileKey({ room: "W2N1", x: 5, y: 5 })]);
+    // No stubPathFinder(): PathFinder.search would throw if this hit it.
+    const result = resolvePathToSource("W1N1", { x: 25, y: 25 }, "W2N1", scouted, preferred);
+    expect(result).toEqual({ distance: 3, route: [{ room: "W2N1", x: 1, y: 25 }] });
   });
 });

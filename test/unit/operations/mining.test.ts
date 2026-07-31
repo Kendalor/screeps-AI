@@ -955,8 +955,8 @@ describe("Mining.intents — remote selection", () => {
 
   it("stays silent when the spawn network is already saturated by living creeps", () => {
     // One spawn sustains PARTS_PER_SPAWN (500) parts. Fill it past capacity with a pile of live
-    // creeps so even a small remote-miner body can't fit underneath — headroom must read false.
-    const saturating = snapCreeps(50, i => snapCreep({ id: `sat_${i}` as Id<Creep>, role: "upgrader", body: Array(10).fill(WORK) }));
+    // creeps so even a small remote-miner body can't fit underneath — spawn load must read >= 85%.
+    const saturating = snapCreeps("upgrader", 50, { body: Array(10).fill(WORK) });
     const snap = colonySnap({
       tick: 1000,
       anchor: { x: 25, y: 25 },

@@ -43,6 +43,7 @@ export type TargetSpec =
   | { find: "constructionSite"; structureType?: StructureConstant; near?: "assignedSource" | "controller" | "notController"; share?: Share; prefer?: Prefer }
   | { find: "controller" }
   | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share; prefer?: Prefer } // friendly creep as source/sink, filtered by role
+  | { find: "hostile" } // enemy creep in the room, closest by path — a defender's attack target
   | { find: "id"; id: Id<_HasId> }
   // Groups several specs into one pool (e.g. every viable energy sink) so a step picks the nearest
   // across kinds in one shot instead of falling through a priority-ordered chain of single-kind steps.
@@ -70,7 +71,11 @@ export type Step = ({
     | { do: "repair"; at: TargetSpec; upTo?: number }
     | { do: "upgrade" }
     | { do: "reserve" } // reserve the current room's controller — a claimer's whole job, once it has arrived
-    | { do: "moveToRoom"; room?: string; to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" } // static room, or "scoutTarget"/"targetRoom"/"buildTargetRoom"/"repairTargetRoom" to read the destination + memory.route from creep memory
+    // Engage the nearest hostile: ranged-attack at range 3 if the body has RANGED_ATTACK, else close to
+    // melee range 1. Never self-completes on store state (a fighter carries nothing) — only targetGone
+    // (no hostile left in the room) ends it, same as reserve.
+    | { do: "attack"; from: TargetSpec }
+    | { do: "moveToRoom"; room?: string; to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" | "defendTargetRoom" } // static room, or a memory field name, to read the destination + memory.route from creep memory
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
   );
 

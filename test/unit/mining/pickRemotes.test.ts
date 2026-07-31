@@ -2,10 +2,18 @@ import { describe, it, expect } from "vitest";
 import { pickRemotes as pickRemotesRaw } from "../../../src/mining/pickRemotes";
 import { scoutTarget, scouted } from "../../fixtures";
 
-// A home state that comfortably affords miners/claimers and has spawn headroom, so gates 2 and 3 pass
-// and only the economics/nearest-first ranking is under test unless a case overrides it.
+// A home state that comfortably affords miners/claimers and has ample spawn headroom (5 spawns' worth
+// of capacity, 0 load), so gates 2 and 3 pass and only the economics/nearest-first ranking is under test
+// unless a case overrides it.
 function homeState(over: Partial<Parameters<typeof pickRemotesRaw>[0]["home"]> = {}) {
-  return { name: "W1N1", storage: { x: 25, y: 25 }, energyCapacity: 800, spawnHeadroom: true, ...over };
+  return {
+    name: "W1N1",
+    storage: { x: 25, y: 25 },
+    energyCapacity: 800,
+    spawnLoad: 0,
+    spawnCapacity: 5 * 500,
+    ...over
+  };
 }
 
 // Defaults to today's append-only mode (reevaluate: false) so existing tests don't all need to spell it
@@ -33,11 +41,32 @@ describe("pickRemotes", () => {
     ).toEqual([]);
   });
 
-  it("selects nothing when the spawn has no headroom for more creeps", () => {
+  it("selects nothing when the spawn is already at or past the load ceiling", () => {
     const candidates = [scoutTarget("W2N1", scouted())];
     expect(
-      pickRemotes({ candidates, home: homeState({ spawnHeadroom: false }), currentlySelected: [] })
+      pickRemotes({ candidates, home: homeState({ spawnLoad: 0.85 }), currentlySelected: [] })
     ).toEqual([]);
+  });
+
+  it("selects nothing when there's no spawn capacity at all", () => {
+    const candidates = [scoutTarget("W2N1", scouted())];
+    expect(
+      pickRemotes({ candidates, home: homeState({ spawnCapacity: 0 }), currentlySelected: [] })
+    ).toEqual([]);
+  });
+
+  it("skips a candidate whose added load would push spawn load past the ceiling", () => {
+    const candidates = [
+      scoutTarget("W2N1", scouted({ sources: [{ id: "s_near" as Id<Source>, x: 25, y: 25 }] }))
+    ];
+    // A tiny spawnCapacity (one bare miner body already costs more than the remaining budget) means even
+    // a single profitable, near source can't be afforded without breaching MAX_SPAWN_LOAD.
+    const remotes = pickRemotes({
+      candidates,
+      home: homeState({ spawnLoad: 0.8, spawnCapacity: 10 }),
+      currentlySelected: []
+    });
+    expect(remotes).toEqual([]);
   });
 
   it("never mines the home room even if it appears as a candidate", () => {

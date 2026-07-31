@@ -37,6 +37,10 @@ declare global {
     // (home or a remote room with tower-uncovered decay), owned by operations/repairing.ts. Same
     // not-cleared-on-arrival rule — the repairer keeps working this room until Repairing reassigns it.
     repairTargetRoom?: string;
+    // The defender equivalent of repairTargetRoom: which invaded room (home or a remote) this defender is
+    // currently sent to fight in, owned by operations/defense.ts. Same not-cleared-on-arrival rule — the
+    // defender keeps fighting there until Defense reassigns it (danger cleared or a worse room appeared).
+    defendTargetRoom?: string;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
   }
@@ -58,7 +62,8 @@ export type RoleName =
   | "sitter"
   | "scout"
   | "claimer"
-  | "pioneer";
+  | "pioneer"
+  | "defender";
 
 export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building

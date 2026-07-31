@@ -685,3 +685,134 @@ describe("reserve step", () => {
     expect(result.didAct).toBe(false);
   });
 });
+
+// A defender fights whatever hostile resolves nearest. A melee-only body (no RANGED_ATTACK) closes to
+// range 1 and swings. A RANGED_ATTACK body kites: fires anywhere inside range 3, and flees directly away
+// the moment the hostile has closed inside that range, rather than standing still and trading hits.
+describe("attack step", () => {
+  function fighter(over: { rangedParts?: number; range: number; fx?: number; fy?: number }) {
+    const fx = over.fx ?? 20;
+    const fy = over.fy ?? 20;
+    const hx = over.range === 0 ? fx : fx + over.range; // hostile placed `range` tiles east of the fighter
+    const hostile = { id: "hostile1", pos: { x: hx, y: fy } };
+    const attacked: string[] = [];
+    const rangedAttacked: string[] = [];
+    const traveled: { x: number; y: number }[] = [];
+    stubGame({ objects: {} });
+    const creep = {
+      pos: {
+        x: fx,
+        y: fy,
+        roomName: "W1N1",
+        inRangeTo: (pos: { x: number; y: number }, range: number) => Math.abs(fx - pos.x) <= range && Math.abs(fy - pos.y) <= range,
+        getRangeTo: (pos: { x: number; y: number }) => Math.max(Math.abs(fx - pos.x), Math.abs(fy - pos.y)),
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      room: { find: () => [hostile] },
+      getActiveBodyparts: (part: BodyPartConstant) => (part === RANGED_ATTACK ? (over.rangedParts ?? 1) : 0),
+      attack: (t: { id: string }) => attacked.push(t.id),
+      rangedAttack: (t: { id: string }) => rangedAttacked.push(t.id),
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    };
+    return { creep: creep as unknown as Creep, attacked, rangedAttacked, traveled };
+  }
+
+  it("ranged-attacks a hostile at the outer edge of range 3 and holds position — no closer, no farther", () => {
+    const { creep, rangedAttacked, attacked, traveled } = fighter({ rangedParts: 1, range: 3 });
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(rangedAttacked).toEqual(["hostile1"]);
+    expect(attacked).toEqual([]);
+    expect(traveled).toEqual([]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "hostile1" });
+  });
+
+  it("fires and flees when a hostile has closed inside firing range, instead of standing still", () => {
+    const { creep, rangedAttacked, traveled } = fighter({ rangedParts: 1, range: 1 });
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(rangedAttacked).toEqual(["hostile1"]); // still fires this tick — full damage anywhere inside 3
+    // Hostile sits due east (higher x, same y); fleeing steps west and off-axis (the fallback nudge that
+    // keeps fleeSpot's y-component non-zero even on a perfectly aligned approach).
+    expect(traveled).toEqual([{ x: 19, y: 21 }]);
+    expect(result.didAct).toBe(true);
+  });
+
+  it("closes distance when a ranged body is outside firing range", () => {
+    const { creep, rangedAttacked, traveled } = fighter({ rangedParts: 1, range: 5 });
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(rangedAttacked).toEqual([]);
+    // travelTo is handed the hostile's raw position plus a range option — the path engine (stubbed out
+    // here) is what actually stops short at range 3, not this call site.
+    expect(traveled).toEqual([{ x: 25, y: 20 }]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "hostile1" });
+  });
+
+  it("melee-attacks once in range 1 when the body has no RANGED_ATTACK", () => {
+    const { creep, attacked, rangedAttacked, traveled } = fighter({ rangedParts: 0, range: 1 });
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(attacked).toEqual(["hostile1"]);
+    expect(rangedAttacked).toEqual([]);
+    expect(traveled).toEqual([]); // range 1 IS attack range for melee — no separate move needed
+    expect(result).toEqual({ acted: true, didAct: true, target: "hostile1" });
+  });
+
+  it("melee travels toward the hostile when out of range instead of attacking", () => {
+    const { creep, attacked, traveled } = fighter({ rangedParts: 0, range: 4 });
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(attacked).toEqual([]);
+    expect(traveled).toEqual([{ x: 24, y: 20 }]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "hostile1" });
+  });
+
+  it("no-ops when no hostile is present", () => {
+    const { creep } = fighter({ rangedParts: 1, range: 3 });
+    (creep.room.find as () => object[]) = () => [];
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  // Regression: fleeSpot used to clamp straight to [0,49], which collapses to the fighter's OWN tile
+  // once it's already pinned against a room edge — travelTo(currentPos) is a no-op, so a ranged defender
+  // chased onto a border froze there forever while the (unclamped) hostile kept closing and eventually
+  // caught it at point-blank. The fix slides the fighter along the blocked edge instead of freezing.
+  function borderFighter(fx: number, fy: number, hx: number, hy: number) {
+    const hostile = { id: "hostile1", pos: { x: hx, y: hy } };
+    const traveled: { x: number; y: number }[] = [];
+    stubGame({ objects: {} });
+    const creep = {
+      pos: {
+        x: fx,
+        y: fy,
+        roomName: "W1N1",
+        inRangeTo: (pos: { x: number; y: number }, range: number) => Math.max(Math.abs(fx - pos.x), Math.abs(fy - pos.y)) <= range,
+        getRangeTo: (pos: { x: number; y: number }) => Math.max(Math.abs(fx - pos.x), Math.abs(fy - pos.y)),
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      room: { find: () => [hostile] },
+      getActiveBodyparts: (part: BodyPartConstant) => (part === RANGED_ATTACK ? 1 : 0),
+      rangedAttack: () => undefined,
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    };
+    return { creep: creep as unknown as Creep, traveled };
+  }
+
+  it("slides along the west edge instead of freezing when pinned against x=0", () => {
+    // Fighter on the west wall (x=0); hostile has closed in from due east at range 1.
+    const { creep, traveled } = borderFighter(0, 20, 1, 20);
+    runStep(creep, { do: "attack", from: { find: "hostile" } });
+    // x can't retreat past 0, so it holds; y (the free axis) carries the flee instead of both freezing.
+    expect(traveled).toEqual([{ x: 0, y: 21 }]);
+  });
+
+  it("slides along the north edge instead of freezing when pinned against y=0", () => {
+    const { creep, traveled } = borderFighter(20, 0, 20, 1);
+    runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(traveled).toEqual([{ x: 21, y: 0 }]);
+  });
+
+  it("stays put only when truly cornered on both axes with nowhere left to retreat", () => {
+    // Fighter pinned in the top-left corner (0,0); hostile bearing from the southeast blocks both axes.
+    const { creep, traveled } = borderFighter(0, 0, 1, 1);
+    runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(traveled).toEqual([{ x: 0, y: 0 }]);
+  });
+});

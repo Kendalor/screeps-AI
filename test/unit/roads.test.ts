@@ -34,6 +34,12 @@ describe("buildCostMatrix", () => {
     expect(cm.get(12, 12)).toBe(1);
   });
 
+  it("prices a road strictly below plain terrain, so a tie always keeps the built route", () => {
+    const cm = buildCostMatrix({ terrain: openTerrain(), structures: [{ x: 12, y: 12, type: "road" }] });
+
+    expect(cm.get(12, 12)).toBeLessThan(cm.get(13, 13)); // (13,13) is plain terrain, unclaimed
+  });
+
   it("leaves container tiles walkable — creeps stand on them, they are not obstacles", () => {
     const cm = buildCostMatrix({
       terrain: openTerrain(),
@@ -93,6 +99,25 @@ describe("controllerRoadPath", () => {
     const last = path[path.length - 1];
     const dist = Math.max(Math.abs(last.x - controller.x), Math.abs(last.y - controller.y));
     expect(dist).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("road reuse", () => {
+  it("prefers a built road over an equally-short unpaved detour", () => {
+    const terrain = openTerrain();
+    // A single-tile wall wedge at (15,10) forces a one-tile detour either above or below it —
+    // both are equally short. Roads/roomplanner regression: without a cost edge favoring the
+    // paved side, an A* tie could route onto the bare tile instead, stranding the built road.
+    terrain[15 * 50 + 10] = 0;
+
+    const cm = buildCostMatrix({ terrain, structures: [{ x: 15, y: 9, type: "road" }] }); // paved above the wedge
+    const anchor: XY = { x: 10, y: 10 };
+    const source: XY = { x: 20, y: 10 };
+
+    const { path } = sourceRoadPath(anchor, source, cm);
+
+    expect(path.some(p => p.x === 15 && p.y === 9)).toBe(true); // took the paved detour
+    expect(path.some(p => p.x === 15 && p.y === 11)).toBe(false); // not the unpaved one
   });
 });
 

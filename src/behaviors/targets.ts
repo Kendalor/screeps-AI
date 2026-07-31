@@ -109,7 +109,8 @@ export type TargetKind =
   | { kind: "controller" }
   | { kind: "dropped" }
   | { kind: "tombstone" }
-  | { kind: "creep"; role?: string };
+  | { kind: "creep"; role?: string }
+  | { kind: "hostile" };
 
 // Role match for a creep spec: the spec names one role or a list, and the target must carry one of them.
 function roleMatches(role: string | undefined, spec: Extract<TargetSpec, { find: "creep" }>): boolean {
@@ -136,6 +137,7 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
     case "controller":
     case "dropped":
     case "tombstone":
+    case "hostile":
       return k.kind === spec.find;
     case "any":
       return spec.of.some(member => fitsSpec(k, member));
@@ -168,6 +170,7 @@ function toKind(obj: RoomObject): TargetKind | null {
     deathTime?: number;
     body?: unknown[];
     memory?: { role?: string };
+    my?: boolean;
   };
   // A construction site carries progressTotal AND a structureType (what it will become); capture the
   // latter so a scoped constructionSite spec can filter on it.
@@ -175,8 +178,9 @@ function toKind(obj: RoomObject): TargetKind | null {
   if (o.structureType !== undefined) return { kind: "structure", structureType: o.structureType };
   if (o.deathTime !== undefined) return { kind: "tombstone" };
   if (o.resourceType !== undefined) return { kind: "dropped" };
-  // A creep is the only positioned object with a body; read its role from memory for the spec filter.
-  if (o.body !== undefined) return { kind: "creep", role: o.memory?.role };
+  // A creep is the only positioned object with a body; `.my` splits it into a friendly (role read off
+  // memory, which only exists on owned creeps) or a hostile (no memory, never role-filtered).
+  if (o.body !== undefined) return o.my ? { kind: "creep", role: o.memory?.role } : { kind: "hostile" };
   if (o.energyCapacity !== undefined) return { kind: "source" };
   if (o.level !== undefined) return { kind: "controller" };
   return null;
@@ -400,6 +404,8 @@ function findCandidates(
       return room.find(FIND_DROPPED_RESOURCES);
     case "tombstone":
       return room.find(FIND_TOMBSTONES).filter(t => t.store.getUsedCapacity() > 0);
+    case "hostile":
+      return room.find(FIND_HOSTILE_CREEPS);
     case "constructionSite": {
       const sites = room.find(FIND_MY_CONSTRUCTION_SITES).filter(s => spec.structureType === undefined || s.structureType === spec.structureType);
       return sites.filter(s => nearMatches(creep, s, spec.near));

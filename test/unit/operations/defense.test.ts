@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Defense } from "../../../src/operations/defense";
-import { colonySnap, hostileAt, structureAt, towerAt, woundedAt } from "../../fixtures";
+import { colonySnap, hostileAt, remoteSourceAt, snapCreep, structureAt, towerAt, woundedAt } from "../../fixtures";
 
 const defense = new Defense("W1N1");
 
@@ -85,5 +85,106 @@ describe("Defense.intents", () => {
     const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], structures: [healthy, decayedWall] });
 
     expect(defense.intents(snap)).toEqual([]);
+  });
+});
+
+describe("Defense.desiredCreeps", () => {
+  it("requests nothing for a quiet colony", () => {
+    const snap = colonySnap({ hostiles: [] });
+    expect(defense.desiredCreeps(snap)).toEqual([]);
+  });
+
+  it("requests one defender for a single invader", () => {
+    const snap = colonySnap({ hostiles: [hostileAt(10, 10)] });
+    const requests = defense.desiredCreeps(snap);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].memory.role).toBe("defender");
+    expect(requests[0].memory.op).toBe("defense:W1N1");
+  });
+
+  it("scales requested defenders with hostile count, capped at the ceiling", () => {
+    const snap = colonySnap({ hostiles: [hostileAt(1, 1), hostileAt(2, 2), hostileAt(3, 3)] });
+    // 3 hostiles at 2-per-defender rounds up to 2 requested.
+    expect(defense.desiredCreeps(snap)).toHaveLength(2);
+
+    const swarmed = colonySnap({
+      hostiles: Array.from({ length: 20 }, (_, i) => hostileAt(i, i))
+    });
+    expect(defense.desiredCreeps(swarmed)).toHaveLength(3);
+  });
+
+  it("stops requesting once enough defenders are already alive", () => {
+    const snap = colonySnap({
+      hostiles: [hostileAt(10, 10)],
+      creeps: [snapCreep("defender", { memory: { op: "defense:W1N1" } })]
+    });
+    expect(defense.desiredCreeps(snap)).toEqual([]);
+  });
+
+  it("requests a defender for an invaded remote even with a quiet home room", () => {
+    const snap = colonySnap({
+      hostiles: [],
+      remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 1 })]
+    });
+    const requests = defense.desiredCreeps(snap);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].memory.role).toBe("defender");
+  });
+
+  it("does not request for a remote with no danger", () => {
+    const snap = colonySnap({ hostiles: [], remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 0 })] });
+    expect(defense.desiredCreeps(snap)).toEqual([]);
+  });
+});
+
+describe("Defense remote dispatch (defendTargetRoom)", () => {
+  it("sends a defender's target room to the invaded remote when the home room is quiet", () => {
+    const snap = colonySnap({
+      hostiles: [],
+      remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 1 })],
+      creeps: [snapCreep("defender", { memory: { op: "defense:W1N1" } })]
+    });
+    const intents = defense.intents(snap);
+    expect(intents).toContainEqual({ kind: "setDefendTargetRoom", creep: expect.any(String), room: "W2N1" });
+  });
+
+  it("prefers the home room over a remote when both are invaded", () => {
+    const snap = colonySnap({
+      hostiles: [hostileAt(10, 10)],
+      remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 1 })],
+      creeps: [snapCreep("defender", { memory: { op: "defense:W1N1" } })]
+    });
+    const intents = defense.intents(snap);
+    expect(intents).toContainEqual({ kind: "setDefendTargetRoom", creep: expect.any(String), room: "W1N1" });
+  });
+
+  it("leaves an already-correctly-assigned defender alone", () => {
+    const snap = colonySnap({
+      hostiles: [],
+      remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 1 })],
+      creeps: [snapCreep("defender", { memory: { op: "defense:W1N1", defendTargetRoom: "W2N1" } })]
+    });
+    const intents = defense.intents(snap);
+    expect(intents.some(i => i.kind === "setDefendTargetRoom")).toBe(false);
+  });
+
+  it("reassigns a defender once its current room's danger has cleared", () => {
+    const snap = colonySnap({
+      hostiles: [hostileAt(5, 5)],
+      remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 0 })],
+      creeps: [snapCreep("defender", { memory: { op: "defense:W1N1", defendTargetRoom: "W2N1" } })]
+    });
+    const intents = defense.intents(snap);
+    expect(intents).toContainEqual({ kind: "setDefendTargetRoom", creep: expect.any(String), room: "W1N1" });
+  });
+
+  it("emits no reassignment once no room is invaded at all", () => {
+    const snap = colonySnap({
+      hostiles: [],
+      remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 0 })],
+      creeps: [snapCreep("defender", { memory: { op: "defense:W1N1", defendTargetRoom: "W2N1" } })]
+    });
+    const intents = defense.intents(snap);
+    expect(intents.some(i => i.kind === "setDefendTargetRoom")).toBe(false);
   });
 });
