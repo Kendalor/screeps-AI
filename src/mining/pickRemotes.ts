@@ -76,7 +76,11 @@ export function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
 
   // Gate 2 (affordability) and gate 3 (spawn capacity) are room-wide: if either fails, attempt nothing.
   if (home.energyCapacity < MIN_ENERGY_CAPACITY || home.spawnCapacity <= 0) return [];
-  if (home.spawnLoad >= MAX_SPAWN_LOAD) return []; // already over the ceiling before adding anything
+  // Already over the load ceiling: the frequent append-only pass can only ever grow the selection, so it
+  // has nothing useful to do here — bail before touching candidates at all. The rarer reevaluate pass is
+  // the one mechanism that can shed load (see below), so it must NOT bail here: skipping it would freeze
+  // an overloaded colony's remote fleet in place forever with no way back under the ceiling.
+  if (home.spawnLoad >= MAX_SPAWN_LOAD && !input.reevaluate) return [];
 
   const ctx = defaultEconomyContext();
 
@@ -107,40 +111,38 @@ export function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
   // Nearest-first, then capped: the spawn-capacity ceiling keeps the cheapest energy and can't over-commit.
   worthwhile.sort((a, b) => a.distance - b.distance);
 
-  // Remaining spawn-load budget for genuinely NEW sources only — an already-selected source's load is
-  // already reflected in home.spawnLoad (it's already spawning live creeps/requests), so re-confirming
-  // it must never be charged against the budget a second time, only a fresh addition should be.
-  let loadBudget = Math.max(0, MAX_SPAWN_LOAD - home.spawnLoad) * home.spawnCapacity;
-  const affordable = (c: Candidate): boolean => c.loadParts <= loadBudget;
-  const spend = (c: Candidate): void => {
-    loadBudget -= c.loadParts;
-  };
-
   const alreadySelected = new Set(input.currentlySelected);
   let capped: Candidate[];
   if (input.reevaluate) {
     // Full re-rank: every worthwhile candidate (previously-selected or not) competes on equal footing,
     // re-priced with whatever distance/economics apply right now. This is the only branch that can drop
-    // a previously-selected source. Previously-selected survivors don't spend the budget (see above);
-    // only newly-admitted ones do, in nearest-first order alongside the source-count cap.
+    // a previously-selected source — including shedding load on an already-over-budget colony, so it
+    // must charge EVERY survivor (previously-selected or new) against the total budget, nearest-first,
+    // rather than exempting incumbents the way the append-only branch below does. Otherwise a colony
+    // stuck over the ceiling (e.g. from a source that's grown costlier, or the ceiling itself dropping
+    // as the colony's own local roles grew) would freeze there forever with no way back under it.
+    let loadBudget = MAX_SPAWN_LOAD * home.spawnCapacity;
     capped = [];
     for (const c of worthwhile) {
       if (capped.length >= MAX_REMOTE_SOURCES) break;
-      const isNew = !alreadySelected.has(c.id);
-      if (isNew && !affordable(c)) continue;
+      if (c.loadParts > loadBudget) continue;
       capped.push(c);
-      if (isNew) spend(c);
+      loadBudget -= c.loadParts;
     }
   } else {
     // Never drop a source we've already committed to, even if it'd fall outside the cap on a re-rank (e.g.
-    // nearer candidates appeared). Then commit previously-unseen rooms whole: find the single nearest
+    // nearer candidates appeared) — pruning an over-budget colony back down is reevaluate's job (above),
+    // not this frequent pass's. Then commit previously-unseen rooms whole: find the single nearest
     // never-selected room (by its nearest source) and add every worthwhile source in it together, rather
     // than trickling in one source per call while its room-mates — already paid for by the same scouting/
-    // reservation cost — wait their turn behind a farther room. The whole room's load must fit the budget
-    // together (a partially-affordable room isn't split — see the room-total check below), since entering
-    // a room is a one-time cost paid regardless of how many of its sources end up mined.
+    // reservation cost — wait their turn behind a farther room. The whole room's load must fit the
+    // remaining budget together (a partially-affordable room isn't split), since entering a room is a
+    // one-time cost paid regardless of how many of its sources end up mined. Already-selected sources
+    // don't spend this budget — their load is already reflected in home.spawnLoad (they're already
+    // spawning live creeps/requests) — only a fresh addition should be charged.
     const kept = worthwhile.filter(c => alreadySelected.has(c.id));
     const fresh = worthwhile.filter(c => !alreadySelected.has(c.id));
+    const loadBudget = Math.max(0, MAX_SPAWN_LOAD - home.spawnLoad) * home.spawnCapacity;
 
     capped = kept.slice(0, MAX_REMOTE_SOURCES);
     const nextRoom = fresh[0]?.room; // worthwhile is sorted nearest-first; fresh preserves that order

@@ -69,6 +69,55 @@ describe("pickRemotes", () => {
     expect(remotes).toEqual([]);
   });
 
+  it("append-only leaves an already-over-budget colony's selection untouched (freeze, not prune)", () => {
+    // Real scenario: a colony already carrying more remotes than its spawn can sustain (spawnLoad well
+    // past MAX_SPAWN_LOAD from committed sources' live creeps/requests). The frequent append-only pass
+    // must not touch the existing selection at all — no growth (already covered above) AND no shrink;
+    // pruning back under the ceiling is reevaluate's job only (see the next test).
+    const candidates = [scoutTarget("W2N1", scouted({ sources: [{ id: "new" as Id<Source>, x: 25, y: 25 }] }))];
+    const alreadyHave = ["kept1", "kept2"] as Id<Source>[];
+    // currentlySelected sources aren't in `candidates` here (no scouted info for their room), matching
+    // how a real re-poll only re-derives from scoutTargets — append-only's `kept` filter preserves them
+    // by id regardless, so this still exercises the freeze path faithfully.
+    const remotes = pickRemotes({
+      candidates,
+      home: homeState({ spawnLoad: 1.5 }),
+      currentlySelected: alreadyHave
+    });
+    expect(remotes).toEqual([]); // gate 3 bails before even reaching `kept`/`fresh` — nothing changes
+  });
+
+  it("reevaluate prunes an over-budget colony's selection back toward the ceiling, farthest first", () => {
+    // 3 already-selected sources, priced so all 3 together exceed a deliberately small total budget but
+    // the 2 nearest fit within it — reevaluate must charge every survivor (not just new ones) against the
+    // budget and drop the farthest until back under it, since this is the only mechanism that can ever
+    // shed an over-budget colony's load.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: [
+          { id: "near" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } }, // distance 1, cheap
+          { id: "mid" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(5) } }, // distance 5
+          { id: "far" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(200) } } // distance 200, priciest
+        ]
+      })
+    );
+    const alreadyHave = ["near", "mid", "far"] as Id<Source>[];
+
+    const reevaluated = pickRemotesRaw({
+      candidates: [packed],
+      // spawnCapacity small enough that all 3 sources' combined load parts overshoot MAX_SPAWN_LOAD *
+      // spawnCapacity, but near+mid together still fit — spawnLoad itself is irrelevant here since
+      // reevaluate re-derives the whole budget from spawnCapacity alone (see pickRemotes.ts).
+      home: homeState({ spawnLoad: 0, spawnCapacity: 40 }),
+      currentlySelected: alreadyHave,
+      reevaluate: true
+    });
+    const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("near");
+    expect(ids).not.toContain("far"); // the farthest/priciest is the one shed to fit the budget
+  });
+
   it("never mines the home room even if it appears as a candidate", () => {
     const candidates = [scoutTarget("W1N1", scouted()), scoutTarget("W2N1", scouted())];
     const rooms = pickRemotes({ candidates, home: homeState(), currentlySelected: [] }).map(r => r.room);
