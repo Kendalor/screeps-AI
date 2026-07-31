@@ -8,7 +8,7 @@ import { needsRepair, REPAIRABLE } from "../lib/repairable";
 import type { RoleName } from "../memory/schema";
 import type { ColonyMetricsMemory } from "../memory/schema";
 import type { RoleTarget } from "../operations/operation";
-import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
+import type { ColonySnapshot, SnapRemoteSource, SnapStructure } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 
 export const HARVEST_WINDOW = 300; // ticks of source-energy history kept; matches ENERGY_REGEN_TIME
@@ -29,6 +29,26 @@ export interface BuildingRow {
   type: BuildableStructureConstant;
   built: number;
   targeted: number;
+}
+
+/** One remote room's repair upkeep, for the debug panel's per-room breakdown (see repairRemainingFor). */
+export interface RemoteRepairRow {
+  room: string;
+  decay: number;
+  actionable: number;
+}
+
+/** One selected remote source, for the debug panel's reservation status. */
+export interface RemoteSourceRow {
+  room: string;
+  reserved: boolean;
+  danger: boolean;
+}
+
+/** Optional, off-by-default detail beyond the always-on panel — see setDebugMetrics in commands/console.ts. */
+export interface DebugMetrics {
+  remoteRepair: RemoteRepairRow[]; // rooms with any decay at all, worst-first
+  remoteSources: RemoteSourceRow[]; // every currently-selected remote source
 }
 
 export interface ColonyMetrics {
@@ -86,6 +106,7 @@ export interface ColonyMetrics {
     parts: number; // required body parts: living creeps + outstanding requests (the load numerator)
     capacity: number; // total * PARTS_PER_SPAWN — parts these spawns can sustain
   };
+  debug?: DebugMetrics; // only collected when Memory.debugMetrics is set — see collectMetrics
 }
 
 // One spawn produces one part every CREEP_SPAWN_TIME (3) ticks, and a part must be replaced every
@@ -175,6 +196,22 @@ export function repairRemainingFor(structures: readonly SnapStructure[]): { deca
   return { decay, actionable };
 }
 
+// Per-room breakdown of the same decay repairRemainingFor already aggregates for the always-on panel —
+// only computed when the debug panel is on, since it's a second pass over remoteStructures. Rooms with
+// zero decay are omitted (matches the aggregate's "only shown once decay > 0" rule); worst decay first.
+function remoteRepairFor(remoteStructures: ColonySnapshot["remoteStructures"]): RemoteRepairRow[] {
+  return Object.entries(remoteStructures)
+    .map(([room, structures]) => ({ room, ...repairRemainingFor(structures ?? []) }))
+    .filter(row => row.decay > 0)
+    .sort((a, b) => b.decay - a.decay);
+}
+
+// Every currently-selected remote source with its reservation/danger status, room-then-nearest ordered
+// (matches SnapRemoteSource's own selection order — nearest-first per room).
+function remoteSourcesFor(remoteSources: readonly SnapRemoteSource[]): RemoteSourceRow[] {
+  return remoteSources.map(s => ({ room: s.room, reserved: s.reserved, danger: s.danger > 0 }));
+}
+
 // SnapSource carries no live energy, so harvest is measured at the destination: containers + storage + drops.
 function totalSourceEnergy(snapshot: ColonySnapshot): number {
   const containers = snapshot.containers.reduce((sum, c) => sum + c.storeEnergy, 0);
@@ -204,14 +241,17 @@ function harvestRate(mem: ColonyMetricsMemory, tick: number, sourceEnergy: numbe
   return span > 0 ? gained / span : undefined;
 }
 
-/** Collect one colony's metrics. `mem` is the persisted harvest window, mutated in place (the only side effect). */
+/** Collect one colony's metrics. `mem` is the persisted harvest window, mutated in place (the only side
+ * effect). `debugMetrics` gates the optional `debug` block (see Memory.debugMetrics / setDebugMetrics) —
+ * off by default so the always-on panel's cost doesn't grow for colonies nobody is actively debugging. */
 export function collectMetrics(
   snapshot: ColonySnapshot,
   requests: CreepRequest[],
   operationNames: string[],
   targeted: readonly PlacedStructure[],
   mem: ColonyMetricsMemory,
-  roleTargets: RoleTarget[] = []
+  roleTargets: RoleTarget[] = [],
+  debugMetrics = false
 ): ColonyMetrics {
   return {
     room: snapshot.name,
@@ -267,6 +307,12 @@ export function collectMetrics(
         capacity,
         load: capacity > 0 ? parts / capacity : 0 // colony fraction; 0 when spawnless (dying colony)
       };
-    })()
+    })(),
+    debug: debugMetrics
+      ? {
+          remoteRepair: remoteRepairFor(snapshot.remoteStructures),
+          remoteSources: remoteSourcesFor(snapshot.remoteSources)
+        }
+      : undefined
   };
 }

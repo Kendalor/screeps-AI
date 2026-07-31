@@ -599,20 +599,20 @@ describe("upgrade step: drawing closer to the controller", () => {
     // In range 3 of the controller but not on the container tile.
     const { creep, traveled, upgraded } = upgradeCreep({
       pos: { x: 25, y: 28 },
-      containerPos: { x: 25, y: 27 }
+      containerPos: { x: 25, y: 26 }
     });
 
     const result = runStep(creep, { do: "upgrade" });
 
     expect(upgraded).toEqual(["controller1"]);
-    expect(traveled).toEqual([{ x: 25, y: 27 }]);
+    expect(traveled).toEqual([{ x: 25, y: 26 }]);
     expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
   });
 
   it("stays put and keeps upgrading once parked on the controller container", () => {
     const { creep, traveled, upgraded } = upgradeCreep({
-      pos: { x: 25, y: 27 },
-      containerPos: { x: 25, y: 27 }
+      pos: { x: 25, y: 26 },
+      containerPos: { x: 25, y: 26 }
     });
 
     const result = runStep(creep, { do: "upgrade" });

@@ -78,7 +78,8 @@ export class Colony {
       mem,
       // Passing the already-computed requests through so roleTargets' default doesn't call
       // desiredCreeps() a second time — see the comment on Operation.roleTargets.
-      this.operations.flatMap(op => op.roleTargets(this.snapshot, requests))
+      this.operations.flatMap(op => op.roleTargets(this.snapshot, requests)),
+      Memory.debugMetrics ?? false
     );
     return [visualize(report, cpu)];
   }

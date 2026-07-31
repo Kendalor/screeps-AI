@@ -76,6 +76,12 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       if (!room) return ERR_NOT_FOUND;
       return room.createConstructionSite(intent.x, intent.y, intent.type);
     }
+    case "linkSend": {
+      const from = Game.getObjectById(intent.from);
+      const to = Game.getObjectById(intent.to);
+      if (!from || !to) return ERR_NOT_FOUND;
+      return from.transferEnergy(to);
+    }
     case "setCreepRole": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
@@ -209,6 +215,14 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
       const source = mem.remotes.find(r => r.room === intent.remoteRoom)?.sources.find(s => s.id === intent.source);
       if (source) source.containerId = intent.container; // only ever adds an id, same rule as recordSourceSpot
+      return OK;
+    }
+    case "recordLinkNetwork": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const links = (mem.links ??= { sources: [] });
+      // Only ever adds an id — a tick with no fresh detection must not wipe an existing handle.
+      if (intent.storage) links.storage = intent.storage;
+      if (intent.controller) links.controller = intent.controller;
       return OK;
     }
     default:

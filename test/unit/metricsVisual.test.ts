@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ColonyMetrics } from "../../src/colony/metrics";
-import { panelOps, visualize } from "../../src/colony/metricsVisual";
+import { debugPanelOps, panelOps, visualize } from "../../src/colony/metricsVisual";
 import type { VisualOp } from "../../src/intents/types";
 
 function metrics(over: Partial<ColonyMetrics> = {}): ColonyMetrics {
@@ -273,5 +273,107 @@ describe("metricsVisual: intent", () => {
     if (intent.kind !== "roomVisual") throw new Error("unreachable");
     expect(intent.room).toBe("W3N3");
     expect(intent.ops.length).toBeGreaterThan(0);
+  });
+});
+
+describe("metricsVisual: debug panel", () => {
+  it("renders nothing when debug is absent (toggle off)", () => {
+    const ops = debugPanelOps(metrics());
+    expect(ops).toEqual([]);
+  });
+
+  it("right-aligns every line", () => {
+    const ops = debugPanelOps(metrics({ debug: { remoteRepair: [], remoteSources: [] } }));
+    for (const o of ops) {
+      if (o.op === "text") expect(o.align).toBe("right");
+    }
+  });
+
+  it("shows a placeholder when nothing has decayed and no remotes are selected", () => {
+    const ops = debugPanelOps(metrics({ debug: { remoteRepair: [], remoteSources: [] } }));
+    const all = joined(ops).toLowerCase();
+    expect(all).toContain("none");
+    expect(all).toContain("none selected");
+  });
+
+  it("lists remote repair per room with its hit total", () => {
+    const ops = debugPanelOps(
+      metrics({
+        debug: {
+          remoteRepair: [
+            { room: "W2N1", decay: 4_000, actionable: 4_000 },
+            { room: "W3N1", decay: 100, actionable: 0 }
+          ],
+          remoteSources: []
+        }
+      })
+    );
+    const all = joined(ops);
+    expect(all).toContain("W2N1");
+    expect(all).toContain("4k hits");
+    expect(all).toContain("actionable");
+    expect(all).toContain("W3N1");
+    expect(all).toContain("100 hits");
+  });
+
+  it("colours actionable remote repair differently from decay-only", () => {
+    const ops = debugPanelOps(
+      metrics({
+        debug: {
+          remoteRepair: [
+            { room: "W2N1", decay: 4_000, actionable: 4_000 },
+            { room: "W3N1", decay: 100, actionable: 0 }
+          ],
+          remoteSources: []
+        }
+      })
+    );
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const w2 = textOps.find(o => o.text.includes("W2N1"))!;
+    const w3 = textOps.find(o => o.text.includes("W3N1"))!;
+    expect(w2.color).not.toBe(w3.color);
+  });
+
+  it("lists every remote source with its reservation/danger status", () => {
+    const ops = debugPanelOps(
+      metrics({
+        debug: {
+          remoteRepair: [],
+          remoteSources: [
+            { room: "W2N1", reserved: true, danger: false },
+            { room: "W3N1", reserved: false, danger: false },
+            { room: "W4N1", reserved: false, danger: true }
+          ]
+        }
+      })
+    );
+    const all = joined(ops);
+    expect(all).toContain("W2N1  reserved");
+    expect(all).toContain("W3N1  unreserved");
+    expect(all).toContain("W4N1  danger");
+  });
+
+  it("colours a dangerous remote source distinctly from a merely unreserved one", () => {
+    const ops = debugPanelOps(
+      metrics({
+        debug: {
+          remoteRepair: [],
+          remoteSources: [
+            { room: "W3N1", reserved: false, danger: false },
+            { room: "W4N1", reserved: false, danger: true }
+          ]
+        }
+      })
+    );
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const unreserved = textOps.find(o => o.text.includes("W3N1"))!;
+    const danger = textOps.find(o => o.text.includes("W4N1"))!;
+    expect(unreserved.color).not.toBe(danger.color);
+  });
+
+  it("is included in visualize()'s intent ops when debug is set", () => {
+    const intent = visualize(metrics({ room: "W3N3", debug: { remoteRepair: [], remoteSources: [] } }));
+    if (intent.kind !== "roomVisual") throw new Error("unreachable");
+    expect(joined(intent.ops).toLowerCase()).toContain("debug");
   });
 });

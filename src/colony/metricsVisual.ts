@@ -7,6 +7,7 @@ import type { ColonyMetrics } from "./metrics";
 // Panel geometry, in room-tile coordinates (0..49).
 const PANEL_X = 0.5;
 const PANEL_TOP = 0.5;
+const RIGHT_PANEL_X = 48.5; // debug panel's right edge; align: "right" grows text leftward from here
 const LINE_H = 0.8; // vertical step between lines
 const FONT = 0.6;
 
@@ -15,14 +16,16 @@ const DIM = "#aaaaaa"; // labels
 const OK = "#8ee06f"; // healthy / met
 const WARN = "#ff6b6b"; // understaffed / attention
 
-/** A one-shot line writer that tracks the running y so callers just append. */
-function panel(): { line: (text: string, color?: string, indent?: number) => void; ops: VisualOp[] } {
+/** A one-shot line writer that tracks the running y so callers just append. Indent grows the text away
+ * from `align`'s edge (rightward for "left", leftward for "right"), so both panels share one shape. */
+function panel(x = PANEL_X, align: "left" | "right" = "left"): { line: (text: string, color?: string, indent?: number) => void; ops: VisualOp[] } {
   const ops: VisualOp[] = [];
   let y = PANEL_TOP + LINE_H;
+  const sign = align === "left" ? 1 : -1;
   return {
     ops,
     line(text: string, color = DIM, indent = 0): void {
-      ops.push({ op: "text", text, x: PANEL_X + indent, y, color, align: "left", size: FONT });
+      ops.push({ op: "text", text, x: x + sign * indent, y, color, align, size: FONT });
       y += LINE_H;
     }
   };
@@ -54,7 +57,8 @@ export function panelOps(m: ColonyMetrics, cpu?: Readonly<Record<string, number>
   p.line(`${m.room}  ·  RCL ${m.controller.level}  ·  tick ${m.tick}`, HEADING);
 
   // Census: role  current/target. Red when short (understaffed) or over (a surplus the ops no longer want).
-  p.line("Census", HEADING);
+  const totalCreeps = m.census.reduce((sum, row) => sum + row.current, 0);
+  p.line(`Census (${totalCreeps})`, HEADING);
   if (m.census.length === 0) p.line("(no creeps)", DIM, 0.5);
   for (const row of m.census) {
     const staffed = row.current >= row.desired;
@@ -146,8 +150,34 @@ export function panelOps(m: ColonyMetrics, cpu?: Readonly<Record<string, number>
   return p.ops;
 }
 
-/** The full render: the report's panel as a single roomVisual intent for its room. `cpu` is last
+/** The debug panel: right-aligned, only rendered when `m.debug` is present (see setDebugMetrics /
+ * Memory.debugMetrics). Two blocks — remote repair upkeep by room, and every currently-selected remote
+ * source's reservation/danger status — both empty-state so a clean colony still shows the panel is on. */
+export function debugPanelOps(m: ColonyMetrics): VisualOp[] {
+  if (!m.debug) return [];
+  const p = panel(RIGHT_PANEL_X, "right");
+
+  p.line("Debug", HEADING);
+
+  p.line("Remote repair", HEADING);
+  if (m.debug.remoteRepair.length === 0) p.line("(none)", DIM, 0.5);
+  for (const row of m.debug.remoteRepair) {
+    const suffix = row.actionable > 0 ? ` (${kmb(row.actionable)} actionable)` : "";
+    p.line(`${row.room}  ${kmb(row.decay)} hits${suffix}`, row.actionable > 0 ? WARN : DIM, 0.5);
+  }
+
+  p.line("Remote sources", HEADING);
+  if (m.debug.remoteSources.length === 0) p.line("(none selected)", DIM, 0.5);
+  for (const row of m.debug.remoteSources) {
+    const status = row.danger ? "danger" : row.reserved ? "reserved" : "unreserved";
+    p.line(`${row.room}  ${status}`, row.danger ? WARN : row.reserved ? OK : DIM, 0.5);
+  }
+
+  return p.ops;
+}
+
+/** The full render: the report's panel(s) as a single roomVisual intent for its room. `cpu` is last
  * tick's Memory.stats.cpu breakdown — empire-wide, so pass it for one colony only (the panel picks). */
 export function visualize(m: ColonyMetrics, cpu?: Readonly<Record<string, number>>): Intent {
-  return { kind: "roomVisual", room: m.room, ops: panelOps(m, cpu) };
+  return { kind: "roomVisual", room: m.room, ops: [...panelOps(m, cpu), ...debugPanelOps(m)] };
 }

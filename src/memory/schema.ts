@@ -14,6 +14,7 @@ declare global {
     stats: StatsMemory;
     metrics: Record<string, ColonyMetricsMemory>; // cross-tick harvest-rate window; everything else in a report is derived fresh
     logLevel?: LogLevel; // set via the in-game console (commands/console.ts); absent means "error" only
+    debugMetrics?: boolean; // set via the in-game console (commands/console.ts); toggles the right-aligned debug panel
   }
 
   interface CreepMemory {
@@ -27,6 +28,10 @@ declare global {
     // whole trip is one chain (pickup -> ... -> deliver) nested in `current.next`; runTransport promotes
     // `current.next` as each leg completes, so there is no separate follow-up field here.
     logistics?: { current?: LogisticsTask };
+    // The steward's current carry destination (storage/terminal), owned by behaviors/steward.ts alone —
+    // no planner/intent involved, since a steward's job is decided and executed in the same tick with
+    // nothing worth persisting across a re-plan (unlike transport's multi-leg chain).
+    stewardDest?: Id<StructureStorage> | Id<StructureTerminal> | Id<StructureLink>;
     scoutTarget?: string; // room a scout is assigned to reach; cleared by moveToRoom on arrival
     targetRoom?: string; // a remote worker's permanent destination room (its source's room); NOT cleared on arrival, unlike scoutTarget
     // A builder's current cross-room construction assignment (home or a remote room with outstanding
@@ -56,6 +61,7 @@ export type RoleName =
   | "hauler"
   | "supply"
   | "transport"
+  | "steward"
   | "upgrader"
   | "builder"
   | "repair"

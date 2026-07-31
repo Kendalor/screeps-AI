@@ -7,7 +7,7 @@ import GOAL_JSON from "../../../src/layouts/Base_2.json";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { Upgrading } from "../../../src/operations/upgrading";
-import { colonySnap, containerAt, dropAt, snapCreeps } from "../../fixtures";
+import { colonySnap, containerAt, dropAt, linkAt, snapCreeps } from "../../fixtures";
 
 const upgrading = new Upgrading("W1N1");
 const upgraderRequests = (over: Parameters<typeof colonySnap>[0]) => upgrading.desiredCreeps(colonySnap(over));
@@ -151,17 +151,17 @@ describe("Upgrading.structures — controller container + road", () => {
   const gated = (over: Parameters<typeof colonySnap>[0] = {}) =>
     colonySnap({ anchor, controller, controllerLevel: 3, energyCapacity: 800, ...over });
 
-  it("claims exactly one container within range 2 of the controller", () => {
+  it("claims exactly one container within range 1 of the controller", () => {
     const containers = upgrading.structures(gated()).filter(s => s.type === "container");
 
     expect(containers).toHaveLength(1);
-    expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(2);
+    expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(1);
   });
 
   it("stays in upgrade range: the container is never further than range 3 from the controller", () => {
     const [container] = upgrading.structures(gated()).filter(s => s.type === "container");
 
-    // Range 2 is the target, but the load-bearing property is "an upgrader on it can still upgrade".
+    // Range 1 is the target, but the load-bearing property is "an upgrader on it can still upgrade".
     expect(chebyshev(container, controller)).toBeLessThanOrEqual(3);
   });
 
@@ -215,7 +215,7 @@ describe("Upgrading.structures — controller container + road", () => {
 
     expect(containers).toHaveLength(1);
     expect({ x: containers[0].x, y: containers[0].y }).not.toEqual({ x: natural.x, y: natural.y });
-    expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(2);
+    expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(1);
   });
 });
 
@@ -231,7 +231,7 @@ describe("Upgrading.structures — link swap at RCL5", () => {
     expect(claimed.filter(s => s.type === "container")).toHaveLength(0);
     const links = claimed.filter(s => s.type === "link");
     expect(links).toHaveLength(1);
-    expect(chebyshev(links[0], controller)).toBeLessThanOrEqual(2);
+    expect(chebyshev(links[0], controller)).toBeLessThanOrEqual(1);
   });
 
   it("still below the gate, RCL4 keeps claiming a container", () => {
@@ -249,5 +249,56 @@ describe("Upgrading.structures — link swap at RCL5", () => {
 
     const roads = upgrading.structures(gated()).filter(s => s.type === "road");
     expect(roads.some(r => chebyshev(r, linkClaim) === 1)).toBe(true);
+  });
+});
+
+describe("Upgrading.intents — controller link recording", () => {
+  const anchor: XY = { x: 25, y: 25 };
+  const controller: XY = { x: 25, y: 40 };
+  const gated = (over: Parameters<typeof colonySnap>[0] = {}) =>
+    colonySnap({ anchor, controller, controllerLevel: 5, energyCapacity: 800, ...over });
+
+  it("records any built link within range of the controller, even off structures()' exact route tile", () => {
+    // Regression: a link built before the current pathing code (or nudged by a later road/obstacle
+    // change) can legitimately sit one tile off from where a fresh A* route would land today —
+    // detection must not require an exact match against structures()' own computed tile.
+    const link = linkAt(controller.x + 1, controller.y, 0); // range 1, not necessarily the A* tile
+
+    const intents = upgrading.intents(gated({ links: [link] }));
+    expect(intents).toContainEqual({ kind: "recordLinkNetwork", room: "W1N1", controller: link.id });
+  });
+
+  it("does not record anything before a link is built near the controller", () => {
+    expect(upgrading.intents(gated({ links: [] }))).toEqual([]);
+  });
+
+  it("does not record a link outside the controller's range", () => {
+    const farLink = linkAt(controller.x + 5, controller.y, 0);
+    expect(upgrading.intents(gated({ links: [farLink] }))).toEqual([]);
+  });
+
+  it("does not re-record once the controller link is already known", () => {
+    const link = linkAt(controller.x + 1, controller.y, 0);
+    const intents = upgrading.intents(gated({ links: [link], linkNetwork: { controller: link.id } }));
+    expect(intents).toEqual([]);
+  });
+
+  it("does not mistake the anchor link for the controller link even if it happened to be in range", () => {
+    const anchorLink = linkAt(controller.x + 1, controller.y, 0);
+    const intents = upgrading.intents(gated({ links: [anchorLink], linkNetwork: { storage: anchorLink.id } }));
+    expect(intents).toEqual([]);
+  });
+
+  it("does not mistake a source link for the controller link even if it happened to be in range", () => {
+    const sourceLink = linkAt(controller.x + 1, controller.y, 0);
+    const intents = upgrading.intents(
+      gated({ links: [sourceLink], sourceMemory: { src_0: { linkId: sourceLink.id } } })
+    );
+    expect(intents).toEqual([]);
+  });
+
+  it("does not record anything below the link tier (still on a container)", () => {
+    const link = linkAt(controller.x + 1, controller.y, 0); // a link oddly present pre-RCL5 shouldn't be recorded yet
+    expect(upgrading.intents(gated({ controllerLevel: 4, links: [link] }))).toEqual([]);
   });
 });

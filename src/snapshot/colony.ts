@@ -136,8 +136,22 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
         storeEnergy: c.store.getUsedCapacity(RESOURCE_ENERGY),
         storeCapacity: c.store.getCapacity()
       })),
+    links: room
+      .find<StructureLink>(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_LINK })
+      .map(l => ({
+        id: l.id,
+        x: l.pos.x,
+        y: l.pos.y,
+        storeEnergy: l.store.getUsedCapacity(RESOURCE_ENERGY),
+        storeCapacity: l.store.getCapacity(RESOURCE_ENERGY),
+        cooldown: l.cooldown
+      })),
+    terminalId: room.terminal?.id,
+    terminalEnergy: room.terminal?.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0,
+    terminalCapacity: room.terminal?.store.getCapacity(RESOURCE_ENERGY) ?? 0,
     anchor: resolveAnchor(room),
     sourceMemory: Memory.colonies[room.name]?.sources ?? {},
+    linkNetwork: Memory.colonies[room.name]?.links ?? {},
     structures: room
       .find(FIND_STRUCTURES)
       .filter((s): s is AnyStructure & { structureType: BuildableStructureConstant } => s.structureType !== STRUCTURE_CONTROLLER)

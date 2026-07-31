@@ -20,8 +20,8 @@ describe("providers", () => {
   });
 
   it("excludes the controller container from providers even when it holds energy", () => {
-    // Within range 2 of the controller at (25,25).
-    const container = containerAt(25, 27, 1000);
+    // Within range 1 of the controller at (25,25).
+    const container = containerAt(25, 26, 1000);
     expect(providers(colonySnap({ containers: [container], controller: { x: 25, y: 25 } }))).toEqual([]);
   });
 
@@ -179,7 +179,7 @@ describe("consumers", () => {
   });
 
   it("wants a controller container below its 0.7 fill floor", () => {
-    // Within range 2 of the controller at (25,25); capacity 2000 * 0.7 = 1400 floor, holding 300.
+    // Within range 1 of the controller at (25,25); capacity 2000 * 0.7 = 1400 floor, holding 300.
     const container = containerAt(25, 26, 300);
     const result = consumers(colonySnap({ containers: [container], controller: { x: 25, y: 25 } }));
 

@@ -11,6 +11,7 @@ import { Hauler } from "./hauler";
 import { Miner } from "./miner";
 import { Repair } from "./repair";
 import { Scout } from "./scout";
+import { Steward } from "./steward";
 import { Supply } from "./supply";
 import { Transport } from "./transport";
 import { Upgrader } from "./upgrader";
@@ -26,6 +27,7 @@ export const ROLES = {
   claimer: Claimer,
   hauler: Hauler,
   transport: Transport,
+  steward: Steward,
   defender: Defender
 } satisfies Partial<Record<RoleName, RoleDef>>;
 

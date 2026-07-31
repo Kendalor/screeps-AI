@@ -68,7 +68,7 @@ const CONTROLLER_CONTAINER_FILL_FLOOR = 0.7;
 // creep to size "worthwhile" against.
 const DROP_WORTHWHILE_FLOOR = 50;
 
-const CONTROLLER_CONTAINER_RANGE = 2; // range of the controller a controller container sits within
+const CONTROLLER_CONTAINER_RANGE = 1; // range of the controller a controller container sits within
 
 // Only upgraders parked at the controller are worth a transport trip. An upgrader wandering off to
 // harvest or in transit isn't upgrading, so topping it up wherever it happens to be just drags a

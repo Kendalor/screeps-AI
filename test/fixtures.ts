@@ -8,6 +8,7 @@ import type {
   EmpireSnapshot,
   ScoutCandidate,
   SnapContainer,
+  SnapLink,
   SnapSink,
   SnapCreep,
   SnapDrop,
@@ -124,8 +125,12 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     storageEnergy: 0,
     storageCapacity: 0,
     containers: [],
+    links: [],
+    terminalEnergy: 0,
+    terminalCapacity: 0,
     anchor: null,
     sourceMemory: {},
+    linkNetwork: {},
     structures: [],
     sites: [],
     remoteStructures: {},
@@ -195,6 +200,15 @@ export function containerAt(
   id = `container_${x}_${y}`
 ): SnapContainer {
   return { id: id as Id<StructureContainer>, x, y, storeEnergy, storeCapacity: 2000 };
+}
+
+export function linkAt(
+  x: number,
+  y: number,
+  storeEnergy = 0,
+  over: Partial<Pick<SnapLink, "id" | "storeCapacity" | "cooldown">> = {}
+): SnapLink {
+  return { id: `link_${x}_${y}` as Id<StructureLink>, x, y, storeEnergy, storeCapacity: 800, cooldown: 0, ...over };
 }
 
 export function spawn(id = "spawn1", busy = false): SnapSpawn {

@@ -5,9 +5,9 @@ import type { Prefer, TargetSpec } from "./types";
 
 export type Where = "notFull" | "hasEnergy" | "damaged";
 
-// Range 2 of the controller is where the controller container sits — an upgrader standing on it is still
+// Range 1 of the controller is where the controller container sits — an upgrader standing on it is still
 // in upgrade range (3). `near: "controller"`/"notController" partition containers by this radius.
-const CONTROLLER_CONTAINER_RANGE = 2;
+const CONTROLLER_CONTAINER_RANGE = 1;
 
 type Near = "assignedSource" | "controller" | "notController";
 

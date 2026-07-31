@@ -10,6 +10,7 @@ import {
   type CreepState
 } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
+import { runSteward } from "../behaviors/steward";
 import { sweepEnRoute } from "../behaviors/sweep";
 import { runTransport } from "../behaviors/transport";
 import type { Step } from "../behaviors/types";
@@ -24,6 +25,12 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(): void {
     // falling into runOne would hit its `def.steps.length === 0` early-return and do nothing.
     if (creep.memory.role === "transport") {
       runTransport(creep);
+      continue;
+    }
+    // Same empty-steps diversion as transport above: assignment is threshold-based inside runSteward
+    // itself, not a static step table.
+    if (creep.memory.role === "steward") {
+      runSteward(creep);
       continue;
     }
     runOne(creep);

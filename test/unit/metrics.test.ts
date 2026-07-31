@@ -5,7 +5,7 @@ import type { ColonyMetricsMemory, RoleName } from "../../src/memory/schema";
 import type { RoleTarget } from "../../src/operations/operation";
 import type { SnapStructure } from "../../src/snapshot/types";
 import type { CreepRequest } from "../../src/spawn/request";
-import { colonySnap, containerAt, dropAt, remoteEnergyAt, snapCreeps, spawn } from "../fixtures";
+import { colonySnap, containerAt, dropAt, remoteEnergyAt, remoteSourceAt, snapCreeps, spawn } from "../fixtures";
 
 // A blank harvest window per test — the persisted state collectMetrics folds into.
 const mem = (): ColonyMetricsMemory => ({ harvestSamples: [] });
@@ -26,9 +26,10 @@ function collect(
   ops: string[] = [],
   targeted: PlacedStructure[] = [],
   m = mem(),
-  roleTargets: RoleTarget[] = []
+  roleTargets: RoleTarget[] = [],
+  debugMetrics = false
 ): ColonyMetrics {
-  return collectMetrics(snap, requests, ops, targeted, m, roleTargets);
+  return collectMetrics(snap, requests, ops, targeted, m, roleTargets, debugMetrics);
 }
 
 // A per-role staffing target, as an operation would report it via roleTargets().
@@ -357,6 +358,63 @@ describe("metrics: spawns", () => {
   it("reads load 0 for a spawnless colony rather than dividing by zero", () => {
     const m = collect(colonySnap({ spawns: [], creeps: snapCreeps("miner", 1) }));
     expect(m.spawns.load).toBe(0);
+  });
+});
+
+describe("metrics: debug", () => {
+  const struct = (type: BuildableStructureConstant, hits: number, hitsMax: number): SnapStructure => ({
+    type,
+    x: 0,
+    y: 0,
+    id: "s" as SnapStructure["id"],
+    hits,
+    hitsMax
+  });
+
+  it("is undefined when debugMetrics is off", () => {
+    const m = collect(colonySnap());
+    expect(m.debug).toBeUndefined();
+  });
+
+  it("is present but empty for a clean colony when debugMetrics is on", () => {
+    const m = collect(colonySnap(), [], [], [], mem(), [], true);
+    expect(m.debug).toEqual({ remoteRepair: [], remoteSources: [] });
+  });
+
+  it("breaks remote repair down per room, worst decay first", () => {
+    const snap = colonySnap({
+      remoteStructures: {
+        W2N1: [struct("road", 1_000, 5_000)], // 4,000 decayed, actionable
+        W3N1: [struct("road", 4_900, 5_000)] // 100 decayed, not actionable
+      }
+    });
+    const m = collect(snap, [], [], [], mem(), [], true);
+    expect(m.debug!.remoteRepair).toEqual([
+      { room: "W2N1", decay: 4_000, actionable: 4_000 },
+      { room: "W3N1", decay: 100, actionable: 0 }
+    ]);
+  });
+
+  it("omits remote rooms with no decay", () => {
+    const snap = colonySnap({ remoteStructures: { W2N1: [struct("road", 5_000, 5_000)] } });
+    const m = collect(snap, [], [], [], mem(), [], true);
+    expect(m.debug!.remoteRepair).toEqual([]);
+  });
+
+  it("reports each selected remote source's reservation and danger status", () => {
+    const snap = colonySnap({
+      remoteSources: [
+        remoteSourceAt(10, 10, "W2N1", { reserved: true }),
+        remoteSourceAt(20, 20, "W3N1", { reserved: false }),
+        remoteSourceAt(5, 5, "W4N1", { danger: 5 })
+      ]
+    });
+    const m = collect(snap, [], [], [], mem(), [], true);
+    expect(m.debug!.remoteSources).toEqual([
+      { room: "W2N1", reserved: true, danger: false },
+      { room: "W3N1", reserved: false, danger: false },
+      { room: "W4N1", reserved: false, danger: true }
+    ]);
   });
 });
 

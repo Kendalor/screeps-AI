@@ -81,6 +81,15 @@ export interface SnapContainer extends XY {
   storeCapacity: number;
 }
 
+// A built link, home room only (remote links aren't a thing this bot builds). `cooldown` is ticks
+// until it can next send — a link mid-cooldown is a valid receiver but not a valid sender this tick.
+export interface SnapLink extends XY {
+  id: Id<StructureLink>;
+  storeEnergy: number;
+  storeCapacity: number;
+  cooldown: number;
+}
+
 export interface SnapSource extends XY {
   id: Id<Source>;
   openTiles: number; // walkable tiles adjacent to the source, i.e. its miner/collector share cap
@@ -149,6 +158,14 @@ export interface SnapSourceMemory {
   linkId?: Id<StructureLink>;
 }
 
+// Which built link plays which non-source role — mirrors sourceMemory's linkId, but for the two links
+// Mining doesn't own. Absent fields mean that link hasn't been detected/recorded yet (e.g. controller
+// still on a container pre-RCL5, or the anchor link not yet built).
+export interface SnapLinkNetwork {
+  storage?: Id<StructureLink>; // the anchor/storage link — see logistics/links.ts
+  controller?: Id<StructureLink>; // owned by operations/upgrading.ts's controller container/link swap
+}
+
 export interface ColonySnapshot {
   name: string;
   tick: number; // mirrored Game.time, so operations can gate themselves to "is this my tick"
@@ -179,9 +196,14 @@ export interface ColonySnapshot {
   storageEnergy: number; // 0 when no storage built yet
   storageCapacity: number; // 0 when no storage built yet — total store capacity when it exists
   containers: SnapContainer[]; // empty until mining containers are built
+  links: SnapLink[]; // every built link in the home room, source and anchor alike; empty until RCL5
   storageId?: Id<StructureStorage>; // absent until storage is built
+  terminalId?: Id<StructureTerminal>; // absent until terminal is built
+  terminalEnergy: number; // 0 when no terminal built yet
+  terminalCapacity: number; // 0 when no terminal built yet
   anchor: XY | null; // null until a bunker-fitting anchor is found in this room
   sourceMemory: Partial<Record<Id<Source>, SnapSourceMemory>>; // keyed by source id; missing means nothing recorded yet
+  linkNetwork: SnapLinkNetwork; // which built link is the anchor link vs the controller link; see SnapLinkNetwork
   structures: SnapStructure[];
   sites: SnapStructure[];
   // Built structures/sites in a *remote* room, keyed by room name — present only for a remote room with

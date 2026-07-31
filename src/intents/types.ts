@@ -35,6 +35,12 @@ export type Intent =
   // execute.ts owns the memory write" split as setCreepRole above).
   | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }
   | { kind: "removeStructure"; room: string; x: number; y: number; type: BuildableStructureConstant }
+  // Persists which built link plays which role in the colony's link network — the equivalent of
+  // recordSourceSpot's linkId, but for the two links that aren't source-side (Mining already records
+  // those directly on sourceMemory). Only ever adds an id, same non-destructive rule. Emitted by
+  // whichever operation owns that link's placement: Logistics for the anchor/storage link (see
+  // logistics/links.ts), Upgrading for the controller link (see operations/upgrading.ts).
+  | { kind: "recordLinkNetwork"; room: string; storage?: Id<StructureLink>; controller?: Id<StructureLink> }
   | {
       kind: "recordSourceSpot";
       room: string;

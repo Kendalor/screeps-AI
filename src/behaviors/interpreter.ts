@@ -271,12 +271,12 @@ function harvestStep(
 
 // Upgrade range is 3, so once inside it the creep keeps upgrading every tick regardless of where it
 // stands. But parking at the far edge of range leaves it away from its energy source: the controller
-// container (range <=2 of the controller) is the ideal spot — upgrade AND withdraw in place. Steer onto
+// container (range <=1 of the controller) is the ideal spot — upgrade AND withdraw in place. Steer onto
 // that free tile when one exists; otherwise close to range 1 of the controller so the creep bunches up
 // against it rather than idling at the range-3 rim. Either move runs alongside the upgrade call (movement
 // is a separate pipeline from WORK), so drawing closer never costs an upgrade tick.
 const UPGRADE_RANGE = 3;
-const CONTROLLER_CONTAINER_RANGE = 2; // range of the controller the controller container sits within
+const CONTROLLER_CONTAINER_RANGE = 1; // range of the controller the controller container sits within
 
 function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean, doNotBlockRoads = false): StepResult {
   const controller = resolveTarget(creep, { find: "controller" }, locked);

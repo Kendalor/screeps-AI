@@ -12,7 +12,7 @@ import type { RemoteMemory } from "../memory/schema";
 import type { ScoutCandidate } from "../snapshot/types";
 import { remoteSourceLoadParts } from "./load";
 import { remoteDistanceEstimate } from "./distance";
-import { defaultEconomyContext, netEnergy } from "./remoteEconomics";
+import { defaultEconomyContext, netEnergy, amortizeClaimer } from "./remoteEconomics";
 
 export interface PickRemotesHome {
   name: string; // home room — never mine our own room as a remote
@@ -79,6 +79,7 @@ interface Candidate {
   y: number;
   distance: number;
   loadParts: number;
+  claimerShare: number; // this candidate's share of its room's amortized claimer upkeep, energy/tick
 }
 
 export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
@@ -101,6 +102,15 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
     if (cand.distance > MAX_REMOTE_HOPS) continue; // too far to ever be worth mining
     const info = cand.info;
     if (!info) continue; // unscouted — no source data to decide on
+    // A room's mined sources are (near-)always worth jointly reserving once even one is selected — see
+    // remoteEconomics.ts's worthReserving and its test, "+5/tick dwarfs a cheap claimer's upkeep". Pricing
+    // candidates at the unreserved 5/tick rate they'd sit at only until Reservation catches up understates
+    // a room's real value, especially a multi-source room where the claimer's upkeep splits across every
+    // source mined there. Charge each candidate its fair share of that one claimer up front, split across
+    // the room's full source count (not just the ones that pass the filter below — that count isn't known
+    // yet and using it would be circular), so a room with more sources justifies marginal distance the
+    // same way reserving itself does.
+    const claimerShare = amortizeClaimer(ctx.claimerBodyCost) / info.sources.length;
     for (const src of info.sources) {
       const cachedPath = src.paths?.[home.name];
       const distance =
@@ -108,14 +118,17 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
           ? cachedPath.length
           : remoteDistanceEstimate({ roomDistance: cand.distance, source: src, storage: home.storage });
       const loadParts = remoteSourceLoadParts(home.energyCapacity, false, distance);
-      flat.push({ room: cand.room, id: src.id, x: src.x, y: src.y, distance, loadParts });
+      flat.push({ room: cand.room, id: src.id, x: src.x, y: src.y, distance, loadParts, claimerShare });
     }
   }
 
-  // Gate 1 (economics): keep only sources that pay off. reserved:false — selection prices the baseline
-  // unreserved yield; Reservation later upgrades a room whose sources are all being mined.
+  // Gate 1 (economics): keep only sources that pay off. reserved:true — a room with any mined source is
+  // (near-)always worth reserving in practice (see the claimerShare comment above), so pricing at the
+  // unreserved 5/tick rate a source only sits at until Reservation catches up would undercount its real
+  // value. Each candidate pays its own fair share of the room's claimer upkeep back out of that reserved
+  // yield, so the net still reflects the true marginal cost of adding this source.
   const worthwhile = flat.filter(
-    c => netEnergy({ ...c, room: c.room, openTiles: 0, reserved: false, danger: 0 }, ctx) > 0
+    c => netEnergy({ ...c, room: c.room, openTiles: 0, reserved: true, danger: 0 }, ctx) - c.claimerShare > 0
   );
 
   // Nearest-first, then capped: the spawn-capacity ceiling keeps the cheapest energy and can't over-commit.

@@ -3,7 +3,9 @@
 
 import { describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
-import { colonySnap, containerAt, sinkAt, snapCreep, snapCreeps } from "../../fixtures";
+import GOAL_JSON from "../../../src/layouts/Base_2.json";
+import type { GoalLayout } from "../../../src/layouts/sync";
+import { colonySnap, containerAt, linkAt, sinkAt, snapCreep, snapCreeps } from "../../fixtures";
 import { bodyCost } from "../../../src/spawn/body";
 
 const logistics = new Logistics("W1N1");
@@ -93,6 +95,38 @@ describe("Logistics.desiredCreeps", () => {
   });
 });
 
+describe("Logistics.desiredCreeps steward", () => {
+  const withStorage = (over: Parameters<typeof colonySnap>[0] = {}) =>
+    colonySnap({
+      storageId: "storage1" as Id<StructureStorage>,
+      storageEnergy: 1000,
+      storageCapacity: 10000,
+      energyCapacity: 550,
+      ...over
+    });
+
+  it("wants no steward before storage exists", () => {
+    const noStorage = colonySnap({ energyCapacity: 550 });
+    expect(noStorage.storageId).toBeUndefined();
+    expect(logistics.desiredCreeps(noStorage).some(r => r.memory.role === "steward")).toBe(false);
+  });
+
+  it("wants exactly one steward once storage exists", () => {
+    const requests = logistics.desiredCreeps(withStorage());
+    expect(requests.filter(r => r.memory.role === "steward")).toHaveLength(1);
+  });
+
+  it("stops asking once a steward is already alive", () => {
+    const requests = logistics.desiredCreeps(withStorage({ creeps: [snapCreep("steward")] }));
+    expect(requests.some(r => r.memory.role === "steward")).toBe(false);
+  });
+
+  it("stamps its own op name on the steward request", () => {
+    const [request] = logistics.desiredCreeps(withStorage()).filter(r => r.memory.role === "steward");
+    expect(request.memory).toMatchObject({ role: "steward", home: "W1N1", op: "logistics:W1N1" });
+  });
+});
+
 describe("Logistics.intents", () => {
   it("emits an assignLogisticsTask intent for an idle transport creep with work available", () => {
     const creep = snapCreeps("transport", 1, { storeEnergy: 0, storeCapacity: 100 })[0];
@@ -115,5 +149,37 @@ describe("Logistics.intents", () => {
 
   it("emits nothing when there are no idle transport creeps or no work", () => {
     expect(logistics.intents(colonySnap({}))).toEqual([]);
+  });
+});
+
+describe("Logistics.intents anchor link recording", () => {
+  const anchor = { x: 25, y: 25 };
+  const linkPlacement = (GOAL_JSON as GoalLayout).placements.find(p => p.type === "link")!;
+  const anchorLinkPos = { x: linkPlacement.x + anchor.x, y: linkPlacement.y + anchor.y };
+
+  it("records the built link sitting at the goal layout's anchor-link offset", () => {
+    const link = linkAt(anchorLinkPos.x, anchorLinkPos.y, 0);
+    const intents = logistics.intents(colonySnap({ anchor, links: [link] }));
+
+    expect(intents).toContainEqual({ kind: "recordLinkNetwork", room: "W1N1", storage: link.id });
+  });
+
+  it("does not record anything before a link is built at that spot", () => {
+    const intents = logistics.intents(colonySnap({ anchor, links: [] }));
+    expect(intents.some(i => i.kind === "recordLinkNetwork")).toBe(false);
+  });
+
+  it("does not re-record once the anchor link is already known", () => {
+    const link = linkAt(anchorLinkPos.x, anchorLinkPos.y, 0);
+    const intents = logistics.intents(
+      colonySnap({ anchor, links: [link], linkNetwork: { storage: link.id } })
+    );
+    expect(intents.some(i => i.kind === "recordLinkNetwork")).toBe(false);
+  });
+
+  it("ignores a link built somewhere other than the anchor-link offset", () => {
+    const elsewhere = linkAt(anchorLinkPos.x + 10, anchorLinkPos.y, 0);
+    const intents = logistics.intents(colonySnap({ anchor, links: [elsewhere] }));
+    expect(intents.some(i => i.kind === "recordLinkNetwork")).toBe(false);
   });
 });

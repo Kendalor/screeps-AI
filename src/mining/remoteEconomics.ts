@@ -29,7 +29,9 @@ function amortize(bodyCost: number): number {
 
 // A CLAIM part shortens a creep's life to CREEP_CLAIM_LIFE_TIME (600), not the usual CREEP_LIFE_TIME
 // (1500) — a claimer must be replaced 2.5x more often, so its upkeep needs its own amortization horizon.
-function amortizeClaimer(bodyCost: number): number {
+// Exported so pickRemotes can price each source's fair share of its room's claimer upkeep at selection
+// time (see below) instead of only checking reservation as a separate, later, room-level decision.
+export function amortizeClaimer(bodyCost: number): number {
   return bodyCost / CREEP_CLAIM_LIFE_TIME;
 }
 
@@ -69,9 +71,13 @@ export function worthReserving(roomSources: readonly SnapRemoteSource[], ctx: Ec
 }
 
 // Concrete costs for the default RCL2 bodies, so tests and the selector share one baseline. A container
-// miner is ~5 WORK + moves; a claimer is one CLAIM + one MOVE.
+// miner is ~5 WORK + moves. A claimer is 2x (CLAIM + MOVE) — the mandatory floor (see claimer.ts's
+// MIN_CLAIM_SETS): a single CLAIM only ever nets zero against the controller's own 1/tick decay while
+// parked, so it banks no buffer and reservation free-falls to 0 across every spawn/travel gap between a
+// claimer dying and its replacement arriving. Pricing the claimer at the (cheaper, non-functional)
+// 1-CLAIM floor would understate the real cost this economics module is supposed to gate on.
 export function defaultEconomyContext(): EconomyContext {
   const minerBodyCost = 5 * BODYPART_COST[WORK] + 3 * BODYPART_COST[MOVE] + BODYPART_COST[CARRY];
-  const claimerBodyCost = BODYPART_COST[CLAIM] + BODYPART_COST[MOVE];
+  const claimerBodyCost = 2 * (BODYPART_COST[CLAIM] + BODYPART_COST[MOVE]);
   return { minerBodyCost, claimerBodyCost };
 }

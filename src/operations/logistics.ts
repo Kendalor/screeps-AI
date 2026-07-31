@@ -17,14 +17,19 @@
 
 import { orderBody } from "../spawn/body";
 import type { Intent } from "../intents/types";
+import GOAL_JSON from "../layouts/Base_2.json";
+import type { GoalLayout } from "../layouts/sync";
 import { planLogistics } from "../logistics";
 import { providers } from "../logistics/graph";
 import { harvestIncome, haulDistance, wantedTransportHeadcount } from "../logistics/fleet";
+import { planLinkTransfers } from "../logistics/links";
 import { bodyContext } from "../spawn/bodyContext";
 import type { ColonySnapshot } from "../snapshot/types";
 import { fillTo, type CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 import { roleDef } from "../behaviors/roles";
+
+const GOAL = GOAL_JSON as GoalLayout;
 
 const config = {
   sourceRegenPerTick: 10, // shared ceiling with mining.ts — a room can't harvest past source regen
@@ -38,7 +43,8 @@ const config = {
   defaultHaulDistance: 10, // fallback before an anchor is known
   maxTransport: 12, // raised from mining.ts's old local-only hauler ceiling (6) — remote sources add income/distance the original cap never accounted for
   minTransportEnergy: 150, // one CARRY,CARRY,MOVE set — cheapest useful body
-  bootstrapEnergy: 300 // base spawn capacity, always affordable — size the FIRST transport off this
+  bootstrapEnergy: 300, // base spawn capacity, always affordable — size the FIRST transport off this
+  wantedStewards: 1 // one is enough — it never leaves the anchor tile, so there's no throughput case for a second
 } as const;
 
 export class Logistics extends Operation {
@@ -65,11 +71,19 @@ export class Logistics extends Operation {
     const energyForBody = this.owned(colony, "transport").length === 0 ? config.bootstrapEnergy : colony.energyCapacity;
     const body = orderBody(roleDef("transport")?.body(energyForBody, bodyContext(colony)) ?? []);
     const wanted = this.wantedTransport(colony, energyForBody);
-    return fillTo(wanted, this.owned(colony, "transport").length, body, roleDef("transport")!.priority, {
+    const transport = fillTo(wanted, this.owned(colony, "transport").length, body, roleDef("transport")!.priority, {
       role: "transport",
       home: colony.name,
       op: this.name
     });
+    return [...transport, ...this.desiredStewards(colony)];
+  }
+
+  // A steward only earns its keep once storage exists — before that there's no storage/terminal/link
+  // triangle to referee, just the same pre-storage economy transport already covers alone.
+  private desiredStewards(colony: ColonySnapshot): CreepRequest[] {
+    if (!colony.storageId) return [];
+    return this.fillRole(colony, "steward", config.wantedStewards, roleDef("steward")!.priority);
   }
 
   /** How many transport creeps current income warrants: steady-state pile, capped. */
@@ -82,13 +96,38 @@ export class Logistics extends Operation {
     return wantedTransportHeadcount(income, distance, energyForBody, config);
   }
 
-  /** Direct action, not arbitrated: runs planLogistics once per tick and emits one assignment intent per idle creep. */
+  /**
+   * Direct action, not arbitrated: runs planLogistics once per tick and emits one assignment intent per
+   * idle creep, plus this tick's link-network transfers (see logistics/links.ts) — links are instant and
+   * creep-free, so they're fired here rather than through the transport allocator.
+   */
   public override intents(colony: ColonySnapshot): Intent[] {
     const plan = planLogistics(colony);
-    return Object.entries(plan.assignments).map(([creep, task]) => ({
+    const assignments: Intent[] = Object.entries(plan.assignments).map(([creep, task]) => ({
       kind: "assignLogisticsTask",
       creep: creep as Id<Creep>,
       task
     }));
+    return [...assignments, ...planLinkTransfers(colony), ...this.recordAnchorLink(colony)];
+  }
+
+  /**
+   * Persists the anchor/storage link's id once built — the equivalent of Mining's recordSourceSpot, for
+   * the one link the bunker goal layout places directly (a fixed anchor-relative offset, unlike the
+   * controller link's per-room pathed position — see operations/upgrading.ts's own recording for that
+   * one). Checked every tick until recorded; cheap (one array find) and execute.ts's write is idempotent.
+   */
+  private recordAnchorLink(colony: ColonySnapshot): Intent[] {
+    if (colony.linkNetwork.storage) return []; // already recorded; only ever adds an id
+    if (!colony.anchor) return [];
+
+    const placement = GOAL.placements.find(p => p.type === "link");
+    if (!placement) return [];
+    const pos = { x: placement.x + colony.anchor.x, y: placement.y + colony.anchor.y };
+
+    const link = colony.links.find(l => l.x === pos.x && l.y === pos.y);
+    if (!link) return [];
+
+    return [{ kind: "recordLinkNetwork", room: colony.name, storage: link.id }];
   }
 }

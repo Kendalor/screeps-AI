@@ -728,7 +728,7 @@ describe("resolveTarget near:assignedSource", () => {
 
 // Once a room has both source containers and a controller container, a container spec must be able to
 // pick one role and never the other: the hauler FILLS the controller container (near: "controller") and
-// DRAINS the source containers (near: "notController"). They partition by range 2 of the controller.
+// DRAINS the source containers (near: "notController"). They partition by range 1 of the controller.
 describe("resolveTarget near:controller / notController", () => {
   const inRange = (x: number, y: number) => (o: { x: number; y: number }, r: number) =>
     Math.max(Math.abs(o.x - x), Math.abs(o.y - y)) <= r;
@@ -761,10 +761,10 @@ describe("resolveTarget near:controller / notController", () => {
     } as unknown as Creep;
   }
 
-  const ctrlContainer = () => container("ctrl", 25, 27, 0); // range 2 of controller -> the controller container
+  const ctrlContainer = () => container("ctrl", 25, 26, 0); // range 1 of controller -> the controller container
   const srcContainer = () => container("src", 10, 10, 1000); // far from controller -> a source container
 
-  it("near:controller resolves only the container within range 2 of the controller", () => {
+  it("near:controller resolves only the container within range 1 of the controller", () => {
     const ctrl = ctrlContainer();
     const src = srcContainer();
     stubGame({ objects: { ctrl, src } });
@@ -803,11 +803,11 @@ describe("resolveTarget near:controller / notController", () => {
       fillTo: 0.7
     };
 
-    const low = container("ctrl", 25, 27, 600); // 30% -> still wanted
+    const low = container("ctrl", 25, 26, 600); // 30% -> still wanted
     stubGame({ objects: { ctrl: low } });
     expect((resolveTarget(creepInRoom([low]), spec) as { id: string }).id).toBe("ctrl");
 
-    const atFloor = container("ctrl", 25, 27, 1400); // 70% -> no longer wanted; step falls through
+    const atFloor = container("ctrl", 25, 26, 1400); // 70% -> no longer wanted; step falls through
     stubGame({ objects: { ctrl: atFloor } });
     expect(resolveTarget(creepInRoom([atFloor]), spec)).toBeNull();
   });
@@ -820,7 +820,7 @@ describe("resolveTarget near:controller / notController", () => {
       near: "controller" as const,
       fillTo: 0.7
     };
-    const full = container("ctrl", 25, 27, 1500); // 75% -> stale lock must not survive
+    const full = container("ctrl", 25, 26, 1500); // 75% -> stale lock must not survive
     stubGame({ objects: { ctrl: full } });
 
     const got = resolveTarget(creepInRoom([full], "ctrl"), spec);
