@@ -1,6 +1,7 @@
 // nextStep decides step advancement as a pure function, testable without a creep; runStep is the actuator that touches the game API.
 
 import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
+import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import { stepOffRoad } from "./roadAvoidance";
 import { resolveTarget } from "./targets";
@@ -19,6 +20,8 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   repair: "spend",
   upgrade: "spend",
   reserve: "move", // a store-less claimer reserves for life — never self-completes, like a movement step
+  claim: "move", // store-less colonizer — never self-completes on store state, only via targetGone (see below)
+  renew: "move", // store-less — see renewStep: falls through via acted:false whenever renewal isn't needed/possible
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
   sit: "move",
   attack: "move" // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
@@ -146,6 +149,10 @@ export const runStep = wrapFn(function runStep(
       return upgradeStep(creep, locked, allowTravel, opts?.doNotBlockRoads);
     case "reserve":
       return reserveStep(creep, locked, allowTravel);
+    case "claim":
+      return claimStep(creep, locked, allowTravel);
+    case "renew":
+      return renewStep(creep, step.below, locked, allowTravel);
     case "attack":
       return attackStep(creep, step.from, locked, allowTravel);
     case "moveToRoom":
@@ -313,6 +320,77 @@ function reserveStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: 
 
   creep.reserveController(controller as StructureController);
   return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
+}
+
+// A colonizer claims the controller of whatever room it stands in (its targetRoom, reached by the
+// preceding moveToRoom step). claimController is range 1, same as reserveController. Unlike reserve, this
+// is a one-time act — once it succeeds the controller is ours and the snapshot picks the room up as a
+// Colony next tick, so nothing here needs to keep re-calling once claimed (it simply has no controller
+// target moveToRoom would return it to).
+//
+// Whether this room is safe/legal to claim (GCL room cap, already owned by someone else) is a
+// target-selection concern, not this step's — but unlike every other step in this file, claimController
+// can be rejected for reasons that never self-resolve (ERR_GCL_NOT_ENOUGH, ERR_INVALID_TARGET), so a
+// creep that just no-ops on a failed call would sit at the controller retrying forever with nothing ever
+// telling anyone why. didAct only reports true on a genuine OK, so oneShot never falsely completes the
+// step on a rejected call. memory.claimError remembers the last code seen, purely so the log line below
+// fires once per DISTINCT failure (not once per tick for a creep's whole remaining life) — cleared the
+// moment the call stops failing (either it succeeds, or the target/range checks above start short-
+// circuiting first), so a stale code can never be misread as a current one.
+function claimStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  const controller = resolveTarget(creep, { find: "controller" }, locked);
+  if (!controller) return { acted: false, didAct: false };
+  const controllerPos = (controller as StructureController).pos;
+
+  if (!creep.pos.inRangeTo(controllerPos, 1)) {
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(controllerPos, { range: 1 });
+    return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
+  }
+
+  const result = creep.claimController(controller as StructureController);
+  if (result === OK) {
+    creep.memory.claimError = undefined;
+    // Job done: the CLAIM part has no further use once the room is owned, and the target room is
+    // spawnless (nowhere nearby to recycleCreep for a partial refund; walking back to the sponsor would
+    // cost more in transit ticks than the refund is worth — see the project decision on colonizer
+    // recycling). suicide() the same tick so Colony's activeColonizeTargets (colony/index.ts) sees this
+    // creep gone as soon as possible, letting Colonize stop requesting for this target once its settlers
+    // finish too, rather than the colonizer idling out its full CLAIM lifetime doing nothing.
+    creep.suicide();
+    return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
+  }
+
+  if (creep.memory.claimError !== result) {
+    creep.memory.claimError = result;
+    log.error(`colonizer ${creep.name} can't claim ${creep.room.name}: ${result} — will keep retrying`);
+  }
+  return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
+}
+
+// Tops up a creep's ticksToLive at a spawn in its OWN targetRoom (never a room it's merely passing
+// through, e.g. the sponsor's — see the project decision on renew scope). renewCreep is called on the
+// SPAWN, not the creep, unlike every other step in this file — resolveTarget/actOn assume the creep is
+// the actor, so this is hand-rolled the same way claimStep/reserveStep are. `below` (Settler's use:
+// 500) is a threshold, not a floor to fill to every tick above it: acted:false whenever ticksToLive is
+// already comfortable or the target room has no spawn yet, so the interpreter falls straight through to
+// the settler's real work (build/upgrade) instead of parking beside a spawn it doesn't need yet.
+function renewStep(creep: Creep, below: number, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  if (creep.ticksToLive === undefined || creep.ticksToLive >= below) return { acted: false, didAct: false };
+  if (creep.room.name !== creep.memory.targetRoom) return { acted: false, didAct: false };
+
+  const spawn = resolveTarget(creep, { find: "structure", type: STRUCTURE_SPAWN }, locked);
+  if (!spawn) return { acted: false, didAct: false };
+  const spawnPos = (spawn as StructureSpawn).pos;
+
+  if (!creep.pos.inRangeTo(spawnPos, 1)) {
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(spawnPos, { range: 1 });
+    return { acted: true, didAct: false, target: (spawn as unknown as { id: Id<_HasId> }).id };
+  }
+
+  const result = (spawn as StructureSpawn).renewCreep(creep);
+  return { acted: true, didAct: result === OK, target: (spawn as unknown as { id: Id<_HasId> }).id };
 }
 
 const RANGED_ATTACK_RANGE = 3;

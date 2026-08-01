@@ -774,6 +774,179 @@ describe("reserve step", () => {
   });
 });
 
+// A colonizer claims the controller of the room it stands in. claimController is range 1, like reserve.
+// Unlike reserve, a failed call can never self-resolve (GCL cap, room already owned) — claimStep must
+// report didAct:false on anything but OK, or oneShot would falsely "complete" a rejected claim.
+describe("claim step", () => {
+  // A failed claim logs (log.ts reads Game.time) — every other describe in this file needs no Game at
+  // all, so this is scoped here rather than stubbed globally for the whole suite.
+  beforeEach(() => stubGame());
+
+  function colonizerAt(inRange: boolean, claimResult: ScreepsReturnCode = OK) {
+    const claimed: string[] = [];
+    const traveled: { x: number; y: number }[] = [];
+    let suicided = false;
+    const controller = { id: "ctrl1", pos: { x: 40, y: 40 } };
+    const creep = {
+      name: "colonizer1",
+      memory: {},
+      pos: {
+        inRangeTo: () => inRange,
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      room: { name: "W2N2", controller },
+      claimController: (c: { id: string }) => {
+        claimed.push(c.id);
+        return claimResult;
+      },
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y }),
+      suicide: () => {
+        suicided = true;
+        return OK;
+      }
+    };
+    return { creep: creep as unknown as Creep, claimed, traveled, suicided: () => suicided };
+  }
+
+  it("claims the controller when in range and reports didAct:true on success", () => {
+    const { creep, claimed } = colonizerAt(true);
+    const result = runStep(creep, { do: "claim" });
+    expect(claimed).toEqual(["ctrl1"]);
+    expect(result.didAct).toBe(true);
+    expect(creep.memory.claimError).toBeUndefined();
+  });
+
+  it("recycles itself the same tick the claim succeeds — the CLAIM part has no further use once owned", () => {
+    const { creep, suicided } = colonizerAt(true);
+    runStep(creep, { do: "claim" });
+    expect(suicided()).toBe(true);
+  });
+
+  it("does not recycle itself on a rejected claim", () => {
+    const { creep, suicided } = colonizerAt(true, ERR_GCL_NOT_ENOUGH);
+    runStep(creep, { do: "claim" });
+    expect(suicided()).toBe(false);
+  });
+
+  it("travels to the controller when out of range instead of claiming", () => {
+    const { creep, claimed, traveled } = colonizerAt(false);
+    const result = runStep(creep, { do: "claim" });
+    expect(claimed).toEqual([]);
+    expect(traveled).toEqual([{ x: 40, y: 40 }]);
+    expect(result.didAct).toBe(false);
+  });
+
+  it("reports didAct:false on a rejected claim, so oneShot never falsely completes the step", () => {
+    const { creep, claimed } = colonizerAt(true, ERR_GCL_NOT_ENOUGH);
+    const result = runStep(creep, { do: "claim", oneShot: true });
+    expect(claimed).toEqual(["ctrl1"]); // the call still fires every tick — only its outcome differs
+    expect(result.didAct).toBe(false);
+    expect(result.acted).toBe(true); // in range and resolved — distinct from "nothing to do"
+  });
+
+  it("remembers the failure code so a repeated identical failure isn't logged again", () => {
+    const { creep } = colonizerAt(true, ERR_GCL_NOT_ENOUGH);
+    runStep(creep, { do: "claim" });
+    expect(creep.memory.claimError).toBe(ERR_GCL_NOT_ENOUGH);
+    runStep(creep, { do: "claim" }); // second tick, same code — no crash, no new state
+    expect(creep.memory.claimError).toBe(ERR_GCL_NOT_ENOUGH);
+  });
+
+  it("clears the remembered error once a claim finally succeeds", () => {
+    const controller = { id: "ctrl1", pos: { x: 40, y: 40 } };
+    let result: ScreepsReturnCode = ERR_GCL_NOT_ENOUGH;
+    const creep = {
+      name: "colonizer1",
+      memory: { claimError: ERR_GCL_NOT_ENOUGH as ScreepsReturnCode | undefined },
+      pos: { inRangeTo: () => true, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { name: "W2N2", controller },
+      claimController: () => result,
+      travelTo: () => undefined,
+      suicide: () => OK
+    } as unknown as Creep;
+
+    result = OK;
+    runStep(creep, { do: "claim" });
+    expect(creep.memory.claimError).toBeUndefined();
+  });
+});
+
+// renewCreep is called on the SPAWN, not the creep — unlike every other step, renewStep is hand-rolled
+// around that inversion. Scoped to the creep's own targetRoom only (never a room it's merely transiting,
+// like the sponsor's), and falls through (acted:false) whenever renewal isn't needed or isn't possible
+// yet, so a settler's real work (build/upgrade) is never blocked by a renew step sitting first in line.
+describe("renew step", () => {
+  function settlerAt(opts: { ticksToLive?: number; inRange?: boolean; room?: string; hasSpawn?: boolean; renewResult?: ScreepsReturnCode }) {
+    const { ticksToLive = 100, inRange = true, room = "W2N1", hasSpawn = true, renewResult = OK } = opts;
+    const renewed: string[] = [];
+    const traveled: { x: number; y: number }[] = [];
+    const spawn = {
+      id: "spawn1",
+      structureType: STRUCTURE_SPAWN,
+      pos: { x: 10, y: 10 },
+      renewCreep: (c: { name: string }) => {
+        renewed.push(c.name);
+        return renewResult;
+      }
+    };
+    const creep = {
+      name: "settler1",
+      ticksToLive,
+      memory: { targetRoom: "W2N1" },
+      pos: {
+        inRangeTo: () => inRange,
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      room: { name: room, find: () => (hasSpawn ? [spawn] : []) },
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    };
+    return { creep: creep as unknown as Creep, renewed, traveled };
+  }
+
+  it("renews when in range, below the threshold, and in its target room", () => {
+    const { creep, renewed } = settlerAt({ ticksToLive: 400 });
+    const result = runStep(creep, { do: "renew", below: 500 });
+    expect(renewed).toEqual(["settler1"]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "spawn1" });
+  });
+
+  it("falls through (acted:false) when ticksToLive is already comfortable", () => {
+    const { creep, renewed } = settlerAt({ ticksToLive: 900 });
+    const result = runStep(creep, { do: "renew", below: 500 });
+    expect(renewed).toEqual([]);
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("falls through when the creep hasn't arrived in its target room yet", () => {
+    const { creep, renewed } = settlerAt({ ticksToLive: 100, room: "W1N1" });
+    const result = runStep(creep, { do: "renew", below: 500 });
+    expect(renewed).toEqual([]);
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("falls through when the target room has no spawn yet", () => {
+    const { creep, renewed } = settlerAt({ ticksToLive: 100, hasSpawn: false });
+    const result = runStep(creep, { do: "renew", below: 500 });
+    expect(renewed).toEqual([]);
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("travels to the spawn when out of range instead of renewing", () => {
+    const { creep, renewed, traveled } = settlerAt({ ticksToLive: 100, inRange: false });
+    const result = runStep(creep, { do: "renew", below: 500 });
+    expect(renewed).toEqual([]);
+    expect(traveled).toEqual([{ x: 10, y: 10 }]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "spawn1" });
+  });
+
+  it("reports didAct:false but stays engaged when the spawn rejects the call (e.g. busy spawning)", () => {
+    const { creep, renewed } = settlerAt({ ticksToLive: 100, renewResult: ERR_BUSY });
+    const result = runStep(creep, { do: "renew", below: 500 });
+    expect(renewed).toEqual(["settler1"]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "spawn1" });
+  });
+});
+
 // A defender fights whatever hostile resolves nearest. A melee-only body (no RANGED_ATTACK) closes to
 // range 1 and swings. A RANGED_ATTACK body kites: fires anywhere inside range 3, and flees directly away
 // the moment the hostile has closed inside that range, rather than standing still and trading hits.

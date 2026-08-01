@@ -34,7 +34,11 @@ export class Reservation extends Operation {
         body,
         priority: roleDef("claimer")!.priority,
         memory: { role: "claimer", home: colony.name, op: this.name },
-        targetRoom: room
+        targetRoom: room,
+        // Pinned to this colony — only the ONE colony that selected this remote ever requests a
+        // claimer for it. See mining.ts's own spawnRoom pin (same reasoning) and fillTo's doc in
+        // spawn/request.ts for the fuller explanation of why this matters.
+        spawnRoom: colony.name
       });
     }
     return out;

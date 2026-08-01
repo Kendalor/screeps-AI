@@ -423,3 +423,64 @@ describe("claimer role", () => {
     ]);
   });
 });
+
+describe("colonizer body", () => {
+  const body = (energy: number) => ROLES.colonizer.body(energy, { hasContainer: false, hasLink: false });
+
+  it("is a flat 1 CLAIM + 1 MOVE at any energy — claimController only ever uses one CLAIM part", () => {
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expect(b.filter(p => p === CLAIM).length).toBe(1);
+      expect(b.filter(p => p === MOVE).length).toBe(1);
+    }
+  });
+
+  it("never grows with energy, unlike the reserving claimer", () => {
+    expect(bodyCost(body(650))).toBe(bodyCost(body(10_000)));
+  });
+});
+
+describe("colonizer role", () => {
+  it("walks to its target room, then claims the controller once", () => {
+    expect(roleDef("colonizer")).toBe(ROLES.colonizer);
+    expect(roleDef("colonizer")?.steps).toEqual([
+      { do: "moveToRoom", to: "targetRoom" },
+      { do: "claim", oneShot: true }
+    ]);
+  });
+});
+
+describe("settler body", () => {
+  const body = (energy: number) => ROLES.settler.body(energy, { hasContainer: false, hasLink: false });
+
+  it("produces a valid, affordable body across the energy range", () => {
+    for (const e of ENERGY_LEVELS) {
+      expectValidBody(body(e));
+      expectAffordable(body, e);
+    }
+  });
+
+  it("always carries at least one WORK part, like Bootstrap", () => {
+    for (const e of ENERGY_LEVELS) {
+      expect(body(e)).toContain(WORK);
+    }
+  });
+});
+
+describe("settler role", () => {
+  it("renews first, then walks to its target room, then runs the bootstrap wraparound loop", () => {
+    expect(roleDef("settler")).toBe(ROLES.settler);
+    expect(roleDef("settler")?.steps).toEqual([
+      { do: "renew", below: 500 },
+      { do: "moveToRoom", to: "targetRoom" },
+      { do: "pickup", from: { find: "dropped", prefer: "largest" } },
+      { do: "harvest", from: { find: "source" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
+      { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
+      { do: "build" },
+      { do: "upgrade" }
+    ]);
+  });
+});

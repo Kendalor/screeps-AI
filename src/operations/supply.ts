@@ -49,7 +49,8 @@ export class Supply extends Operation {
       body: [...body],
       priority: def.priority,
       memory: { role: "supply", home: colony.name, op: this.name },
-      targetRoom: colony.name
+      targetRoom: colony.name,
+      spawnRoom: colony.name
     }));
   }
 }

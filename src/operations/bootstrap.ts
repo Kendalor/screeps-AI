@@ -31,6 +31,10 @@ function recoveryRequests(colony: ColonySnapshot): CreepRequest[] {
       priority: RECOVERY_PRIORITY,
       memory: { role, home: colony.name, op: opName("recovery", colony.name) },
       targetRoom: colony.name
+      // No spawnRoom pin, unlike every other colony-scoped request (see spawn/request.ts's fillTo doc)
+      // — deliberately kept: a wiped colony with a busy/full spawn of its own is exactly the case where
+      // losing extra ticks matters most, so recovery alone keeps the old cross-colony fallback (the
+      // nearest OTHER colony's spawn serves it if its own can't) rather than simply waiting.
     }
   ];
 }

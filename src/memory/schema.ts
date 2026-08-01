@@ -49,6 +49,14 @@ declare global {
     defendTargetRoom?: string;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
+    // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's
+    // claimStep alone. claimController can be rejected for reasons that never self-resolve (GCL room cap,
+    // room already owned) — without this the creep just retries forever with no visible signal. Set (and
+    // logged once) the first time a given code is seen; cleared back to undefined the tick it's absent
+    // (i.e. the claim finally landed), so a stale code from a past failure can't be misread as current.
+    // Typed to claimController's own return union, not the broader ScreepsReturnCode — it includes
+    // ERR_ACCESS_DENIED (room owned by someone else), which isn't part of that general union.
+    claimError?: CreepActionReturnCode | ERR_FULL | ERR_GCL_NOT_ENOUGH | ERR_ACCESS_DENIED;
   }
 
   interface RoomMemory {
@@ -69,6 +77,8 @@ export type RoleName =
   | "sitter"
   | "scout"
   | "claimer"
+  | "colonizer"
+  | "settler"
   | "pioneer"
   | "defender";
 

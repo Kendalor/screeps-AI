@@ -6,11 +6,13 @@ import type { RoleDef } from "../types";
 import { Bootstrap } from "./bootstrap";
 import { Builder } from "./builder";
 import { Claimer } from "./claimer";
+import { Colonizer } from "./colonizer";
 import { Defender } from "./defender";
 import { Hauler } from "./hauler";
 import { Miner } from "./miner";
 import { Repair } from "./repair";
 import { Scout } from "./scout";
+import { Settler } from "./settler";
 import { Steward } from "./steward";
 import { Supply } from "./supply";
 import { Transport } from "./transport";
@@ -25,6 +27,8 @@ export const ROLES = {
   supply: Supply,
   scout: Scout,
   claimer: Claimer,
+  colonizer: Colonizer,
+  settler: Settler,
   hauler: Hauler,
   transport: Transport,
   steward: Steward,

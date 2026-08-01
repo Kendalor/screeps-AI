@@ -2,12 +2,27 @@
 // Spawning is NOT here — spawn routing is cross-colony, owned by the Empire (see empire/spawning.ts).
 
 import type { Intent } from "../intents/types";
+import { Colonize } from "../operations/colonize";
 import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { claimsOf, planBuilding, repurposeIdleBuilders, wantedStructures } from "./building";
 import { collectMetrics } from "./metrics";
 import { visualize } from "./metricsVisual";
+
+// Colonize isn't in operationsFor() (no colony gets it by default — see operations/colonize.ts's
+// header), but once a colonizer/settler for some target exists, that target's ongoing demand (settler
+// replacement, in particular) must still flow through the normal per-tick requests()/arbiter pipeline
+// like every other operation's, not stay a one-shot bypass forever. Derived straight from the colony's
+// own live creeps rather than a persisted memory field, matching the "no ColonyMemory field yet" choice
+// in colonize.ts — a target with zero colonizer/settler creeps left simply stops being colonized.
+function activeColonizeTargets(snapshot: ColonySnapshot): string[] {
+  const targets = new Set<string>();
+  for (const c of snapshot.creeps) {
+    if ((c.role === "colonizer" || c.role === "settler") && c.memory.targetRoom) targets.add(c.memory.targetRoom);
+  }
+  return [...targets];
+}
 
 export class Colony {
   public readonly operations: Operation[];
@@ -20,12 +35,32 @@ export class Colony {
   // all against the same unchanged snapshot, so every call after the first was pure waste.
   private cachedRequests: CreepRequest[] | undefined;
 
-  public constructor(public readonly snapshot: ColonySnapshot) {
-    this.operations = operationsFor(snapshot.name);
+  // `allSnapshots`: every colony's snapshot this tick, so an active Colonize target that has itself
+  // become a real Colony (controller claimed) can be looked up for its own energyCapacity — see
+  // Colonize's targetEnergyCapacity doc for why that lookup can't happen inside Colonize/Colony
+  // themselves (neither has sibling-colony visibility; only the Empire constructing all of them does).
+  // Optional and defaulted to `[]` only so existing single-Colony construction (tests, etc.) keeps
+  // working without threading the full list through everywhere; Empire always passes the real one.
+  public constructor(public readonly snapshot: ColonySnapshot, allSnapshots: readonly ColonySnapshot[] = []) {
+    const targetCapacity = new Map(allSnapshots.map(s => [s.name, s.energyCapacity]));
+    this.operations = [
+      ...operationsFor(snapshot.name),
+      ...activeColonizeTargets(snapshot).map(t => new Colonize(snapshot.name, t, targetCapacity.get(t)))
+    ];
   }
 
   public get name(): string {
     return this.snapshot.name;
+  }
+
+  /**
+   * Minerals this colony can actually mine today — its own room's mineral, if any. Dummy/minimal on
+   * purpose: only an owned room's own mineral is mineable until keeper-room mining exists (see
+   * ScoutInfo.mineral for the scouting-only view of a candidate/remote room's mineral). Extend this once
+   * that capability is built, rather than widening the empire-wide picker's assumptions ahead of it.
+   */
+  public getMinerals(): MineralConstant[] {
+    return this.snapshot.mineral ? [this.snapshot.mineral] : [];
   }
 
   /** This colony's spawn demand; the empire arbiter sorts and routes across all colonies. Not sorted here. */
@@ -85,6 +120,6 @@ export class Colony {
   }
 }
 
-export function colony(snapshot: ColonySnapshot): Colony {
-  return new Colony(snapshot);
+export function colony(snapshot: ColonySnapshot, allSnapshots: readonly ColonySnapshot[] = []): Colony {
+  return new Colony(snapshot, allSnapshots);
 }

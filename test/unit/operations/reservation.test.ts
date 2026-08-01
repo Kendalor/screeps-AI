@@ -10,8 +10,9 @@ const reservation = new Reservation("W1N1");
 const claimerRequests = (snap: Parameters<Reservation["desiredCreeps"]>[0]) =>
   reservation.desiredCreeps(snap).filter(r => r.memory.role === "claimer");
 
-// A home room that can afford a claimer (CLAIM is 600) — so demand isn't suppressed by affordability.
-const affordable = { energyCapacity: 800 };
+// A home room that can afford a claimer (min body is 2x CLAIM+MOVE = 1300) — so demand isn't
+// suppressed by affordability. 800 (RCL3 cap) is NOT enough, despite CLAIM alone costing 600.
+const affordable = { energyCapacity: 1300 };
 
 describe("Reservation demand", () => {
   it("wants nothing when there are no remote sources", () => {
@@ -26,6 +27,11 @@ describe("Reservation demand", () => {
     expect(requests[0].targetRoom).toBe("W2N1");
     expect(requests[0].memory.role).toBe("claimer");
     expect(requests[0].memory.op).toBe("reservation:W1N1");
+    // Pinned to the requesting colony even though targetRoom is the remote — only the ONE colony that
+    // selected this remote ever requests a claimer for it (see spawnRoom's doc in reservation.ts and
+    // spawn/request.ts). Without this the request could be opportunistically fulfilled by an unrelated
+    // colony's spawn.
+    expect(requests[0].spawnRoom).toBe("W1N1");
   });
 
   it("requests one claimer per room, never per source", () => {
@@ -74,5 +80,10 @@ describe("Reservation demand", () => {
   it("suppresses claimer demand when the home room cannot afford one", () => {
     const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60 });
     expect(claimerRequests(colonySnap({ energyCapacity: 300, remoteSources: [remote] }))).toEqual([]);
+  });
+
+  it("suppresses claimer demand at RCL3's 800 cap (single CLAIM+MOVE affords, but the real body needs 2 sets)", () => {
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60 });
+    expect(claimerRequests(colonySnap({ energyCapacity: 800, remoteSources: [remote] }))).toEqual([]);
   });
 });

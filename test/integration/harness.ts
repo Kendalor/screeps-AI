@@ -11,7 +11,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ScreepsServer, TerrainMatrix } from "screeps-server-mockup";
-import { CONTROLLER_LEVELS, EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY } from "@screeps/common/lib/constants";
+import { CONTROLLER_LEVELS, COLOR_WHITE, EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY } from "@screeps/common/lib/constants";
 import goalLayout from "../../src/layouts/Base_2.json";
 import { buildableAtRcl } from "../../src/layouts/goal";
 import { findAnchorCandidates, pickAnchor, stampLayout } from "../../src/layouts/stamp";
@@ -114,6 +114,15 @@ export interface BootOptions {
    * downstream of planning would run — pass an explicit matrix only to test that deliberately.
    */
   terrain?: TerrainMatrix;
+  /**
+   * Raw GCL experience (the engine's own unit, not the derived level — see
+   * @screeps/engine/dist/game/game.js: `level = floor((raw / GCL_MULTIPLY) ^ (1 / GCL_POW)) + 1`).
+   * Default 1 (a fresh bot's real starting value), giving level 1 — the game-accurate cap of exactly
+   * one owned room. A scenario that colonizes a second room needs more: GCL_MULTIPLY (1_000_000) gives
+   * level 2 exactly. Screeps-common's own GCL_MULTIPLY/GCL_POW aren't re-exported for import here, so a
+   * scenario computes its own raw value rather than this module doing the inverse math generically.
+   */
+  gcl?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +250,7 @@ export class BootedColony {
       room,
       x: spawn.x,
       y: spawn.y,
+      gcl: opts.gcl ?? 1,
       modules: { main: opts.botCode }
     });
     await server.start();
@@ -280,6 +290,38 @@ export class BootedColony {
       notifyWhenAttacked: true,
       ...attrs
     });
+  }
+
+  // Flags live in the `rooms.flags` collection, one document per (room, user) pair, with every flag in
+  // that room packed into one pipe-delimited `data` string: "name~color~secondaryColor~x~y|name2~...".
+  // This is the collection's actual PERSISTED shape (@screeps/storage/lib/db.js's getOrAddCollection
+  // lazily creates it); `_parsed` (a nested array) is only a transient in-memory unpacking the engine's
+  // room-intents processor builds from `data` at the start of its pass and repacks at the end
+  // (@screeps/engine/dist/processor/intents/room/intents.js) — never what's actually stored, so writing
+  // `_parsed` directly (as this method's first draft did) silently persists nothing useful. `room` may
+  // be a room this bot has no vision of (e.g. a colonize target reached only via Game.map) — the
+  // engine's own Flag object only needs a roomName/x/y, not live vision.
+  async placeFlag(name: string, room: string, x: number, y: number): Promise<void> {
+    const { db } = await this.server.world.load();
+    const existing = await db["rooms.flags"].findOne({ user: this.bot.id, room });
+    const entries = existing ? (existing.data as string).split("|").filter((e: string) => !e.startsWith(`${name}~`)) : [];
+    entries.push(`${name}~${COLOR_WHITE}~${COLOR_WHITE}~${x}~${y}`);
+    const data = entries.join("|");
+    if (existing) {
+      await db["rooms.flags"].update({ _id: existing._id }, { $set: { data } });
+    } else {
+      await db["rooms.flags"].insert({ user: this.bot.id, room, data });
+    }
+    await this.resetGlobal();
+  }
+
+  /** Names of every flag currently placed by this bot, across every room — the removal signal
+   * runColonizeFlags relies on (a flag disappears the tick its colonizer spawns successfully; it's left
+   * in place on any failure). See placeFlag's doc for the `rooms.flags`/`data` string shape. */
+  async flagNames(): Promise<string[]> {
+    const { db } = await this.server.world.load();
+    const docs = (await db["rooms.flags"].find({ user: this.bot.id })) as Array<{ data: string }>;
+    return docs.flatMap(d => d.data.split("|")).filter(Boolean).map(e => e.split("~")[0]);
   }
 
   async setStore(id: string, energy: number): Promise<void> {

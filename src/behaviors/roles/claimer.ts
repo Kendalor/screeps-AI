@@ -38,5 +38,6 @@ export class Claimer extends Role {
   ];
 }
 
-// Kept for callers that want the minimum cost without building the body.
-export const CLAIMER_MIN_COST = bodyCost(CLAIMER_SET);
+// Kept for callers that want the minimum cost without building the body. claimerBody() floors at
+// MIN_CLAIM_SETS (never a single set), so the real minimum is that floor's cost, not one set's.
+export const CLAIMER_MIN_COST = bodyCost(CLAIMER_SET) * MIN_CLAIM_SETS;

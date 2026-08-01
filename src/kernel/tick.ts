@@ -3,6 +3,8 @@
 
 import type { Colony } from "../colony";
 import { empire, type Empire } from "../empire";
+import { runColonizeFlags } from "../empire/colonizeFlags";
+import { autoPickColonyTarget } from "../empire/pickColonyTargets";
 import { execute } from "../intents/execute";
 import type { Intent } from "../intents/types";
 import { log } from "../lib/log";
@@ -49,8 +51,19 @@ export const SYSTEMS: System[] = [
   // Tier 3 but every tick, so the panel and harvest-rate window stay live rather than sampled. CPU is
   // empire-wide and last-tick's (this tick's own total isn't known until after it finishes), so it's
   // shown on only the first colony's panel rather than repeated on every room.
-  { name: "metrics", tier: 3, scope: "colony", run: (c, isFirst) => c.metrics(isFirst ? Memory.stats?.cpu : undefined) }
+  { name: "metrics", tier: 3, scope: "colony", run: (c, isFirst) => c.metrics(isFirst ? Memory.stats?.cpu : undefined) },
+  // Automatic colonize target selection — a luxury, CPU-pressure-skippable unlike the flag path
+  // (runColonizeFlags, below), since missing one ~5000-tick firing under load just means trying again the
+  // next time it comes around, not silently losing a manually-placed request. AUTO_PICK_INTERVAL is its
+  // own internal throttle (this `interval:1` just means "check every tick whether that internal throttle
+  // fired"), same relationship `metrics` has to its own once-per-firing cost below.
+  { name: "colonizeTargets", tier: 3, scope: "empire", run: runAutoPickColonyTarget }
 ];
+
+function runAutoPickColonyTarget(e: Empire): Intent[] {
+  autoPickColonyTarget(e);
+  return [];
+}
 
 function runOperations(colony: Colony): Intent[] {
   // Computed once per tick and hand it to every operation — see Operation.intents' doc comment for why
@@ -87,6 +100,11 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
     }
     stats.record(sys.name, Game.cpu.getUsed() - before);
   }
+  // Flag-triggered colonize, not a SYSTEMS entry: Colonize isn't a default operation (see
+  // operations/index.ts), so it has no per-colony slot in the loop above to hang off of. Runs
+  // unconditionally (never tier-gated) on the same `world` the loop just used, so a placed flag's error
+  // is never silently swallowed under CPU pressure the way a tier-3 system would be.
+  runGuarded("colonizeFlags", () => runColonizeFlags(world));
   stats.record("total", Game.cpu.getUsed() - tickStart);
   stats.flush();
 }

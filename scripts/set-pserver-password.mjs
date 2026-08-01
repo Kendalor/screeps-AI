@@ -1,27 +1,33 @@
 // Sets/resets the local password for a pserver account via screepsmod-auth's
-// CLI command (`auth.setPassword`), and updates screeps.json's pserver block
-// to match — so `npm run push-pserver` can authenticate.
+// CLI command (`auth.setPassword`), bumps the account's GCL, and updates
+// screeps.json's pserver block to match — so `npm run push-pserver` can
+// authenticate.
 //
 // Why this exists: signing up through the Steam client only asks for a
 // username (Steam handles auth for that flow); it does NOT set a password
 // for the screepsmod-auth account used by the HTTP API. The push-pserver
 // script authenticates over HTTP, so the account needs an explicit password.
+// GCL is bumped alongside it purely for test-server convenience (claiming
+// more rooms while testing) — the engine stores GCL as raw progress energy,
+// not a level, so we convert via the same GCL_MULTIPLY/GCL_POW formula the
+// server itself uses (see @screeps/backend/lib/cli/bots.js).
 //
 // Requires the server to be running (`npm run watch:server` in another
 // terminal) — this talks to the CLI TCP port (21026 by default).
 //
 // Usage:
-//   npm run set-pserver-password -- <username> <password>
-//   npm run set-pserver-password              # defaults: Kendalor / changeme
+//   npm run set-pserver-password -- <username> <password> <gcl>
+//   npm run set-pserver-password              # defaults: Kendalor / changeme / GCL 4
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 
-const [, , argUsername, argPassword] = process.argv;
+const [, , argUsername, argPassword, argGcl] = process.argv;
 const username = argUsername || "Kendalor";
 const password = argPassword || "changeme";
+const gclLevel = parseInt(argGcl, 10) || 4;
 
 const CLI_HOST = "localhost";
 const CLI_PORT = 21026;
@@ -93,6 +99,31 @@ if (/\b(Error|ReferenceError|TypeError)\b/.test(result)) {
   console.error("\nThe server CLI returned an error (see above); screeps.json was left unchanged.");
   process.exit(1);
 }
+
+// GCL_MULTIPLY / GCL_POW from @screeps/common's constants.js — the sandbox's
+// CLI context doesn't expose game constants directly, so the raw progress
+// value is computed here rather than relying on a `C` global existing there.
+const GCL_MULTIPLY = 1000000;
+const GCL_POW = 2.4;
+const gclProgress = GCL_MULTIPLY * Math.pow(gclLevel - 1, GCL_POW);
+
+let gclResult;
+try {
+  gclResult = await runCliCommand(
+    `storage.db['users'].findOne({username: '${username}'})` +
+      `.then(u => storage.db['users'].update({_id: u._id}, {$set: {gcl: ${gclProgress}}}))`
+  );
+  console.log(gclResult.trim());
+} catch (err) {
+  console.error(`Could not set GCL via server CLI on ${CLI_HOST}:${CLI_PORT}.`);
+  console.error(err.message);
+  process.exit(1);
+}
+if (/\b(Error|ReferenceError|TypeError)\b/.test(gclResult)) {
+  console.error(`\nThe server CLI returned an error setting GCL ${gclLevel} (see above).`);
+  process.exit(1);
+}
+console.log(`Set GCL to ${gclLevel} for ${username}`);
 
 if (existsSync(SCREEPS_JSON)) {
   const config = JSON.parse(readFileSync(SCREEPS_JSON, "utf8"));

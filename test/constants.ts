@@ -129,6 +129,7 @@ Object.assign(globalThis, {
   ERR_NO_BODYPART: -12,
   ERR_RCL_NOT_ENOUGH: -14,
   ERR_GCL_NOT_ENOUGH: -15,
+  ERR_ACCESS_DENIED: -16,
 
   RESOURCE_ENERGY: "energy",
   RESOURCE_OXYGEN: "O",

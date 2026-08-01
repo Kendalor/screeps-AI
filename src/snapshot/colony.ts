@@ -111,6 +111,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     energyAvailable: room.energyAvailable,
     energyCapacity: room.energyCapacityAvailable,
     sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
+    mineral: room.find(FIND_MINERALS)[0]?.mineralType,
     remoteSources: buildRemoteSources(remotes, vision, tick),
     remoteEnergy: remoteEnergyFor(remotes),
     drops: room.find(FIND_DROPPED_RESOURCES).map(d => ({ id: d.id, x: d.pos.x, y: d.pos.y, amount: d.amount })),

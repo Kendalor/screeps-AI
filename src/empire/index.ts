@@ -11,7 +11,7 @@ export class Empire {
   public readonly colonies: Colony[];
 
   public constructor(public readonly snapshot: EmpireSnapshot) {
-    this.colonies = snapshot.colonies.map(colony);
+    this.colonies = snapshot.colonies.map(s => colony(s, snapshot.colonies));
   }
 
   /** The spawn arbiter: collects every colony's demand and routes it. */

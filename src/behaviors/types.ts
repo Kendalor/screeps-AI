@@ -71,6 +71,12 @@ export type Step = ({
     | { do: "repair"; at: TargetSpec; upTo?: number }
     | { do: "upgrade" }
     | { do: "reserve" } // reserve the current room's controller — a claimer's whole job, once it has arrived
+    | { do: "claim" } // claimController on the current room's controller — a colonizer's whole job, once it has arrived
+    // Top up ticksToLive at a spawn in the creep's targetRoom, but only below `below` ticks — a no-op
+    // (falls through to the next step) above that threshold or while targetRoom has no spawn yet. Unlike
+    // reserve/claim this never holds the creep in place once satisfied: renewCreep is called once per
+    // tick it's actually needed, same "act or fall through" shape moveToRoom already has with no dest.
+    | { do: "renew"; below: number }
     // Engage the nearest hostile: ranged-attack at range 3 if the body has RANGED_ATTACK, else close to
     // melee range 1. Never self-completes on store state (a fighter carries nothing) — only targetGone
     // (no hostile left in the room) ends it, same as reserve.

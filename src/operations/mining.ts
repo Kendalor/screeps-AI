@@ -172,7 +172,15 @@ export class Mining extends Operation {
         body,
         priority: roleDef("miner")!.priority,
         memory: { role: "miner", home: colony.name, op: this.name, sourceId },
-        targetRoom
+        targetRoom,
+        // Pinned to this colony even for a remote-room targetRoom: only the ONE colony that selected
+        // this remote (pickRemotes, cached in its own ColonyMemory.remotes) ever requests a miner for
+        // it — never shared/sponsored by a different colony the way Colonize's cross-colony requests
+        // are (which deliberately omit spawnRoom). Without this, a colony with a free spawn could
+        // opportunistically fulfil an unrelated colony's remote-miner demand, e.g. starving a freshly
+        // colonized room's own settler for the sponsor's spawn budget — see fillTo's doc for the fuller
+        // reasoning (this file builds its own requests by hand rather than via fillTo).
+        spawnRoom: colony.name
       });
     }
     return out;

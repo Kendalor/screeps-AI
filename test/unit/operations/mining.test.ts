@@ -67,6 +67,12 @@ describe("Mining.desiredCreeps — miners", () => {
     expect(minerRequests(colonySnap({ sources: [sourceAt(20, 10)] }))).toHaveLength(3);
   });
 
+  it("pins local miner requests to this colony's own spawn", () => {
+    const requests = minerRequests(colonySnap({ sources: [sourceAt(20, 10)] }));
+    expect(requests.length).toBeGreaterThan(0);
+    for (const r of requests) expect(r.spawnRoom).toBe("W1N1");
+  });
+
   // Live WORK is counted against the per-source WORK target so the colony does not re-spend the whole
   // allowance every tick: two 2-WORK miners already cover 4 of the 6 WORK, so only one more is short.
   it("asks only for the miners a source is still short", () => {
@@ -285,6 +291,11 @@ describe("Mining.desiredCreeps — remote miners", () => {
       expect(r.targetRoom).toBe("W2N1");
       expect(r.memory.sourceId).toBe(remote.id);
       expect(r.memory.op).toBe("mining:W1N1");
+      // Pinned to the requesting colony even though targetRoom is the remote — only the ONE colony
+      // that selected this remote ever requests a miner for it (see spawnRoom's doc in mining.ts and
+      // spawn/request.ts). Without this a remote-miner request could be opportunistically fulfilled by
+      // an unrelated colony's spawn.
+      expect(r.spawnRoom).toBe("W1N1");
     }
   });
 

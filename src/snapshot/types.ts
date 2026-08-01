@@ -184,6 +184,10 @@ export interface ColonySnapshot {
   energyAvailable: number;
   energyCapacity: number;
   sources: SnapSource[];
+  // This room's own mineral, if any — absent for a room with no mineral deposit. Read by
+  // Colony.getMinerals(); today only an owned room's own mineral is ever mineable (a remote/keeper room's
+  // mineral is scouting data only, see ScoutInfo.mineral, until keeper-room mining exists).
+  mineral?: MineralConstant;
   remoteSources: SnapRemoteSource[]; // selected remote sources; empty until pickRemotes chooses some. Mining/Reservation/Logistics all read it.
   remoteEnergy: SnapRemoteEnergy[]; // energy in remote rooms to haul home (the return-haul provider set); empty without remote vision
   drops: SnapDrop[]; // ground-level energy from drop mining
