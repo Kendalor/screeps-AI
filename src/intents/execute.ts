@@ -90,9 +90,10 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       creep.memory.role = intent.role;
       // Fresh step loop for the new role — the old task index/lock belonged to the builder's steps.
       creep.memory.task = undefined;
-      // Drop the owning-operation stamp: the creep is no longer a builder Building owns, and clearing it
-      // lets the new role's owner (Upgrading, or a future repair owner) count it toward its quota.
-      creep.memory.op = undefined;
+      // Re-stamp for the new role's owning operation — leaving this undefined would make the creep
+      // "ownable" by every operation via Operation.owned()'s op-less fallback, double-counting it in
+      // every operation's roleTargets that doesn't override the default.
+      creep.memory.op = intent.op;
       return OK;
     }
     case "setBuildTargetRoom": {

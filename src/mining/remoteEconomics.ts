@@ -56,8 +56,20 @@ function roadContainerUpkeep(distance: number): number {
 }
 
 // Per-source net energy/tick. Positive => worth mining at all. Negative => the haul/upkeep swamps it.
-export function netEnergy(source: SnapRemoteSource, ctx: EconomyContext): number {
-  const gross = grossHarvest(source.reserved);
+// Takes just the two fields the formula actually uses (not the whole SnapRemoteSource) so callers pricing
+// a hypothetical/synthetic source — pickRemotes' own-merit pass, remotePotentialTable's precomputed table
+// — don't need to pad out unrelated fields (room, openTiles, danger) just to satisfy the type.
+//
+// grossOverride lets a caller price a source whose yield isn't the normal reserved/unreserved binary —
+// today only a keeper source (SOURCE_ENERGY_KEEPER_CAPACITY/ENERGY_REGEN_TIME, ~13.33/tick), which is
+// neither reserved nor unreserved since keeper rooms have no reservation mechanic at all. `reserved` is
+// still required in that case (grossHarvest is skipped, but nothing else about the shape changes).
+export function netEnergy(
+  source: Pick<SnapRemoteSource, "distance" | "reserved">,
+  ctx: EconomyContext,
+  grossOverride?: number
+): number {
+  const gross = grossOverride ?? grossHarvest(source.reserved);
   return gross - amortize(ctx.minerBodyCost) - haulUpkeep(gross, source.distance) - roadContainerUpkeep(source.distance);
 }
 
@@ -70,14 +82,15 @@ export function worthReserving(roomSources: readonly SnapRemoteSource[], ctx: Ec
   return marginalGain > amortizeClaimer(ctx.claimerBodyCost);
 }
 
-// Concrete costs for the default RCL2 bodies, so tests and the selector share one baseline. A container
-// miner is ~5 WORK + moves. A claimer is 2x (CLAIM + MOVE) — the mandatory floor (see claimer.ts's
-// MIN_CLAIM_SETS): a single CLAIM only ever nets zero against the controller's own 1/tick decay while
-// parked, so it banks no buffer and reservation free-falls to 0 across every spawn/travel gap between a
-// claimer dying and its replacement arriving. Pricing the claimer at the (cheaper, non-functional)
-// 1-CLAIM floor would understate the real cost this economics module is supposed to gate on.
+// Concrete costs for the default RCL2 bodies, so tests and the selector share one baseline. A remote
+// miner is the saturating body from behaviors/roles/miner.ts (6 WORK + 1 CARRY + 3 MOVE — SOURCE_SATURATING_WORK,
+// kept in sync there, not re-derived here). A claimer is 2x (CLAIM + MOVE) — the mandatory floor (see
+// claimer.ts's MIN_CLAIM_SETS): a single CLAIM only ever nets zero against the controller's own 1/tick
+// decay while parked, so it banks no buffer and reservation free-falls to 0 across every spawn/travel gap
+// between a claimer dying and its replacement arriving. Pricing the claimer at the (cheaper,
+// non-functional) 1-CLAIM floor would understate the real cost this economics module is supposed to gate on.
 export function defaultEconomyContext(): EconomyContext {
-  const minerBodyCost = 5 * BODYPART_COST[WORK] + 3 * BODYPART_COST[MOVE] + BODYPART_COST[CARRY];
+  const minerBodyCost = 6 * BODYPART_COST[WORK] + BODYPART_COST[CARRY] + 3 * BODYPART_COST[MOVE];
   const claimerBodyCost = 2 * (BODYPART_COST[CLAIM] + BODYPART_COST[MOVE]);
   return { minerBodyCost, claimerBodyCost };
 }

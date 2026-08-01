@@ -215,17 +215,17 @@ describe("actuator", () => {
     expect(mem.remotes[0].dangerUntil).toBeUndefined();
   });
 
-  it("repurposes a creep: sets the new role and clears task and op stamp", () => {
+  it("repurposes a creep: sets the new role, clears task, and re-stamps op for the new owner", () => {
     const creep = {
       memory: { home: "W1N1", role: "builder", op: "building:W1N1", task: { step: 2, target: "x" } } as CreepMemory
     };
     stubGame({ objects: { c1: creep } });
 
-    execute([{ kind: "setCreepRole", creep: "c1" as Id<Creep>, role: "upgrader" }]);
+    execute([{ kind: "setCreepRole", creep: "c1" as Id<Creep>, role: "upgrader", op: "upgrading:W1N1" }]);
 
     expect(creep.memory.role).toBe("upgrader");
     expect(creep.memory.task).toBeUndefined();
-    expect(creep.memory.op).toBeUndefined();
+    expect(creep.memory.op).toBe("upgrading:W1N1");
   });
 
   // setRemotes replaces pickRemotes' cheap ranking-time distance estimate with the ground-truth

@@ -11,7 +11,7 @@ import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import type { Intent } from "../intents/types";
 import type { Operation } from "../operations";
-import type { RoleName } from "../memory/schema";
+import { opName } from "../spawn/request";
 import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
 
 const GOAL = GOAL_JSON as GoalLayout;
@@ -231,14 +231,14 @@ function sameSpot(a: PlacedStructure) {
 // stretch while a larger backlog still waits — converting then would strand real work. The planner's own
 // backlog (wantedStructures minus what's already built or already a site) is the authoritative "is there
 // anything left to build" signal, and it stays non-empty across those between-placement gaps.
+//
+// Remote sites count too: Building's own wantedBuilders() sizes its workforce off home + remote progress
+// (see operations/building.ts's totalConstructionProgress), so this must agree or a live remote backlog
+// gets read as "finished" and strands every builder into repair/upgrade while roads sit at 0 progress.
 export const hasOutstandingConstruction = wrapFn(function hasOutstandingConstruction(colony: ColonySnapshot, claimed: PlacedStructure[]): boolean {
   if (colony.sites.length > 0) return true;
-  // Home-room claims only: whether a local "builder" should ever go work a remote site is the builder-
-  // dispatch question this feature deliberately defers. The miner already builds/repairs its own remote
-  // container (behaviors/roles/miner.ts), so nothing here needs to know about remote backlog at all.
-  return wantedStructures(colony, claimed)
-    .filter(p => roomOf(p, colony) === colony.name)
-    .some(p => !existingAt(colony, p));
+  if (colony.siteSummary.some(s => s.room !== colony.name)) return true;
+  return wantedStructures(colony, claimed).some(p => !existingAt(colony, p));
 }, "building:hasOutstandingConstruction");
 
 // A structure worth a repairer: decayed below the shared repair floor (src/lib/repairable.ts) — the
@@ -247,13 +247,21 @@ export function hasRepairWork(colony: ColonySnapshot): boolean {
   return colony.structures.some(s => s.hits !== undefined && s.hitsMax !== undefined && needsRepair(s.type, s.hits, s.hitsMax));
 }
 
+// role -> the operation kind that owns it post-conversion, for the op stamp below. Both target roles'
+// operations report their own roleTargets() (see operations/repairing.ts, operations/upgrading.ts), so
+// stamping the right op lets that operation's owned() pick the converted creep up as its own — and, just
+// as importantly, keeps every *other* operation's default roleTargets() from also claiming it (see
+// intents/execute.ts's setCreepRole case for why an unstamped op is the actual bug this guards against).
+const REPURPOSE_OP_KIND: Record<"repair" | "upgrader", string> = { repair: "repairing", upgrader: "upgrading" };
+
 // Emits a role change for every owned builder once construction is finished: repair if anything is decaying,
 // upgrader otherwise. Pure — the setCreepRole actuator owns the memory write. `claimed` must be the same
 // operation claims planBuilding used this tick, so the backlog check agrees with what would be placed.
 export const repurposeIdleBuilders = wrapFn(function repurposeIdleBuilders(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
   if (hasOutstandingConstruction(colony, claimed)) return [];
-  const target: RoleName = hasRepairWork(colony) ? "repair" : "upgrader";
+  const target: "repair" | "upgrader" = hasRepairWork(colony) ? "repair" : "upgrader";
+  const op = opName(REPURPOSE_OP_KIND[target], colony.name);
   return colony.creeps
     .filter(c => c.role === "builder" && c.room === colony.name)
-    .map(c => ({ kind: "setCreepRole", creep: c.id, role: target }));
+    .map(c => ({ kind: "setCreepRole", creep: c.id, role: target, op }));
 }, "building:repurposeIdleBuilders");

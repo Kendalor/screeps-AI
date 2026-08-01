@@ -134,13 +134,11 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
     // First pass: which of this room's sources clear zero on their own merits, ignoring claim cost, to know
     // how many will actually share it. A source too far to ever pay off doesn't get to shrink its room-mates'
     // share by "participating" — only sources that already stand on their own remain in the split.
-    const ownMerit = roomCandidates.filter(
-      c => netEnergy({ ...c, room: c.room, openTiles: 0, reserved: true, danger: 0 }, ctx) > 0
-    );
+    const ownMerit = roomCandidates.filter(c => netEnergy({ distance: c.distance, reserved: true }, ctx) > 0);
     if (ownMerit.length === 0) continue;
     const claimerShare = amortizeClaimer(ctx.claimerBodyCost) / ownMerit.length;
     for (const c of ownMerit) {
-      const net = netEnergy({ ...c, room: c.room, openTiles: 0, reserved: true, danger: 0 }, ctx) - claimerShare;
+      const net = netEnergy({ distance: c.distance, reserved: true }, ctx) - claimerShare;
       if (net > 0) worthwhile.push({ ...c, claimerShare });
     }
   }

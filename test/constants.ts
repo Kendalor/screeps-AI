@@ -188,10 +188,12 @@ Object.assign(globalThis, {
   // horizon a claimer's body cost actually amortizes over (not CREEP_LIFE_TIME).
   CREEP_CLAIM_LIFE_TIME: 600,
 
-  // Energy a source refills per regen cycle: 3000 for an owned/reserved room, 1500 for a neutral one.
+  // Energy a source refills per regen cycle: 3000 for an owned/reserved room, 1500 for a neutral one,
+  // 4000 for a keeper-guarded source (keeper rooms have no reservation state, just this one fixed rate).
   SOURCE_ENERGY_CAPACITY: 3000,
   SOURCE_ENERGY_NEUTRAL_CAPACITY: 1500,
-  ENERGY_REGEN_TIME: 300, // so reserved => 3000/300 = 10/tick, unreserved => 1500/300 = 5/tick
+  SOURCE_ENERGY_KEEPER_CAPACITY: 4000,
+  ENERGY_REGEN_TIME: 300, // so reserved => 3000/300 = 10/tick, unreserved => 5/tick, keeper => 4000/300 ~= 13.33/tick
 
   // A CARRY part holds this much, from screeps/common constants — sizes the haul body.
   CARRY_CAPACITY: 50,

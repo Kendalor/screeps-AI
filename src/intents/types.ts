@@ -20,7 +20,10 @@ export type Intent =
   | { kind: "placeSite"; room: string; x: number; y: number; type: BuildableStructureConstant }
   // Repurpose a live creep in place — an idle builder with no construction left becomes a repairer or
   // upgrader instead of drop-mining out its remaining life. execute.ts owns the memory.role write.
-  | { kind: "setCreepRole"; creep: Id<Creep>; role: RoleName }
+  // `op` is the new role's owning operation stamp (see spawn/request.ts's opName) — required, not
+  // cleared to undefined: Operation.owned()'s op-less fallback treats an unstamped creep as ownable by
+  // *every* operation, so every operation with no roleTargets override would double-count it.
+  | { kind: "setCreepRole"; creep: Id<Creep>; role: RoleName; op: string }
   // A builder's cross-room construction assignment — picked by operations/building.ts off siteSummary
   // (already vision-independent, room-name-only distance ranking), so unlike setScoutTarget the room is
   // resolved in the planner itself; execute.ts just writes it. See CreepMemory.buildTargetRoom.
