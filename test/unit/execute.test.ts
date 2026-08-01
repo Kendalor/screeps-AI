@@ -384,6 +384,74 @@ describe("actuator", () => {
     });
   });
 
+  // recordPotential caches ScoutInfo.potential/potentialChecked — the pure map-topology colonization
+  // score, summed over a candidate room's own neighborhood (a fresh describeExits BFS rooted at the
+  // candidate, not the requesting colony's home). Only writes once every room within MAX_REMOTE_HOPS is
+  // itself already scouted; scouting's own pure planner re-emits the intent every tick until then.
+  describe("recordPotential", () => {
+    it("computes and caches potential once the whole neighborhood is scouted", () => {
+      stubGame();
+      (globalThis as { Game: { map: unknown } }).Game.map = {
+        describeExits: (name: string) => (name === "W1N1" ? { 3: "W1N2" } : {}),
+        getRoomStatus: () => ({ status: "normal" })
+      };
+      (globalThis as Record<string, unknown>).Memory = {
+        rooms: {
+          W1N1: { scouted: { tick: 0, type: "normal", sources: [], hostile: false, anchor: { x: 25, y: 25 } } },
+          W1N2: {
+            scouted: {
+              tick: 0,
+              type: "normal",
+              sources: [{ id: "s1", x: 10, y: 10 }, { id: "s2", x: 20, y: 20 }],
+              hostile: false
+            }
+          }
+        }
+      };
+
+      execute([{ kind: "recordPotential", room: "W1N1" }]);
+
+      const mem = (
+        globalThis as {
+          Memory: { rooms: Record<string, { scouted: { potential?: unknown; potentialChecked?: boolean } }> };
+        }
+      ).Memory.rooms;
+      expect(mem.W1N1.scouted.potentialChecked).toBe(true);
+      expect(mem.W1N1.scouted.potential).toBeDefined();
+    });
+
+    it("does nothing (and does not mark checked) when a neighbor is still unscouted", () => {
+      stubGame();
+      (globalThis as { Game: { map: unknown } }).Game.map = {
+        describeExits: (name: string) => (name === "W1N1" ? { 3: "W1N2" } : {}),
+        getRoomStatus: () => ({ status: "normal" })
+      };
+      (globalThis as Record<string, unknown>).Memory = {
+        rooms: {
+          W1N1: { scouted: { tick: 0, type: "normal", sources: [], hostile: false, anchor: { x: 25, y: 25 } } }
+          // W1N2 not present — the neighborhood isn't fully scouted yet
+        }
+      };
+
+      execute([{ kind: "recordPotential", room: "W1N1" }]);
+
+      const mem = (
+        globalThis as { Memory: { rooms: Record<string, { scouted: { potentialChecked?: boolean } }> } }
+      ).Memory.rooms;
+      expect(mem.W1N1.scouted.potentialChecked).toBeUndefined();
+    });
+
+    it("does nothing when the room itself has gone stale (no scouted record)", () => {
+      stubGame();
+      (globalThis as { Game: { map: unknown } }).Game.map = { describeExits: () => ({}), getRoomStatus: () => ({ status: "normal" }) };
+      (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+      execute([{ kind: "recordPotential", room: "W1N1" }]);
+
+      expect((globalThis as { Memory: { rooms: Record<string, unknown> } }).Memory.rooms.W1N1).toBeUndefined();
+    });
+  });
+
   it("keeps a previously recorded container id when this tick resolved none", () => {
     stubGame();
     (globalThis as Record<string, unknown>).Memory = {

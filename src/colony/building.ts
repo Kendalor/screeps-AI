@@ -159,10 +159,12 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
   const unwanted = stale.filter(s => !wantedAt.has(`${colony.name},${s.x},${s.y}`));
 
   const cap = Math.min(FOCUS_SITE_CAP, MAX_CONSTRUCTION_SITES);
-  // The shared budget counts every site this colony actually owns (home + selected remote rooms), not
-  // just placement attempts — siteSummary is vision-independent (Game.constructionSites), so a remote
-  // site still counts even on a tick its room isn't visible.
-  let budget = cap - colony.siteSummary.length;
+  // Two independent budgets, not one shared pool: a backlog of slow-to-build remote roads must never
+  // starve home-room placement (extensions, towers, ...) of its own slots. Each still counts against
+  // the same overall cap, just scoped to its own room set — siteSummary is vision-independent
+  // (Game.constructionSites), so a remote site still counts even on a tick its room isn't visible.
+  let homeBudget = cap - colony.siteSummary.filter(s => s.room === colony.name).length;
+  let remoteBudget = cap - colony.siteSummary.filter(s => s.room !== colony.name).length;
   // Only concurrent container *sites* are limited; built containers don't count against the cap.
   let containerSites = colony.siteSummary.filter(s => s.type === "container").length;
   const out: Intent[] = [];
@@ -177,10 +179,11 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
   }
 
   for (const placement of prioritised) {
-    if (budget <= 0) break;
+    const home = roomOf(placement, colony) === colony.name;
+    if (home ? homeBudget <= 0 : remoteBudget <= 0) continue;
     if (placement.type === "container" && containerSites >= MAX_CONTAINER_SITES) continue;
     if (existingAt(colony, placement)) continue;
-    const blocker = roomOf(placement, colony) === colony.name ? blocking.get(`${colony.name},${placement.x},${placement.y}`) : undefined;
+    const blocker = home ? blocking.get(`${colony.name},${placement.x},${placement.y}`) : undefined;
     // Clear the blocker in the same tick, immediately before the site — never ahead of the placement
     // actually happening, so a finished building isn't left demolished while its replacement waits its
     // turn in the backlog (see wantedStructures' focus-site budget).
@@ -192,7 +195,7 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
     }
     out.push({ kind: "placeSite", room: roomOf(placement, colony), x: placement.x, y: placement.y, type: placement.type });
     if (placement.type === "container") containerSites++;
-    budget--;
+    if (home) homeBudget--; else remoteBudget--;
   }
 
   return out;

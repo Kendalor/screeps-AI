@@ -5,6 +5,9 @@ import { recordManual, wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
 import { remoteRouteTileKey, resolvePathToSource } from "../lib/remotePath";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
+import { neighborhoodFullyScouted, summarizePotential } from "../mining/colonizationPotential";
+import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
+import { scoutCandidatesAround } from "../snapshot/scoutGraph";
 import type { RemoteMemory, RemoteSourceMemory, RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
 
@@ -160,6 +163,16 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       const rooms = (Memory.rooms ??= {});
       const mem = (rooms[intent.room] ??= {} as RoomMemory);
       mem.scouted = observeRoom(room, intent.passive ? mem.scouted : undefined);
+      return OK;
+    }
+    case "recordPotential": {
+      const rooms = (Memory.rooms ??= {});
+      const scouted = rooms[intent.room]?.scouted;
+      if (!scouted) return ERR_NOT_FOUND; // emitted off a snapshot that's since gone stale
+      const neighborhood = scoutCandidatesAround(intent.room, MAX_REMOTE_HOPS);
+      if (!neighborhoodFullyScouted(neighborhood)) return OK; // not ready yet; potentialPrecompute retries next tick
+      scouted.potential = summarizePotential(neighborhood);
+      scouted.potentialChecked = true;
       return OK;
     }
     case "recordSourcePath": {

@@ -368,9 +368,11 @@ describe("building planner focus policy", () => {
     const withTower = [
       ...allNonRoadStructuresAt(anchor, 3).filter(s => s.type === "tower")
     ];
-    // Squeeze the budget down to 1 (19 sites already open elsewhere) so extensions and the
-    // container claim genuinely compete for a single slot, same as they did under the old cap.
-    const crowding = Array.from({ length: 19 }, (_, i) => ({ room: "W9N9", type: "rampart" as const }));
+    // Squeeze the home-room budget down to 1 (19 home-room sites already open) so extensions and
+    // the container claim genuinely compete for a single slot. Crowding must be in the colony's own
+    // room (W1N1) — a remote room's backlog has its own separate budget and must not starve home
+    // placement (see "building planner — remote construction" below).
+    const crowding = Array.from({ length: 19 }, (_, i) => ({ room: "W1N1", type: "rampart" as const }));
     const snap = colony(
       colonySnap({
         anchor,
@@ -486,24 +488,32 @@ describe("building planner — remote construction", () => {
     expect(placed.some(i => i.room === "W2N1" && i.type === "container")).toBe(false);
   });
 
-  it("counts a remote site against the shared budget even without live vision of its room this tick", () => {
-    // No local claims and no home sites, but siteSummary already shows the budget fully spent (19
-    // elsewhere + 1 remote site) — the shared FOCUS_SITE_CAP must still read that remote site even
-    // though remoteSites/remoteStructures report no vision of W2N1 this tick.
-    const crowding = Array.from({ length: 19 }, () => ({ room: "W9N9", type: "rampart" as const }));
+  it("counts a remote site against the remote budget even without live vision of its room this tick", () => {
+    // Remote crowding (20 open remote-room sites, from siteSummary alone — no live vision of any of
+    // these rooms this tick) must exhaust the *remote* budget without touching the home-room budget:
+    // a remote route's backlog must never starve home-room placement (extensions, towers, ...).
+    const crowding = Array.from({ length: 20 }, () => ({ room: "W9N9", type: "rampart" as const }));
+    const source = remoteSourceAt(2, 25, "W2N1", { route });
+    const withTower = built.filter(s => s.type === "tower");
     const snap = colony(
       colonySnap({
         anchor,
         controllerLevel: 3,
         energyCapacity: 300,
         sources: [],
-        structures: [],
+        structures: withTower,
         sites: [],
+        remoteSources: [source],
+        remoteStructures: { W2N1: [] },
         siteSummary: [...crowding, { room: "W2N1", type: "container" }]
       })
     );
 
-    expect(placeSites(snap.building()).length).toBe(0);
+    const placed = placeSites(snap.building());
+    // The remote container claim is blocked — its room's budget is spent.
+    expect(placed.some(i => i.room === "W2N1")).toBe(false);
+    // Home-room placement proceeds unaffected by the remote-room crowding.
+    expect(placed.some(i => i.room === "W1N1")).toBe(true);
   });
 });
 

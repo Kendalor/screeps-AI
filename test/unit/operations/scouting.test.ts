@@ -367,3 +367,66 @@ describe("Scouting source-path precompute", () => {
     });
   });
 });
+
+// The map-topology colonization score (ScoutInfo.potential) is only worth computing for a room that
+// could actually host a colony, so this planner only decides WHICH rooms are candidates; execute.ts does
+// the real describeExits BFS and the "is the neighborhood fully scouted yet" readiness check.
+describe("Scouting potential precompute", () => {
+  it("emits recordPotential for a scouted, anchor-viable, unowned room that hasn't been checked yet", () => {
+    const snap = colonySnap({
+      scoutTargets: [scoutTarget("W1N2", scouted({ anchor: { x: 25, y: 25 } }))]
+    });
+    expect(scouting.intents(snap)).toContainEqual({ kind: "recordPotential", room: "W1N2" });
+  });
+
+  it("stays silent once potentialChecked is already true", () => {
+    const snap = colonySnap({
+      scoutTargets: [scoutTarget("W1N2", scouted({ anchor: { x: 25, y: 25 }, potentialChecked: true }))]
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordPotential" }));
+  });
+
+  it("stays silent for a room with no anchor — it can never be colonized regardless of its neighborhood", () => {
+    const snap = colonySnap({
+      scoutTargets: [scoutTarget("W1N2", scouted({ anchorChecked: true }))] // checked, no fit found
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordPotential" }));
+  });
+
+  it("stays silent for an owned room", () => {
+    const snap = colonySnap({
+      scoutTargets: [scoutTarget("W1N2", scouted({ anchor: { x: 25, y: 25 }, owner: "someoneElse" }))]
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordPotential" }));
+  });
+
+  it("stays silent for a hostile room", () => {
+    const snap = colonySnap({
+      scoutTargets: [scoutTarget("W1N2", scouted({ anchor: { x: 25, y: 25 }, hostile: true }))]
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordPotential" }));
+  });
+
+  it("stays silent for an unscouted candidate — no anchor data to gate on", () => {
+    const snap = colonySnap({ scoutTargets: [scoutTarget("W1N2")] }); // no info at all
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordPotential" }));
+  });
+
+  it("stays silent for a keeper/highway room — only normal rooms host a colony", () => {
+    // W5N5 is a genuine keeper-band room name (5 % 10 is within [4,6]) — scoutTarget derives
+    // ScoutCandidate.type from the room NAME via roomType(), not from the info override, so the
+    // candidate's own type must actually be keeper for this gate to be exercised.
+    const snap = colonySnap({
+      scoutTargets: [scoutTarget("W5N5", scouted({ type: "keeper", anchor: { x: 25, y: 25 } }))]
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordPotential" }));
+  });
+
+  it("stays silent for the colony's own home room", () => {
+    const snap = colonySnap({
+      name: "W1N1",
+      scoutTargets: [scoutTarget("W1N1", scouted({ anchor: { x: 25, y: 25 } }))]
+    });
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordPotential" }));
+  });
+});

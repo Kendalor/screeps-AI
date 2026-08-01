@@ -55,6 +55,7 @@ export class Scouting extends Operation {
     }
 
     out.push(...this.pathPrecompute(colony));
+    out.push(...this.potentialPrecompute(colony));
 
     // Nothing left in range to survey — push the frontier out one ring (execute.ts caps at MAX_SCOUT_RANGE).
     // Home room excluded: it's never dispatch-worthy, so it must not block the frontier from advancing.
@@ -91,6 +92,28 @@ export class Scouting extends Operation {
         if (noPathAt !== undefined && colony.tick - noPathAt < NO_PATH_RETRY_AFTER) continue;
         out.push({ kind: "recordSourcePath", home: colony.name, room: cand.room, anchor, source: src.id });
       }
+    }
+    return out;
+  }
+
+  // Emits recordPotential for every scouted, anchor-viable, unowned room in range that hasn't had its
+  // colonization potential computed yet — the pure map-topology score cached on ScoutInfo.potential (see
+  // memory/schema.ts's doc, and colonizationPotential.ts's summarizePotential). Gated on anchor being
+  // present (not just anchorChecked): a room with no bunker fit can never be colonized regardless of its
+  // neighborhood, so scoring it would be wasted BFS. execute.ts owns the actual describeExits walk and the
+  // "is the whole neighborhood scouted yet" readiness check — this planner only decides WHICH rooms are
+  // worth attempting, same division of labor as pathPrecompute above.
+  private potentialPrecompute(colony: ColonySnapshot): Intent[] {
+    const out: Intent[] = [];
+    for (const cand of colony.scoutTargets) {
+      if (cand.room === colony.name) continue;
+      if (cand.type !== "normal") continue;
+      const info = cand.info;
+      if (!info || !info.anchor || info.owner || info.hostile) continue;
+      if (info.potentialChecked) continue; // already computed
+      // Re-emitted every tick until execute.ts's neighborhood-readiness check passes — cheap (a filter
+      // over scoutTargets, no BFS) so there's no need for pathPrecompute's noPathAt-style backoff here.
+      out.push({ kind: "recordPotential", room: cand.room });
     }
     return out;
   }

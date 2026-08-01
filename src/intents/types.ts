@@ -72,6 +72,14 @@ export type Intent =
   // MAX_REMOTE_HOPS that don't have a cached path yet; execute.ts owns the actual PathFinder call and
   // Memory write via the same resolvePathToSource helper resolveRemoteRoom already uses post-selection.
   | { kind: "recordSourcePath"; home: string; room: string; anchor: { x: number; y: number }; source: Id<Source> }
+  // Precomputes and caches a scouted room's ColonizationPotential (see memory/schema.ts's ScoutInfo.potential/
+  // potentialChecked) — the pure map-topology colonization score, summed over the room's own neighborhood.
+  // Emitted for any scouted room lacking potentialChecked; execute.ts does the Game.map.describeExits BFS
+  // (scoutCandidatesAround, rooted at `room` itself rather than a colony's home) since only it can reach
+  // Game.map, then only writes/marks-checked once every room in that BFS is itself already scouted — see
+  // colonizationPotential.ts's neighborhoodFullyScouted for why a partially-scouted neighborhood can't be
+  // trusted yet.
+  | { kind: "recordPotential"; room: string }
   // Planner narrows to the viable candidate rooms (pure filter, no distance ranking); execute.ts picks
   // the nearest by Game.map.findRoute (real room-graph hops from the scout's *current* room, since only
   // it can reach Game.map) and writes the target + route into creep memory.

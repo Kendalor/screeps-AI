@@ -158,6 +158,33 @@ export interface ScoutInfo {
   // apart (the latter is a real, permanent "no" for this room; the former just means check `type`
   // instead). Absent/false on any record from before this field existed.
   anchorChecked?: boolean;
+  // Pure map-topology colonization score for this room as a potential anchor: the summed
+  // remotePotential/keeperPotential (see mining/remotePotentialTable.ts, mining/keeperPotentialTable.ts)
+  // of every room within MAX_REMOTE_HOPS, split by normal-vs-keeper since keeper-room mining isn't a
+  // built capability yet (see keeperPotential's own upkeep — this is reported, not folded into a single
+  // number, so an unbuilt capability can't silently dominate a decision made today). Deliberately does
+  // NOT factor in any neighbor's current owner/hostile/reservation state — those change over time and are
+  // evaluated separately, live, at actual selection time; this field answers only "how good is this
+  // room's permanent map position," which — like `anchor` — never changes once computed, so it's
+  // computed once and cached forever. Requires every room within range to already have its own ScoutInfo
+  // (source counts, room type) on record — see `potentialChecked` for whether that precondition has been
+  // met yet.
+  potential?: ColonizationPotential;
+  // Whether resolvePotential has actually run for this room (true even if every neighbor scored 0).
+  // Unlike anchorChecked, this can't always be computed the moment a room is first scouted — it needs
+  // every room within MAX_REMOTE_HOPS to already carry its own ScoutInfo, and the scouting frontier grows
+  // outward gradually, so a neighbor may simply not be scouted yet. False/absent means "not attempted,
+  // OR attempted but the neighborhood wasn't fully scouted yet" — retried on a later scouting pass either
+  // way, same as anchorChecked distinguishes "never attempted" from "attempted, no fit" for anchor.
+  potentialChecked?: boolean;
+}
+
+// The two topology-only colonization numbers for one room, plus the extra keeper minerals reachable if
+// keeper-room mining existed. See ScoutInfo.potential's doc for what these do and don't account for.
+export interface ColonizationPotential {
+  normal: number; // avg net energy/tick from unowned normal-room neighbors within MAX_REMOTE_HOPS
+  keeper: number; // same, from keeper-room neighbors — informational only; keeper mining isn't built yet
+  keeperMinerals: MineralConstant[]; // distinct minerals available across those keeper-room neighbors
 }
 
 // A source as seen from outside its room, before any colony claims it for mining.
