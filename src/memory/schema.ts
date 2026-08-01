@@ -94,6 +94,16 @@ export interface ColonyMemory {
   links?: LinkNetworkMemory; // owned by links
   remotes: RemoteMemory[]; // the selected remote rooms + their mined sources; owned by mining (pickRemotes writes it)
   danger: number; // owned by defense
+  // Target rooms this colony is actively colonizing (sponsoring a colonizer/settler for), owned by
+  // colonize.ts. Written once when a flag/auto-pick resolves this colony as the sponsor
+  // (addColonizeTarget), read every tick by Colony's constructor to attach a real Colonize operation per
+  // listed target — the durable equivalent of `remotes` above, so the operation's existence is a plain
+  // memory fact rather than derived indirectly from a live colonizer/settler creep's own memory (the
+  // latter was fragile: nothing observed it until a creep already existed, so the handoff from "flag
+  // resolved" to "operation attached" had a real gap). Removed (removeColonizeTarget) once the target's
+  // job is done (reached SELF_SUFFICIENT_ENERGY_CAP) or permanently failed (terminal claimController
+  // error) — see colonize.ts's own removal logic.
+  colonizing: string[];
 }
 
 // One remote room we've chosen to mine, cached in ColonyMemory so selection is stable and not re-ranked

@@ -467,7 +467,8 @@ export class BootedColony {
       // The layout planners this snapshot feeds never read scout targets; scouting demand is sized by
       // the running bot in-engine, not seeded.
       scoutTargets: [],
-      visibleRooms: []
+      visibleRooms: [],
+      colonizing: []
     };
   }
 

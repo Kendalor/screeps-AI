@@ -141,6 +141,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     remoteConstructionProgress: 0,
     scoutTargets: [],
     visibleRooms: [],
+    colonizing: [],
     ...over
   };
 }

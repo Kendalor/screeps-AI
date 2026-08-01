@@ -1,13 +1,12 @@
 // Colonize owns one colonizer (claims the target's controller) and up to MAX_SETTLERS settler creeps
 // (bootstrap the room from nothing once claimed), both sent at a single target room. Not wired into
-// operationsFor() — no colony gets this by default (see operations/index.ts). Standalone piece: the
-// empire-scoped picker that decides WHICH room to colonize and constructs this operation with that
-// target doesn't exist yet (a later piece). Until then this is constructed directly (console/tests) with
-// an explicit target, same shape Reservation would have if a remote room only ever needed one claimer.
-//
-// Deliberately no ColonyMemory field of its own yet: today's target is a plain constructor argument, not
-// a persisted pick — see the base Operation contract (fresh from `room` alone every tick) for why this
-// still fits that shape without committing to a memory layout the future picker hasn't decided.
+// operationsFor() — no colony gets this by default (see operations/index.ts); a colony only carries it
+// for a target listed in ColonyMemory.colonizing (snapshot.colonizing), written once by a flag/auto-pick
+// handoff (addColonizeTarget — see colonizeFlags.ts/pickColonyTargets.ts) and read every tick by
+// Colony's constructor (colony/index.ts) to attach a real, ongoing Colonize instance per target — the
+// same durable-memory-list shape Reservation/Mining use for remotes, not a one-shot creep-spawning
+// bypass. The colonizer/settler bodies this operation requests spawn through the completely normal
+// per-tick arbiter (empire/spawning.ts's planSpawning), same as every other operation's demand.
 //
 // Settlers spawn in parallel with the colonizer, not after it claims (project decision: faster bootstrap
 // beats the risk of a wasted settler body on a failed claim). They stop being requested once any of:
@@ -22,10 +21,16 @@
 //    pattern Operation.intents()'s colonyRequestParts uses for an externally-computed value an operation
 //    needs but can't derive from its own snapshot alone. Colony (colony/index.ts) is the caller: it looks
 //    the target up in the wider colony list it's constructed from before building each active Colonize.
+//
+// The SAME two conditions (terminal claim error, target self-sufficient) also drive removal: intents()
+// emits removeColonizeTarget once either holds, deleting this target from ColonyMemory.colonizing so the
+// operation stops being attached from the next tick on — the operation's own, explicit cleanup, not an
+// implicit "no creeps left" inference.
 
 import { roleDef } from "../behaviors/roles";
 import { COLONIZER_COST } from "../behaviors/roles/colonizer";
 import { SETTLER_MIN_COST } from "../behaviors/roles/settler";
+import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
@@ -79,13 +84,25 @@ export class Colonize extends Operation {
     ];
   }
 
-  private desiredSettlers(colony: ColonySnapshot): CreepRequest[] {
-    if (colony.energyCapacity < SETTLER_MIN_COST) return [];
-    if (this.targetEnergyCapacity !== undefined && this.targetEnergyCapacity >= SELF_SUFFICIENT_ENERGY_CAP) return [];
-
+  /** True once the target has permanently failed — a terminal claimController code from this
+   * operation's own colonizer. Shared by desiredSettlers (stop requesting) and intents() (remove the
+   * target from ColonyMemory.colonizing entirely). */
+  private claimFailedPermanently(colony: ColonySnapshot): boolean {
     const colonizers = this.owned(colony, "colonizer").filter(c => c.memory.targetRoom === this.targetRoom);
     const claimError = colonizers.find(c => c.memory.claimError !== undefined)?.memory.claimError;
-    if (claimError !== undefined && TERMINAL_CLAIM_ERRORS.has(claimError)) return [];
+    return claimError !== undefined && TERMINAL_CLAIM_ERRORS.has(claimError);
+  }
+
+  /** True once the target can sustain itself through its own normal operations — see
+   * SELF_SUFFICIENT_ENERGY_CAP's doc. Shared by desiredSettlers and intents(), same reason as above. */
+  private targetSelfSufficient(): boolean {
+    return this.targetEnergyCapacity !== undefined && this.targetEnergyCapacity >= SELF_SUFFICIENT_ENERGY_CAP;
+  }
+
+  private desiredSettlers(colony: ColonySnapshot): CreepRequest[] {
+    if (colony.energyCapacity < SETTLER_MIN_COST) return [];
+    if (this.targetSelfSufficient()) return [];
+    if (this.claimFailedPermanently(colony)) return [];
 
     const settlers = this.owned(colony, "settler").filter(c => c.memory.targetRoom === this.targetRoom);
     if (settlers.length >= MAX_SETTLERS) return [];
@@ -99,5 +116,17 @@ export class Colonize extends Operation {
         targetRoom: this.targetRoom
       }
     ];
+  }
+
+  /** Removes this target from ColonyMemory.colonizing once its job is done or permanently failed — see
+   * this file's header for why the same two conditions drive both "stop requesting settlers" and "stop
+   * existing as an operation at all." Not gated on live creep count: the target reaching
+   * self-sufficiency or the claim failing is true regardless of whether a colonizer/settler happens to
+   * still be alive that exact tick, and either condition already implies no further useful work remains. */
+  public override intents(colony: ColonySnapshot): Intent[] {
+    if (this.targetSelfSufficient() || this.claimFailedPermanently(colony)) {
+      return [{ kind: "removeColonizeTarget", room: colony.name, target: this.targetRoom }];
+    }
+    return [];
   }
 }

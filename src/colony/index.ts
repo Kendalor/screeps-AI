@@ -10,20 +10,6 @@ import { claimsOf, planBuilding, repurposeIdleBuilders, wantedStructures } from 
 import { collectMetrics } from "./metrics";
 import { visualize } from "./metricsVisual";
 
-// Colonize isn't in operationsFor() (no colony gets it by default — see operations/colonize.ts's
-// header), but once a colonizer/settler for some target exists, that target's ongoing demand (settler
-// replacement, in particular) must still flow through the normal per-tick requests()/arbiter pipeline
-// like every other operation's, not stay a one-shot bypass forever. Derived straight from the colony's
-// own live creeps rather than a persisted memory field, matching the "no ColonyMemory field yet" choice
-// in colonize.ts — a target with zero colonizer/settler creeps left simply stops being colonized.
-function activeColonizeTargets(snapshot: ColonySnapshot): string[] {
-  const targets = new Set<string>();
-  for (const c of snapshot.creeps) {
-    if ((c.role === "colonizer" || c.role === "settler") && c.memory.targetRoom) targets.add(c.memory.targetRoom);
-  }
-  return [...targets];
-}
-
 export class Colony {
   public readonly operations: Operation[];
 
@@ -45,7 +31,13 @@ export class Colony {
     const targetCapacity = new Map(allSnapshots.map(s => [s.name, s.energyCapacity]));
     this.operations = [
       ...operationsFor(snapshot.name),
-      ...activeColonizeTargets(snapshot).map(t => new Colonize(snapshot.name, t, targetCapacity.get(t)))
+      // Colonize isn't in operationsFor() (no colony gets it by default — see operations/colonize.ts's
+      // header); attached per listed target instead, straight from the durable ColonyMemory.colonizing
+      // list (snapshot.colonizing) a flag/auto-pick handoff writes via addColonizeTarget — a plain memory
+      // fact, not derived from a live colonizer/settler creep's own memory the way this used to work
+      // (fragile: nothing observed a target existed until a creep for it already did, leaving a real gap
+      // between "flag resolved" and "operation attached").
+      ...snapshot.colonizing.map(t => new Colonize(snapshot.name, t, targetCapacity.get(t)))
     ];
   }
 

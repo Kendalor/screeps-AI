@@ -31,11 +31,55 @@
 // demand. Colonize's own economics are what this test measures, not remote mining's.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
+import { roleDef } from "../../src/behaviors/roles";
+import { orderBody } from "../../src/spawn/body";
+import { opName } from "../../src/spawn/request";
 import { BootedColony, bundleBot, CheckpointLadder, scoutableTerrain } from "./harness";
-import { seedColony } from "./seed";
+import { seedColony, seedCreeps, spreadTtl, type SeededCreep } from "./seed";
 
 const HOME = "W0N1";
 const TARGET = "W1N1";
+
+// seedColony's own workforce sizing (plannedWorkforce) polls every operation's demand against a
+// snapshot with empty energy/no live creeps yet — see that function's own doc: "a seeded colony starts
+// with miners and no haulers/upgraders, and the running colony fills those in from tick one." That
+// organic ramp-up is fine for a scenario with no extra spawn demand (remote-mining.test.ts,
+// scouting.test.ts), but colonize adds real ongoing load (a 650-cost colonizer, then repeated settler
+// replenishment) on top of it — directly measured, the naturally-thin RCL3 roster alone produces only
+// 3-4 spawns in a 500-tick window, nowhere near enough headroom. Top up with a hand-picked extra
+// transport/upgrader roster (sized off the real role bodies, stamped with the real operations' own op
+// names so they're claimed exactly like organically-spawned ones) so the sponsor starts genuinely
+// steady-state instead.
+const EXTRA_TRANSPORT = 3;
+const EXTRA_UPGRADERS = 2;
+
+async function seedExtraWorkforce(colony: BootedColony): Promise<void> {
+  const energyCapacity = await colony.energyCapacity();
+  // Neither Transport's nor Upgrader's body() formula actually reads ctx (only miner sizing cares about
+  // container/link presence) — a bare BodyContext literal is enough to satisfy RoleDef.body's signature.
+  const ctx = { hasContainer: false, hasLink: false };
+  const transportBody = orderBody(roleDef("transport")!.body(energyCapacity, ctx));
+  const upgraderBody = orderBody(roleDef("upgrader")!.body(energyCapacity, ctx));
+
+  const extras: SeededCreep[] = [
+    ...Array.from({ length: EXTRA_TRANSPORT }, (_, i) => ({
+      name: `seed_extra_transport_${i}`,
+      role: "transport" as const,
+      memory: { role: "transport" as const, home: HOME, op: opName("logistics", HOME) },
+      body: transportBody,
+      ttl: spreadTtl(i, EXTRA_TRANSPORT)
+    })),
+    ...Array.from({ length: EXTRA_UPGRADERS }, (_, i) => ({
+      name: `seed_extra_upgrader_${i}`,
+      role: "upgrader" as const,
+      memory: { role: "upgrader" as const, home: HOME, op: opName("upgrading", HOME) },
+      body: upgraderBody,
+      ttl: spreadTtl(i, EXTRA_UPGRADERS)
+    }))
+  ];
+
+  await seedCreeps(colony, extras);
+}
 
 // The anchor (Memory.colonies[room].anchor) is not cached until the bot has run a tick; seedColony
 // throws without it.
@@ -52,12 +96,13 @@ beforeAll(async () => {
   await colony.runTicks(TICKS_TO_ANCHOR);
   expect(await colony.anchor(), "the bot never cached a bunker anchor — nothing downstream runs").not.toBeNull();
 
-  // A finished RCL5 base: structures, workforce and energy all from the bot's own planners — a real
-  // economy (30 extensions, storage, links) with enough sustained throughput to afford a colonizer (650)
-  // and repeated settler replenishment on top of its own normal spawn demand.
-  const seeded = await seedColony(colony, { level: 5 });
+  // A finished RCL3 base: structures, workforce and energy all from the bot's own planners.
+  const seeded = await seedColony(colony, { level: 3 });
   expect(seeded.creeps.length, "no workforce was seeded — the colony would cold-start instead").toBeGreaterThan(0);
   expect(seeded.energy, "the seeded colony started with no energy — it would recover rather than run").toBeGreaterThan(0);
+
+  // Top up with extra transport/upgraders so the sponsor starts steady-state — see EXTRA_TRANSPORT's doc.
+  await seedExtraWorkforce(colony);
 
   await colony.patchMemory(mem => {
     (mem as { debugDisableRemoteMining?: boolean }).debugDisableRemoteMining = true;

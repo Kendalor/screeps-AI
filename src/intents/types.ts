@@ -89,6 +89,13 @@ export type Intent =
   // pickRemotes decides which remote rooms/sources to mine (throttled); execute.ts owns the
   // Memory.colonies[room].remotes write. The cached selection the snapshot builder reads back.
   | { kind: "setRemotes"; room: string; remotes: RemoteMemory[] }
+  // A flag/auto-pick handoff resolved `room` as the sponsor for colonizing `target` — execute.ts owns
+  // the Memory.colonies[room].colonizing write (append, deduped). From the next tick on, Colony's
+  // constructor reads it back to attach a real Colonize operation, same as setRemotes above.
+  | { kind: "addColonizeTarget"; room: string; target: string }
+  // Colonize.intents() owns removal: the target either finished (reached SELF_SUFFICIENT_ENERGY_CAP) or
+  // failed permanently (terminal claimController error) — see colonize.ts for the exact condition.
+  | { kind: "removeColonizeTarget"; room: string; target: string }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
   // Drawing primitives for one room's RoomVisual; drawn in order so later ops paint over earlier ones.

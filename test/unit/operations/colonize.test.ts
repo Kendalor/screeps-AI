@@ -121,3 +121,38 @@ describe("Colonize settler demand", () => {
     expect(requests).toHaveLength(1);
   });
 });
+
+describe("Colonize removal (intents)", () => {
+  it("emits nothing while the target is still in progress", () => {
+    const snap = colonySnap(COLONIZER_AFFORDABLE);
+    expect(colonize("W2N1").intents(snap)).toEqual([]);
+  });
+
+  it("emits nothing while below the self-sufficient energy cap", () => {
+    const snap = colonySnap(COLONIZER_AFFORDABLE);
+    expect(colonize("W2N1", SELF_SUFFICIENT_ENERGY_CAP - 1).intents(snap)).toEqual([]);
+  });
+
+  it("removes the target once it reaches the self-sufficient energy cap", () => {
+    const snap = colonySnap(COLONIZER_AFFORDABLE);
+    expect(colonize("W2N1", SELF_SUFFICIENT_ENERGY_CAP).intents(snap)).toEqual([
+      { kind: "removeColonizeTarget", room: "W1N1", target: "W2N1" }
+    ]);
+  });
+
+  it("removes the target once the colonizer hits a terminal claim error", () => {
+    const snap = colonySnap({
+      ...COLONIZER_AFFORDABLE,
+      creeps: [snapCreep("colonizer", { memory: { op: "colonize:W1N1", targetRoom: "W2N1", claimError: ERR_ACCESS_DENIED } })]
+    });
+    expect(colonize("W2N1").intents(snap)).toEqual([{ kind: "removeColonizeTarget", room: "W1N1", target: "W2N1" }]);
+  });
+
+  it("does not remove the target on a retryable claim error", () => {
+    const snap = colonySnap({
+      ...COLONIZER_AFFORDABLE,
+      creeps: [snapCreep("colonizer", { memory: { op: "colonize:W1N1", targetRoom: "W2N1", claimError: ERR_GCL_NOT_ENOUGH } })]
+    });
+    expect(colonize("W2N1").intents(snap)).toEqual([]);
+  });
+});

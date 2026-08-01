@@ -13,9 +13,11 @@ const COLONIZER_BODY: BodyPartConstant[] = [CLAIM, MOVE];
 export class Colonizer extends Role {
   // Whether a colonizer should ever outrank a settled colony's own economy is a target-selection
   // question (does the empire want to colonize right now), not a body/step concern — this priority only
-  // decides ordering among requests actually emitted, mirroring Claimer's placement below the local
-  // economy but above nothing (a colonize attempt already vetted by phase 2 shouldn't stall in queue).
-  static override readonly priority = 25;
+  // decides ordering among requests actually emitted. One above Settler (65): the claim is what makes a
+  // colonize attempt worth anything at all — a settler has nothing to bootstrap until the room is
+  // actually owned — and it's a single cheap (650), one-shot body, not an ongoing drain, so it should
+  // never wait behind the settler it's paired with for a spawn slot.
+  static override readonly priority = 66;
   static override body(_energy: number, _ctx: BodyContext): BodyPartConstant[] {
     return COLONIZER_BODY;
   }

@@ -201,7 +201,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "setRemotes": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
       // A re-selection replaces the whole array, but dangerUntil is a live-derived fact about a room, not
       // part of what pickRemotes decides — carry it over so a mid-invasion reselection doesn't heal it.
       const priorDangerUntil = new Map(mem.remotes.map(r => [r.room, r.dangerUntil]));
@@ -212,13 +212,26 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "recordRemoteDanger": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
       const remote = mem.remotes.find(r => r.room === intent.remoteRoom);
       if (remote) remote.dangerUntil = intent.dangerUntil;
       return OK;
     }
+    case "addColonizeTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      // ??= only initializes a brand-new colony record; an existing one from before `colonizing` was
+      // added to the schema still lacks the field entirely, so it must be backfilled here too.
+      mem.colonizing ??= [];
+      if (!mem.colonizing.includes(intent.target)) mem.colonizing.push(intent.target);
+      return OK;
+    }
+    case "removeColonizeTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      mem.colonizing = (mem.colonizing ?? []).filter(t => t !== intent.target);
+      return OK;
+    }
     case "recordSourceSpot": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
       const source = (mem.sources[intent.source] ??= {});
       source.spot = intent.spot;
       // Only ever add an id — a tick with no vision must not wipe an existing handle.
@@ -227,13 +240,13 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "recordRemoteContainer": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
       const source = mem.remotes.find(r => r.room === intent.remoteRoom)?.sources.find(s => s.id === intent.source);
       if (source) source.containerId = intent.container; // only ever adds an id, same rule as recordSourceSpot
       return OK;
     }
     case "recordLinkNetwork": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0 });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
       const links = (mem.links ??= { sources: [] });
       // Only ever adds an id — a tick with no fresh detection must not wipe an existing handle.
       if (intent.storage) links.storage = intent.storage;

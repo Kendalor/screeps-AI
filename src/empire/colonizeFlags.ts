@@ -1,16 +1,21 @@
 // Flag-triggered colonize entry point. A flag named "colonize" or "colonize:<room>" is the manual
-// equivalent of the future empire-scoped auto-picker (see the colonize plan's phase 2) — both enter
-// through pickColonizeSponsor; this module is just today's trigger for it. Not wired into
-// operationsFor/SYSTEMS (Colonize itself isn't a default operation), so this runs as its own call from
-// main.ts's loop(), independent of the per-colony operation pipeline.
+// equivalent of the empire-scoped auto-picker (pickColonyTargets.ts) — both enter through
+// pickColonizeSponsor and both hand off via the same addColonizeTarget intent; this module is just
+// today's manual trigger for it. Not wired into operationsFor/SYSTEMS (Colonize itself isn't a default
+// operation), so this runs as its own call from main.ts's loop(), independent of the per-colony
+// operation pipeline.
 //
-// One flag = one colonizer request: on a successful spawn the flag is removed immediately (placing it
-// again re-triggers, e.g. if the first colonizer dies en route — see the project's flag-lifecycle
-// decision). On failure (no fitting colony) the flag is left in place and an error is logged every tick
-// it's still unresolved, so the player sees why nothing is happening rather than silence.
+// One flag = one handoff: on success the target is durably recorded (ColonyMemory.colonizing, via
+// addColonizeTarget — see colonize.ts's header) and the flag is removed immediately (placing it again
+// re-triggers, e.g. if the whole attempt later fails and gets cleaned up — see the project's
+// flag-lifecycle decision). From that tick on, Colony's constructor attaches a real Colonize operation
+// for the target and its colonizer/settler spawn through the completely normal per-tick arbiter — this
+// module's job ends at the handoff, it never spawns anything directly. On failure (no fitting colony)
+// the flag is left in place and an error is logged every tick it's still unresolved, so the player sees
+// why nothing is happening rather than silence.
 
 import { pickColonizeSponsor } from "./colonizeSponsor";
-import { spawnColonizer } from "./spawnColonizer";
+import { execute } from "../intents/execute";
 import { log } from "../lib/log";
 import type { Empire } from "./index";
 
@@ -43,7 +48,7 @@ function routeDistance(a: string, b: string): number {
 }
 
 /** Runs once per tick from main.ts. Resolves every active colonize flag against the current empire,
- * spawns a colonizer from the best sponsor colony it finds, and clears the flag on success. */
+ * hands the target off to the best sponsor colony it finds, and clears the flag on success. */
 export function runColonizeFlags(world: Empire): void {
   for (const flag of colonizeFlags()) {
     const target = targetRoomFor(flag);
@@ -52,11 +57,10 @@ export function runColonizeFlags(world: Empire): void {
       continue;
     }
 
-    // Already sent for this exact target: don't pick a second sponsor while one's still en route. Mirrors
-    // Colonize.desiredCreeps()'s own one-per-target dedup, just checked across every colony up front.
-    const alreadySent = world.colonies.some(c =>
-      c.snapshot.creeps.some(cr => cr.role === "colonizer" && cr.memory.targetRoom === target)
-    );
+    // Already handed off for this exact target: don't pick a second sponsor while one's already
+    // colonizing it. Durable check (ColonyMemory.colonizing), not a live-creep one — the target is
+    // "claimed" the instant the handoff lands, before any colonizer has even spawned yet.
+    const alreadySent = world.colonies.some(c => c.snapshot.colonizing.includes(target));
     if (alreadySent) continue;
 
     const pick = pickColonizeSponsor(world.colonies, target, routeDistance, Game.gcl.level);
@@ -65,13 +69,8 @@ export function runColonizeFlags(world: Empire): void {
       continue;
     }
 
-    const outcome = spawnColonizer(pick.colony, target);
-    if (outcome !== "spawned") {
-      log.error(`colonize flag "${flag.name}": ${pick.colony.name} ${outcome}, retrying next tick`);
-      continue;
-    }
-
-    log.info(`colonize flag "${flag.name}": spawning colonizer for ${target} from ${pick.colony.name}`);
+    execute([{ kind: "addColonizeTarget", room: pick.colony.name, target }]);
+    log.info(`colonize flag "${flag.name}": handed ${target} off to ${pick.colony.name}`);
     flag.remove();
   }
 }

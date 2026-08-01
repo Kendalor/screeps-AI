@@ -58,6 +58,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
   const controller = room.controller!;
   const myCreeps = room.find(FIND_MY_CREEPS);
   const remotes = Memory.colonies[room.name]?.remotes ?? [];
+  const colonizing = Memory.colonies[room.name]?.colonizing ?? [];
   const vision = remoteRoomVision(remotes, controller.owner?.username);
   const remoteStructures: Partial<Record<string, SnapStructure[]>> = {};
   const remoteSites: Partial<Record<string, SnapStructure[]>> = {};
@@ -170,7 +171,8 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
       .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0),
     // Rooms within the current scouting radius; radius grows as the frontier is exhausted.
     scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1),
-    visibleRooms
+    visibleRooms,
+    colonizing
   };
 }
 
@@ -255,7 +257,7 @@ function remoteEnergyFor(remotes: readonly { room: string }[]): SnapRemoteEnergy
 
 // Computed once per colony and cached in ColonyMemory.anchor — never recomputed once found.
 function resolveAnchor(room: Room): XY | null {
-  const mem = (Memory.colonies[room.name] ??= { sources: {}, remotes: [], danger: 0 });
+  const mem = (Memory.colonies[room.name] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
   if (mem.anchor) return mem.anchor;
 
   const controller = room.controller!;

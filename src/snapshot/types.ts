@@ -235,6 +235,11 @@ export interface ColonySnapshot {
   remoteConstructionProgress: number;
   scoutTargets: ScoutCandidate[]; // rooms within scouting radius; empty until the frontier is walked
   visibleRooms: VisibleRoom[]; // every room with vision this tick, regardless of scouting radius
+  // Target rooms this colony is actively colonizing — durable equivalent of remoteSources' selection,
+  // owned by colonize.ts (ColonyMemory.colonizing). Colony's constructor reads this directly to attach a
+  // real Colonize operation per listed target, rather than deriving "is this colony colonizing X" from a
+  // live colonizer/settler creep's own memory (see colony/index.ts's header for why that was fragile).
+  colonizing: string[];
 }
 
 export interface EmpireSnapshot {

@@ -1,17 +1,18 @@
 // Empire-scoped automatic colonize target selection. Runs on a long throttle (see kernel/tick.ts) —
 // every ~5000 ticks, scan every scouted room, rank the viable ones by colonizePotentialScore, re-derive
 // the top candidates' scores live (cached ScoutInfo.potential can be stale on hostility/ownership), and
-// spawn a colonizer at the first candidate that also has a fitting sponsor colony. Not cached: this
-// module holds no state of its own between throttle ticks — see the project decision ("throttled, not
-// cached, every ~5k ticks") — so a fresh full re-rank runs from scratch each time it fires rather than
-// persisting a "current pick" across ticks the way pickRemotes stabilizes remote-source selection.
+// hand the first candidate that also has a fitting sponsor colony off to it (addColonizeTarget — see
+// colonize.ts's header). Not cached: this module holds no state of its own between throttle ticks — see
+// the project decision ("throttled, not cached, every ~5k ticks") — so a fresh full re-rank runs from
+// scratch each time it fires rather than persisting a "current pick" across ticks the way pickRemotes
+// stabilizes remote-source selection.
 
 import { colonizePotentialScore } from "../mining/colonizePotentialScore";
 import { neighborhoodFullyScouted, summarizePotential } from "../mining/colonizationPotential";
 import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
+import { execute } from "../intents/execute";
 import { scoutCandidatesAround } from "../snapshot/scoutGraph";
 import { gclRoomBudgetOk, pickColonizeSponsor } from "./colonizeSponsor";
-import { spawnColonizer } from "./spawnColonizer";
 import { log } from "../lib/log";
 import type { Empire } from "./index";
 import type { ScoutInfo } from "../memory/schema";
@@ -87,9 +88,9 @@ function liveScore(room: string, ownMineral: ScoutInfo["mineral"], haveMinerals:
   return colonizePotentialScore({ potential, ownMineral, haveMinerals });
 }
 
-/** Runs on AUTO_PICK_INTERVAL. Picks the best current colonize target empire-wide and spawns a colonizer
- * for it, if the GCL room budget allows and some colony can sponsor it. Silent (no candidates / nothing
- * fits) is not an error — it's the normal state between opportunities. */
+/** Runs on AUTO_PICK_INTERVAL. Picks the best current colonize target empire-wide and hands it off to a
+ * sponsor colony (addColonizeTarget), if the GCL room budget allows and some colony can sponsor it.
+ * Silent (no candidates / nothing fits) is not an error — it's the normal state between opportunities. */
 export function autoPickColonyTarget(world: Empire): void {
   if (Game.time % AUTO_PICK_INTERVAL !== 0) return;
   if (!gclRoomBudgetOk(world.colonies, Game.gcl.level)) return; // no room in the budget; don't even rank
@@ -118,10 +119,8 @@ export function autoPickColonyTarget(world: Empire): void {
     const pick = pickColonizeSponsor(world.colonies, candidate.room, routeDistance, Game.gcl.level);
     if (!pick.colony) continue; // this candidate has no fitting sponsor; try the next-best one
 
-    const outcome = spawnColonizer(pick.colony, candidate.room);
-    if (outcome === "spawned") {
-      log.info(`auto-picker: colonizing ${candidate.room} (score ${candidate.score.toFixed(1)}) from ${pick.colony.name}`);
-    }
+    execute([{ kind: "addColonizeTarget", room: pick.colony.name, target: candidate.room }]);
+    log.info(`auto-picker: colonizing ${candidate.room} (score ${candidate.score.toFixed(1)}) from ${pick.colony.name}`);
     return; // one attempt per firing, win or lose — never cascade through the whole shortlist in one tick
   }
 }
