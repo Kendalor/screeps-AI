@@ -1,0 +1,14 @@
+diff --git a/node_modules/@screeps/backend/lib/cronjobs.js b/node_modules/@screeps/backend/lib/cronjobs.js
+index 6b0ae50..cc4ffd3 100644
+--- a/node_modules/@screeps/backend/lib/cronjobs.js
++++ b/node_modules/@screeps/backend/lib/cronjobs.js
+@@ -593,7 +593,8 @@ async function genDeposits(){
+ 
+         const rooms = await db['rooms'].find({_id: {$in: sectorEdges}, bus: true, status: 'normal', depositType: {$exists: true}});
+         if(!_.some(rooms)) {
+-            return q.reject(`No normal bus rooms found for the sector of ${center._id}} (${sectorRegex})`);
++            console.log(`genDeposits: no normal bus rooms found for the sector of ${center._id}, skipping`);
++            continue;
+         }
+         const busyRooms = sectorDeposits.map(i => i.room);
+         const freeRooms = _.reject(rooms, r => _.includes(busyRooms, r._id));

@@ -292,11 +292,7 @@ function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: 
 
   creep.upgradeController(controller as StructureController);
   if (allowTravel) {
-    // drawCloserToController already claims the one good standing tile (the container); only fall back
-    // to stepOffRoad when it left the creep in place, so the two nudges never both issue travelTo the
-    // same tick (see runStep's allowTravel doc on the single _trav slot per creep).
-    const drewCloser = drawCloserToController(creep, controllerPos);
-    if (!drewCloser && doNotBlockRoads) stepOffRoad(creep, controllerPos, UPGRADE_RANGE);
+    if (doNotBlockRoads) stepOffRoad(creep, controllerPos, UPGRADE_RANGE);
   }
   return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
 }
@@ -379,24 +375,24 @@ function fleeSpot(from: { x: number; y: number; roomName: string }, threat: { x:
 // one, else in against the controller itself. No-ops (no re-path) once already well placed. Returns
 // whether it actually issued a travelTo this tick, so a caller with a second, lower-priority nudge
 // (stepOffRoad) knows whether the creep's single travelTo slot is already spoken for.
-function drawCloserToController(creep: Creep, controllerPos: RoomPosition): boolean {
-  const container = controllerPos
-    .findInRange(FIND_STRUCTURES, CONTROLLER_CONTAINER_RANGE, { filter: s => s.structureType === STRUCTURE_CONTAINER })[0] as
-    | StructureContainer
-    | undefined;
-
-  if (container && isFreeForCreep(container.pos, creep)) {
-    if (creep.pos.isEqualTo(container.pos)) return false;
-    creep.travelTo(container.pos);
-    return true;
-  }
-  // No container to stand on: bunch up against the controller so the pack isn't strung out along range 3.
-  if (!creep.pos.inRangeTo(controllerPos, 1)) {
-    creep.travelTo(controllerPos, { range: 1 });
-    return true;
-  }
-  return false;
-}
+// function drawCloserToController(creep: Creep, controllerPos: RoomPosition): boolean {
+//   const container = controllerPos
+//     .findInRange(FIND_STRUCTURES, CONTROLLER_CONTAINER_RANGE, { filter: s => s.structureType === STRUCTURE_CONTAINER })[0] as
+//     | StructureContainer
+//     | undefined;
+//
+//   if (container && isFreeForCreep(container.pos, creep)) {
+//     if (creep.pos.isEqualTo(container.pos)) return false;
+//     creep.travelTo(container.pos);
+//     return true;
+//   }
+//   // No container to stand on: bunch up against the controller so the pack isn't strung out along range 3.
+//   if (!creep.pos.inRangeTo(controllerPos, 1)) {
+//     creep.travelTo(controllerPos, { range: 1 });
+//     return true;
+//   }
+//   return false;
+// }
 
 // A tile is free for this creep if nothing else is standing there — a creep already on it (this one
 // included) never blocks itself from staying put.

@@ -8,6 +8,11 @@
 // (created once by `screeps.js init`), so resetting means restoring THAT
 // file, not deleting db.json outright.
 //
+// If server/seed-expanded.json exists (captured via `npm run reseed:server`
+// after growing the map with scripts/expand-map.mjs), it is used instead of
+// the launcher's stock seed — otherwise every reset would shrink the map
+// back down to the launcher's default 11x11 room grid.
+//
 // Leaves server/.screepsrc, assets, mods.json, and node_modules untouched —
 // no re-init needed. You will need to re-register your account in the Steam
 // client afterward, since the old account went with the reset db.
@@ -22,7 +27,8 @@ import process from "node:process";
 const SERVER_DIR = path.join(process.cwd(), "server");
 const DB_FILE = path.join(SERVER_DIR, "db.json");
 const LOGS_DIR = path.join(SERVER_DIR, "logs");
-const SEED_DB_FILE = path.join(
+const CUSTOM_SEED_FILE = path.join(SERVER_DIR, "seed-expanded.json");
+const STOCK_SEED_FILE = path.join(
   process.cwd(),
   "node_modules",
   "@screeps",
@@ -36,13 +42,20 @@ if (!existsSync(SERVER_DIR)) {
   process.exit(1);
 }
 
+const useCustomSeed = existsSync(CUSTOM_SEED_FILE);
+const SEED_DB_FILE = useCustomSeed ? CUSTOM_SEED_FILE : STOCK_SEED_FILE;
+
 if (!existsSync(SEED_DB_FILE)) {
   console.error(`Cannot find seed db at ${SEED_DB_FILE} — is @screeps/launcher installed?`);
   process.exit(1);
 }
 
 copyFileSync(SEED_DB_FILE, DB_FILE);
-console.log("Reset server/db.json to the launcher's fresh-world seed");
+console.log(
+  useCustomSeed
+    ? "Reset server/db.json to the custom seed (server/seed-expanded.json)"
+    : "Reset server/db.json to the launcher's fresh-world seed"
+);
 
 if (existsSync(LOGS_DIR)) {
   rmSync(LOGS_DIR, { recursive: true, force: true });
