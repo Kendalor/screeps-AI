@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { pickRemotes as pickRemotesRaw } from "../../../src/mining/pickRemotes";
 import { scoutTarget, scouted } from "../../fixtures";
 
@@ -390,5 +390,25 @@ describe("pickRemotes", () => {
     const ids = selected.flatMap(r => r.sources.map(s => s.id));
     for (const id of alreadyHave) expect(ids).toContain(id);
     expect(ids).toHaveLength(6); // at the overall cap already: no room for "s0" this call
+  });
+
+  // Memory.debugDisableRemoteMining — an empire-wide kill switch (see its doc in memory/schema.ts) so a
+  // scenario can isolate a colony's spawn economics from a competing remote-mining fleet.
+  describe("Memory.debugDisableRemoteMining", () => {
+    afterEach(() => {
+      (globalThis as { Memory?: unknown }).Memory = undefined;
+    });
+
+    it("selects nothing at all while the flag is set, even with an otherwise-perfect candidate", () => {
+      (globalThis as { Memory?: { debugDisableRemoteMining?: boolean } }).Memory = { debugDisableRemoteMining: true };
+      const candidates = [scoutTarget("W2N1", scouted({ sources: [{ id: "s" as Id<Source>, x: 25, y: 25 }] }))];
+      expect(pickRemotes({ candidates, home: homeState(), currentlySelected: [] })).toEqual([]);
+    });
+
+    it("selects normally when the flag is absent", () => {
+      (globalThis as { Memory?: { debugDisableRemoteMining?: boolean } }).Memory = {};
+      const candidates = [scoutTarget("W2N1", scouted({ sources: [{ id: "s" as Id<Source>, x: 25, y: 25 }] }))];
+      expect(pickRemotes({ candidates, home: homeState(), currentlySelected: [] })).toHaveLength(1);
+    });
   });
 });

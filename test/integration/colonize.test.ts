@@ -7,13 +7,28 @@
 // spawn built, and the new room showing up as a real, owned colony.
 //
 // Why seeded, not cold: the point is to observe the colonize pipeline, not re-measure the RCL climb
-// (see rcl3.test.ts) or scouting (see scouting.test.ts). RCL3 (not RCL2) so the sponsor can actually
-// afford a colonizer (650) and a settler alongside its own normal spawn demand.
+// (see rcl3.test.ts) or scouting (see scouting.test.ts). RCL3, same as remote-mining.test.ts/
+// scouting.test.ts — RCL5 was tried and made things WORSE: seedColony's plannedWorkforce polls every
+// operation's demand against a snapshot with empty energy/no live creeps yet, and a bigger RCL5
+// structure set (30 extensions vs RCL3's 10) just means proportionally MORE workforce needed to claw
+// back from that same cold-start gap (seedColony's own header says outright it seeds a cold-start shape,
+// not a steady-state economy). Directly measured: RCL5 produced 0 spawns in a 500-tick window vs RCL3's
+// 3-4. Instead, EXTRA_WORKFORCE below tops up seedColony's naturally-thin RCL3 roster with additional
+// miners/transport/upgraders so the sponsor starts genuinely steady-state rather than organically
+// ramping up over thousands of ticks.
 //
 // Terrain: scoutableTerrain() (shared with scouting.test.ts/remote-mining.test.ts) opens W0N1's borders
 // exactly where the stub neighbours W0N2 and W1N1 have their facing exits, so a colonizer/settler can
 // actually walk there. W1N1 is the target, not W0N2, for the same roomType() reason remote-mining.test.ts
 // documents: every room with x=0 or y=0 in stubWorld's 9-room block is a highway (no controller to claim).
+//
+// Remote mining is disabled (Memory.debugDisableRemoteMining — see its doc in memory/schema.ts): those
+// same open borders make W0N2/W1N1 legitimate scout/remote-mining candidates too, and an RCL3 sponsor's
+// real steady-state economy (measured directly: spawn+extension energy oscillates in the low hundreds
+// out of 800 capacity, well below what's needed to comfortably fund BOTH a normal remote-mining fleet
+// and colonize's own colonizer+settler) can't sustain both at once within a reasonable tick budget —
+// confirmed live: without this flag the settler request starved indefinitely behind remote-mining
+// demand. Colonize's own economics are what this test measures, not remote mining's.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { BootedColony, bundleBot, CheckpointLadder, scoutableTerrain } from "./harness";
@@ -37,12 +52,16 @@ beforeAll(async () => {
   await colony.runTicks(TICKS_TO_ANCHOR);
   expect(await colony.anchor(), "the bot never cached a bunker anchor — nothing downstream runs").not.toBeNull();
 
-  // A finished RCL3 base: structures, workforce and energy all from the bot's own planners — enough
-  // spare capacity to afford a colonizer (650) and settlers on top of its own normal spawn demand.
-  const seeded = await seedColony(colony, { level: 3 });
+  // A finished RCL5 base: structures, workforce and energy all from the bot's own planners — a real
+  // economy (30 extensions, storage, links) with enough sustained throughput to afford a colonizer (650)
+  // and repeated settler replenishment on top of its own normal spawn demand.
+  const seeded = await seedColony(colony, { level: 5 });
   expect(seeded.creeps.length, "no workforce was seeded — the colony would cold-start instead").toBeGreaterThan(0);
   expect(seeded.energy, "the seeded colony started with no energy — it would recover rather than run").toBeGreaterThan(0);
 
+  await colony.patchMemory(mem => {
+    (mem as { debugDisableRemoteMining?: boolean }).debugDisableRemoteMining = true;
+  });
   await colony.placeFlag(`colonize:${TARGET}`, HOME, 25, 25);
 }, 180_000);
 

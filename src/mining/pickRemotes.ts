@@ -83,6 +83,11 @@ interface Candidate {
 }
 
 export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
+  // Empire-wide kill switch (Memory.debugDisableRemoteMining) — see its doc in memory/schema.ts. Lets a
+  // scenario isolate a colony's spawn economics from a competing remote-mining fleet without faking
+  // scout data/terrain to avoid it being discovered.
+  if (typeof Memory !== "undefined" && Memory.debugDisableRemoteMining) return [];
+
   const { home } = input;
 
   // Gate 2 (affordability) and gate 3 (spawn capacity) are room-wide: if either fails, attempt nothing.

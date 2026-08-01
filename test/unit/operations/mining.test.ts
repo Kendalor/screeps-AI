@@ -662,7 +662,7 @@ describe("Mining.structures — remote sources", () => {
     expect(mining.structures(snap)).toEqual([]);
   });
 
-  it("claims nothing for a remote room without vision this tick, even with a cached route", () => {
+  it("claims a route's road tiles but not its container when the remote room has no vision this tick", () => {
     const source = remoteSourceAt(2, 10, "W2N1", { route });
     const snap = colonySnap({
       anchor,
@@ -673,7 +673,14 @@ describe("Mining.structures — remote sources", () => {
       remoteStructures: {} // W2N1 absent: no vision this tick
     });
 
-    expect(mining.structures(snap)).toEqual([]);
+    // Losing vision of the remote room (e.g. an invader killing the creep standing there) must not drop
+    // the home-room leg of the route — that leg is always visible and doesn't need remote vision at all.
+    // Dropping it made building.ts read an already-built home-room road as stale and demolish it, only to
+    // have it re-claimed (and re-sited) the moment vision returned.
+    const claims = mining.structures(snap);
+    expect(claims).toContainEqual({ x: 11, y: 10, room: "W1N1", type: "road", sourceId: source.id });
+    expect(claims).toContainEqual({ x: 2, y: 10, room: "W2N1", type: "road", sourceId: source.id });
+    expect(claims.some(c => c.type === "container")).toBe(false);
   });
 
   it("dedups remote claims by room, not just x/y, against an unrelated home-room claim at the same coordinates", () => {

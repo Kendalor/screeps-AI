@@ -29,6 +29,8 @@ export class Defender extends Role {
   // already in that room, same as repair's repairTargetRoom step — falls straight through to attack.
   static override readonly steps: Step[] = [
     { do: "moveToRoom", to: "defendTargetRoom" },
-    { do: "attack", from: { find: "hostile" } }
+    // mostThreatening: engage whatever can actually hurt us (ATTACK/RANGED_ATTACK) before a healer or an
+    // unarmed body, regardless of which happens to be nearer — see attackStep's kiting note above.
+    { do: "attack", from: { find: "hostile", prefer: "mostThreatening" } }
   ];
 }

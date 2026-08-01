@@ -218,16 +218,21 @@ export class Mining extends Operation {
 
     // Remote routes reuse the already-computed cross-room PathFinder path (see resolveRemoteRoom in
     // intents/execute.ts) instead of layouts/roads.ts's local-only cost matrix, which has no notion of
-    // leaving the room at all. Only claimed while the remote room actually has vision this tick — that's
-    // also exactly when we can tell what's already built there (colony.remoteStructures), so no separate
-    // "what already exists in a remote room" tracking is needed.
+    // leaving the room at all. The container claim needs to know what's already built at that tile
+    // (colony.remoteStructures), which only exists while the remote room actually has vision this tick —
+    // but the road tiles are claimed regardless of remote vision. A route's home-room leg in particular
+    // is always visible and never needs it; gating the WHOLE route (including that leg) on remote vision
+    // meant losing vision for one tick (e.g. an invader killing the only creep standing in the remote
+    // room) dropped the claim entirely, and building.ts's demolition then read the already-built home-room
+    // road as stale and tore it down, only to have it re-claimed (and re-sited) the moment vision returned.
     for (const source of colony.remoteSources) {
       const route = source.route;
       if (!route || route.length === 0) continue;
-      if (colony.remoteStructures[source.room] === undefined) continue;
 
       const container = route[route.length - 1];
-      claim({ x: container.x, y: container.y, room: container.room, type, sourceId: source.id });
+      if (colony.remoteStructures[source.room] !== undefined) {
+        claim({ x: container.x, y: container.y, room: container.room, type, sourceId: source.id });
+      }
       // Same source-outward ordering as the local route above. Exit tiles are skipped here (not just
       // at cache-computation time in remotePath.ts's toRouteTiles) so a route cached before that
       // exclusion existed still self-heals: Screeps refuses a construction site on an exit tile, and an

@@ -310,6 +310,17 @@ function fakeDrop(id: string, amount: number): object {
   return { id, pos: { x: 5, y: 5 }, amount };
 }
 
+// A hostile creep candidate for mostThreatening: `body` carries whichever active parts threatTier reads.
+function fakeHostile(id: string, body: BodyPartConstant[]): object {
+  return {
+    id,
+    pos: { x: 5, y: 5 },
+    body: body.map(type => ({ type, hits: 100 })),
+    my: false,
+    getActiveBodyparts: (part: BodyPartConstant) => body.filter(p => p === part).length
+  };
+}
+
 function collectorCreep(
   name: string,
   freeCapacity: number,
@@ -448,6 +459,49 @@ describe("resolveTarget prefer ordering", () => {
     });
 
     expect((got as { id: string }).id).toBe("wrecked");
+  });
+
+  it("prefer: mostThreatening picks the attacker over a nearer healer, so a defender doesn't kite the wrong hostile", () => {
+    // healer is first in the fixture (what nearest would pick, per findClosestByPath: list[0]) and closer;
+    // mostThreatening must skip it for the attacker despite that.
+    const healer = fakeHostile("healer", [HEAL]);
+    const attacker = fakeHostile("attacker", [RANGED_ATTACK]);
+    stubGame({ objects: { healer, attacker } });
+
+    const got = resolveTarget(collectorCreep("me", 200, [healer, attacker]), {
+      find: "hostile",
+      prefer: "mostThreatening"
+    });
+
+    expect((got as { id: string }).id).toBe("attacker");
+  });
+
+  it("prefer: mostThreatening picks a healer over an unarmed hostile when no attacker is present", () => {
+    const scout = fakeHostile("scout", []);
+    const healer = fakeHostile("healer", [HEAL]);
+    stubGame({ objects: { scout, healer } });
+
+    const got = resolveTarget(collectorCreep("me", 200, [scout, healer]), {
+      find: "hostile",
+      prefer: "mostThreatening"
+    });
+
+    expect((got as { id: string }).id).toBe("healer");
+  });
+
+  it("prefer: mostThreatening breaks ties between two attackers by nearest-by-path", () => {
+    // findClosestByPath here always returns list[0] — assert it's actually consulted (not just tier-filtered
+    // down to a single candidate) by putting the intended winner first.
+    const nearAttacker = fakeHostile("near", [ATTACK]);
+    const farAttacker = fakeHostile("far", [RANGED_ATTACK]);
+    stubGame({ objects: { nearAttacker, farAttacker } });
+
+    const got = resolveTarget(collectorCreep("me", 200, [nearAttacker, farAttacker]), {
+      find: "hostile",
+      prefer: "mostThreatening"
+    });
+
+    expect((got as { id: string }).id).toBe("near");
   });
 });
 

@@ -4,8 +4,8 @@ import type { RoleName } from "../memory/schema";
 // Sources ignore this and use their open harvest-tile count as the cap instead.
 export type Share = "allow" | "avoid" | number;
 
-// Selection strategy a step declares outright, no implicit fallback: "nearest" (default) is closest, "largest" ranks a drop pile by amount, "mostProgress" ranks a construction site closest to done, "mostDamaged" ranks a structure by lowest hits fraction (the repair counterpart of "mostProgress").
-export type Prefer = "nearest" | "largest" | "mostProgress" | "mostDamaged";
+// Selection strategy a step declares outright, no implicit fallback: "nearest" (default) is closest, "largest" ranks a drop pile by amount, "mostProgress" ranks a construction site closest to done, "mostDamaged" ranks a structure by lowest hits fraction (the repair counterpart of "mostProgress"), "mostThreatening" ranks a hostile creep by body composition (attacker > healer > unarmed), nearest as the tiebreaker.
+export type Prefer = "nearest" | "largest" | "mostProgress" | "mostDamaged" | "mostThreatening";
 
 export type TargetSpec =
   | {
@@ -43,7 +43,7 @@ export type TargetSpec =
   | { find: "constructionSite"; structureType?: StructureConstant; near?: "assignedSource" | "controller" | "notController"; share?: Share; prefer?: Prefer }
   | { find: "controller" }
   | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share; prefer?: Prefer } // friendly creep as source/sink, filtered by role
-  | { find: "hostile" } // enemy creep in the room, closest by path — a defender's attack target
+  | { find: "hostile"; prefer?: Prefer } // enemy creep in the room; defaults to "nearest" — a defender wants "mostThreatening" instead
   | { find: "id"; id: Id<_HasId> }
   // Groups several specs into one pool (e.g. every viable energy sink) so a step picks the nearest
   // across kinds in one shot instead of falling through a priority-ordered chain of single-kind steps.

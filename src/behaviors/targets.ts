@@ -296,7 +296,25 @@ function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomO
     const sorted = [...pool].sort((a, b) => damageFraction(a) - damageFraction(b));
     return sorted[0] ?? null;
   }
+  if (prefer === "mostThreatening") {
+    // Highest threat tier first; nearest-by-path breaks ties within a tier so a defender still engages
+    // the closer of two equally-armed hostiles.
+    const topTier = Math.max(...pool.map(threatTier));
+    const inTopTier = pool.filter(o => threatTier(o) === topTier);
+    return creep.pos.findClosestByPath(inTopTier) ?? inTopTier[0] ?? null;
+  }
   return creep.pos.findClosestByPath(pool) ?? pool[0] ?? null;
+}
+
+// Ranks a hostile by how much it can hurt the defender, highest first: an ATTACK/RANGED_ATTACK body is
+// the actual threat and must be engaged before anything else, a HEAL-only body is next (left alive it
+// undoes the defender's damage on its attacker), and an unarmed body (scout, claimer) is last — never
+// worth diverting fire from either. Ties within a tier (e.g. two attackers) fall through to nearest-by-path.
+function threatTier(o: RoomObject): number {
+  const c = o as unknown as Creep;
+  if (c.getActiveBodyparts(ATTACK) > 0 || c.getActiveBodyparts(RANGED_ATTACK) > 0) return 2;
+  if (c.getActiveBodyparts(HEAL) > 0) return 1;
+  return 0;
 }
 
 // Energy a candidate holds, across the two shapes a gather pool mixes: dropped Resources expose

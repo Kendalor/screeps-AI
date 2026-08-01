@@ -16,6 +16,12 @@ declare global {
     metrics: Record<string, ColonyMetricsMemory>; // cross-tick harvest-rate window; everything else in a report is derived fresh
     logLevel?: LogLevel; // set via the in-game console (commands/console.ts); absent means "error" only
     debugMetrics?: boolean; // set via the in-game console (commands/console.ts); toggles the right-aligned debug panel
+    // Disables pickRemotes selection empire-wide (mining/pickRemotes.ts) — set via the in-game console
+    // or (today) directly by an integration test's patchMemory, to isolate a scenario's spawn economics
+    // from a competing remote-mining fleet without faking scout data/terrain to avoid it being
+    // discovered. Absent/false means remote mining runs normally. A real per-colony configuration system
+    // is a nice-to-have for later; this single empire-wide flag is deliberately the minimal version.
+    debugDisableRemoteMining?: boolean;
   }
 
   interface CreepMemory {
