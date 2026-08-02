@@ -86,6 +86,41 @@ describe("Defense.intents", () => {
 
     expect(defense.intents(snap)).toEqual([]);
   });
+
+  it("holds fire on a border hostile it can't one-shot and that isn't threatening a building", () => {
+    // Range 40 (beyond TOWER_FALLOFF_RANGE) caps tower damage at its 150hp minimum, well under this
+    // hostile's health, so the shot wouldn't kill it.
+    const onBorder = { ...hostileAt(0, 25), hits: 1000, hitsMax: 1000 };
+    const snap = colonySnap({ towers: [towerAt(40, 25, "towerA")], hostiles: [onBorder] });
+
+    expect(defense.intents(snap)).toEqual([]);
+  });
+
+  it("still shoots a border hostile it can one-shot", () => {
+    const onBorder = { ...hostileAt(0, 10, "weak"), hits: 1 };
+    const snap = colonySnap({ towers: [towerAt(2, 10, "towerA")], hostiles: [onBorder] });
+
+    expect(defense.intents(snap)).toEqual([{ kind: "towerAttack", tower: "towerA", target: "weak" }]);
+  });
+
+  it("still shoots a border hostile standing next to a friendly building even without a kill shot", () => {
+    const onBorder = { ...hostileAt(0, 25), hits: 1000, hitsMax: 1000 };
+    const building = structureAt(0, 24, "extension");
+    const snap = colonySnap({
+      towers: [towerAt(40, 25, "towerA")],
+      hostiles: [onBorder],
+      structures: [building]
+    });
+
+    expect(defense.intents(snap)).toEqual([{ kind: "towerAttack", tower: "towerA", target: onBorder.id }]);
+  });
+
+  it("treats a non-border hostile as always worth shooting regardless of kill odds", () => {
+    const interior = hostileAt(25, 25);
+    const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], hostiles: [interior] });
+
+    expect(defense.intents(snap)).toEqual([{ kind: "towerAttack", tower: "towerA", target: interior.id }]);
+  });
 });
 
 describe("Defense.desiredCreeps", () => {

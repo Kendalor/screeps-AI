@@ -5,8 +5,9 @@ import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import { closest, range } from "../lib/geometry";
 import { needsRepair } from "../lib/repairable";
+import { isExitTile } from "../lib/remotePath";
 import { roomLinearDistance } from "../lib/roomName";
-import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
+import type { ColonySnapshot, SnapStructure, SnapUnit } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
@@ -78,7 +79,7 @@ export class Defense extends Operation {
         return [{ kind: "safeMode", room: colony.name }];
       }
       for (const tower of colony.towers) {
-        const target = closest(tower, colony.hostiles);
+        const target = closest(tower, colony.hostiles.filter(h => worthShooting(colony, tower, h)));
         if (target) out.push({ kind: "towerAttack", tower: tower.id, target: target.id });
       }
       return out;
@@ -96,6 +97,32 @@ export class Defense extends Operation {
     }
     return out;
   }
+}
+
+// Mirrors the game's TOWER_* constants (declared ambient-only in @types/screeps, with no runtime value
+// outside a live game tick) so this pure planner can compute damage without touching Game.*.
+const GAME_TOWER_OPTIMAL_RANGE = 5;
+const GAME_TOWER_FALLOFF_RANGE = 20;
+const GAME_TOWER_POWER_ATTACK = 600;
+const GAME_TOWER_FALLOFF = 0.75;
+
+// Screeps' tower damage formula: full power out to TOWER_OPTIMAL_RANGE, linear falloff to
+// TOWER_POWER_ATTACK * (1 - TOWER_FALLOFF) by TOWER_FALLOFF_RANGE, flat beyond that.
+function towerDamageAt(dist: number): number {
+  if (dist <= GAME_TOWER_OPTIMAL_RANGE) return GAME_TOWER_POWER_ATTACK;
+  if (dist >= GAME_TOWER_FALLOFF_RANGE) return GAME_TOWER_POWER_ATTACK * (1 - GAME_TOWER_FALLOFF);
+  const falloffFraction = (dist - GAME_TOWER_OPTIMAL_RANGE) / (GAME_TOWER_FALLOFF_RANGE - GAME_TOWER_OPTIMAL_RANGE);
+  return GAME_TOWER_POWER_ATTACK * (1 - GAME_TOWER_FALLOFF * falloffFraction);
+}
+
+// A hostile sitting on the room border can simply step out next tick, so shooting it is normally wasted
+// unless the shot actually kills it — or it's already in melee range of something worth defending, where
+// letting it live even one more tick risks real damage. Interior hostiles have no such escape and are
+// always worth shooting.
+function worthShooting(colony: ColonySnapshot, tower: { x: number; y: number }, hostile: SnapUnit): boolean {
+  if (!isExitTile(hostile)) return true;
+  if (towerDamageAt(range(tower, hostile)) >= hostile.hits) return true;
+  return colony.structures.some(s => s.id && range(s, hostile) <= 1);
 }
 
 function closestRepairable(from: { x: number; y: number }, structures: readonly SnapStructure[]): SnapStructure | undefined {
