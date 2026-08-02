@@ -1,15 +1,18 @@
 ---
-name: debug-live
-description: Debug the locally-running Screeps private server (pserver) — read Memory/stats/console output, send commands, check errors, control the profiler. Use whenever the user asks to check on, debug, or inspect the live/local Screeps server, or references "the live server", "pserver", or "the bot that's running".
+name: debug-local
+description: Debug the locally-running Screeps private server (pserver) — read Memory/stats/console output, send commands, check errors, control the profiler. Use whenever the user asks to check on, debug, or inspect the live/local Screeps server, or references "the local server", "pserver", or "the bot that's running" (not the real screeps.com World).
 ---
 
-# Debugging the live pserver
+# Debugging the local pserver
 
 This project runs a real local Screeps private server (`@screeps/launcher`, not the
 headless `screeps-server-mockup` used by tests/benchmarks) so the bot can be watched
 live in the Steam client. This skill is free to run autonomously — read-only checks
 (status, memory, console output) never need confirmation. Only ask first before
 anything destructive (see bottom).
+
+If the user means the real screeps.com World server instead, use `debug-main`, not
+this skill — the two are unrelated servers with separate credentials and APIs.
 
 ## Is it running?
 

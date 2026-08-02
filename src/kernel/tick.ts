@@ -6,12 +6,14 @@ import { empire, type Empire } from "../empire";
 import { runAttackFlags } from "../empire/attackFlags";
 import { runColonizeFlags } from "../empire/colonizeFlags";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
+import { runRemoteInvaderAttacks } from "../empire/remoteInvaderAttacks";
 import { execute } from "../intents/execute";
 import type { Intent } from "../intents/types";
 import { log } from "../lib/log";
 import { buildEmpireSnapshot } from "../snapshot/colony";
 import { cleanColonyMemory } from "./colonyMemory";
 import { cleanCreepMemory } from "./creepMemory";
+import { scanHostileActions } from "./hostileActions";
 import { stats } from "./stats";
 
 interface SystemBase {
@@ -86,6 +88,9 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   // Before the snapshot, so no system observes a half-cleaned Memory.
   cleanCreepMemory();
   cleanColonyMemory();
+  // Every tick, untiered: an event log is only readable the tick it happened, so this can't be skipped
+  // under CPU pressure the way a tier-3 SYSTEMS entry can (see hostileActions.ts's doc).
+  runGuarded("hostileActions", scanHostileActions);
   const snapshotStart = Game.cpu.getUsed();
   const world = injected ?? empire(buildEmpireSnapshot());
   stats.record("snapshot", Game.cpu.getUsed() - snapshotStart);
@@ -110,6 +115,9 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   runGuarded("colonizeFlags", () => runColonizeFlags(world));
   // Flag-triggered attack, same reasoning as colonizeFlags above — Attack isn't a default operation either.
   runGuarded("attackFlags", () => runAttackFlags(world));
+  // Automatic counterpart to attackFlags: launches an Attack at any selected remote reserved by the
+  // Invader NPC with its core still standing — see remoteInvaderAttacks.ts's header.
+  runGuarded("remoteInvaderAttacks", () => runRemoteInvaderAttacks(world));
   stats.record("total", Game.cpu.getUsed() - tickStart);
   stats.flush();
 }

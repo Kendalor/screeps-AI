@@ -39,6 +39,7 @@ export function refKey(ref: NodeRef | DeepReadonly<NodeRef>): string {
     case "structure":
     case "dropped":
     case "tombstone":
+    case "ruin":
     case "creep":
       return `${ref.kind}:${ref.id}`;
   }
@@ -289,7 +290,7 @@ function linkDelivers(delivers: readonly { ref: NodeRef; amount: number }[]): Lo
 }
 
 function isDecaying(ref: NodeRef): boolean {
-  return ref.kind === "dropped" || ref.kind === "tombstone";
+  return ref.kind === "dropped" || ref.kind === "tombstone" || ref.kind === "ruin";
 }
 
 function pickLargestDecayingProvider(providers: readonly Provider[], remaining: Map<string, number>): Provider | undefined {

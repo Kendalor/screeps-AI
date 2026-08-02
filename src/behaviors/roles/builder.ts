@@ -65,7 +65,7 @@ export class Builder extends Role {
     // Building assigns buildTargetRoom to wherever the colony's nearest outstanding site backlog is
     // (home or a remote room); a no-op once already there (moveToRoom completes instantly, falling
     // through to build the same tick). Absent target (no backlog anywhere) makes this step a pure no-op.
-    { do: "moveToRoom", to: "buildTargetRoom" },
+    { do: "moveToRoom", to: "buildTargetRoom", avoidDanger: true },
     { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
   ];
 }

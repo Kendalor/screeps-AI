@@ -47,6 +47,11 @@ export interface PickRemotesInput {
   // become unprofitable) can be evicted in favor of a better one. Structures/miners already built for an
   // evicted source are not touched here — that's a separate cleanup concern.
   reevaluate: boolean;
+  // Sources already claimed by any OTHER colony's Memory.remotes this tick — never selectable here,
+  // even on a reevaluate pass, so two colonies never converge on the same source. The caller (Mining's
+  // remoteSelection) computes this from the empire's other colonies; this colony's own current selection
+  // is handled separately via currentlySelected above, not folded into this set.
+  excludedSourceIds: ReadonlySet<Id<Source>>;
 }
 
 // Below this, energyCapacity can't build a miner worth sending (RCL2 with all extensions = 550).
@@ -107,7 +112,13 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
     if (cand.distance > MAX_REMOTE_HOPS) continue; // too far to ever be worth mining
     const info = cand.info;
     if (!info) continue; // unscouted — no source data to decide on
+    // Owned/reserved by another real player: never selectable, full stop — no threat detection or
+    // military capability exists yet to contest it. ScoutInfo.hostile already excludes the Invader NPC's
+    // own reservation (see execute.ts's observeRoom), which stays selectable-but-unstaffed instead (see
+    // Mining/Reservation's own reservedBy gate, and remoteInvaderAttacks.ts, which actively clears it).
+    if (info.hostile) continue;
     for (const src of info.sources) {
+      if (input.excludedSourceIds.has(src.id)) continue; // claimed by another colony this tick
       const cachedPath = src.paths?.[home.name];
       const distance =
         cachedPath !== undefined

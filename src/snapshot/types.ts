@@ -106,6 +106,10 @@ export interface SnapRemoteSource extends XY {
   openTiles: number; // walkable tiles adjacent — miner/collector share cap (same meaning as SnapSource)
   containerId?: Id<StructureContainer>; // its drop container once built (in the remote room)
   reserved: boolean; // is the room currently reserved by us (10/tick) or not (5/tick)
+  // Username currently holding the controller reservation, when it isn't us (e.g. "Invader" after a
+  // STRUCTURE_INVADER_CORE reserves it). Undefined when unreserved or reserved by us — never re-derive
+  // "is this foreign" elsewhere, this field is already filtered at the source (see remoteRoomVision).
+  reservedBy?: string;
   danger: number; // hostile presence in the room; > 0 means stop staffing/reserving
   // The cached home->source path (see RemoteSourceMemory.route), room-tagged tile by tile. Absent until
   // resolveRemoteRoom has computed it at least once (e.g. selected but no anchor yet). Mining turns this
@@ -124,14 +128,21 @@ export interface SnapDrop extends XY {
 // we have vision of that room (a miner is standing in it). Additive: these are *extra* Logistics
 // providers; home containers/drops are untouched. `decaying` marks a ground pile (rots) vs a container.
 export interface SnapRemoteEnergy {
-  id: Id<StructureContainer | Resource | Tombstone>;
+  id: Id<StructureContainer | Resource | Tombstone | Ruin>;
   room: string;
   amount: number;
-  kind: "container" | "dropped" | "tombstone";
+  kind: "container" | "dropped" | "tombstone" | "ruin";
 }
 
 export interface SnapTombstone extends XY {
   id: Id<Tombstone>;
+  storeEnergy: number;
+}
+
+// A destroyed structure's leftover energy — same decaying-pile treatment as a tombstone, just a
+// different game object (FIND_RUINS instead of FIND_TOMBSTONES).
+export interface SnapRuin extends XY {
+  id: Id<Ruin>;
   storeEnergy: number;
 }
 
@@ -156,6 +167,11 @@ export interface VisibleRoom {
   // not "clear". The one field Attack (operations/attack.ts) needs to tell "seen and clear" from "never
   // seen" or "seen and still hostile".
   hostileCount: number;
+  // A STRUCTURE_INVADER_CORE's own `level` this tick, when one is standing in the room — 0 for the
+  // plain remote-mining-room core (reserves the controller, easy to kill), 1-5 for a Stronghold's
+  // fortified core (deploys defenders, surrounded by ramparts — not a target we can clear yet).
+  // Undefined when no core is present. remoteInvaderAttacks.ts uses this to attack only level-0 cores.
+  invaderCoreLevel?: number;
 }
 
 // What mining last recorded for a source, so an operation can tell a real change from rewriting the same values.
@@ -199,6 +215,7 @@ export interface ColonySnapshot {
   remoteEnergy: SnapRemoteEnergy[]; // energy in remote rooms to haul home (the return-haul provider set); empty without remote vision
   drops: SnapDrop[]; // ground-level energy from drop mining
   tombstones: SnapTombstone[]; // energy left behind by a dead creep
+  ruins: SnapRuin[]; // energy left behind by a destroyed structure
   terrain: Uint8Array; // 1 = walkable, 0 = wall, indexed [x*50+y]
   controller: XY; // controller position, so operations can path to it (e.g. the upgrade container)
   controllerLevel: number;
@@ -229,6 +246,10 @@ export interface ColonySnapshot {
   // colony.remoteSources) to know when to emit recordRemoteDanger; the resolved 0/1 SnapRemoteSource.danger
   // isn't enough for that since it's already blended with the memory fallback.
   remoteDanger: Partial<Record<string, number | undefined>>;
+  // This tick's fresh reservation read for a remote room, keyed by room name — present only with live
+  // vision, same rule as remoteDanger above. Mining reads this (not SnapRemoteSource.reservedBy, which
+  // is already blended with the memory fallback) to know when to emit recordRemoteDanger's reservedBy.
+  remoteReservedBy: Partial<Record<string, string | undefined>>;
   // Every construction site this colony currently owns across its own rooms (this colony's home room
   // plus its selected remote rooms), read from Game.constructionSites — vision-independent, unlike
   // remoteSites above, since a site's existence is known to its owner regardless of current visibility.

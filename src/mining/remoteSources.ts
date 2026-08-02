@@ -10,9 +10,18 @@
 import type { RemoteMemory } from "../memory/schema";
 import type { SnapRemoteSource, SnapStructure } from "../snapshot/types";
 
+// The NPC username a STRUCTURE_INVADER_CORE reserves a controller under. Shared so every reservedBy/owner
+// comparison (observeRoom's `hostile`, pickRemotes' selection gate, remoteInvaderAttacks' target detection)
+// treats it the same way: a room the Invader NPC holds is not "owned/reserved by a player" for any of
+// those purposes, even though it's still not staffable (see SnapRemoteSource.reservedBy).
+export const INVADER_USERNAME = "Invader";
+
 // What live vision of a remote room contributes this tick. Absent for a room no creep is standing in.
 export interface RemoteRoomVision {
   reserved: boolean; // controller.reservation is us
+  // Username currently holding the controller reservation, when it isn't us (e.g. "Invader"). Undefined
+  // when unreserved or reserved by us — see `reserved` above for that case.
+  reservedBy?: string;
   danger: number; // hostile count in the room right now
   // Game.time until which the room's hostiles are expected to still be present — the max of their own
   // ticksToLive, so losing vision (e.g. the miner that saw them dies) doesn't reset danger to "safe"
@@ -53,6 +62,10 @@ export function buildRemoteSources(
         openTiles: live?.openTilesBySource[src.id] ?? DEFAULT_OPEN_TILES,
         containerId: live?.containerBySource[src.id] ?? src.containerId,
         reserved: live?.reserved ?? remote.reserved,
+        // Live vision wins when present; otherwise fall back to the persisted memory value. Unlike
+        // dangerUntil, a reservation doesn't decay on its own — no time-based expiry here, it only
+        // clears the next time the room is seen with no foreign reservation (see recordRemoteDanger).
+        reservedBy: live ? live.reservedBy : remote.reservedBy,
         danger,
         route: src.route
       });

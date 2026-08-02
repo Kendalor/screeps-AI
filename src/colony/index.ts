@@ -30,8 +30,15 @@ export class Colony {
   // working without threading the full list through everywhere; Empire always passes the real one.
   public constructor(public readonly snapshot: ColonySnapshot, allSnapshots: readonly ColonySnapshot[] = []) {
     const targetCapacity = new Map(allSnapshots.map(s => [s.name, s.energyCapacity]));
+    // Every OTHER colony's currently-selected remote source ids, so Mining's pickRemotes never converges
+    // two colonies onto the same source (see Mining's constructor doc). Read off remoteSources (the
+    // already-joined live view), not ColonyMemory.remotes directly, so this stays snapshot-pure like
+    // targetCapacity above — no second Memory read outside the snapshot boundary.
+    const siblingRemoteSourceIds = new Set(
+      allSnapshots.filter(s => s.name !== snapshot.name).flatMap(s => s.remoteSources.map(r => r.id))
+    );
     this.operations = [
-      ...operationsFor(snapshot.name),
+      ...operationsFor(snapshot.name, siblingRemoteSourceIds),
       // Colonize isn't in operationsFor() (no colony gets it by default — see operations/colonize.ts's
       // header); attached per listed target instead, straight from the durable ColonyMemory.colonizing
       // list (snapshot.colonizing) a flag/auto-pick handoff writes via addColonizeTarget — a plain memory

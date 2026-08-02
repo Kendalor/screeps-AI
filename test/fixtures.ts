@@ -18,6 +18,7 @@ import type {
   SnapSpawn,
   SnapStructure,
   SnapTombstone,
+  SnapRuin,
   SnapTower,
   SnapUnit,
   VisibleRoom
@@ -71,6 +72,10 @@ export function tombstoneAt(x: number, y: number, storeEnergy = 50, id = `tombst
   return { id: id as Id<Tombstone>, x, y, storeEnergy };
 }
 
+export function ruinAt(x: number, y: number, storeEnergy = 50, id = `ruin_${x}_${y}`): SnapRuin {
+  return { id: id as Id<Ruin>, x, y, storeEnergy };
+}
+
 export function empireSnap(...colonies: ColonySnapshot[]): EmpireSnapshot {
   return { tick: 0, colonies };
 }
@@ -117,6 +122,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     remoteEnergy: [],
     drops: [],
     tombstones: [],
+    ruins: [],
     terrain: openTerrain(),
     controller: { x: 25, y: 25 },
     controllerLevel: 1,
@@ -136,6 +142,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     remoteStructures: {},
     remoteSites: {},
     remoteDanger: {},
+    remoteReservedBy: {},
     siteSummary: [],
     constructionProgress: 0,
     remoteConstructionProgress: 0,
@@ -156,8 +163,8 @@ export function scoutTarget(room: string, info?: ScoutInfo, origin = "W1N1"): Sc
 // A room with ambient vision this tick — Scouting's passive-recording input. Only a name and what
 // was last observed; no distance/type, since passive recording doesn't care where the room sits.
 // hostileCount defaults to 0 (clear) — pass it explicitly for Attack tests that need a hostile room.
-export function visibleRoom(room: string, info?: ScoutInfo, hostileCount = 0): VisibleRoom {
-  return { room, info, hostileCount };
+export function visibleRoom(room: string, info?: ScoutInfo, hostileCount = 0, invaderCoreLevel?: number): VisibleRoom {
+  return { room, info, hostileCount, ...(invaderCoreLevel !== undefined ? { invaderCoreLevel } : {}) };
 }
 
 // A recorded observation, seen `tick` ticks ago (Game.time in tests defaults to 0, so pass an

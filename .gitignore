@@ -18,6 +18,9 @@
 # Screeps Config
 screeps.json
 
+# Secrets
+.env
+
 # ScreepsServer data from integration tests
 /server
 

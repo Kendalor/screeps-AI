@@ -5,6 +5,7 @@ import type { TaskState } from "../behaviors/types";
 import type { LogisticsTask } from "../logistics/types";
 import type { LogLevel } from "../lib/log";
 import type { XY } from "../lib/geometry";
+import type { Reputation } from "./reputation";
 
 declare global {
   interface Memory {
@@ -14,6 +15,10 @@ declare global {
     expansion: ExpansionMemory;
     stats: StatsMemory;
     metrics: Record<string, ColonyMetricsMemory>; // cross-tick harvest-rate window; everything else in a report is derived fresh
+    // Console-editable player reputation (Memory.playerReputation["Foo"] = "hostile"), also written
+    // automatically when we observe a player's creep attack us — see memory/reputation.ts's
+    // recordHostileAction. Absent entries default to "neutral" (reputationOf), never assumed hostile.
+    playerReputation?: Record<string, Reputation>;
     logLevel?: LogLevel; // set via the in-game console (commands/console.ts); absent means "error" only
     debugMetrics?: boolean; // set via the in-game console (commands/console.ts); toggles the right-aligned debug panel
     // Disables pickRemotes selection empire-wide (mining/pickRemotes.ts) — set via the in-game console
@@ -137,6 +142,12 @@ export interface RemoteMemory {
   // exactly as long as the invader that chased our vision away is expected to still be standing in it —
   // not forever, and not reset to "safe" the instant the creep that saw it dies. Absent/past means safe.
   dangerUntil?: number;
+  // Username currently holding the controller reservation, when it isn't us — e.g. "Invader" after a
+  // STRUCTURE_INVADER_CORE reserves it, or another player. Absent means unreserved OR reserved by us
+  // (see remoteRoomVision's `reserved` field for that case); never our own username. Unlike dangerUntil,
+  // a reservation doesn't decay on its own — this persists across vision loss until the room is next
+  // seen with no foreign reservation.
+  reservedBy?: string;
 }
 
 // A selected remote source and the facts about it that survive across ticks without vision. Live per-tick
@@ -190,8 +201,11 @@ export interface ScoutInfo {
   type: RoomType;
   sources: ScoutedSource[]; // the headline remote-mining input — id and position of each source
   mineral?: MineralConstant; // the room's mineral, if any (normal/keeper rooms)
-  owner?: string; // controller owner's username, if owned/reserved
-  hostile: boolean; // owned by someone other than us
+  owner?: string; // controller owner's/reserver's username, including the "Invader" NPC
+  // Owned or reserved by another real player (not us, not the Invader NPC) — see execute.ts's
+  // observeRoom for the exact derivation. An Invader-core reservation leaves this false: that's treated
+  // as temporary/contestable (remoteInvaderAttacks.ts), not a permanent avoid signal like a player claim.
+  hostile: boolean;
   // Best bunker anchor for this room, if one fits (see layouts/stamp.ts) — normal rooms with a
   // controller only. Computed once from terrain+controller+sources, which never change, and kept
   // forever after like `sources`/`mineral`. The headline input for expansion: a room with no anchor

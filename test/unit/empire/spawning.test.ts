@@ -123,8 +123,10 @@ describe("spawn arbiter — single colony", () => {
       arbitrate({
         creeps: snapCreeps("bootstrap", 1),
         spawns: [spawn()],
-        energyAvailable: 400,
-        energyCapacity: 800,
+        energyAvailable: 300,
+        // Below supply's 550 energyCapacity threshold on purpose: at/above that this room can already
+        // afford a real (non-runt) supply body, which would spawn here and defeat the point of the test.
+        energyCapacity: 500,
         sources: [sourceAt(20, 10)]
       })
     ).toEqual([]);

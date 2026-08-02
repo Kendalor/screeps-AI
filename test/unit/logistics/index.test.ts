@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { planLogistics } from "../../../src/logistics";
-import { colonySnap, containerAt, sinkAt, snapCreep } from "../../fixtures";
+import { colonySnap, containerAt, remoteEnergyAt, sinkAt, snapCreep } from "../../fixtures";
 
 describe("planLogistics", () => {
   it("assigns one idle transport creep given one provider and one consumer", () => {
@@ -140,5 +140,97 @@ describe("planLogistics", () => {
     );
 
     expect(plan.assignments[idle.id]).toBeUndefined();
+  });
+});
+
+// Supply is planned inside the same planLogistics pass as transport (see logistics/index.ts's header),
+// through graph.ts's restricted supplyProviders/supplyConsumers — never a separate, uncoordinated call
+// that could double-book a node either fleet reads off the same snapshot.
+describe("planLogistics — supply", () => {
+  it("assigns an idle supply creep from storage to a spawn/extension deficit", () => {
+    const storageId = "storage1" as Id<StructureStorage>;
+    const creep = snapCreep("supply", { storeEnergy: 0, storeCapacity: 100 });
+    const plan = planLogistics(
+      colonySnap({
+        creeps: [creep],
+        storageId,
+        storageEnergy: 5000,
+        storageCapacity: 10000,
+        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")],
+        energyAvailable: 200,
+        energyCapacity: 300
+      })
+    );
+
+    expect(plan.assignments[creep.id]).toMatchObject({ kind: "pickup", from: { kind: "structure", id: storageId } });
+  });
+
+  it("never sends a supply creep at a remote-room provider", () => {
+    const creep = snapCreep("supply", { storeEnergy: 0, storeCapacity: 100 });
+    const remote = remoteEnergyAt("W2N1", 500, "dropped");
+    const plan = planLogistics(
+      colonySnap({
+        creeps: [creep],
+        remoteEnergy: [remote],
+        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")],
+        energyAvailable: 200,
+        energyCapacity: 300
+      })
+    );
+
+    const task = plan.assignments[creep.id];
+    expect(task?.from).not.toEqual({ kind: "dropped", id: remote.id });
+  });
+
+  it("never delivers to the controller container, even below its fill floor", () => {
+    const container = containerAt(25, 26, 300); // within range 1 of the controller, below its 0.7 floor
+    const creep = snapCreep("supply", { storeEnergy: 50, storeCapacity: 100 });
+    const plan = planLogistics(
+      colonySnap({
+        creeps: [creep],
+        containers: [container],
+        controller: { x: 25, y: 25 },
+        energyAvailable: 300,
+        energyCapacity: 300
+      })
+    );
+
+    const task = plan.assignments[creep.id];
+    // Nothing supply is allowed to deliver to exists here (no spawn/tower deficit) — it must not fall
+    // back to the controller container the way transport would.
+    if (task) {
+      let deliver = task.kind === "deliver" ? task : task.next;
+      while (deliver && deliver.kind !== "deliver") deliver = deliver.next;
+      expect(deliver?.to).not.toEqual({ kind: "structure", id: container.id });
+    }
+  });
+
+  it("reserves a spawn sink supply just claimed so a transport creep is not sent at it too", () => {
+    const storageId = "storage1" as Id<StructureStorage>;
+    const supplyCreep = snapCreep("supply", { storeEnergy: 0, storeCapacity: 50 });
+    const transportCreep = snapCreep("transport", { storeEnergy: 0, storeCapacity: 50 });
+    const plan = planLogistics(
+      colonySnap({
+        creeps: [supplyCreep, transportCreep],
+        storageId,
+        storageEnergy: 5000,
+        storageCapacity: 10000,
+        // Exactly 50 wanted — enough for only one creep's trip.
+        spawnSinks: [sinkAt(20, 20, 50, 100, "spawn1")],
+        energyAvailable: 50,
+        energyCapacity: 100
+      })
+    );
+
+    const supplyTask = plan.assignments[supplyCreep.id];
+    const transportTask = plan.assignments[transportCreep.id];
+    expect(supplyTask).toBeDefined();
+    // transport must not also be sent at spawn1 — either it gets no task, or a task that doesn't
+    // deliver to the same, now-fully-reserved sink.
+    if (transportTask) {
+      let deliver = transportTask.kind === "deliver" ? transportTask : transportTask.next;
+      while (deliver && deliver.kind !== "deliver") deliver = deliver.next;
+      expect(deliver?.to).not.toEqual({ kind: "structure", id: "spawn1" });
+    }
   });
 });

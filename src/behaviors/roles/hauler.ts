@@ -43,7 +43,8 @@ export class Hauler extends Role {
         of: [
           { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController" },
           { find: "dropped" },
-          { find: "tombstone" }
+          { find: "tombstone" },
+          { find: "ruin" }
         ],
         prefer: "largest"
       }

@@ -17,10 +17,14 @@ function homeState(over: Partial<Parameters<typeof pickRemotesRaw>[0]["home"]> =
   };
 }
 
-// Defaults to today's append-only mode (reevaluate: false) so existing tests don't all need to spell it
-// out; tests exercising the periodic full re-rank pass `reevaluate: true` explicitly.
-function pickRemotes(input: Omit<Parameters<typeof pickRemotesRaw>[0], "reevaluate"> & { reevaluate?: boolean }) {
-  return pickRemotesRaw({ reevaluate: false, ...input });
+// Defaults to today's append-only mode (reevaluate: false) and no sibling-colony exclusions, so existing
+// tests don't all need to spell either out; tests exercising the periodic full re-rank pass
+// `reevaluate: true` explicitly, and the sibling-collision tests pass `excludedSourceIds` explicitly.
+function pickRemotes(
+  input: Omit<Parameters<typeof pickRemotesRaw>[0], "reevaluate" | "excludedSourceIds"> &
+    Partial<Pick<Parameters<typeof pickRemotesRaw>[0], "reevaluate" | "excludedSourceIds">>
+) {
+  return pickRemotesRaw({ reevaluate: false, excludedSourceIds: new Set(), ...input });
 }
 
 describe("pickRemotes", () => {
@@ -105,7 +109,7 @@ describe("pickRemotes", () => {
     );
     const alreadyHave = ["near", "mid", "far"] as Id<Source>[];
 
-    const reevaluated = pickRemotesRaw({
+    const reevaluated = pickRemotes({
       candidates: [packed],
       // spawnCapacity small enough that all 3 sources' combined load parts overshoot MAX_SPAWN_LOAD *
       // spawnCapacity, but near+mid together still fit. localLoadParts stays at homeState()'s default
@@ -139,7 +143,7 @@ describe("pickRemotes", () => {
     );
     const alreadyHave = ["near", "mid"] as Id<Source>[];
 
-    const reevaluated = pickRemotesRaw({
+    const reevaluated = pickRemotes({
       candidates: [packed],
       // near costs 23 load parts, mid also 23 (both round up to the same small hauler headcount at
       // these distances). Ceiling is 0.65*100=65; localLoadParts (35) eats most of it, leaving a budget
@@ -266,6 +270,41 @@ describe("pickRemotes", () => {
     expect(rooms).toEqual([]);
   });
 
+  it("excludes a room owned/reserved by another player, even if otherwise the nearest/cheapest", () => {
+    const hostileRoom = scoutTarget(
+      "W2N1",
+      scouted({ owner: "Enemy", hostile: true, sources: [{ id: "enemy_src" as Id<Source>, x: 25, y: 25 }] })
+    );
+    const rooms = pickRemotes({ candidates: [hostileRoom], home: homeState(), currentlySelected: [] });
+    expect(rooms).toEqual([]);
+  });
+
+  it("still allows a room reserved by the Invader NPC (not marked hostile) to be selected", () => {
+    // observeRoom (execute.ts) never sets `hostile` for an Invader-core reservation — that's treated as
+    // temporary/contestable, not a real-player claim (see remoteInvaderAttacks.ts). Selection stays open;
+    // Mining/Reservation's own reservedBy gate is what actually withholds staffing from it.
+    const invaderRoom = scoutTarget(
+      "W2N1",
+      scouted({ owner: "Invader", hostile: false, sources: [{ id: "invader_src" as Id<Source>, x: 25, y: 25 } ] })
+    );
+    const rooms = pickRemotes({ candidates: [invaderRoom], home: homeState(), currentlySelected: [] });
+    const ids = rooms.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("invader_src");
+  });
+
+  it("excludes a source already claimed by another colony this tick", () => {
+    const candidates = [
+      scoutTarget("W2N1", scouted({ sources: [{ id: "shared_src" as Id<Source>, x: 25, y: 25 }] }))
+    ];
+    const rooms = pickRemotes({
+      candidates,
+      home: homeState(),
+      currentlySelected: [],
+      excludedSourceIds: new Set(["shared_src" as Id<Source>])
+    });
+    expect(rooms).toEqual([]);
+  });
+
   it("prices and ranks by a candidate's cached real path distance instead of the tile-inset estimate", () => {
     // Two rooms at the same room-graph hop distance, so remoteDistanceEstimate would rank them purely by
     // tile inset (both sources sit at the same in-room position, so the estimate would tie them and fall
@@ -320,7 +359,7 @@ describe("pickRemotes", () => {
 
     // With reevaluate: everything competes on equal footing; "better"'s real distance of 1 beats every
     // "worse" source's real distance of 80, so it displaces the worst of them.
-    const reevaluated = pickRemotesRaw({
+    const reevaluated = pickRemotes({
       candidates: [packed, better],
       home: homeState(),
       currentlySelected: alreadyHave,
@@ -364,7 +403,7 @@ describe("pickRemotes", () => {
     // isolating the room-vs-room ordering question from unrelated body-sizing effects. spawnCapacity sized
     // (0.65 * 154 ≈ 100) so the budget covers exactly 2 sources' worth of load (86) but not 3 (129).
     const home = homeState({ energyCapacity: 1800, spawnLoad: 0, spawnCapacity: 154, localLoadParts: 0 });
-    const reevaluated = pickRemotesRaw({
+    const reevaluated = pickRemotes({
       candidates: [roomA, roomB],
       home,
       currentlySelected: alreadyHave,

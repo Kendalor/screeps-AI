@@ -324,6 +324,34 @@ describe("Mining.desiredCreeps — remote miners", () => {
     expect(remoteMinerRequests(snap)).toEqual([]);
   });
 
+  // Same age-out (not retreat) response as danger: a room reserved by someone else (e.g. an
+  // Invader-core reservation) stops new miner requests too, even with zero live hostile creeps.
+  it("skips a remote source whose room is reserved by someone else", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const reserved = remoteSourceAt(25, 25, "W2N1", { distance: 60, reservedBy: "Invader" });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [reserved],
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    expect(remoteMinerRequests(snap)).toEqual([]);
+  });
+
+  // Regression: reservedBy must never suppress requests for a room WE reserve — only a foreign
+  // reservation should pause staffing (see remoteSources.test.ts's join invariant).
+  it("still requests a remote miner for a room reserved by us", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const ours = remoteSourceAt(25, 25, "W2N1", { distance: 60, reserved: true, reservedBy: undefined });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [ours],
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    expect(remoteMinerRequests(snap).length).toBeGreaterThan(0);
+  });
+
   // A remote miner's body must be sized off its OWN room's reserved state, never the home room's
   // container/link/site state — that was the original bug (a shared bodyContext(colony) leaked the home
   // room's structures into every remote request).
@@ -880,7 +908,8 @@ describe("Mining.intents — remote danger recording", () => {
       kind: "recordRemoteDanger",
       room: "W1N1",
       remoteRoom: "W2N1",
-      dangerUntil: 5500
+      dangerUntil: 5500,
+      reservedBy: undefined
     });
   });
 
@@ -897,7 +926,27 @@ describe("Mining.intents — remote danger recording", () => {
       kind: "recordRemoteDanger",
       room: "W1N1",
       remoteRoom: "W2N1",
-      dangerUntil: undefined
+      dangerUntil: undefined,
+      reservedBy: undefined
+    });
+  });
+
+  it("emits this tick's fresh reservedBy read alongside dangerUntil", () => {
+    const source = remoteSourceAt(2, 10, "W2N1");
+    const snap = colonySnap({
+      sources: [],
+      controllerLevel: 3,
+      remoteSources: [source],
+      remoteDanger: { W2N1: undefined },
+      remoteReservedBy: { W2N1: "Invader" }
+    });
+
+    expect(mining.intents(snap)).toContainEqual({
+      kind: "recordRemoteDanger",
+      room: "W1N1",
+      remoteRoom: "W2N1",
+      dangerUntil: undefined,
+      reservedBy: "Invader"
     });
   });
 
@@ -949,6 +998,27 @@ describe("Mining.intents — remote selection", () => {
     expect(intent).toBeDefined();
     expect(intent.room).toBe("W1N1");
     expect(intent.remotes.map(r => r.room)).toContain("W2N1");
+  });
+
+  it("never selects a source another colony already claimed this tick", () => {
+    // Same shape as the "selecting a scouted profitable neighbour" case above, but this Mining instance
+    // is constructed with that exact source id in siblingRemoteSourceIds (as Colony's constructor would
+    // pass it, derived from another colony's own remoteSources — see colony/index.ts) — self-collision
+    // between two of our own colonies must never happen.
+    const guardedMining = new Mining("W1N1", new Set(["rs" as Id<Source>]));
+    const snap = colonySnap({
+      tick: 1000,
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      spawns: [spawn()],
+      scoutTargets: [scoutTarget("W2N1", scouted({ sources: [{ id: "rs" as Id<Source>, x: 25, y: 25 }] }))]
+    });
+
+    const intents = guardedMining
+      .intents(snap, 0)
+      .filter((i: Intent): i is Extract<Intent, { kind: "setRemotes" }> => i.kind === "setRemotes");
+    expect(intents).toEqual([]);
   });
 
   it("stays silent off the throttle tick", () => {

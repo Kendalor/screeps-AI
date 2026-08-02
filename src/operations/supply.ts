@@ -1,4 +1,8 @@
-// Supply owns keeping spawning structures full once storage exists: hauler in reverse, storage/container out to extensions and spawn.
+// Supply owns keeping spawning structures (spawn/extensions/towers) topped off. Headcount only — task
+// assignment is Logistics-owned (see logistics/index.ts's planLogistics, which plans supply creeps
+// through graph.ts's supplyProviders/supplyConsumers alongside transport in one coordinated pass) and
+// executed the same way transport is (behaviors/transport.ts's runTransport, diverted to in
+// empire/creeps.ts) — Supply itself carries no step table and emits no intents.
 
 import { orderBody } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
@@ -8,12 +12,13 @@ import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
 const config = {
-  rclForSecondSupply: 7 // one round trip starts falling behind once extensions spread out this far
+  rclForSecondSupply: 7, // one round trip starts falling behind once extensions spread out this far
+  minEnergyCapacity: 550 // RCL3's cap — the room can afford a real supply body well before storage exists
 } as const;
 
-// No storage, nothing to withdraw from — bootstrap's recovery creep covers the gap until then.
+// Bootstrap's recovery creep covers a fresh colony until the room can afford a real supply body.
 function wantedSupply(colony: ColonySnapshot): number {
-  if (colony.storageEnergy <= 0) return 0;
+  if (colony.energyCapacity < config.minEnergyCapacity) return 0;
   return colony.controllerLevel >= config.rclForSecondSupply ? 2 : 1;
 }
 

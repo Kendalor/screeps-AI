@@ -33,7 +33,7 @@ export class Claimer extends Role {
   }
   // Walk to the remote room (targetRoom set at spawn), then reserve its controller for life.
   static override readonly steps: Step[] = [
-    { do: "moveToRoom", to: "targetRoom" },
+    { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
     { do: "reserve" }
   ];
 }

@@ -64,7 +64,7 @@ export class Miner extends Role {
   static override readonly steps: Step[] = [
     // Remote miners walk to their source's room first (targetRoom set at spawn). A local miner has no
     // targetRoom, so this no-ops and the interpreter advances straight to harvesting.
-    { do: "moveToRoom", to: "targetRoom" },
+    { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
     { do: "repair", at: { find: "structure", type: [STRUCTURE_CONTAINER], where: "damaged", near: "assignedSource", repairBelow: 0.7 } },
     { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_CONTAINER, near: "assignedSource" } },
     { do: "harvest", from: { find: "source" } },

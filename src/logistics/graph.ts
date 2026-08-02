@@ -4,7 +4,7 @@
 // asked once, not reinvented here — same reasoning, snapshot-pure instead of live-object.
 
 import type { XY } from "../lib/geometry";
-import type { ColonySnapshot, SnapContainer, SnapCreep, SnapDrop, SnapTombstone, SnapTower } from "../snapshot/types";
+import type { ColonySnapshot, SnapContainer, SnapCreep, SnapDrop, SnapRuin, SnapTombstone, SnapTower } from "../snapshot/types";
 import type { NodeRef } from "./types";
 
 export interface Provider {
@@ -129,8 +129,21 @@ export function providers(colony: ColonySnapshot): Provider[] {
     });
   }
 
+  // A destroyed structure's leftover energy — same treatment as a tombstone, just a different source
+  // (a ruin instead of a dead creep). Also decays, so it gets the same urgency.
+  for (const r of colony.ruins) {
+    if (r.storeEnergy < DROP_WORTHWHILE_FLOOR) continue;
+    out.push({
+      ref: { kind: "ruin", id: r.id },
+      resource: RESOURCE_ENERGY,
+      available: r.storeEnergy,
+      urgency: 1,
+      pos: { x: r.x, y: r.y }
+    });
+  }
+
   // Remote energy waiting in remote rooms — the return-haul. Additive: these are *extra* providers on
-  // top of the home ones above, so the local transport economy is untouched. A ground pile/tombstone
+  // top of the home ones above, so the local transport economy is untouched. A ground pile/tombstone/ruin
   // decays (urgency 1); a remote container doesn't. Same worthwhile floor as a home drop, since a tiny
   // remote pile isn't worth a cross-room trip either.
   //
@@ -145,9 +158,11 @@ export function providers(colony: ColonySnapshot): Provider[] {
         ? { kind: "structure", id: r.id as Id<AnyStoreStructure> }
         : r.kind === "tombstone"
           ? { kind: "tombstone", id: r.id as Id<Tombstone> }
-          : { kind: "dropped", id: r.id as Id<Resource> };
+          : r.kind === "ruin"
+            ? { kind: "ruin", id: r.id as Id<Ruin> }
+            : { kind: "dropped", id: r.id as Id<Resource> };
     // A container sits on one specific source's drop spot — match it by containerId for the exact
-    // route length. A ground pile/tombstone isn't tied to one source, so fall back to any source
+    // route length. A ground pile/tombstone/ruin isn't tied to one source, so fall back to any source
     // already selected in that room (remoteEnergyFor only ever scans a room pickRemotes chose, so one
     // is always present once remoteEnergy itself is non-empty for that room).
     const bySource = colony.remoteSources.find(s => s.room === r.room && s.containerId === r.id);
@@ -184,6 +199,22 @@ export function providers(colony: ColonySnapshot): Provider[] {
 
 function isWorthwhileDrop(d: SnapDrop): boolean {
   return d.amount >= DROP_WORTHWHILE_FLOOR;
+}
+
+// Supply's own view of providers(): storage (when it has a deficit to cover — same gate as above) or
+// the nearest worthwhile local pile/container, but NEVER a remote-room source. Supply is a short-hop
+// spawn-topper, not a hauler — sending it cross-room to a remote container/drop would strand the spawn
+// system for the whole round trip a real hauler(transport) is already sized for. Filtering the shared
+// list (rather than a separate scan) keeps this in lockstep with providers()'s own worthwhile floors.
+export function supplyProviders(colony: ColonySnapshot): Provider[] {
+  return providers(colony).filter(p => !p.remote);
+}
+
+// Supply's own view of consumers(): spawn/extensions and towers only — never the controller container
+// or a builder/upgrader/storage sink. Those are transport's job; Supply exists solely to keep the
+// spawn system (and, since an empty tower is as bad as an empty spawn during an attack, towers) topped.
+export function supplyConsumers(colony: ColonySnapshot): Consumer[] {
+  return consumers(colony).filter(c => c.priority === PRIORITY.spawnSystem || c.priority === PRIORITY.tower);
 }
 
 /** Spawn/extensions as one aggregate node, plus the controller container while below its fill floor. */

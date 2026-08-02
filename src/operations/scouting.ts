@@ -38,6 +38,7 @@ export class Scouting extends Operation {
     const scouts = this.owned(colony, "scout");
     const recorded = new Set<string>();
     const out: Intent[] = [];
+    const assignments: { creep: Id<Creep>; candidates: string[] }[] = [];
     for (const scout of scouts) {
       if (this.shouldRecord(colony, scout)) {
         out.push({ kind: "recordScout", room: scout.room });
@@ -45,8 +46,11 @@ export class Scouting extends Operation {
       }
 
       const candidates = this.candidatesFor(colony, scout);
-      if (candidates.length > 0) out.push({ kind: "setScoutTarget", creep: scout.id, candidates });
+      if (candidates.length > 0) assignments.push({ creep: scout.id, candidates });
     }
+    // Bundled into one intent so execute.ts can match every idle scout against its pool jointly (see
+    // setScoutTargets' doc) instead of each one independently picking the same nearest room.
+    if (assignments.length > 0) out.push({ kind: "setScoutTargets", assignments });
 
     for (const visible of colony.visibleRooms) {
       if (recorded.has(visible.room)) continue; // already covered by the active pass above this tick
@@ -59,8 +63,12 @@ export class Scouting extends Operation {
 
     // Nothing left in range to survey — push the frontier out one ring (execute.ts caps at MAX_SCOUT_RANGE).
     // Home room excluded: it's never dispatch-worthy, so it must not block the frontier from advancing.
-    const nothingToDo =
-      scouts.length > 0 && !colony.scoutTargets.some(t => t.room !== colony.name && needsScouting(t, colony.tick));
+    // Deliberately independent of scouts.length: a frontier fully boxed in by fresh/blocked neighbours
+    // (e.g. every radius-1 room already surveyed, or filtered out by scoutCandidatesAround's status
+    // check) would otherwise never spawn a scout to trigger this in the first place, wedging the radius
+    // forever. needsScouting's "never seen" rule already makes this vacuously false before anything's
+    // been surveyed, so there's no need to gate on scout count to avoid a premature first advance.
+    const nothingToDo = !colony.scoutTargets.some(t => t.room !== colony.name && needsScouting(t, colony.tick));
     if (nothingToDo) out.push({ kind: "advanceScoutRadius" });
 
     return out;

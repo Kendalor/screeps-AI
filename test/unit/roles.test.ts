@@ -153,7 +153,7 @@ describe("builder role", () => {
         }
       },
       { do: "harvest", from: { find: "source" } },
-      { do: "moveToRoom", to: "buildTargetRoom" },
+      { do: "moveToRoom", to: "buildTargetRoom", avoidDanger: true },
       { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
     ]);
     // A hauler drained mid-run can't deliver its load to the spawn/extensions, so the builder must
@@ -278,7 +278,7 @@ describe("miner role", () => {
     expect(roleDef("miner")?.steps).toEqual([
       // Remote miners walk to their source's room first (targetRoom set at spawn); a local miner has no
       // targetRoom so this no-ops and the interpreter advances to harvesting.
-      { do: "moveToRoom", to: "targetRoom" },
+      { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
       // Repair its own source container once it drops below 70% hits; scoped to the assigned source so a
       // miner never repairs another source's container. Only fires when the miner carries energy.
       { do: "repair", at: { find: "structure", type: [STRUCTURE_CONTAINER], where: "damaged", near: "assignedSource", repairBelow: 0.7 } },
@@ -295,9 +295,9 @@ describe("hauler role", () => {
   it("collects until full, then delivers spawn/extensions first, controller container, storage, tower, and finally a consumer until empty", () => {
     expect(roleDef("hauler")).toBe(ROLES.hauler);
     expect(roleDef("hauler")?.steps).toEqual([
-      // Collect phase: one pooled gather over containers, drops and tombstones, ranked by largest
-      // load, until full (no when-gate — a gather step is complete only at free===0, so the loop
-      // stays here until the store is full).
+      // Collect phase: one pooled gather over containers, drops, tombstones and ruins, ranked by
+      // largest load, until full (no when-gate — a gather step is complete only at free===0, so the
+      // loop stays here until the store is full).
       {
         do: "gather",
         from: {
@@ -306,7 +306,8 @@ describe("hauler role", () => {
             // Source containers only (near: notController) — never the controller container it fills.
             { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController" },
             { find: "dropped" },
-            { find: "tombstone" }
+            { find: "tombstone" },
+            { find: "ruin" }
           ],
           prefer: "largest"
         }
@@ -329,17 +330,15 @@ describe("hauler role", () => {
   });
 });
 
-// Supply is the inverse of hauler: hauler moves energy from mining containers into
-// storage, supply moves it back out to what must stay full for spawning to work.
+// Supply is a Logistics-owned mover, same as transport: no static step table of its own — assignment
+// (storage or the nearest local pile in, spawn/extension/tower out, never a remote pickup) comes from
+// planLogistics via memory.logistics. See test/unit/logistics/ for the provider/consumer graph that
+// governs it (graph.ts's supplyProviders/supplyConsumers) and test/unit/roles.test.ts's own empty-steps
+// assertion below for why runCreepBehaviors diverts it before the step-table dispatch.
 describe("supply role", () => {
-  it("withdraws from storage, then fills extensions before the spawn", () => {
+  it("has no step table — assignment is Logistics-owned", () => {
     expect(roleDef("supply")).toBe(ROLES.supply);
-    expect(roleDef("supply")?.steps).toEqual([
-      { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_STORAGE], where: "hasEnergy" } },
-      { do: "withdraw", from: { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController" } }
-    ]);
+    expect(roleDef("supply")?.steps).toEqual([]);
   });
 
   it("is always a valid, affordable body with CARRY — it is the hauler job in reverse", () => {
@@ -361,7 +360,7 @@ describe("upgrader role", () => {
   it("gathers, then builds outstanding sites before upgrading — never from haulers", () => {
     expect(roleDef("upgrader")).toBe(ROLES.upgrader);
     expect(roleDef("upgrader")?.steps).toEqual([
-      // Container/storage/link/drop/tombstone pooled into one gather step: the nearest source wins.
+      // Container/storage/link/drop/tombstone/ruin pooled into one gather step: the nearest source wins.
       {
         do: "gather",
         from: {
@@ -369,7 +368,8 @@ describe("upgrader role", () => {
           of: [
             { find: "structure", type: [STRUCTURE_CONTAINER, STRUCTURE_STORAGE, STRUCTURE_LINK], where: "hasEnergy" },
             { find: "dropped", unlessSpawnNeedsEnergy: true },
-            { find: "tombstone" }
+            { find: "tombstone" },
+            { find: "ruin" }
           ],
           prefer: "nearest"
         }
@@ -418,7 +418,7 @@ describe("claimer role", () => {
   it("walks to its target room, then reserves the controller", () => {
     expect(roleDef("claimer")).toBe(ROLES.claimer);
     expect(roleDef("claimer")?.steps).toEqual([
-      { do: "moveToRoom", to: "targetRoom" },
+      { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
       { do: "reserve" }
     ]);
   });
@@ -457,7 +457,7 @@ describe("colonizer role", () => {
   it("walks to its target room, then claims the controller once", () => {
     expect(roleDef("colonizer")).toBe(ROLES.colonizer);
     expect(roleDef("colonizer")?.steps).toEqual([
-      { do: "moveToRoom", to: "targetRoom" },
+      { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
       { do: "claim", oneShot: true }
     ]);
   });
@@ -485,7 +485,7 @@ describe("settler role", () => {
     expect(roleDef("settler")).toBe(ROLES.settler);
     expect(roleDef("settler")?.steps).toEqual([
       { do: "renew", below: 500 },
-      { do: "moveToRoom", to: "targetRoom" },
+      { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
       { do: "pickup", from: { find: "dropped", prefer: "largest" } },
       { do: "harvest", from: { find: "source" } },
       { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_SPAWN } },

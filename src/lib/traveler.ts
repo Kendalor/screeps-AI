@@ -15,6 +15,13 @@ declare global {
         path?: string;
     }
 
+    // Returned by findTravelPath alongside the raw PathfinderReturn to record whether findRoute
+    // constrained the search to a real room-level route, or the search ran blind against the raw
+    // destination position with no room routing at all (see findTravelPath for when each happens).
+    interface TravelPathResult extends PathfinderReturn {
+        usedFindRoute: boolean;
+    }
+
     interface TravelToOptions {
         ignoreRoads?: boolean;
         ignoreCreeps?: boolean;
@@ -51,6 +58,8 @@ declare global {
         lastCoord: Coord & { roomName: string };
         destination: RoomPosition;
         cpu: number;
+        blindPath: boolean;
+        pendingRoomRepath: boolean;
     }
 
     interface Creep {
@@ -115,6 +124,28 @@ export class Traveler {
 
         const state = this.deserializeState(travelData, destination);
 
+        // The cached path was computed by a raw PathFinder.search with no room-level routing (short
+        // hops skip findRoute — see findTravelPath), so it's a blind guess through any room the creep
+        // didn't have vision of yet. Once the creep actually enters such a room, don't wait for the
+        // stuck-counter to notice the guess was wrong: repath immediately using the now-visible room.
+        // A path that WAS routed via findRoute is at least room-correct, so let the normal stuck logic
+        // handle any in-room deviation for those instead of discarding a perfectly fine route.
+        //
+        // The repath is deferred until the creep is OFF the exit tile (see below), so "just crossed"
+        // is latched into pendingRoomRepath rather than re-derived from lastCoord.roomName each tick —
+        // by the tick the creep is off the border, lastCoord already reads the new room too, so a
+        // same-tick comparison would never catch it. And the repath itself must not fire while still ON
+        // the exit tile: a path computed there can legitimately step back across the border (the real
+        // route curves along the edge), which would flip lastCoord.roomName back to the old room and
+        // look like "just crossed" all over again — old room, new room, old room, forever.
+        if (state.blindPath && travelData.path && state.lastCoord && creep.pos.roomName !== state.lastCoord.roomName) {
+            state.pendingRoomRepath = true;
+        }
+        if (state.pendingRoomRepath && travelData.path && !this.isExit(creep.pos)) {
+            delete travelData.path;
+            state.pendingRoomRepath = false;
+        }
+
         if (this.isStuck(creep, state)) {
             state.stuckCount++;
             Traveler.circle(creep.pos, "magenta", state.stuckCount * .2);
@@ -153,6 +184,7 @@ export class Traveler {
 
             const cpu = Game.cpu.getUsed();
             const ret = this.findTravelPath(creep.pos, destination, options);
+            state.blindPath = !ret.usedFindRoute;
 
             const cpuUsed = Game.cpu.getUsed() - cpu;
             state.cpu = Math.round(cpuUsed + state.cpu);
@@ -237,7 +269,7 @@ export class Traveler {
     }
 
     public static findTravelPath(origin: RoomPosition | HasPos, destination: RoomPosition | HasPos,
-                                 options: TravelToOptions = {}): PathfinderReturn {
+                                 options: TravelToOptions = {}): TravelPathResult {
 
         if (options.ignoreCreeps === undefined) { options.ignoreCreeps = true; }
         if (options.maxOps === undefined) { options.maxOps = DEFAULT_MAXOPS; }
@@ -254,9 +286,10 @@ export class Traveler {
 
         const roomDistance = Game.map.getRoomLinearDistance(origin.roomName, destination.roomName);
         let allowedRooms = options.route;
+        let usedFindRoute = false;
         if (!allowedRooms && (options.useFindRoute || (options.useFindRoute === undefined && roomDistance > 2))) {
             const route = this.findRoute(origin.roomName, destination.roomName, options);
-            if (route) { allowedRooms = route; }
+            if (route) { allowedRooms = route; usedFindRoute = true; }
         }
 
         const callback = (roomName: string): CostMatrix | boolean => {
@@ -304,7 +337,7 @@ export class Traveler {
             return matrix as CostMatrix;
         };
 
-        let ret = PathFinder.search(origin, { pos: destination, range: options.range! }, {
+        const ret = PathFinder.search(origin, { pos: destination, range: options.range! }, {
             maxOps: options.maxOps,
             maxRooms: options.maxRooms,
             plainCost: options.offRoad ? 1 : options.ignoreRoads ? 1 : 2,
@@ -321,14 +354,14 @@ export class Traveler {
                     console.log(`TRAVELER: path failed without findroute, trying with options.useFindRoute = true`);
                     console.log(`from: ${origin}, destination: ${destination}`);
                     options.useFindRoute = true;
-                    ret = this.findTravelPath(origin, destination, options);
-                    console.log(`TRAVELER: second attempt was ${ret.incomplete ? "not " : ""}successful`);
-                    return ret;
+                    const retryRet = this.findTravelPath(origin, destination, options);
+                    console.log(`TRAVELER: second attempt was ${retryRet.incomplete ? "not " : ""}successful`);
+                    return retryRet;
                 }
             }
         }
 
-        return ret;
+        return { ...ret, usedFindRoute };
     }
 
     public static findRoute(origin: string, destination: string,
@@ -517,16 +550,20 @@ export class Traveler {
             state.stuckCount = travelData.state[STATE_STUCK];
             state.destination = new RoomPosition(travelData.state[STATE_DEST_X], travelData.state[STATE_DEST_Y],
                 travelData.state[STATE_DEST_ROOMNAME]);
+            state.blindPath = !!travelData.state[STATE_BLIND_PATH];
+            state.pendingRoomRepath = !!travelData.state[STATE_PENDING_ROOM_REPATH];
         } else {
             state.cpu = 0;
             state.destination = destination;
+            state.blindPath = false;
+            state.pendingRoomRepath = false;
         }
         return state;
     }
 
     private static serializeState(creep: Creep, destination: RoomPosition, state: TravelState, travelData: TravelData) {
         travelData.state = [creep.pos.x, creep.pos.y, state.stuckCount, state.cpu, destination.x, destination.y,
-            destination.roomName, creep.pos.roomName];
+            destination.roomName, creep.pos.roomName, state.blindPath ? 1 : 0, state.pendingRoomRepath ? 1 : 0];
     }
 
     private static isStuck(creep: Creep, state: TravelState): boolean {
@@ -571,6 +608,8 @@ const STATE_DEST_X = 4;
 const STATE_DEST_Y = 5;
 const STATE_DEST_ROOMNAME = 6;
 const STATE_PREV_ROOMNAME = 7;
+const STATE_BLIND_PATH = 8;
+const STATE_PENDING_ROOM_REPATH = 9;
 
 Creep.prototype.travelTo = function (destination: RoomPosition | { pos: RoomPosition }, options?: TravelToOptions) {
     return Traveler.travelTo(this, destination, options);

@@ -2,6 +2,7 @@
 
 import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
 import { log } from "../lib/log";
+import { isDangerous } from "../memory/reputation";
 import { wrapFn } from "../lib/profiler";
 import { stepOffRoad } from "./roadAvoidance";
 import { resolveTarget } from "./targets";
@@ -168,12 +169,64 @@ export const runStep = wrapFn(function runStep(
 },
 "interpreter:runStep");
 
+// How many tiles around a source keeper lair / hostile creep to treat as dangerous. A keeper's lair
+// spawns a melee+ranged guardian that patrols its source; 5 clears a ranged attacker's kite range plus
+// a couple of tiles of margin. A live hostile creep gets the same radius since its own attack range is
+// unknown from scout vision alone (could be a ranged attacker just as easily as a healer).
+const DANGER_RADIUS = 5;
+const DANGER_COST = 20; // added on top of terrain cost, per tile within DANGER_RADIUS — enough to make a multi-tile detour cheaper than cutting through
+
+// Penalizes tiles near source keeper lairs and hostile-owned creeps so an unarmed traveller (a scout)
+// detours around them instead of pathing straight through a keeper's kill zone. A friendly/neutral
+// player's creep (isDangerous false) is left unpenalized — only reputation-flagged owners and NPC
+// keepers count as "danger" here (see memory/reputation.ts). Traveler's roomCallback fires for every room
+// PathFinder considers, vision or not — a room with no vision has nothing to penalize, so this is a no-op
+// there (the matrix is returned unchanged) rather than a special case.
+function dangerCostMatrix(room: Room | undefined, matrix: CostMatrix): CostMatrix {
+  if (!room) return matrix;
+  const dangers: RoomPosition[] = [
+    ...room.find(FIND_HOSTILE_CREEPS, { filter: c => isDangerous(c.owner.username) }).map(c => c.pos),
+    ...room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_KEEPER_LAIR }).map(s => s.pos)
+  ];
+  for (const pos of dangers) {
+    for (let x = pos.x - DANGER_RADIUS; x <= pos.x + DANGER_RADIUS; x++) {
+      for (let y = pos.y - DANGER_RADIUS; y <= pos.y + DANGER_RADIUS; y++) {
+        if (x < 0 || x > 49 || y < 0 || y > 49) continue;
+        const current = matrix.get(x, y);
+        if (current >= 0xff) continue; // already impassable; leave walls/structures alone
+        matrix.set(x, y, Math.min(0xfe, current + DANGER_COST));
+      }
+    }
+  }
+  return matrix;
+}
+
+// How much a reputation-flagged room's hops are inflated in Traveler's own findRoute (called internally
+// for a >2-room hop with no precomputed route — see traveler.ts's findTravelPath). Priced high rather
+// than Infinity (the user's call): a detour wins whenever one exists, but a creep with truly no other way
+// through still gets a route instead of failing outright. Mirrors DANGER_COST's "expensive, not
+// impassable" philosophy for the in-room nudge above, just at route-hop granularity instead of tile cost.
+const DANGEROUS_ROOM_HOPS = 50;
+
+// Prices a room high in Traveler's findRoute when its last-scouted owner is reputation-flagged
+// hostile/dangerous — steers multi-room travel around occupied territory instead of walking straight
+// through it. Origin/destination are never penalized (Traveler's own routeCallback already exempts them
+// via the same room-name check at its call site), and an unscouted room (no ScoutInfo yet) has no owner
+// on record, so it's never treated as dangerous by this alone. Returns the same neutral cost (1) Traveler's
+// own findRoute defaults to for every other room, not undefined — Traveler forwards options.routeCallback's
+// result as-is only when it returns something, but here there's always an opinion (dangerous or not).
+function dangerRouteCallback(roomName: string): number {
+  const owner = Memory.rooms?.[roomName]?.scouted?.owner;
+  return isDangerous(owner) ? DANGEROUS_ROOM_HOPS : 1;
+}
+
 // Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
 function moveToRoom(
   creep: Creep,
   step: {
     room?: string;
     to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" | "defendTargetRoom" | "attackTargetRoom";
+    avoidDanger?: boolean;
   }
 ): StepResult {
   const dest =
@@ -207,7 +260,11 @@ function moveToRoom(
   // Head for the next room's centre with a small range: Traveler's early-out compares global cross-room range, so a large range would stop the creep short of the border.
   const route = creep.memory.route;
   const nextRoom = route && route.dest === dest ? advanceRoute(route, creep.room.name) : dest;
-  creep.travelTo(new RoomPosition(25, 25, nextRoom), { range: 3 });
+  creep.travelTo(new RoomPosition(25, 25, nextRoom), {
+    range: 3,
+    roomCallback: step.avoidDanger ? (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix) : undefined,
+    routeCallback: step.avoidDanger ? dangerRouteCallback : undefined
+  });
   return { acted: true, didAct: false };
 }
 

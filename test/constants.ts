@@ -146,6 +146,7 @@ Object.assign(globalThis, {
   FIND_CONSTRUCTION_SITES: 111,
   FIND_MY_CONSTRUCTION_SITES: 114,
   FIND_TOMBSTONES: 118,
+  FIND_RUINS: 123,
 
   LOOK_CREEPS: "creep",
   LOOK_STRUCTURES: "structure",
@@ -176,6 +177,13 @@ Object.assign(globalThis, {
   STRUCTURE_INVADER_CORE: "invaderCore",
 
   MAX_CONSTRUCTION_SITES: 100,
+
+  EVENT_ATTACK: 1,
+  EVENT_OBJECT_DESTROYED: 2,
+  EVENT_ATTACK_CONTROLLER: 3,
+  EVENT_BUILD: 4,
+  EVENT_HARVEST: 5,
+  EVENT_HEAL: 6,
 
   // Ticks to spawn one body part, from screeps/common constants.
   CREEP_SPAWN_TIME: 3,

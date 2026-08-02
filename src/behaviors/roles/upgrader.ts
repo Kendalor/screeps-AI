@@ -55,7 +55,8 @@ export class Upgrader extends Role {
         of: [
           { find: "structure", type: [STRUCTURE_CONTAINER, STRUCTURE_STORAGE, STRUCTURE_LINK], where: "hasEnergy" },
           { find: "dropped", unlessSpawnNeedsEnergy: true },
-          { find: "tombstone" }
+          { find: "tombstone" },
+          { find: "ruin" }
         ],
         prefer: "nearest"
       }

@@ -1,6 +1,7 @@
 "use strict";
 
 import { readFileSync } from "node:fs";
+import "dotenv/config";
 import clear from "rollup-plugin-clear";
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
@@ -17,6 +18,12 @@ if (!dest) {
   console.log("No destination specified - code will be compiled but not uploaded");
 } else if ((cfg = JSON.parse(readFileSync("./screeps.json", "utf8"))[dest]) == null) {
   throw new Error("Invalid upload destination");
+} else if (cfg.token) {
+  // screeps.json may reference an env var as "${VAR_NAME}" to avoid committing secrets
+  cfg.token = cfg.token.replace(/^\$\{(\w+)\}$/, (match, name) => {
+    if (!process.env[name]) throw new Error(`screeps.json token references ${match} but ${name} is not set`);
+    return process.env[name];
+  });
 }
 
 // PROFILE=1 npm run push-pserver builds with src/lib/profiler.ts's wrapping compiled in; every other

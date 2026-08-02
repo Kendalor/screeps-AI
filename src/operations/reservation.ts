@@ -25,7 +25,10 @@ export class Reservation extends Operation {
 
     const out: CreepRequest[] = [];
     for (const [room, sources] of this.byRoom(colony.remoteSources)) {
-      if (sources.some(s => s.danger > 0)) continue; // a hostile room stops reserving (age-out, not retreat)
+      // A hostile room, or one already reserved by someone else, stops reserving (age-out, not retreat).
+      // reservedBy excludes our own reservation by construction (see remoteRoomVision) — a claimer we
+      // sent must not read as "someone else reserved this."
+      if (sources.some(s => s.danger > 0 || s.reservedBy !== undefined)) continue;
       if (!worthReserving(sources, ctx)) continue; // summed marginal 5/tick must beat one claimer's upkeep
       // One claimer per room: skip if this operation already has one aimed at this room.
       if (claimers.some(c => c.memory.targetRoom === room)) continue;

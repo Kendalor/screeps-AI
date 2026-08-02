@@ -20,10 +20,12 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(): void {
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
     if (creep.spawning) continue;
-    // Diverted before the step-table dispatch: "transport"'s ROLES entry deliberately has empty
-    // steps (assignment comes from planLogistics via memory.logistics, not a static step table), so
-    // falling into runOne would hit its `def.steps.length === 0` early-return and do nothing.
-    if (creep.memory.role === "transport") {
+    // Diverted before the step-table dispatch: "transport" and "supply"'s ROLES entries deliberately
+    // have empty steps (assignment comes from planLogistics via memory.logistics, not a static step
+    // table — supply is planned through its own restricted provider/consumer view, see
+    // logistics/graph.ts's supplyProviders/supplyConsumers), so falling into runOne would hit its
+    // `def.steps.length === 0` early-return and do nothing.
+    if (creep.memory.role === "transport" || creep.memory.role === "supply") {
       runTransport(creep);
       continue;
     }

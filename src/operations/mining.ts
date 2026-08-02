@@ -89,6 +89,17 @@ const workOf = (c: SnapCreep): number => countPart(c.body, WORK); // live WORK, 
 export class Mining extends Operation {
   public readonly kind = "mining";
 
+  public constructor(
+    room: string,
+    // Sources already claimed by any OTHER colony's Memory.remotes this tick — passed down from
+    // Colony's constructor (see colony/index.ts's allSnapshots), the one place an operation is allowed
+    // to receive precomputed cross-colony facts (Operation.intents' doc: methods never reach a sibling
+    // directly). Defaults to empty so single-Colony construction (tests, etc.) keeps working unchanged.
+    private readonly siblingRemoteSourceIds: ReadonlySet<Id<Source>> = new Set()
+  ) {
+    super(room);
+  }
+
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
     return this.minerRequests(colony);
   }
@@ -123,7 +134,10 @@ export class Mining extends Operation {
 
     const remote: CreepRequest[] = [];
     for (const source of colony.remoteSources) {
-      if (source.danger > 0) continue; // a hostile remote stops new miners; in-flight ones age out
+      // A hostile remote, or one reserved by someone else (e.g. an Invader-core reservation), stops new
+      // miners; in-flight ones age out. reservedBy is already filtered to exclude our own reservation
+      // (see remoteRoomVision) — never re-derive that check here.
+      if (source.danger > 0 || source.reservedBy !== undefined) continue;
       // bodyContext(colony) would answer with the HOME room's container/link/site state — meaningless
       // for a source that lives in a different room. Remote sizing keys off remote/reserved instead
       // (see minerBody): hasContainer/hasLink no longer drive body shape at all.
@@ -314,7 +328,8 @@ export class Mining extends Operation {
         kind: "recordRemoteDanger",
         room: colony.name,
         remoteRoom: source.room,
-        dangerUntil: colony.remoteDanger[source.room]
+        dangerUntil: colony.remoteDanger[source.room],
+        reservedBy: colony.remoteReservedBy[source.room]
       });
     }
     return out;
@@ -347,7 +362,8 @@ export class Mining extends Operation {
         ...this.spawnLoad(colony, colonyRequestParts)
       },
       currentlySelected: colony.remoteSources.map(s => s.id),
-      reevaluate
+      reevaluate,
+      excludedSourceIds: this.siblingRemoteSourceIds
     });
     if (remotes.length === 0) return undefined;
     return { kind: "setRemotes", room: colony.name, remotes };

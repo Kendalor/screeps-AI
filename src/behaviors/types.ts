@@ -37,6 +37,7 @@ export type TargetSpec =
   // competing with it for the exact energy the spawn system needs to produce replacements.
   | { find: "dropped"; share?: Share; prefer?: Prefer; unlessSpawnNeedsEnergy?: boolean }
   | { find: "tombstone"; share?: Share; prefer?: Prefer }
+  | { find: "ruin"; share?: Share; prefer?: Prefer }
   | { find: "source" }
   // structureType/near scope which sites qualify, mirroring the structure spec: a miner builds only the
   // CONTAINER site at its own source, not whatever construction site happens to be nearest.
@@ -88,6 +89,10 @@ export type Step = ({
         do: "moveToRoom";
         room?: string;
         to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" | "defendTargetRoom" | "attackTargetRoom";
+        // Steer wide of source keepers and hostile creeps while travelling (see moveToRoom's
+        // dangerCostMatrix). Only meaningful for a role with no means to fight back — a defender/attacker
+        // walking toward hostiles on purpose must never set this, or it'd path away from its own target.
+        avoidDanger?: boolean;
       } // static room, or a memory field name, to read the destination + memory.route from creep memory
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
   );

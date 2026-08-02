@@ -39,7 +39,7 @@ function parkNearBunker(creep: Creep): void {
 }
 
 // After a withdraw/pickup, has the source got nothing left of this resource to give? A dropped pile
-// exposes `.amount`; a store-bearing structure/tombstone exposes `.store`. Either at zero means this
+// exposes `.amount`; a store-bearing structure/tombstone/ruin exposes `.store`. Either at zero means this
 // pickup leg is spent and the creep should flow on to the next leg rather than retry an empty source.
 function providerEmpty(target: RoomObject, resource: ResourceConstant): boolean {
   const asDrop = target as { amount?: number };
@@ -72,6 +72,8 @@ function resolveNode(creep: Creep, ref: NodeRef): RoomObject | null {
     case "dropped":
       return Game.getObjectById(ref.id) as RoomObject | null;
     case "tombstone":
+      return Game.getObjectById(ref.id) as RoomObject | null;
+    case "ruin":
       return Game.getObjectById(ref.id) as RoomObject | null;
     case "creep":
       return Game.getObjectById(ref.id) as RoomObject | null;

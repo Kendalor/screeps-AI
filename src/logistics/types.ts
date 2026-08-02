@@ -10,6 +10,7 @@ export type NodeRef =
   | { kind: "spawnSystem" }
   | { kind: "dropped"; id: Id<Resource> }
   | { kind: "tombstone"; id: Id<Tombstone> }
+  | { kind: "ruin"; id: Id<Ruin> }
   | { kind: "creep"; id: Id<Creep> };
 
 export interface LogisticsTask {

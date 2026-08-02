@@ -61,7 +61,9 @@ export type Intent =
   // vision — execute.ts writes it onto ColonyMemory.remotes[].dangerUntil. Unlike recordRemoteContainer
   // this can move the value down (to undefined) as well as up: it's only ever emitted when vision exists,
   // so an all-clear read is just as much ground truth as a hostile one.
-  | { kind: "recordRemoteDanger"; room: string; remoteRoom: string; dangerUntil: number | undefined }
+  // `reservedBy`: same move-down-as-well-as-up rule as dangerUntil above — captured from the same vision
+  // read at the same call site, so both are always emitted (or not) together.
+  | { kind: "recordRemoteDanger"; room: string; remoteRoom: string; dangerUntil: number | undefined; reservedBy: string | undefined }
   // Planner decides a room is worth recording; execute.ts reads the live room to build the observation.
   // `passive`: recorded from ambient vision, not a scout's assigned survey — execute.ts skips re-finding
   // static data (sources/mineral) already on record, refreshing only tick/owner/hostile.
@@ -80,10 +82,13 @@ export type Intent =
   // colonizationPotential.ts's neighborhoodFullyScouted for why a partially-scouted neighborhood can't be
   // trusted yet.
   | { kind: "recordPotential"; room: string }
-  // Planner narrows to the viable candidate rooms (pure filter, no distance ranking); execute.ts picks
-  // the nearest by Game.map.findRoute (real room-graph hops from the scout's *current* room, since only
-  // it can reach Game.map) and writes the target + route into creep memory.
-  | { kind: "setScoutTarget"; creep: Id<Creep>; candidates: string[] }
+  // Planner narrows each idle scout to its own viable candidate rooms (pure filter, no distance
+  // ranking); bundled one intent per colony (not per scout) so execute.ts can assign all of them
+  // together via greedy nearest-pair matching over real Game.map.findRoute hop counts, instead of each
+  // scout picking its own nearest independently — the latter sends every idle scout to the same room
+  // whenever their pools overlap, since they all agree on which candidate is nearest. Writes target +
+  // route into creep memory per assigned scout.
+  | { kind: "setScoutTargets"; assignments: { creep: Id<Creep>; candidates: string[] }[] }
   // Emitted when the current scouting radius is fully surveyed; execute.ts owns the Memory write and cap.
   | { kind: "advanceScoutRadius" }
   // pickRemotes decides which remote rooms/sources to mine (throttled); execute.ts owns the

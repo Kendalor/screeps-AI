@@ -135,6 +135,17 @@ describe("Defense.desiredCreeps", () => {
     const snap = colonySnap({ hostiles: [], remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 0 })] });
     expect(defense.desiredCreeps(snap)).toEqual([]);
   });
+
+  // Reservation and hostile-creep danger are deliberately separate signals (see mining.ts/reservation.ts's
+  // reservedBy gate): a room reserved by the Invader NPC with no live hostile creeps has nothing for a
+  // combat creep to fight, so Defense must not spawn/dispatch a defender at it.
+  it("does not request a defender for a remote that's reserved but not dangerous", () => {
+    const snap = colonySnap({
+      hostiles: [],
+      remoteSources: [remoteSourceAt(10, 10, "W2N1", { danger: 0, reservedBy: "Invader" })]
+    });
+    expect(defense.desiredCreeps(snap)).toEqual([]);
+  });
 });
 
 describe("Defense remote dispatch (defendTargetRoom)", () => {

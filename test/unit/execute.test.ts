@@ -519,6 +519,26 @@ describe("actuator — scouting", () => {
     expect(mem.scouted).toMatchObject({ owner: "Enemy", hostile: true });
   });
 
+  it("does not mark a room hostile when it's only reserved by the Invader NPC", () => {
+    // A STRUCTURE_INVADER_CORE reservation must read as owner: "Invader" but hostile: false — remote
+    // selection (pickRemotes) treats that as temporary/contestable, not a real player's claim, and only
+    // ScoutInfo.hostile (not `owner` alone) is allowed to gate selection.
+    const room = stubScoutRoom("W1N2", {
+      controller: { pos: { x: 25, y: 25 }, my: false, reservation: { username: "Invader" } }
+    });
+    stubGame({ time: 10, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      getRoomTerrain: () => ({ get: () => 0 })
+    };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { owner?: string; hostile?: boolean } }> } })
+      .Memory.rooms.W1N2;
+    expect(mem.scouted).toMatchObject({ owner: "Invader", hostile: false });
+  });
+
   it("does nothing for a room the scout has no vision of", () => {
     stubGame({ rooms: {} });
     (globalThis as Record<string, unknown>).Memory = { rooms: {} };
@@ -667,7 +687,7 @@ describe("actuator — scouting", () => {
       findRoute: () => [{ room: "W1N2" }, { room: "W1N3" }]
     };
 
-    execute([{ kind: "setScoutTarget", creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }]);
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
 
     expect(creep.memory.scoutTarget).toBe("W1N3");
     expect(creep.memory.route).toEqual({ dest: "W1N3", rooms: ["W1N2", "W1N3"], index: 0 });
@@ -685,7 +705,9 @@ describe("actuator — scouting", () => {
     );
     (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
 
-    execute([{ kind: "setScoutTarget", creep: "scout1" as Id<Creep>, candidates: ["W1N2", "W1N3"] }]);
+    execute([
+      { kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N2", "W1N3"] }] }
+    ]);
 
     expect(creep.memory.scoutTarget).toBe("W1N3");
     expect(creep.memory.route).toEqual({ dest: "W1N3", rooms: ["W1N3"], index: 0 });
@@ -699,9 +721,62 @@ describe("actuator — scouting", () => {
       findRoute: () => [{ room: "X" }]
     };
 
-    execute([{ kind: "setScoutTarget", creep: "scout1" as Id<Creep>, candidates: ["W2N1", "W1N2"] }]);
+    execute([
+      { kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W2N1", "W1N2"] }] }
+    ]);
 
     expect(creep.memory.scoutTarget).toBe("W1N2");
+  });
+
+  // The actual bug this fixes: two idle scouts with overlapping candidate pools both independently
+  // agreeing "W1N2 is nearest" used to send them both there. Greedy matching must give the second scout
+  // its next-best option instead.
+  it("distributes two scouts across distinct candidates instead of sending both to the same nearest room", () => {
+    const creep1 = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    const creep2 = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ objects: { scout1: creep1, scout2: creep2 } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    const findRoute = vi.fn((_from: string, dest: string) => {
+      const hops: Record<string, number> = { W1N2: 1, W1N3: 2 };
+      return Array.from({ length: hops[dest] }, () => ({ room: dest }));
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+
+    execute([
+      {
+        kind: "setScoutTargets",
+        assignments: [
+          { creep: "scout1" as Id<Creep>, candidates: ["W1N2", "W1N3"] },
+          { creep: "scout2" as Id<Creep>, candidates: ["W1N2", "W1N3"] }
+        ]
+      }
+    ]);
+
+    const targets = [creep1.memory.scoutTarget, creep2.memory.scoutTarget].sort();
+    expect(targets).toEqual(["W1N2", "W1N3"]);
+  });
+
+  // Issue 3: a scout's own precomputed route (unlike Traveler's internal findRoute, which other roles
+  // rely on) must also steer around a reputation-flagged hostile/dangerous room's territory — see
+  // memory/reputation.ts and interpreter.ts's dangerRouteCallback for the same rule applied to Traveler.
+  it("prices a hostile-owned transit room high via findRoute's routeCallback", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { owner: "Griefer" } } },
+      playerReputation: { Griefer: "hostile" }
+    };
+    const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
+      expect(options.routeCallback("W1N2")).toBe(50);
+      expect(options.routeCallback("W1N9")).toBe(1);
+      return [{ room: "W1N9" }, { room: "W1N3" }];
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
+
+    expect(findRoute).toHaveBeenCalledWith("W1N1", "W1N3", { routeCallback: expect.any(Function) });
+    expect(creep.memory.scoutTarget).toBe("W1N3");
   });
 
   it("grows the scouting radius, capped, on advanceScoutRadius", () => {

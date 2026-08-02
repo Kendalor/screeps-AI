@@ -33,7 +33,7 @@ export class Repair extends Role {
   // the same tick). Absent target (no decay anywhere) makes this step a pure no-op, same as builder's
   // buildTargetRoom step.
   static override readonly steps: Step[] = [
-    { do: "moveToRoom", to: "repairTargetRoom" },
+    { do: "moveToRoom", to: "repairTargetRoom", avoidDanger: true },
     { do: "repair", at: { find: "structure", type: REPAIRABLE, where: "damaged", repairBelow: 0.5, prefer: "mostDamaged" } },
     { do: "repair", at: { find: "structure", type: REPAIRABLE, where: "damaged", prefer: "nearest" } },
     {
@@ -43,7 +43,8 @@ export class Repair extends Role {
         of: [
           { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
           { find: "dropped" },
-          { find: "tombstone" }
+          { find: "tombstone" },
+          { find: "ruin" }
         ],
         prefer: "nearest"
       }

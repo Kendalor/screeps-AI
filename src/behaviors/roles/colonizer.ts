@@ -44,7 +44,7 @@ export class Colonizer extends Role {
   // the room appears as a Colony next tick and this creep's job is done — nothing here demotes or
   // reassigns it (see the future Expansion operation for what happens to it after handoff).
   static override readonly steps: Step[] = [
-    { do: "moveToRoom", to: "targetRoom" },
+    { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
     { do: "claim", oneShot: true }
   ];
 }

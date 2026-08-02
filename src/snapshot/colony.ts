@@ -23,10 +23,14 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
   // Shared across colonies: every room with vision this tick, regardless of which colony (if any) owns it.
   const visibleRooms: VisibleRoom[] = Object.keys(Game.rooms).map(name => {
     const r = Game.rooms[name];
+    const invaderCore = r
+      .find(FIND_HOSTILE_STRUCTURES)
+      .find((s): s is StructureInvaderCore => s.structureType === STRUCTURE_INVADER_CORE);
     return {
       room: name,
       info: Memory.rooms?.[name]?.scouted,
-      hostileCount: r.find(FIND_HOSTILE_CREEPS).length + r.find(FIND_HOSTILE_STRUCTURES).length
+      hostileCount: r.find(FIND_HOSTILE_CREEPS).length + r.find(FIND_HOSTILE_STRUCTURES).length,
+      ...(invaderCore ? { invaderCoreLevel: invaderCore.level } : {})
     };
   });
 
@@ -68,11 +72,13 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
   const remoteStructures: Partial<Record<string, SnapStructure[]>> = {};
   const remoteSites: Partial<Record<string, SnapStructure[]>> = {};
   const remoteDanger: Partial<Record<string, number | undefined>> = {};
+  const remoteReservedBy: Partial<Record<string, string | undefined>> = {};
   for (const [roomName, live] of Object.entries(vision)) {
     if (!live) continue;
     remoteStructures[roomName] = live.structures;
     remoteSites[roomName] = live.sites;
     remoteDanger[roomName] = live.dangerUntil;
+    remoteReservedBy[roomName] = live.reservedBy;
   }
   // Vision-independent: an owned site exists regardless of whether we currently see the room it's in,
   // so the shared construction budget (colony/building.ts) can count a remote site even between the
@@ -124,6 +130,9 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     tombstones: room
       .find(FIND_TOMBSTONES)
       .map(t => ({ id: t.id, x: t.pos.x, y: t.pos.y, storeEnergy: t.store.getUsedCapacity(RESOURCE_ENERGY) })),
+    ruins: room
+      .find(FIND_RUINS)
+      .map(r => ({ id: r.id, x: r.pos.x, y: r.pos.y, storeEnergy: r.store.getUsedCapacity(RESOURCE_ENERGY) })),
     terrain: walkablePixelsForRoom(room.name),
     controller: { x: controller.pos.x, y: controller.pos.y },
     controllerLevel: controller.level,
@@ -167,6 +176,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     remoteStructures,
     remoteSites,
     remoteDanger,
+    remoteReservedBy,
     siteSummary,
     constructionProgress: ownSites
       .filter(s => s.pos.roomName === room.name)
@@ -217,8 +227,12 @@ function remoteRoomVision(
     const dangerUntil = hostiles.length === 0
       ? undefined
       : hostiles.reduce((latest, c) => Math.max(latest, Game.time + (c.ticksToLive ?? CREEP_LIFE_TIME)), 0);
+    // Who holds the reservation, when it isn't us — e.g. "Invader" after a STRUCTURE_INVADER_CORE
+    // reserves the controller. Never our own username; a reservation we placed reads via `reserved` above.
+    const reservedBy = reservation !== undefined && reservation.username !== me ? reservation.username : undefined;
     out[remote.room] = {
       reserved: reservation !== undefined && reservation.username === me,
+      reservedBy,
       danger: hostiles.length,
       dangerUntil,
       openTilesBySource,
@@ -234,8 +248,8 @@ function remoteRoomVision(
 }
 
 // Energy sitting in the selected remote rooms we currently have vision of, for Logistics to haul home:
-// each remote source's drop container (with energy), plus dropped piles and tombstones anywhere in the
-// room (a container-less remote miner drops on the ground). Empty without vision — the return-haul just
+// each remote source's drop container (with energy), plus dropped piles, tombstones, and ruins anywhere
+// in the room (a container-less remote miner drops on the ground). Empty without vision — the return-haul just
 // waits until a miner is standing there. The sole Game.* read for remote provider data.
 function remoteEnergyFor(remotes: readonly { room: string }[]): SnapRemoteEnergy[] {
   const out: SnapRemoteEnergy[] = [];
@@ -256,6 +270,10 @@ function remoteEnergyFor(remotes: readonly { room: string }[]): SnapRemoteEnergy
     for (const t of room.find(FIND_TOMBSTONES)) {
       const amount = t.store.getUsedCapacity(RESOURCE_ENERGY);
       if (amount > 0) out.push({ id: t.id, room: remote.room, amount, kind: "tombstone" });
+    }
+    for (const r of room.find(FIND_RUINS)) {
+      const amount = r.store.getUsedCapacity(RESOURCE_ENERGY);
+      if (amount > 0) out.push({ id: r.id, room: remote.room, amount, kind: "ruin" });
     }
   }
   return out;

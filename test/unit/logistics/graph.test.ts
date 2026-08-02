@@ -1,7 +1,7 @@
 // Pure fixture tests, no Game mocking — a hand-built ColonySnapshot in, Provider[]/Consumer[] out.
 
 import { describe, expect, it } from "vitest";
-import { consumers, providers, storageOverflow } from "../../../src/logistics/graph";
+import { consumers, providers, storageOverflow, supplyConsumers, supplyProviders } from "../../../src/logistics/graph";
 import { colonySnap, containerAt, dropAt, remoteEnergyAt, remoteSourceAt, sinkAt, snapCreep, structureAt, tombstoneAt, towerAt } from "../../fixtures";
 
 describe("providers", () => {
@@ -336,5 +336,63 @@ describe("storageOverflow", () => {
 
   it("returns null when storage is already full", () => {
     expect(storageOverflow(colonySnap({ storageId, storageEnergy: 10000, storageCapacity: 10000 }))).toBeNull();
+  });
+});
+
+// Supply's restricted view: storage/local piles in, spawn/extension/tower only out — never a remote
+// pickup or a controller-container/builder/upgrader/storage delivery, which stay transport's job alone.
+describe("supplyProviders", () => {
+  it("includes a local source container, same as the general provider list", () => {
+    const container = containerAt(10, 10, 300);
+    const result = supplyProviders(colonySnap({ containers: [container], controller: { x: 25, y: 25 } }));
+    expect(result).toContainEqual(expect.objectContaining({ ref: { kind: "structure", id: container.id }, available: 300 }));
+  });
+
+  it("includes storage while the spawn system is short, same gate as the general provider list", () => {
+    const storageId = "storage1" as Id<StructureStorage>;
+    const result = supplyProviders(
+      colonySnap({ storageId, storageEnergy: 5000, storageCapacity: 10000, energyAvailable: 30, energyCapacity: 50 })
+    );
+    expect(result).toContainEqual(expect.objectContaining({ ref: { kind: "structure", id: storageId } }));
+  });
+
+  it("excludes a remote-room provider even though it is worth a trip", () => {
+    const remote = remoteEnergyAt("W2N1", 200, "dropped");
+    const result = supplyProviders(colonySnap({ remoteEnergy: [remote] }));
+    expect(result.some(p => p.remote)).toBe(false);
+    expect(result).toEqual([]);
+  });
+});
+
+describe("supplyConsumers", () => {
+  it("includes a spawn/extension sink", () => {
+    const result = supplyConsumers(colonySnap({ spawnSinks: [sinkAt(10, 10, 20, 50, "ext1")] }));
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 100 });
+  });
+
+  it("includes a tower sink", () => {
+    const tower = towerAt(5, 5, "tower_5_5", 400);
+    const result = supplyConsumers(colonySnap({ towers: [tower] }));
+    expect(result).toContainEqual({ ref: { kind: "structure", id: tower.id }, resource: RESOURCE_ENERGY, wanted: 600, priority: 90 });
+  });
+
+  it("excludes the controller container even below its fill floor", () => {
+    const container = containerAt(25, 26, 300);
+    const result = supplyConsumers(colonySnap({ containers: [container], controller: { x: 25, y: 25 } }));
+    expect(result).toEqual([]);
+  });
+
+  it("excludes builder/upgrader direct sinks pre-storage", () => {
+    const builder = snapCreep("builder", { storeEnergy: 20, storeCapacity: 100 });
+    const result = supplyConsumers(colonySnap({ creeps: [builder] }));
+    expect(result.some(c => c.ref.kind === "creep")).toBe(false);
+  });
+
+  it("excludes storage as an overflow sink once the spawn system is full", () => {
+    const storageId = "storage1" as Id<StructureStorage>;
+    const result = supplyConsumers(
+      colonySnap({ storageId, storageEnergy: 4000, storageCapacity: 10000, energyAvailable: 50, energyCapacity: 50 })
+    );
+    expect(result.some(c => c.ref.kind === "structure" && c.ref.id === storageId)).toBe(false);
   });
 });

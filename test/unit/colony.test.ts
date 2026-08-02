@@ -11,7 +11,8 @@
 import { describe, expect, it } from "vitest";
 import { colony } from "../../src/colony";
 import { opName } from "../../src/spawn/request";
-import { colonySnap, testColony } from "../fixtures";
+import type { Intent } from "../../src/intents/types";
+import { colonySnap, remoteSourceAt, testColony } from "../fixtures";
 
 describe("Colony: colonize targets", () => {
   it("attaches no Colonize operation when colonizing is empty", () => {
@@ -75,6 +76,32 @@ describe("Colony: colonize target energy capacity threading", () => {
     const colonize = c.operations.find(op => op.kind === "colonize");
     const settlerRequests = colonize!.desiredCreeps(sponsor).filter(r => r.memory.role === "settler");
     expect(settlerRequests).toHaveLength(1);
+  });
+});
+
+// Colony's constructor also derives every OTHER colony's currently-selected remote source ids from
+// allSnapshots and threads them into Mining, so pickRemotes never lets two of our own colonies converge
+// on the same source (see colony/index.ts's siblingRemoteSourceIds and Mining's constructor doc).
+describe("Colony: cross-colony remote-source exclusion", () => {
+  it("excludes a source another colony in allSnapshots has already selected", () => {
+    const shared = remoteSourceAt(25, 25, "W2N1", { id: "shared" as Id<Source> });
+    const sponsor = colonySnap({
+      name: "W1N1",
+      tick: 1000, // Mining's remoteSelectionEvery throttle tick
+      anchor: { x: 25, y: 25 },
+      energyCapacity: 800,
+      scoutTargets: [
+        { room: "W2N1", distance: 1, type: "normal", info: { tick: 0, type: "normal", sources: [{ id: shared.id, x: 25, y: 25 }], hostile: false } }
+      ]
+    });
+    const sibling = colonySnap({ name: "W3N3", remoteSources: [shared] });
+
+    const c = colony(sponsor, [sponsor, sibling]);
+    const mining = c.operations.find(op => op.kind === "mining")!;
+    const setRemotes = mining
+      .intents(sponsor, 0)
+      .filter((i: Intent): i is Extract<Intent, { kind: "setRemotes" }> => i.kind === "setRemotes");
+    expect(setRemotes).toEqual([]);
   });
 });
 

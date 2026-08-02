@@ -177,6 +177,27 @@ describe("building planner", () => {
     expect(removals).toEqual([]);
   });
 
+  it("skips a wanted tile occupied by a hand-placed spawn instead of retrying the site forever", () => {
+    const anchor = { x: 25, y: 25 };
+    // A goal-planned extension tile occupied by a spawn placed by hand, off-layout — never demolished
+    // (a spawn can't be razed at this RCL/count), so the extension's site must simply be skipped rather
+    // than retried against an occupied tile every tick, and the budget slot it would have used stays free.
+    const wantedExt = allNonRoadStructuresAt(anchor, 2).find(s => s.type === "extension")!;
+    const blockerSpawn: SnapStructure = { x: wantedExt.x, y: wantedExt.y, type: "spawn" };
+
+    const snap = colony(colonySnap({ anchor, controllerLevel: 2, structures: [blockerSpawn], sites: [] }));
+
+    const intents = snap.building();
+    expect(
+      intents.some(i => i.kind === "removeStructure" && i.x === blockerSpawn.x && i.y === blockerSpawn.y)
+    ).toBe(false);
+    expect(
+      intents.some(
+        i => i.kind === "placeSite" && i.x === wantedExt.x && i.y === wantedExt.y && i.type === "extension"
+      )
+    ).toBe(false);
+  });
+
   it("clears a structure blocking a wanted tile in the same tick it places the replacement, not before", () => {
     const anchor = { x: 25, y: 25 };
     // A goal-planned extension tile occupied by the wrong type — nothing else built yet, so budget

@@ -7,6 +7,8 @@ import { remoteRouteTileKey, resolvePathToSource } from "../lib/remotePath";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import { neighborhoodFullyScouted, summarizePotential } from "../mining/colonizationPotential";
 import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
+import { INVADER_USERNAME } from "../mining/remoteSources";
+import { isDangerous } from "../memory/reputation";
 import { scoutCandidatesAround } from "../snapshot/scoutGraph";
 import type { RemoteMemory, RemoteSourceMemory, RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
@@ -183,17 +185,19 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       for (const tile of resolved.route) resolvedRouteTiles.add(remoteRouteTileKey(tile));
       return OK;
     }
-    case "setScoutTarget": {
-      const creep = Game.getObjectById(intent.creep);
-      if (!creep) return ERR_NOT_FOUND;
-      const target = nearestScoutCandidate(creep.room.name, intent.candidates);
-      if (!target) return ERR_NOT_FOUND;
-      // Recorded before overwriting scoutTarget so the next pick can avoid sending the scout straight
-      // back here â€” without it, two rooms mutually nearest each other ping-pong a scout forever.
-      creep.memory.lastRoom = creep.room.name;
-      creep.memory.scoutTarget = target;
-      creep.memory.route = routeTo(creep.room.name, target);
-      return OK;
+    case "setScoutTargets": {
+      let anyAssigned = false;
+      for (const { creep: id, target } of assignScoutTargets(intent.assignments)) {
+        const creep = Game.getObjectById(id);
+        if (!creep) continue;
+        anyAssigned = true;
+        // Recorded before overwriting scoutTarget so the next pick can avoid sending the scout straight
+        // back here â€” without it, two rooms mutually nearest each other ping-pong a scout forever.
+        creep.memory.lastRoom = creep.room.name;
+        creep.memory.scoutTarget = target;
+        creep.memory.route = routeTo(creep.room.name, target);
+      }
+      return anyAssigned ? OK : ERR_NOT_FOUND;
     }
     case "advanceScoutRadius": {
       const mem = (Memory.scouting ??= { radius: 1 });
@@ -214,7 +218,10 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
     case "recordRemoteDanger": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       const remote = mem.remotes.find(r => r.room === intent.remoteRoom);
-      if (remote) remote.dangerUntil = intent.dangerUntil;
+      if (remote) {
+        remote.dangerUntil = intent.dangerUntil;
+        remote.reservedBy = intent.reservedBy;
+      }
       return OK;
     }
     case "addColonizeTarget": {
@@ -304,10 +311,13 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
     ...(owner ? { owner } : {}),
     ...(anchor ? { anchor } : {}),
     ...(anchorChecked ? { anchorChecked } : {}),
-    // "owned by someone other than us" (see ScoutInfo.hostile's doc): a full claim we don't hold (c.my
-    // false) OR a reservation under a different username than ours â€” a room WE reserved must read as
-    // non-hostile, same as a room we own outright.
-    hostile: owner !== undefined && owner !== myUsername() && !c?.my
+    // "owned/reserved by another player" (see ScoutInfo.hostile's doc): a full claim we don't hold
+    // (c.my false) OR a reservation under a different username than ours â€” a room WE reserved must read
+    // as non-hostile, same as a room we own outright. The Invader NPC's own reservation (left by a
+    // STRUCTURE_INVADER_CORE) is deliberately excluded: remote-mining selection treats that as
+    // temporary/contestable (see remoteInvaderAttacks.ts), not the same permanent "avoid" signal a real
+    // player's claim is.
+    hostile: owner !== undefined && owner !== myUsername() && owner !== INVADER_USERNAME && !c?.my
   };
 }
 
@@ -361,29 +371,64 @@ function hasSourcesLeft(room: RemoteMemory): boolean {
   return room.sources.length > 0;
 }
 
-// Nearest of `candidates` from `from`, measured by Game.map.findRoute's real room-graph hop count â€”
-// never a Chebyshev/linear-distance estimate, which misprices a diagonal room as adjacent when the map
-// only actually connects a room to its N/S/E/W neighbours. Ties (and rooms findRoute can't reach) break
-// by name, for determinism across scouts/ticks.
-function nearestScoutCandidate(from: string, candidates: readonly string[]): string | undefined {
-  let best: string | undefined;
-  let bestHops = Infinity;
-  for (const room of candidates) {
-    const route = Game.map.findRoute(from, room);
-    const hops = route === ERR_NO_PATH ? Infinity : route.length;
-    if (hops < bestHops || (hops === bestHops && best !== undefined && room.localeCompare(best) < 0)) {
-      best = room;
-      bestHops = hops;
+// Assigns every idle scout in `assignments` to one of its own candidate rooms, via greedy nearest-pair
+// matching over Game.map.findRoute's real room-graph hop count (never a Chebyshev/linear-distance
+// estimate â€” see scoutGraph.ts's doc on why that misprices diagonal rooms). Each scout independently
+// picking its own nearest candidate (the old behaviour) sends every idle scout to the same room whenever
+// their pools overlap, since they all agree on which one is nearest â€” greedy matching fixes that by
+// removing both the scout and the room from contention as soon as either is claimed, so a second scout
+// whose true nearest room is already taken falls through to its next-best option instead of piling on.
+//
+// Cost: one findRoute call per (scout, candidate) pair considered, same order of magnitude as before
+// (the old code already called findRoute once per candidate per scout) â€” just computed as one batch
+// instead of once per scout independently.
+function assignScoutTargets(
+  assignments: readonly { creep: Id<Creep>; candidates: string[] }[]
+): { creep: Id<Creep>; target: string }[] {
+  type Pair = { creep: Id<Creep>; room: string; hops: number };
+  const pairs: Pair[] = [];
+  for (const { creep: id, candidates } of assignments) {
+    const creep = Game.getObjectById(id);
+    if (!creep) continue;
+    for (const room of candidates) {
+      const route = Game.map.findRoute(creep.room.name, room, { routeCallback: dangerRouteCost });
+      const hops = route === ERR_NO_PATH ? Infinity : route.length;
+      if (hops !== Infinity) pairs.push({ creep: id, room, hops });
     }
   }
-  return best;
+
+  // Sort by hops ascending; ties broken by room name for determinism across ticks.
+  pairs.sort((a, b) => a.hops - b.hops || a.room.localeCompare(b.room));
+
+  const claimedScouts = new Set<Id<Creep>>();
+  const claimedRooms = new Set<string>();
+  const out: { creep: Id<Creep>; target: string }[] = [];
+  for (const pair of pairs) {
+    if (claimedScouts.has(pair.creep) || claimedRooms.has(pair.room)) continue;
+    claimedScouts.add(pair.creep);
+    claimedRooms.add(pair.room);
+    out.push({ creep: pair.creep, target: pair.room });
+  }
+  return out;
 }
 
 // Room-by-room route via Game.map.findRoute; on failure, falls back to just the destination.
 function routeTo(from: string, dest: string): RouteMemory {
-  const route = Game.map.findRoute(from, dest);
+  const route = Game.map.findRoute(from, dest, { routeCallback: dangerRouteCost });
   const rooms = route === ERR_NO_PATH ? [dest] : route.map(step => step.room);
   return { dest, rooms, index: 0 };
+}
+
+// Prices a transit room high in findRoute when its last-scouted owner is reputation-flagged
+// hostile/dangerous (see memory/reputation.ts) â€” a scout still walks straight to a hostile-owned room if
+// that's genuinely where it's assigned to scout, but detours around one it would otherwise just be
+// passing through. Mirrors interpreter.ts's dangerRouteCallback for the same reason (Traveler doesn't
+// cover a scout's own precomputed room-by-room route); priced high rather than Infinity so a route still
+// resolves when no detour exists.
+const DANGEROUS_ROOM_HOPS = 50;
+function dangerRouteCost(roomName: string): number {
+  const owner = Memory.rooms?.[roomName]?.scouted?.owner;
+  return isDangerous(owner) ? DANGEROUS_ROOM_HOPS : 1;
 }
 
 // All walkable exits around the spawn, ordered as a preference: road tiles first (so the newborn

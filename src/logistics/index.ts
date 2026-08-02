@@ -1,11 +1,15 @@
 // planLogistics: the one per-tick entry point Logistics.intents() calls. Wires graph + allocate +
 // reserved-folding — thin by design, since the interesting logic already lives in graph.ts/allocate.ts.
+// Plans BOTH fleets in one coordinated pass — transport (the general mover) and supply (the
+// spawn/tower topper, restricted to graph.ts's supplyProviders/supplyConsumers) — so the two can never
+// double-book the same node; there is deliberately no separate supply-only entry point (Supply the
+// operation has no logistics planning of its own, see operations/supply.ts).
 
-import { buildCostMatrix } from "../layouts/roads";
+import { buildCostMatrix, type RoadCostMatrix } from "../layouts/roads";
 import { wrapFn } from "../lib/profiler";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { allocate, emptyReserved, refKey, type ReservedAmounts } from "./allocate";
-import { consumers, providers, storageOverflow } from "./graph";
+import { consumers, providers, storageOverflow, supplyConsumers, supplyProviders } from "./graph";
 import type { LogisticsTask } from "./types";
 
 export interface LogisticsPlan {
@@ -43,17 +47,67 @@ function foldReserved(creeps: readonly SnapCreep[]): ReservedAmounts {
   return reserved;
 }
 
-export const planLogistics = wrapFn(function planLogistics(colony: ColonySnapshot): LogisticsPlan {
-  const transportCreeps = colony.creeps.filter(c => c.role === "transport");
-  const idle = transportCreeps.filter(isIdle);
-  if (idle.length === 0) return { assignments: {} };
+// Folds one already-computed plan's assignments into `reserved`, so a second allocate() pass sharing
+// the same providers/consumers can't send its own creeps at a node the first pass just claimed. Same
+// per-leg accounting as foldReserved, just reading a fresh plan's chains instead of memory.logistics.
+function foldPlan(reserved: ReservedAmounts, assignments: Record<Id<Creep>, LogisticsTask>): void {
+  for (const creepId in assignments) {
+    for (let leg: LogisticsTask | undefined = assignments[creepId as Id<Creep>]; leg; leg = leg.next) {
+      if (leg.kind === "pickup" && leg.from) {
+        reserved.providers[refKey(leg.from)] = (reserved.providers[refKey(leg.from)] ?? 0) + leg.amount;
+      } else if (leg.kind === "deliver" && leg.to) {
+        reserved.consumers[refKey(leg.to)] = (reserved.consumers[refKey(leg.to)] ?? 0) + leg.amount;
+      }
+    }
+  }
+}
 
-  const reserved = foldReserved(transportCreeps);
+// Sums two independently-folded reservation pools (transport's own + supply's) into a fresh one — used
+// to seed transport's allocate() call with supply's claims without mutating either input.
+function mergeReserved(a: ReservedAmounts, b: ReservedAmounts): ReservedAmounts {
+  const out = emptyReserved();
+  for (const key in a.providers) out.providers[key] = (out.providers[key] ?? 0) + (a.providers[key] ?? 0);
+  for (const key in b.providers) out.providers[key] = (out.providers[key] ?? 0) + (b.providers[key] ?? 0);
+  for (const key in a.consumers) out.consumers[key] = (out.consumers[key] ?? 0) + (a.consumers[key] ?? 0);
+  for (const key in b.consumers) out.consumers[key] = (out.consumers[key] ?? 0) + (b.consumers[key] ?? 0);
+  return out;
+}
+
+/**
+ * Supply's plan: a restricted view of the same provider/consumer graph — spawn/extensions and towers
+ * only on the sink side, never a remote-room pickup on the source side (see graph.ts's
+ * supplyProviders/supplyConsumers). Run BEFORE planLogistics (see below) and its claims folded into
+ * transport's reserved amounts, since a starved spawn is more urgent than transport's broader load —
+ * supply gets first pick of the shared spawnSystem/tower/storage nodes, transport works around it.
+ */
+function planSupply(colony: ColonySnapshot, costMatrix: RoadCostMatrix): { plan: LogisticsPlan; reserved: ReservedAmounts } {
+  const supplyCreeps = colony.creeps.filter(c => c.role === "supply");
+  const reserved = foldReserved(supplyCreeps);
+  const idle = supplyCreeps.filter(isIdle);
+  const assignments =
+    idle.length === 0 ? {} : allocate(supplyProviders(colony), supplyConsumers(colony), idle, reserved, null, costMatrix);
+  foldPlan(reserved, assignments);
+  return { plan: { assignments }, reserved };
+}
+
+export const planLogistics = wrapFn(function planLogistics(colony: ColonySnapshot): LogisticsPlan {
   // Built once per tick and reused across every idle creep's pickup search below — same terrain/
   // structure snapshot data the layouts/roads.ts road-planning callers already build a matrix from, so
   // this is no extra Game access, just the same cost matrix asked for repeatedly in one place instead
   // of once per creep.
   const costMatrix = buildCostMatrix({ terrain: colony.terrain, structures: colony.structures });
+
+  // Supply plans first (see planSupply's doc) so transport never double-books a node supply just
+  // claimed. Its reservations seed transport's own — supplyReserved already contains supply's
+  // in-flight (foldReserved) plus this tick's fresh (foldPlan) claims.
+  const { plan: supplyPlan, reserved: supplyReserved } = planSupply(colony, costMatrix);
+
+  const transportCreeps = colony.creeps.filter(c => c.role === "transport");
+  const idle = transportCreeps.filter(isIdle);
+  if (idle.length === 0) return supplyPlan;
+
+  const reserved = mergeReserved(foldReserved(transportCreeps), supplyReserved);
   const assignments = allocate(providers(colony), consumers(colony), idle, reserved, storageOverflow(colony), costMatrix);
-  return { assignments };
+  return { assignments: { ...supplyPlan.assignments, ...assignments } };
 }, "planning:planLogistics");
+

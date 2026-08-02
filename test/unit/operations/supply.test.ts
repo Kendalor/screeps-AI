@@ -1,6 +1,8 @@
 // Ported from legacy SupplyOperation: a flat RCL-gated quota, not a per-source deficit like Mining.
-// Gated on storageEnergy rather than RCL directly — supply's whole job is withdrawing from storage
-// (see behaviors/roles/supply.ts), and bootstrap's recovery creep covers the gap before storage exists.
+// Gated on energyCapacity (RCL3's 550 cap) rather than storage — supply must spawn well before storage
+// exists, since that's exactly the window a stalling spawn hurts most (see operations/supply.ts).
+// Task assignment (where it withdraws/delivers) is Logistics-owned, not tested here — see
+// test/unit/logistics/ for the provider/consumer graph and allocator this operation's creeps run under.
 
 import { describe, expect, it } from "vitest";
 import { Supply } from "../../../src/operations/supply";
@@ -10,33 +12,33 @@ const supply = new Supply("W1N1");
 const supplyRequests = (over: Parameters<typeof colonySnap>[0]) => supply.desiredCreeps(colonySnap(over));
 
 describe("Supply.desiredCreeps", () => {
-  it("asks for nothing before storage exists — bootstrap's recovery creep covers that gap", () => {
-    expect(supplyRequests({ storageEnergy: 0, controllerLevel: 4 })).toEqual([]);
+  it("asks for nothing below the energy-capacity threshold — bootstrap's recovery creep covers that gap", () => {
+    expect(supplyRequests({ energyCapacity: 300, controllerLevel: 2 })).toEqual([]);
   });
 
-  it("wants one supply creep once storage holds energy", () => {
-    expect(supplyRequests({ storageEnergy: 50_000, controllerLevel: 4 })).toHaveLength(1);
+  it("wants one supply creep once energyCapacity reaches the RCL3 threshold", () => {
+    expect(supplyRequests({ energyCapacity: 550, controllerLevel: 3 })).toHaveLength(1);
   });
 
   it("scales to two supply creeps at the high-RCL threshold", () => {
-    expect(supplyRequests({ storageEnergy: 50_000, controllerLevel: 7 })).toHaveLength(2);
-    expect(supplyRequests({ storageEnergy: 50_000, controllerLevel: 8 })).toHaveLength(2);
+    expect(supplyRequests({ energyCapacity: 550, controllerLevel: 7 })).toHaveLength(2);
+    expect(supplyRequests({ energyCapacity: 550, controllerLevel: 8 })).toHaveLength(2);
   });
 
   it("returns nothing once the live supply creeps meet the quota", () => {
     expect(
-      supplyRequests({ storageEnergy: 50_000, controllerLevel: 4, creeps: snapCreeps("supply", 1) })
+      supplyRequests({ energyCapacity: 550, controllerLevel: 4, creeps: snapCreeps("supply", 1) })
     ).toEqual([]);
   });
 
   it("asks only for the shortfall when short of quota", () => {
     expect(
-      supplyRequests({ storageEnergy: 50_000, controllerLevel: 7, creeps: snapCreeps("supply", 1) })
+      supplyRequests({ energyCapacity: 550, controllerLevel: 7, creeps: snapCreeps("supply", 1) })
     ).toHaveLength(1);
   });
 
   it("stamps its own op name on every request", () => {
-    const [request] = supplyRequests({ storageEnergy: 50_000, controllerLevel: 4 });
+    const [request] = supplyRequests({ energyCapacity: 550, controllerLevel: 4 });
     expect(request.memory).toMatchObject({ role: "supply", home: "W1N1", op: "supply:W1N1" });
   });
 
@@ -45,7 +47,6 @@ describe("Supply.desiredCreeps", () => {
   describe("cold start — no supply creep alive", () => {
     it("sizes the body off energyAvailable, not energyCapacity", () => {
       const [request] = supplyRequests({
-        storageEnergy: 50_000,
         controllerLevel: 4,
         energyAvailable: 300,
         energyCapacity: 1800
@@ -55,7 +56,6 @@ describe("Supply.desiredCreeps", () => {
 
     it("sizes off energyCapacity once a supply creep is alive", () => {
       const [request] = supplyRequests({
-        storageEnergy: 50_000,
         controllerLevel: 7, // quota 2, one alive — the shortfall path, not a cold start
         energyAvailable: 300,
         energyCapacity: 1800,
@@ -71,7 +71,7 @@ describe("Supply.desiredCreeps", () => {
     it("requests nothing while the sole survivor has plenty of ticksToLive left", () => {
       expect(
         supplyRequests({
-          storageEnergy: 50_000,
+          energyCapacity: 550,
           controllerLevel: 4,
           creeps: snapCreeps("supply", 1, { ticksToLive: 500 })
         })
@@ -79,24 +79,22 @@ describe("Supply.desiredCreeps", () => {
     });
 
     it("requests the replacement once ticksToLive drops to the new body's spawn time", () => {
-      // energyCapacity 300 → haulerBody affords 3 [CARRY,MOVE] sets = 6 parts → 6*3=18 tick spawn time.
+      // energyCapacity 550 → haulerBody affords 5 [CARRY,MOVE] sets = 10 parts → 10*3=30 tick spawn time.
       const requests = supplyRequests({
-        storageEnergy: 50_000,
         controllerLevel: 4,
-        energyCapacity: 300,
-        creeps: snapCreeps("supply", 1, { ticksToLive: 18 })
+        energyCapacity: 550,
+        creeps: snapCreeps("supply", 1, { ticksToLive: 30 })
       });
       expect(requests).toHaveLength(1);
-      expect(requests[0].body).toHaveLength(6);
+      expect(requests[0].body).toHaveLength(10);
     });
 
     it("does not yet request a replacement one tick before the spawn-time threshold", () => {
       expect(
         supplyRequests({
-          storageEnergy: 50_000,
           controllerLevel: 4,
-          energyCapacity: 300,
-          creeps: snapCreeps("supply", 1, { ticksToLive: 19 })
+          energyCapacity: 550,
+          creeps: snapCreeps("supply", 1, { ticksToLive: 31 })
         })
       ).toEqual([]);
     });
@@ -106,7 +104,7 @@ describe("Supply.desiredCreeps", () => {
       // so nothing is requested until one actually dies and the count drops to one.
       expect(
         supplyRequests({
-          storageEnergy: 50_000,
+          energyCapacity: 550,
           controllerLevel: 7,
           creeps: snapCreeps("supply", 2, { ticksToLive: 1 })
         })

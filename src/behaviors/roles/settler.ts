@@ -59,7 +59,7 @@ export class Settler extends Role {
   // topping off extensions/tower or any other site.
   static override readonly steps: Step[] = [
     { do: "renew", below: RENEW_BELOW },
-    { do: "moveToRoom", to: "targetRoom" },
+    { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
     { do: "pickup", from: { find: "dropped", prefer: "largest" } },
     { do: "harvest", from: { find: "source" } },
     { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_SPAWN } },

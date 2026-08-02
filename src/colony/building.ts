@@ -153,10 +153,13 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
   // Every home-room structure not part of the goal/claims. Split below into "blocking a wanted
   // placement" (only cleared the instant its replacement site actually goes up) vs. "wanted nowhere"
   // (over a type's count limit, or genuinely stale — torn down unconditionally since nothing waits on it).
+  // Spawns are included here (unlike the old spawn-exempt filter) so a hand-placed spawn sitting on a
+  // wanted tile is recognised as *the* blocker below — never demolished (can't be razed at low RCL/spawn
+  // count), but its wanted placement is skipped instead of retried forever against an occupied tile.
   const wantedAt = new Set(goalAtAnchor.map(p => `${colony.name},${p.x},${p.y}`));
-  const stale = colony.structures.filter(s => s.type !== "spawn" && !goalAtAnchor.some(sameSpot(s)));
+  const stale = colony.structures.filter(s => !goalAtAnchor.some(sameSpot(s)));
   const blocking = new Map(stale.filter(s => wantedAt.has(`${colony.name},${s.x},${s.y}`)).map(s => [`${colony.name},${s.x},${s.y}`, s]));
-  const unwanted = stale.filter(s => !wantedAt.has(`${colony.name},${s.x},${s.y}`));
+  const unwanted = stale.filter(s => s.type !== "spawn" && !wantedAt.has(`${colony.name},${s.x},${s.y}`));
 
   const cap = Math.min(FOCUS_SITE_CAP, MAX_CONSTRUCTION_SITES);
   // Two independent budgets, not one shared pool: a backlog of slow-to-build remote roads must never
@@ -184,6 +187,12 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
     if (placement.type === "container" && containerSites >= MAX_CONTAINER_SITES) continue;
     if (existingAt(colony, placement)) continue;
     const blocker = home ? blocking.get(`${colony.name},${placement.x},${placement.y}`) : undefined;
+    // A spawn can never be razed (disallowed below the RCL/count that permits a second spawn) — skip
+    // this placement entirely rather than retry createConstructionSite against an occupied tile every
+    // tick forever. Left for a human to resolve (move the spawn, or accept the gap in the layout).
+    if (blocker?.type === "spawn") {
+      continue;
+    }
     // Clear the blocker in the same tick, immediately before the site — never ahead of the placement
     // actually happening, so a finished building isn't left demolished while its replacement waits its
     // turn in the backlog (see wantedStructures' focus-site budget).

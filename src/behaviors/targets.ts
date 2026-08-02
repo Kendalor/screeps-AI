@@ -34,13 +34,13 @@ function nearMatches(creep: Creep, s: { pos: RoomPosition }, near: Near | undefi
 }
 
 // Ready-made "any" groups for the two directions energy moves: gathering it up (storage/containers
-// with energy, dropped piles, tombstones) and spending it down (extensions/spawn/storage/containers
+// with energy, dropped piles, tombstones, ruins) and spending it down (extensions/spawn/storage/containers
 // with room to take more). Pooling these into one "any" spec — rather than a priority-ordered chain of
 // single-kind steps — means a nearer candidate of the *second* kind in the chain is never passed over
 // just because the first kind's search happened to find something.
 // energySourceGroup mixes a pickup-shaped kind (dropped) with withdraw-shaped kinds (structure,
-// tombstone) — pair it with a "gather" step, not "withdraw"/"pickup", which each call one fixed API
-// regardless of what the spec resolves to.
+// tombstone, ruin) — pair it with a "gather" step, not "withdraw"/"pickup", which each call one fixed
+// API regardless of what the spec resolves to.
 export function energySourceGroup(prefer?: Prefer): TargetSpec {
   return {
     find: "any",
@@ -48,7 +48,8 @@ export function energySourceGroup(prefer?: Prefer): TargetSpec {
     of: [
       { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
       { find: "dropped" },
-      { find: "tombstone" }
+      { find: "tombstone" },
+      { find: "ruin" }
     ]
   };
 }
@@ -110,6 +111,7 @@ export type TargetKind =
   | { kind: "controller" }
   | { kind: "dropped" }
   | { kind: "tombstone" }
+  | { kind: "ruin" }
   | { kind: "creep"; role?: string }
   | { kind: "hostile" };
 
@@ -138,6 +140,7 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
     case "controller":
     case "dropped":
     case "tombstone":
+    case "ruin":
     case "hostile":
       return k.kind === spec.find;
     case "any":
@@ -169,6 +172,7 @@ function toKind(obj: RoomObject): TargetKind | null {
     level?: number;
     resourceType?: ResourceConstant;
     deathTime?: number;
+    destroyTime?: number;
     body?: unknown[];
     memory?: { role?: string };
     my?: boolean;
@@ -178,6 +182,7 @@ function toKind(obj: RoomObject): TargetKind | null {
   if (o.progressTotal !== undefined) return { kind: "constructionSite", structureType: o.structureType };
   if (o.structureType !== undefined) return { kind: "structure", structureType: o.structureType };
   if (o.deathTime !== undefined) return { kind: "tombstone" };
+  if (o.destroyTime !== undefined) return { kind: "ruin" };
   if (o.resourceType !== undefined) return { kind: "dropped" };
   // A creep is the only positioned object with a body; `.my` splits it into a friendly (role read off
   // memory, which only exists on owned creeps) or a hostile (no memory, never role-filtered).
@@ -228,6 +233,15 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
   // going even after another creep's delivery (or the miner's own overflow) reopens spawn demand.
   if (memberSpec.find === "dropped" && memberSpec.unlessSpawnNeedsEnergy && spawnNeedsEnergy(creep.room)) {
     return null;
+  }
+  // A locked dropped/tombstone/ruin pile must release once another creep drains it to nothing — the
+  // object itself keeps resolving (a tombstone/ruin persists, decaying, until its timer runs out; a
+  // dropped resource actually vanishes at 0 but the same tick it hits 0 it can still resolve), so
+  // without this a creep that arrives just after someone else scooped the last of it parks on the empty
+  // pile forever: withdraw()/pickup() no-ops every tick, the gather step never reaches free===0, and
+  // nothing ever re-searches. Mirrors findCandidates' own >0 filter for a fresh search.
+  if (kind.kind === "dropped" || kind.kind === "tombstone" || kind.kind === "ruin") {
+    if (energyAmount(obj) <= 0) return null;
   }
   return obj;
 }
@@ -325,7 +339,7 @@ function threatTier(o: RoomObject): number {
 }
 
 // Energy a candidate holds, across the two shapes a gather pool mixes: dropped Resources expose
-// `.amount`, store-holders (containers, tombstones) expose `.store`. Used to rank a "largest" pool
+// `.amount`, store-holders (containers, tombstones, ruins) expose `.store`. Used to rank a "largest" pool
 // uniformly — reading `.amount` off a store-holder would yield undefined and poison the sort.
 function energyAmount(o: RoomObject): number {
   const amount = (o as unknown as { amount?: number }).amount;
@@ -449,6 +463,8 @@ function findCandidates(
       return room.find(FIND_DROPPED_RESOURCES);
     case "tombstone":
       return room.find(FIND_TOMBSTONES).filter(t => t.store.getUsedCapacity() > 0);
+    case "ruin":
+      return room.find(FIND_RUINS).filter(r => r.store.getUsedCapacity() > 0);
     case "hostile":
       return room.find(FIND_HOSTILE_CREEPS);
     case "constructionSite": {

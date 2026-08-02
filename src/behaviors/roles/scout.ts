@@ -9,5 +9,5 @@ export class Scout extends Role {
   static override body(): BodyPartConstant[] {
     return [MOVE];
   }
-  static override readonly steps: Step[] = [{ do: "moveToRoom", to: "scoutTarget" }];
+  static override readonly steps: Step[] = [{ do: "moveToRoom", to: "scoutTarget", avoidDanger: true }];
 }

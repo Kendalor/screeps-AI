@@ -73,4 +73,65 @@ describe("buildRemoteSources", () => {
     const out = buildRemoteSources([remoteMem()], {}, 1000);
     expect(out[0].route).toBeUndefined();
   });
+
+  it("defaults reservedBy to undefined when unreserved", () => {
+    const out = buildRemoteSources([remoteMem()], {}, 1000);
+    expect(out[0].reservedBy).toBeUndefined();
+  });
+
+  it("prefers live vision's reservedBy over memory", () => {
+    const out = buildRemoteSources(
+      [remoteMem({ reservedBy: "OldEnemy" })],
+      {
+        W2N1: {
+          reserved: false,
+          reservedBy: "Invader",
+          danger: 0,
+          dangerUntil: undefined,
+          openTilesBySource: {},
+          containerBySource: {},
+          structures: [],
+          sites: []
+        }
+      },
+      1000
+    );
+    expect(out[0].reservedBy).toBe("Invader");
+  });
+
+  it("falls back to memory's reservedBy when the room has no live vision", () => {
+    const out = buildRemoteSources([remoteMem({ reservedBy: "Invader" })], {}, 1000);
+    expect(out[0].reservedBy).toBe("Invader");
+  });
+
+  // Regression: reservedBy must never surface OUR OWN reservation — remoteRoomVision already excludes
+  // it (reservation.username !== me), so a room we're reserving ourselves (reserved: true) must still
+  // join to reservedBy: undefined here, or Mining/Reservation's `reservedBy !== undefined` gate would
+  // wrongly pause staffing a remote we're actively reserving.
+  it("leaves reservedBy undefined for a room reserved by us (live vision)", () => {
+    const out = buildRemoteSources(
+      [remoteMem()],
+      {
+        W2N1: {
+          reserved: true,
+          reservedBy: undefined,
+          danger: 0,
+          dangerUntil: undefined,
+          openTilesBySource: {},
+          containerBySource: {},
+          structures: [],
+          sites: []
+        }
+      },
+      1000
+    );
+    expect(out[0].reserved).toBe(true);
+    expect(out[0].reservedBy).toBeUndefined();
+  });
+
+  it("leaves reservedBy undefined for a room reserved by us (memory fallback)", () => {
+    const out = buildRemoteSources([remoteMem({ reserved: true, reservedBy: undefined })], {}, 1000);
+    expect(out[0].reserved).toBe(true);
+    expect(out[0].reservedBy).toBeUndefined();
+  });
 });

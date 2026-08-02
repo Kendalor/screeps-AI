@@ -68,6 +68,18 @@ describe("Reservation demand", () => {
     expect(claimerRequests(colonySnap({ ...affordable, remoteSources: [remote] }))).toEqual([]);
   });
 
+  it("skips a remote room reserved by someone else", () => {
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reservedBy: "Invader" });
+    expect(claimerRequests(colonySnap({ ...affordable, remoteSources: [remote] }))).toEqual([]);
+  });
+
+  // Regression: reservedBy must never suppress demand for a room WE reserve — only a foreign
+  // reservation should stop new claimers (see the "already reserved" test above for the un-gated case).
+  it("still requests a claimer for a room reserved by us", () => {
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reserved: true, reservedBy: undefined });
+    expect(claimerRequests(colonySnap({ ...affordable, remoteSources: [remote] }))).toHaveLength(1);
+  });
+
   it("skips a room already reserved (no second claimer needed)", () => {
     const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reserved: true });
     // A reserved room with no live claimer would still want one to KEEP it reserved, but with a live

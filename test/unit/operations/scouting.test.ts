@@ -107,8 +107,8 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "recordScout" }));
   });
 
-  // A scout with no target gets the pool of unscouted rooms as candidates — execute.ts picks the
-  // nearest of those via Game.map.findRoute.
+  // A scout with no target gets the pool of unscouted rooms as candidates — execute.ts assigns the
+  // nearest of those (jointly across all idle scouts) via Game.map.findRoute.
   it("assigns an unassigned scout the pool of unscouted candidates", () => {
     const scout = snapCreep("scout", { room: "W1N1", memory: { op: "scouting:W1N1" } });
     const snap = colonySnap({
@@ -116,9 +116,8 @@ describe("Scouting intents", () => {
       scoutTargets: [scoutTarget("W1N3"), scoutTarget("W1N2")]
     });
     expect(scouting.intents(snap)).toContainEqual({
-      kind: "setScoutTarget",
-      creep: scout.id,
-      candidates: ["W1N3", "W1N2"]
+      kind: "setScoutTargets",
+      assignments: [{ creep: scout.id, candidates: ["W1N3", "W1N2"] }]
     });
   });
 
@@ -133,9 +132,8 @@ describe("Scouting intents", () => {
       scoutTargets: [scoutTarget("W1N2", scouted()), scoutTarget("W2N1")]
     });
     expect(scouting.intents(snap)).toContainEqual({
-      kind: "setScoutTarget",
-      creep: scout.id,
-      candidates: ["W2N1"]
+      kind: "setScoutTargets",
+      assignments: [{ creep: scout.id, candidates: ["W2N1"] }]
     });
   });
 
@@ -153,9 +151,8 @@ describe("Scouting intents", () => {
       scoutTargets: [scoutTarget("W1N2"), scoutTarget("W1N3"), scoutTarget("W1N4")]
     });
     expect(scouting.intents(snap)).toContainEqual({
-      kind: "setScoutTarget",
-      creep: scout.id,
-      candidates: ["W1N4"]
+      kind: "setScoutTargets",
+      assignments: [{ creep: scout.id, candidates: ["W1N4"] }]
     });
   });
 
@@ -166,7 +163,7 @@ describe("Scouting intents", () => {
       memory: { op: "scouting:W1N1", scoutTarget: "W1N2" }
     });
     const snap = colonySnap({ creeps: [scout], scoutTargets: [scoutTarget("W1N2")] });
-    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "setScoutTarget" }));
+    expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "setScoutTargets" }));
   });
 
   // Another operation's scout is not driven by this one.
@@ -176,7 +173,7 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).toEqual([]);
   });
 
-  it("emits nothing when it owns no scouts", () => {
+  it("emits nothing when it owns no scouts and the frontier still has unscouted rooms", () => {
     const snap = colonySnap({ scoutTargets: [scoutTarget("W1N2")] });
     expect(scouting.intents(snap)).toEqual([]);
   });
@@ -194,9 +191,12 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).not.toContainEqual({ kind: "advanceScoutRadius" });
   });
 
-  it("does not advance the radius with no scouts to use it", () => {
+  // A boxed-in frontier (everything in range already fresh/filtered out) must still be able to grow
+  // even with zero scouts alive — otherwise nothing would ever spawn one to trigger the advance,
+  // wedging the radius forever (see scouting.ts's nothingToDo comment).
+  it("advances the radius even with no scouts alive, once everything in range is fresh", () => {
     const snap = colonySnap({ scoutTargets: [scoutTarget("W1N2", scouted())] });
-    expect(scouting.intents(snap)).not.toContainEqual({ kind: "advanceScoutRadius" });
+    expect(scouting.intents(snap)).toContainEqual({ kind: "advanceScoutRadius" });
   });
 
   // A scout is never sent to sit in the colony's own home room — it already has permanent vision —
@@ -209,9 +209,8 @@ describe("Scouting intents", () => {
       scoutTargets: [scoutTarget("W1N1"), scoutTarget("W1N2")]
     });
     expect(scouting.intents(snap)).toContainEqual({
-      kind: "setScoutTarget",
-      creep: scout.id,
-      candidates: ["W1N2"]
+      kind: "setScoutTargets",
+      assignments: [{ creep: scout.id, candidates: ["W1N2"] }]
     });
   });
 });
