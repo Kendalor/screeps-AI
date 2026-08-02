@@ -53,12 +53,16 @@ export class Settler extends Role {
   // Walk to the target room first (unlike Bootstrap, which is always already home), then run the same
   // supply/build/upgrade wraparound loop. renew is checked first every tick (falls through when not
   // needed/possible, see renewStep in interpreter.ts) so a low-ticksToLive settler tops off before doing
-  // anything else, rather than risking dying mid-task.
+  // anything else, rather than risking dying mid-task. The spawn's own construction site jumps ahead of
+  // everything else in the loop: a brand-new claim has no spawn at all, so until one exists the colony
+  // can't spawn replacements for this very settler (or anything else) — getting the spawn built outranks
+  // topping off extensions/tower or any other site.
   static override readonly steps: Step[] = [
     { do: "renew", below: RENEW_BELOW },
     { do: "moveToRoom", to: "targetRoom" },
     { do: "pickup", from: { find: "dropped", prefer: "largest" } },
     { do: "harvest", from: { find: "source" } },
+    { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_SPAWN } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
     { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },

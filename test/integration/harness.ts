@@ -468,7 +468,8 @@ export class BootedColony {
       // the running bot in-engine, not seeded.
       scoutTargets: [],
       visibleRooms: [],
-      colonizing: []
+      colonizing: [],
+      attacking: []
     };
   }
 

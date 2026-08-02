@@ -69,6 +69,9 @@ export type Step = ({
     | { do: "transfer"; to: TargetSpec; resource?: ResourceConstant }
     | { do: "build"; at?: TargetSpec }
     | { do: "repair"; at: TargetSpec; upTo?: number }
+    // Dismantle a structure (e.g. an invader core) at range 1. Store-less like attack — never
+    // self-completes on store state, only via targetGone once the structure is destroyed.
+    | { do: "dismantle"; at: TargetSpec }
     | { do: "upgrade" }
     | { do: "reserve" } // reserve the current room's controller — a claimer's whole job, once it has arrived
     | { do: "claim" } // claimController on the current room's controller — a colonizer's whole job, once it has arrived
@@ -81,7 +84,11 @@ export type Step = ({
     // melee range 1. Never self-completes on store state (a fighter carries nothing) — only targetGone
     // (no hostile left in the room) ends it, same as reserve.
     | { do: "attack"; from: TargetSpec }
-    | { do: "moveToRoom"; room?: string; to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" | "defendTargetRoom" } // static room, or a memory field name, to read the destination + memory.route from creep memory
+    | {
+        do: "moveToRoom";
+        room?: string;
+        to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" | "defendTargetRoom" | "attackTargetRoom";
+      } // static room, or a memory field name, to read the destination + memory.route from creep memory
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
   );
 

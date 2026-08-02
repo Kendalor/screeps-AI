@@ -665,6 +665,90 @@ describe("resolveTarget source spreading", () => {
   });
 });
 
+// A controller reserved by anyone but us (a hostile player, or the Invader faction via an invader
+// core) blocks harvest() on every source in the room outright — ERR_NOT_OWNER, forever, since the
+// source never depletes to surface the failure another way. The pool must exclude sources here so the
+// step reports "nothing to resolve" and the creep falls through to its next step instead of parking on
+// a harvest call that can never succeed.
+describe("resolveTarget source hostile-reservation gate", () => {
+  function sourceCreepWithController(sources: object[], controller: object | undefined): Creep {
+    return {
+      name: "me",
+      owner: { username: "Kendalor" },
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { find: () => sources, controller },
+      memory: { task: { step: 0 } }
+    } as unknown as Creep;
+  }
+
+  it("excludes every source while the controller is reserved by a hostile", () => {
+    const a = fakeSource("a", 10, 10);
+    stubGame({ objects: { a } });
+
+    const got = resolveTarget(
+      sourceCreepWithController([a], { my: false, reservation: { username: "Invader", ticksToEnd: 973 } }),
+      { find: "source" }
+    );
+
+    expect(got).toBeNull();
+  });
+
+  it("still resolves a source when the controller is unreserved", () => {
+    const a = fakeSource("a", 10, 10);
+    stubGame({ objects: { a } });
+
+    const got = resolveTarget(
+      sourceCreepWithController([a], { my: false, reservation: undefined }),
+      { find: "source" }
+    );
+
+    expect((got as { id: string }).id).toBe("a");
+  });
+
+  it("still resolves a source in our own owned room even though controller.my is true with no reservation", () => {
+    const a = fakeSource("a", 10, 10);
+    stubGame({ objects: { a } });
+
+    const got = resolveTarget(sourceCreepWithController([a], { my: true, reservation: undefined }), { find: "source" });
+
+    expect((got as { id: string }).id).toBe("a");
+  });
+
+  it("still resolves a source when the room has no controller at all", () => {
+    const a = fakeSource("a", 10, 10);
+    stubGame({ objects: { a } });
+
+    const got = resolveTarget(sourceCreepWithController([a], undefined), { find: "source" });
+
+    expect((got as { id: string }).id).toBe("a");
+  });
+
+  // A remote we reserve ourselves (via our own Claimer) reads controller.my as false — same as a
+  // hostile's reservation — so this must key off reservation.username, not .my, or a remote miner
+  // would treat its own room's reservation as hostile and stop mining forever.
+  it("still resolves a source in a remote room we reserve ourselves, even though controller.my is false", () => {
+    const a = fakeSource("a", 10, 10);
+    stubGame({ objects: { a } });
+
+    const got = resolveTarget(
+      sourceCreepWithController([a], { my: false, reservation: { username: "Kendalor", ticksToEnd: 4000 } }),
+      { find: "source" }
+    );
+
+    expect((got as { id: string }).id).toBe("a");
+  });
+
+  it("drops an existing lock on a source once its room becomes hostile-reserved, rather than surviving the lock re-check indefinitely", () => {
+    const a = fakeSource("a", 10, 10);
+    stubGame({ objects: { a } });
+
+    const creep = sourceCreepWithController([a], { my: false, reservation: { username: "Invader", ticksToEnd: 900 } });
+    const got = resolveTarget(creep, { find: "source" }, "a" as Id<_HasId>);
+
+    expect(got).toBeNull();
+  });
+});
+
 // A miner assigned a source (memory.sourceId, written by Mining's per-source requests) must stick to
 // that source rather than drift to whichever is nearest or least-claimed — otherwise Mining's own
 // per-source WORK accounting (which counts miners by sourceId) disagrees with where miners actually

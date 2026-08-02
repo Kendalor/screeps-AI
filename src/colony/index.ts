@@ -2,6 +2,7 @@
 // Spawning is NOT here — spawn routing is cross-colony, owned by the Empire (see empire/spawning.ts).
 
 import type { Intent } from "../intents/types";
+import { Attack } from "../operations/attack";
 import { Colonize } from "../operations/colonize";
 import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
@@ -37,7 +38,10 @@ export class Colony {
       // fact, not derived from a live colonizer/settler creep's own memory the way this used to work
       // (fragile: nothing observed a target existed until a creep for it already did, leaving a real gap
       // between "flag resolved" and "operation attached").
-      ...snapshot.colonizing.map(t => new Colonize(snapshot.name, t, targetCapacity.get(t)))
+      ...snapshot.colonizing.map(t => new Colonize(snapshot.name, t, targetCapacity.get(t))),
+      // Attack isn't in operationsFor() either (no colony gets it by default), same reason: attached only
+      // per listed target from ColonyMemory.attacking, a flag handoff's addAttackTarget (see attackFlags.ts).
+      ...snapshot.attacking.map(t => new Attack(snapshot.name, t))
     ];
   }
 

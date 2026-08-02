@@ -3,12 +3,14 @@
 
 import type { Colony } from "../colony";
 import { empire, type Empire } from "../empire";
+import { runAttackFlags } from "../empire/attackFlags";
 import { runColonizeFlags } from "../empire/colonizeFlags";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
 import { execute } from "../intents/execute";
 import type { Intent } from "../intents/types";
 import { log } from "../lib/log";
 import { buildEmpireSnapshot } from "../snapshot/colony";
+import { cleanColonyMemory } from "./colonyMemory";
 import { cleanCreepMemory } from "./creepMemory";
 import { stats } from "./stats";
 
@@ -83,6 +85,7 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   const tickStart = Game.cpu.getUsed();
   // Before the snapshot, so no system observes a half-cleaned Memory.
   cleanCreepMemory();
+  cleanColonyMemory();
   const snapshotStart = Game.cpu.getUsed();
   const world = injected ?? empire(buildEmpireSnapshot());
   stats.record("snapshot", Game.cpu.getUsed() - snapshotStart);
@@ -105,6 +108,8 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   // unconditionally (never tier-gated) on the same `world` the loop just used, so a placed flag's error
   // is never silently swallowed under CPU pressure the way a tier-3 system would be.
   runGuarded("colonizeFlags", () => runColonizeFlags(world));
+  // Flag-triggered attack, same reasoning as colonizeFlags above — Attack isn't a default operation either.
+  runGuarded("attackFlags", () => runAttackFlags(world));
   stats.record("total", Game.cpu.getUsed() - tickStart);
   stats.flush();
 }

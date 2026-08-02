@@ -70,6 +70,25 @@ describe("findAnchorCandidates", () => {
 
     expect(findAnchorCandidates(terrain, 6)).toContainEqual({ x: 6, y: 25 });
   });
+
+  it("treats the room border as impassable regardless of exit-gap terrain values", () => {
+    // distanceTransform forces oob at every border cell's lookup unconditionally (n % 50 === 0/49,
+    // row 0/49), so whether a border tile is a solid wall or an open exit doesn't matter — the
+    // border always caps clearance the same way. Confirmed by diffing full output for a room
+    // with a 2-tile exit gap left walkable vs. one with the border fully walled: identical.
+    const withExitGapOpen = openRoom();
+    for (let y = 0; y < 50; y++) {
+      if (y === 24 || y === 25) continue; // exit gap: real terrain.get() reports this as non-wall
+      withExitGapOpen[0 * 50 + y] = 0;
+    }
+    const withExitGapClosed = withExitGapOpen.slice();
+    withExitGapClosed[0 * 50 + 24] = 0;
+    withExitGapClosed[0 * 50 + 25] = 0;
+
+    const dtOpen = distanceTransform(withExitGapOpen.slice());
+    const dtClosed = distanceTransform(withExitGapClosed.slice());
+    expect(Array.from(dtOpen)).toEqual(Array.from(dtClosed));
+  });
 });
 
 describe("pickAnchor", () => {

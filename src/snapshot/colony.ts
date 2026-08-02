@@ -21,10 +21,14 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
   // One pass over all creeps -> grouped by home colony.
   const byColony = censusByColony(Object.values(Game.creeps).map(snapCreep));
   // Shared across colonies: every room with vision this tick, regardless of which colony (if any) owns it.
-  const visibleRooms: VisibleRoom[] = Object.keys(Game.rooms).map(name => ({
-    room: name,
-    info: Memory.rooms?.[name]?.scouted
-  }));
+  const visibleRooms: VisibleRoom[] = Object.keys(Game.rooms).map(name => {
+    const r = Game.rooms[name];
+    return {
+      room: name,
+      info: Memory.rooms?.[name]?.scouted,
+      hostileCount: r.find(FIND_HOSTILE_CREEPS).length + r.find(FIND_HOSTILE_STRUCTURES).length
+    };
+  });
 
   const colonies: ColonySnapshot[] = [];
   for (const name in Game.rooms) {
@@ -59,6 +63,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
   const myCreeps = room.find(FIND_MY_CREEPS);
   const remotes = Memory.colonies[room.name]?.remotes ?? [];
   const colonizing = Memory.colonies[room.name]?.colonizing ?? [];
+  const attacking = Memory.colonies[room.name]?.attacking ?? [];
   const vision = remoteRoomVision(remotes, controller.owner?.username);
   const remoteStructures: Partial<Record<string, SnapStructure[]>> = {};
   const remoteSites: Partial<Record<string, SnapStructure[]>> = {};
@@ -172,7 +177,8 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     // Rooms within the current scouting radius; radius grows as the frontier is exhausted.
     scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1),
     visibleRooms,
-    colonizing
+    colonizing,
+    attacking
   };
 }
 
@@ -257,7 +263,7 @@ function remoteEnergyFor(remotes: readonly { room: string }[]): SnapRemoteEnergy
 
 // Computed once per colony and cached in ColonyMemory.anchor — never recomputed once found.
 function resolveAnchor(room: Room): XY | null {
-  const mem = (Memory.colonies[room.name] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+  const mem = (Memory.colonies[room.name] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
   if (mem.anchor) return mem.anchor;
 
   const controller = room.controller!;

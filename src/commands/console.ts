@@ -5,13 +5,22 @@
 import { empire } from "../empire";
 import type { LogLevel } from "../lib/log";
 import { buildEmpireSnapshot } from "../snapshot/colony";
+import { listColonizeCandidates } from "../empire/pickColonyTargets";
 
 const VALID: LogLevel[] = ["error", "warn", "info"];
+
+const REASON_LABEL: Record<string, string> = {
+  remoteMiningOverlap: "already a remote",
+  tooClose: "too close to an owned colony",
+  tooFar: "too far from any owned colony",
+  unreachable: "unreachable"
+};
 
 declare global {
   function setLogLevel(level: LogLevel): string;
   function setDebugMetrics(on: boolean): string;
   function spawnLoad(room?: string): string;
+  function colonizeTargets(): string;
   function help(): string;
 }
 
@@ -56,6 +65,20 @@ export function installConsoleCommands(): void {
       .join("\n");
   };
   register("spawnLoad(room?)", "true spawn load: living + outstanding-request parts / capacity, matching the panel exactly");
+
+  global.colonizeTargets = (): string => {
+    const world = empire(buildEmpireSnapshot());
+    const listing = listColonizeCandidates(world);
+    if (listing.length === 0) return "no colonize candidates known yet — scout more rooms";
+    return listing
+      .map(c => {
+        const dist = Number.isFinite(c.distance) ? c.distance : "-";
+        const viability = c.reason ? REASON_LABEL[c.reason] : "viable";
+        return `${c.room}: score=${c.score.toFixed(1)} distance=${dist} (${viability})`;
+      })
+      .join("\n");
+  };
+  register("colonizeTargets()", "list every cached colonize candidate, sorted by score, with distance and auto-pick viability");
 
   global.help = (): string => COMMANDS.map(([usage, description]) => `${usage} — ${description}`).join("\n");
   register("help()", "list available console commands");

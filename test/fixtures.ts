@@ -142,6 +142,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     scoutTargets: [],
     visibleRooms: [],
     colonizing: [],
+    attacking: [],
     ...over
   };
 }
@@ -154,8 +155,9 @@ export function scoutTarget(room: string, info?: ScoutInfo, origin = "W1N1"): Sc
 
 // A room with ambient vision this tick — Scouting's passive-recording input. Only a name and what
 // was last observed; no distance/type, since passive recording doesn't care where the room sits.
-export function visibleRoom(room: string, info?: ScoutInfo): VisibleRoom {
-  return { room, info };
+// hostileCount defaults to 0 (clear) — pass it explicitly for Attack tests that need a hostile room.
+export function visibleRoom(room: string, info?: ScoutInfo, hostileCount = 0): VisibleRoom {
+  return { room, info, hostileCount };
 }
 
 // A recorded observation, seen `tick` ticks ago (Game.time in tests defaults to 0, so pass an

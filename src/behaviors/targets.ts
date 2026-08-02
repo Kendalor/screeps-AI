@@ -211,6 +211,13 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
     if (!belowFillTo(toCandidate(obj), memberSpec.fillTo)) return null;
     if (!belowRepair(toCandidate(obj), memberSpec.repairBelow)) return null;
   }
+  // A locked source must release the instant its room's controller becomes hostile-reserved — same
+  // rule a fresh search applies (see findCandidates' "source" case) — otherwise a creep that locked on
+  // before the reservation appeared (or before this gate existed) keeps retrying a harvest() that can
+  // never succeed, forever.
+  if (memberSpec.find === "source" && hostileReserved(creep, creep.room)) {
+    return null;
+  }
   // A locked construction site scoped by position must still sit where the spec wants it.
   if (memberSpec.find === "constructionSite") {
     const s = obj as unknown as { pos: RoomPosition };
@@ -342,6 +349,18 @@ function spawnNeedsEnergy(room: Room): boolean {
   return room.energyAvailable < room.energyCapacityAvailable;
 }
 
+// True when the room's controller is reserved by anyone but us — a reservation by anyone else blocks
+// harvest() on every source in the room (ERR_NOT_ENOUGH_RESOURCES's sibling, ERR_NOT_OWNER), whether a
+// hostile player or the Invader faction (spawned in by an invader core). controller.my is false for a
+// room we merely reserve (not own) — a remote we ourselves reserve via our own Claimer is exactly the
+// non-hostile case this must NOT flag, so the check compares reservation.username against the passed-in
+// creep's own owner (creeps we control are always ours), not controller.my.
+function hostileReserved(creep: Creep, room: Room): boolean {
+  const controller = room.controller;
+  const reservation = controller?.reservation;
+  return !!reservation && reservation.username !== creep.owner.username;
+}
+
 const WORTHWHILE_FRACTION = 0.25; // fraction of the collector's free capacity a drop pile must hold
 const WORTHWHILE_FLOOR = 50; // absolute floor so a big creep doesn't ignore every pile in an empty room
 
@@ -413,6 +432,13 @@ function findCandidates(
   const room = creep.room;
   switch (spec.find) {
     case "source": {
+      // A controller reserved by anyone but us (a hostile player, or the Invader faction via an
+      // invader core) blocks harvest() outright — ERR_NOT_OWNER every tick, forever, with the source
+      // never depleting to reveal the failure any other way. Excluding it from the pool here (rather
+      // than letting harvestStep call and ignore the error) means the step reports "nothing to
+      // resolve" and runOne's retry loop falls through to whatever's next (e.g. a settler's dismantle
+      // step) instead of the creep parking on a call that can never succeed.
+      if (hostileReserved(creep, room)) return [];
       const sources = room.find(FIND_SOURCES).filter(s => s.energy > 0);
       // An assigned miner harvests only its source — mining.ts's per-source WORK accounting depends on it.
       const assigned = creep.memory.sourceId;

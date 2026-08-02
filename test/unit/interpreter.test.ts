@@ -869,6 +869,58 @@ describe("claim step", () => {
     runStep(creep, { do: "claim" });
     expect(creep.memory.claimError).toBeUndefined();
   });
+
+  it("attacks instead of claiming when the controller is reserved by another player", () => {
+    const claimed: string[] = [];
+    const attacked: string[] = [];
+    const controller = { id: "ctrl1", pos: { x: 40, y: 40 }, reservation: { username: "BPC", ticksToEnd: 100 } };
+    const creep = {
+      name: "colonizer1",
+      memory: {},
+      pos: { inRangeTo: () => true, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { name: "W2N2", controller },
+      claimController: (c: { id: string }) => {
+        claimed.push(c.id);
+        return OK;
+      },
+      attackController: (c: { id: string }) => {
+        attacked.push(c.id);
+        return OK;
+      },
+      travelTo: () => undefined,
+      suicide: () => OK
+    } as unknown as Creep;
+
+    const result = runStep(creep, { do: "claim", oneShot: true });
+    expect(attacked).toEqual(["ctrl1"]);
+    expect(claimed).toEqual([]); // never tries claimController while a reservation is still standing
+    expect(result.didAct).toBe(false); // attacking is not the job done — oneShot must not complete here
+    expect(result.acted).toBe(true);
+  });
+
+  it("falls back to claiming once the reservation is gone", () => {
+    const claimed: string[] = [];
+    const controller = { id: "ctrl1", pos: { x: 40, y: 40 }, reservation: undefined };
+    const creep = {
+      name: "colonizer1",
+      memory: {},
+      pos: { inRangeTo: () => true, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { name: "W2N2", controller },
+      claimController: (c: { id: string }) => {
+        claimed.push(c.id);
+        return OK;
+      },
+      attackController: () => {
+        throw new Error("must not be called once unreserved");
+      },
+      travelTo: () => undefined,
+      suicide: () => OK
+    } as unknown as Creep;
+
+    const result = runStep(creep, { do: "claim" });
+    expect(claimed).toEqual(["ctrl1"]);
+    expect(result.didAct).toBe(true);
+  });
 });
 
 // renewCreep is called on the SPAWN, not the creep — unlike every other step, renewStep is hand-rolled

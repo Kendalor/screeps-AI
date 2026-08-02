@@ -149,6 +149,13 @@ export interface ScoutCandidate {
 export interface VisibleRoom {
   room: string;
   info?: ScoutInfo; // last recorded observation; absent means never scouted
+  // Live FIND_HOSTILE_CREEPS + hostile-owned-structure count this tick — unlike ScoutInfo.hostile
+  // (controller ownership, cached and stale-tolerant), this is always fresh vision-gated truth for
+  // whichever room this entry is for. Structures count too (not creeps alone): a room can hold nothing
+  // but an invader core or another player's spawn/tower with zero live creeps in it, and that's still
+  // not "clear". The one field Attack (operations/attack.ts) needs to tell "seen and clear" from "never
+  // seen" or "seen and still hostile".
+  hostileCount: number;
 }
 
 // What mining last recorded for a source, so an operation can tell a real change from rewriting the same values.
@@ -240,6 +247,9 @@ export interface ColonySnapshot {
   // real Colonize operation per listed target, rather than deriving "is this colony colonizing X" from a
   // live colonizer/settler creep's own memory (see colony/index.ts's header for why that was fragile).
   colonizing: string[];
+  // The combat equivalent of `colonizing` above, owned by attack.ts (ColonyMemory.attacking). Colony's
+  // constructor reads this to attach a real Attack operation per listed target.
+  attacking: string[];
 }
 
 export interface EmpireSnapshot {

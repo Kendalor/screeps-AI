@@ -96,6 +96,12 @@ export type Intent =
   // Colonize.intents() owns removal: the target either finished (reached SELF_SUFFICIENT_ENERGY_CAP) or
   // failed permanently (terminal claimController error) — see colonize.ts for the exact condition.
   | { kind: "removeColonizeTarget"; room: string; target: string }
+  // The combat equivalent of addColonizeTarget: a flag handoff resolved `room` as the sponsor for
+  // attacking `target` — execute.ts owns the Memory.colonies[room].attacking write (append, deduped).
+  | { kind: "addAttackTarget"; room: string; target: string }
+  // Attack.intents() owns removal: the target room has been seen with zero hostile creeps left — see
+  // attack.ts for the exact condition.
+  | { kind: "removeAttackTarget"; room: string; target: string }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
   // Drawing primitives for one room's RoomVisual; drawn in order so later ops paint over earlier ones.

@@ -19,6 +19,7 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   build: "spend",
   repair: "spend",
   upgrade: "spend",
+  dismantle: "move", // store-less — never self-completes on store state, only via targetGone (structure destroyed)
   reserve: "move", // a store-less claimer reserves for life — never self-completes, like a movement step
   claim: "move", // store-less colonizer — never self-completes on store state, only via targetGone (see below)
   renew: "move", // store-less — see renewStep: falls through via acted:false whenever renewal isn't needed/possible
@@ -33,7 +34,7 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
 // the WORK pipeline or each other. (transfer reads the creep's store as it stood at the start of the
 // tick, not energy the same tick's harvest just added.) Two steps from different pipelines may act in
 // the same tick; "work" is the one pipeline name shared by more than one step type.
-const WORK_PIPELINE = new Set<Step["do"]>(["harvest", "build", "repair", "upgrade"]);
+const WORK_PIPELINE = new Set<Step["do"]>(["harvest", "build", "repair", "upgrade", "dismantle"]);
 
 function pipelineOf(step: Step["do"]): string {
   return WORK_PIPELINE.has(step) ? "work" : step; // non-work methods are each their own pipeline
@@ -145,6 +146,8 @@ export const runStep = wrapFn(function runStep(
       );
     case "repair":
       return actOn(creep, step.at, locked, t => creep.repair(t as Structure), 3, allowTravel, opts?.doNotBlockRoads);
+    case "dismantle":
+      return actOn(creep, step.at, locked, t => creep.dismantle(t as Structure), 1, allowTravel, opts?.doNotBlockRoads);
     case "upgrade":
       return upgradeStep(creep, locked, allowTravel, opts?.doNotBlockRoads);
     case "reserve":
@@ -168,7 +171,10 @@ export const runStep = wrapFn(function runStep(
 // Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
 function moveToRoom(
   creep: Creep,
-  step: { room?: string; to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" | "defendTargetRoom" }
+  step: {
+    room?: string;
+    to?: "scoutTarget" | "targetRoom" | "buildTargetRoom" | "repairTargetRoom" | "defendTargetRoom" | "attackTargetRoom";
+  }
 ): StepResult {
   const dest =
     step.to === "scoutTarget"
@@ -181,7 +187,9 @@ function moveToRoom(
             ? creep.memory.repairTargetRoom
             : step.to === "defendTargetRoom"
               ? creep.memory.defendTargetRoom
-              : step.room;
+              : step.to === "attackTargetRoom"
+                ? creep.memory.attackTargetRoom
+                : step.room;
   if (!dest) return { acted: false, didAct: false }; // nothing to move toward — step is a no-op, advance past it
 
   if (creep.room.name === dest) {
@@ -328,19 +336,28 @@ function reserveStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: 
 // Colony next tick, so nothing here needs to keep re-calling once claimed (it simply has no controller
 // target moveToRoom would return it to).
 //
+// A controller already reserved by another player (BPC or otherwise) rejects claimController outright, so
+// attackController it down first: attackController is also range 1 and its own downgrade-per-call scales
+// with the creep's CLAIM count, same as claimController's reservation-per-call for a normal Claimer (see
+// colonizer.ts's body comment for why 2 CLAIM is worth spawning). Once the reservation reaches 0 the
+// controller drops to neutral and the very next call is a normal claimController — no separate "done
+// attacking" state to track, just re-check reservation every tick.
+//
 // Whether this room is safe/legal to claim (GCL room cap, already owned by someone else) is a
 // target-selection concern, not this step's — but unlike every other step in this file, claimController
-// can be rejected for reasons that never self-resolve (ERR_GCL_NOT_ENOUGH, ERR_INVALID_TARGET), so a
-// creep that just no-ops on a failed call would sit at the controller retrying forever with nothing ever
-// telling anyone why. didAct only reports true on a genuine OK, so oneShot never falsely completes the
-// step on a rejected call. memory.claimError remembers the last code seen, purely so the log line below
-// fires once per DISTINCT failure (not once per tick for a creep's whole remaining life) — cleared the
-// moment the call stops failing (either it succeeds, or the target/range checks above start short-
-// circuiting first), so a stale code can never be misread as a current one.
+// can be rejected for reasons that never self-resolve (ERR_GCL_NOT_ENOUGH, ERR_INVALID_TARGET — the
+// latter also covers a room owned outright by another player, which attackController cannot touch, only
+// reservations), so a creep that just no-ops on a failed call would sit at the controller retrying
+// forever with nothing ever telling anyone why. didAct only reports true on a genuine claim OK (never on
+// an attackController call, successful or not — the job isn't done yet), so oneShot never falsely
+// completes the step early. memory.claimError remembers the last claimController code seen, purely so the
+// log line below fires once per DISTINCT failure (not once per tick for a creep's whole remaining life) —
+// cleared the moment the call stops failing (either it succeeds, or the target/range checks above start
+// short-circuiting first), so a stale code can never be misread as a current one.
 function claimStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
-  const controller = resolveTarget(creep, { find: "controller" }, locked);
+  const controller = resolveTarget(creep, { find: "controller" }, locked) as StructureController | undefined;
   if (!controller) return { acted: false, didAct: false };
-  const controllerPos = (controller as StructureController).pos;
+  const controllerPos = controller.pos;
 
   if (!creep.pos.inRangeTo(controllerPos, 1)) {
     if (!allowTravel) return { acted: false, didAct: false };
@@ -348,9 +365,15 @@ function claimStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: bo
     return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
   }
 
-  const result = creep.claimController(controller as StructureController);
+  if (controller.reservation) {
+    creep.attackController(controller);
+    return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
+  }
+
+  const result = creep.claimController(controller);
   if (result === OK) {
     creep.memory.claimError = undefined;
+    creep.memory.claimOwnedByOther = undefined;
     // Job done: the CLAIM part has no further use once the room is owned, and the target room is
     // spawnless (nowhere nearby to recycleCreep for a partial refund; walking back to the sponsor would
     // cost more in transit ticks than the refund is worth — see the project decision on colonizer
@@ -361,10 +384,22 @@ function claimStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: bo
     return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
   }
 
+  // claimError is purely diagnostic (log once per distinct code) — never read by Colonize's
+  // claimFailedPermanently. ERR_INVALID_TARGET in particular is ambiguous in the engine: it covers "not a
+  // controller", "already owned by someone" (target.level > 0, genuinely terminal), AND "reserved by
+  // someone else" (NOT terminal — exactly what the attackController branch above is chipping away at; a
+  // colonizer can die mid-fight and a fresh one resumes against whatever reservation level is left). The
+  // reservation check above reads controller.reservation fresh every tick, so claimController is never
+  // even called while a reservation is still up in the normal case — but a one-tick race (reservation
+  // hits 0 mid-tick, a stale read) can still surface ERR_INVALID_TARGET here while the room is merely
+  // contested. claimOwnedByOther is the one signal Colonize trusts for "unwinnable" — set only when the
+  // controller is genuinely owned, never for a reservation fight, so a contested-but-winnable target can
+  // never get torn down out from under an otherwise-recoverable attempt.
   if (creep.memory.claimError !== result) {
     creep.memory.claimError = result;
     log.error(`colonizer ${creep.name} can't claim ${creep.room.name}: ${result} — will keep retrying`);
   }
+  if (controller.owner !== undefined) creep.memory.claimOwnedByOther = true;
   return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
 }
 
@@ -403,7 +438,10 @@ const RANGED_ATTACK_RANGE = 3;
 function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
   const target = resolveTarget(creep, spec, locked);
   if (!target) return { acted: false, didAct: false };
-  const hostile = target as Creep;
+  // A structure target (e.g. an invader core) has no kiting concerns — creep.attack()/rangedAttack()
+  // accept Structure just as well as Creep, so it shares this same logic, keyed off the ACTOR's body
+  // (unchanged), never the target's.
+  const hostile = target as Creep | Structure;
   const ranged = creep.getActiveBodyparts(RANGED_ATTACK) > 0;
 
   if (!ranged) {

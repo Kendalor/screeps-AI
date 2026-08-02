@@ -1,4 +1,4 @@
-// The actuator: calls the game API and logs any non-OK result. Non-game side effects (e.g. recordSourceSpot's Memory write) live here too, so planners stay pure.
+﻿// The actuator: calls the game API and logs any non-OK result. Non-game side effects (e.g. recordSourceSpot's Memory write) live here too, so planners stay pure.
 
 import { log } from "../lib/log";
 import { recordManual, wrapFn } from "../lib/profiler";
@@ -18,13 +18,13 @@ declare const __PROFILER_ENABLED__: boolean;
 const MAX_SCOUT_RANGE = 6;
 
 export const execute = wrapFn(function execute(intents: Intent[]): void {
-  // Tiles chosen by a recordSourcePath/setRemotes resolution earlier in *this* batch — passed to the
+  // Tiles chosen by a recordSourcePath/setRemotes resolution earlier in *this* batch â€” passed to the
   // next such resolution as `preferred` so a second source in the same remote room paths onto the
   // first one's corridor instead of an independent line beside it (see remotePath.ts's PREFERRED_TILE_COST).
   // Scoped to one execute() call: a fresh accumulator per tick per colony, never carried across calls.
   const resolvedRouteTiles = new Set<string>();
   for (const intent of intents) {
-    // Per-kind timing, gated the same as the rest of lib/profiler.ts (dead-code-eliminated when off) —
+    // Per-kind timing, gated the same as the rest of lib/profiler.ts (dead-code-eliminated when off) â€”
     // act() is one large switch, so wrapFn's whole-function wrapping can't break it down by intent kind.
     const start = __PROFILER_ENABLED__ ? Game.cpu.getUsed() : 0;
     const result = act(intent, resolvedRouteTiles);
@@ -91,9 +91,9 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       if (!creep) return ERR_NOT_FOUND;
       if (creep.memory.role === intent.role) return OK; // already converted; idempotent
       creep.memory.role = intent.role;
-      // Fresh step loop for the new role — the old task index/lock belonged to the builder's steps.
+      // Fresh step loop for the new role â€” the old task index/lock belonged to the builder's steps.
       creep.memory.task = undefined;
-      // Re-stamp for the new role's owning operation — leaving this undefined would make the creep
+      // Re-stamp for the new role's owning operation â€” leaving this undefined would make the creep
       // "ownable" by every operation via Operation.owned()'s op-less fallback, double-counting it in
       // every operation's roleTargets that doesn't override the default.
       creep.memory.op = intent.op;
@@ -156,7 +156,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
     }
     case "recordScout": {
       const room = Game.rooms[intent.room];
-      // Vision must actually be present for the observation to be real — the operation only emits this
+      // Vision must actually be present for the observation to be real â€” the operation only emits this
       // for a room with vision in the snapshot, but a tick-boundary loss (creep died, moved on) is possible.
       if (!room) return ERR_NOT_FOUND;
       // Memory.rooms may not exist yet on a fresh isolate; create the container before indexing it.
@@ -189,7 +189,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       const target = nearestScoutCandidate(creep.room.name, intent.candidates);
       if (!target) return ERR_NOT_FOUND;
       // Recorded before overwriting scoutTarget so the next pick can avoid sending the scout straight
-      // back here — without it, two rooms mutually nearest each other ping-pong a scout forever.
+      // back here â€” without it, two rooms mutually nearest each other ping-pong a scout forever.
       creep.memory.lastRoom = creep.room.name;
       creep.memory.scoutTarget = target;
       creep.memory.route = routeTo(creep.room.name, target);
@@ -201,9 +201,9 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "setRemotes": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       // A re-selection replaces the whole array, but dangerUntil is a live-derived fact about a room, not
-      // part of what pickRemotes decides — carry it over so a mid-invasion reselection doesn't heal it.
+      // part of what pickRemotes decides â€” carry it over so a mid-invasion reselection doesn't heal it.
       const priorDangerUntil = new Map(mem.remotes.map(r => [r.room, r.dangerUntil]));
       mem.remotes = intent.remotes
         .map(room => resolveRemoteRoom(intent.room, room, mem.anchor, resolvedRouteTiles))
@@ -212,13 +212,13 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "recordRemoteDanger": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       const remote = mem.remotes.find(r => r.room === intent.remoteRoom);
       if (remote) remote.dangerUntil = intent.dangerUntil;
       return OK;
     }
     case "addColonizeTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       // ??= only initializes a brand-new colony record; an existing one from before `colonizing` was
       // added to the schema still lacks the field entirely, so it must be backfilled here too.
       mem.colonizing ??= [];
@@ -226,29 +226,40 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "removeColonizeTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       mem.colonizing = (mem.colonizing ?? []).filter(t => t !== intent.target);
       return OK;
     }
+    case "addAttackTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      mem.attacking ??= [];
+      if (!mem.attacking.includes(intent.target)) mem.attacking.push(intent.target);
+      return OK;
+    }
+    case "removeAttackTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      mem.attacking = (mem.attacking ?? []).filter(t => t !== intent.target);
+      return OK;
+    }
     case "recordSourceSpot": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       const source = (mem.sources[intent.source] ??= {});
       source.spot = intent.spot;
-      // Only ever add an id — a tick with no vision must not wipe an existing handle.
+      // Only ever add an id â€” a tick with no vision must not wipe an existing handle.
       if (intent.container) source.containerId = intent.container;
       if (intent.link) source.linkId = intent.link;
       return OK;
     }
     case "recordRemoteContainer": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       const source = mem.remotes.find(r => r.room === intent.remoteRoom)?.sources.find(s => s.id === intent.source);
       if (source) source.containerId = intent.container; // only ever adds an id, same rule as recordSourceSpot
       return OK;
     }
     case "recordLinkNetwork": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       const links = (mem.links ??= { sources: [] });
-      // Only ever adds an id — a tick with no fresh detection must not wipe an existing handle.
+      // Only ever adds an id â€” a tick with no fresh detection must not wipe an existing handle.
       if (intent.storage) links.storage = intent.storage;
       if (intent.controller) links.controller = intent.controller;
       return OK;
@@ -259,8 +270,21 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
   }
 }
 
+// Our own username, for telling "reserved by us" apart from "reserved by someone else" in observeRoom.
+// Derived from any owned room's controller (cheap: Game.rooms is already resident, no extra API cost) and
+// memoized per tick since it can't change mid-tick and observeRoom may run once per visible room.
+let cachedMyUsernameTick = -1;
+let cachedMyUsername: string | undefined;
+function myUsername(): string | undefined {
+  if (cachedMyUsernameTick !== Game.time) {
+    cachedMyUsernameTick = Game.time;
+    cachedMyUsername = Object.values(Game.rooms).find(r => r.controller?.my)?.controller?.owner?.username;
+  }
+  return cachedMyUsername;
+}
+
 // What a room's vision shows, distilled to ScoutInfo. Lives here (not a planner) since it reads a live Room.
-// `previous`: a passive observation's prior record, if any — its static fields (sources/mineral never
+// `previous`: a passive observation's prior record, if any â€” its static fields (sources/mineral never
 // move) are reused instead of re-running FIND_SOURCES/FIND_MINERALS, so ambient vision refreshing many
 // rooms every tick stays cheap. An active (non-passive) observation always re-finds everything, since a
 // scout's arrival is comparatively rare and correctness of a first-ever survey matters more than cost.
@@ -280,15 +304,18 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
     ...(owner ? { owner } : {}),
     ...(anchor ? { anchor } : {}),
     ...(anchorChecked ? { anchorChecked } : {}),
-    hostile: owner !== undefined && !c?.my
+    // "owned by someone other than us" (see ScoutInfo.hostile's doc): a full claim we don't hold (c.my
+    // false) OR a reservation under a different username than ours â€” a room WE reserved must read as
+    // non-hostile, same as a room we own outright.
+    hostile: owner !== undefined && owner !== myUsername() && !c?.my
   };
 }
 
-// The bunker anchor for a scouted (not-yet-owned) room — same fit test as the home colony's own
+// The bunker anchor for a scouted (not-yet-owned) room â€” same fit test as the home colony's own
 // resolveAnchor (snapshot/colony.ts), but keyed off a room this colony merely has vision of. Only a
 // room with a controller can ever host a bunker; terrain+controller+sources are immutable, so this is
 // computed once and cached on ScoutInfo.anchor forever after, same as `sources`/`mineral` above.
-// Undefined return means "no controller, never attempted" — distinguished from "attempted, no fit"
+// Undefined return means "no controller, never attempted" â€” distinguished from "attempted, no fit"
 // via observeRoom's separate anchorChecked flag, since both cases return undefined here.
 function resolveScoutedAnchor(
   room: Room,
@@ -305,7 +332,7 @@ function resolveScoutedAnchor(
 // ground truth for whatever actually got selected. Reuses a room-memory-cached path when one exists
 // (see ScoutedSource.paths); otherwise computes it once via PathFinder and caches it there for every
 // future call. A source PathFinder can't reach at all (no anchor yet, or genuinely no route) is dropped
-// — better to retry next throttle tick than commit to a haul that can never be walked.
+// â€” better to retry next throttle tick than commit to a haul that can never be walked.
 function resolveRemoteRoom(
   home: string,
   room: RemoteMemory,
@@ -334,7 +361,7 @@ function hasSourcesLeft(room: RemoteMemory): boolean {
   return room.sources.length > 0;
 }
 
-// Nearest of `candidates` from `from`, measured by Game.map.findRoute's real room-graph hop count —
+// Nearest of `candidates` from `from`, measured by Game.map.findRoute's real room-graph hop count â€”
 // never a Chebyshev/linear-distance estimate, which misprices a diagonal room as adjacent when the map
 // only actually connects a room to its N/S/E/W neighbours. Ties (and rooms findRoute can't reach) break
 // by name, for determinism across scouts/ticks.
@@ -361,7 +388,7 @@ function routeTo(from: string, dest: string): RouteMemory {
 
 // All walkable exits around the spawn, ordered as a preference: road tiles first (so the newborn
 // lands on a road and doesn't block the spawn), then other open tiles as fallbacks. Passing every
-// viable direction — not just one — means an occupied preferred tile can't strand a finished creep.
+// viable direction â€” not just one â€” means an occupied preferred tile can't strand a finished creep.
 const ALL_DIRECTIONS: DirectionConstant[] = [TOP, TOP_RIGHT, RIGHT, BOTTOM_RIGHT, BOTTOM, BOTTOM_LEFT, LEFT, TOP_LEFT];
 
 function spawnExitDirections(spawn: StructureSpawn): DirectionConstant[] {

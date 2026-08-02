@@ -427,17 +427,29 @@ describe("claimer role", () => {
 describe("colonizer body", () => {
   const body = (energy: number) => ROLES.colonizer.body(energy, { hasContainer: false, hasLink: false });
 
-  it("is a flat 1 CLAIM + 1 MOVE at any energy — claimController only ever uses one CLAIM part", () => {
+  it("has at least one CLAIM and one MOVE, valid across the energy ramp", () => {
     for (const e of ENERGY_LEVELS) {
       const b = body(e);
       expectValidBody(b);
-      expect(b.filter(p => p === CLAIM).length).toBe(1);
-      expect(b.filter(p => p === MOVE).length).toBe(1);
+      expect(b.filter(p => p === CLAIM).length).toBe(b.filter(p => p === MOVE).length);
+      expect(b).toContain(CLAIM);
     }
   });
 
-  it("never grows with energy, unlike the reserving claimer", () => {
-    expect(bodyCost(body(650))).toBe(bodyCost(body(10_000)));
+  it("floors at 1 CLAIM + 1 MOVE below 2-set affordability", () => {
+    const b = body(650);
+    expect(b.filter(p => p === CLAIM).length).toBe(1);
+    expect(b.filter(p => p === MOVE).length).toBe(1);
+  });
+
+  it("grows to 2 CLAIM + 2 MOVE once affordable — attackController against a reserved controller scales with CLAIM count", () => {
+    const b = body(1300);
+    expect(b.filter(p => p === CLAIM).length).toBe(2);
+    expect(b.filter(p => p === MOVE).length).toBe(2);
+  });
+
+  it("caps at 2 CLAIM sets — claimController itself never uses more than one", () => {
+    expect(bodyCost(body(10_000))).toBe(bodyCost(body(1300)));
   });
 });
 
@@ -476,11 +488,60 @@ describe("settler role", () => {
       { do: "moveToRoom", to: "targetRoom" },
       { do: "pickup", from: { find: "dropped", prefer: "largest" } },
       { do: "harvest", from: { find: "source" } },
+      { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_SPAWN } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
       { do: "build" },
       { do: "upgrade" }
+    ]);
+  });
+});
+
+describe("attacker body", () => {
+  const body = (energy: number) => ROLES.attacker.body(energy, { hasContainer: false, hasLink: false });
+
+  it("is valid and affordable across the energy ramp", () => {
+    for (const e of ENERGY_LEVELS) {
+      expectValidBody(body(e));
+      expectAffordable(body, e);
+    }
+  });
+
+  it("keeps a fixed 1 TOUGH : 2 ATTACK : 3 MOVE ratio per set", () => {
+    for (const e of ENERGY_LEVELS.filter(e => e >= 320)) {
+      const b = body(e);
+      const tough = b.filter(p => p === TOUGH).length;
+      const attack = b.filter(p => p === ATTACK).length;
+      const move = b.filter(p => p === MOVE).length;
+      expect(attack).toBe(tough * 2);
+      expect(move).toBe(tough * 3);
+    }
+  });
+
+  it("grows with energy up to the 5-set cap, then stops", () => {
+    const small = bodyCost(body(320));
+    const large = bodyCost(body(1600));
+    const beyond = bodyCost(body(10_000));
+    expect(large).toBeGreaterThan(small);
+    expect(beyond).toBe(large);
+  });
+
+  it("floors at exactly one TOUGH even below its cost — the operation gates affordability, not the body formula", () => {
+    expect(body(0).filter(p => p === TOUGH).length).toBe(1);
+  });
+});
+
+describe("attacker role", () => {
+  it("walks to its assigned attack target room, attacks any invader core, then fights whatever's there", () => {
+    expect(roleDef("attacker")).toBe(ROLES.attacker);
+    // attack (not dismantle) against the core: this body is TOUGH/ATTACK/MOVE only, no WORK part, and
+    // dismantle() requires one (ERR_NO_BODYPART) — attackStep's structure branch (interpreter.ts) covers
+    // creep.attack() against a Structure exactly as it does a Creep.
+    expect(roleDef("attacker")?.steps).toEqual([
+      { do: "moveToRoom", to: "attackTargetRoom" },
+      { do: "attack", from: { find: "structure", type: [STRUCTURE_INVADER_CORE] } },
+      { do: "attack", from: { find: "hostile", prefer: "mostThreatening" } }
     ]);
   });
 });

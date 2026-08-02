@@ -22,6 +22,19 @@ import type { ScoutInfo } from "../memory/schema";
 // candidates' live neighborhoods (a real Game.map BFS each), which is not cheap to run often.
 export const AUTO_PICK_INTERVAL = 5000;
 
+// A candidate's nearest owned colony (real room-graph hops) must fall in [MIN_COLONY_DISTANCE,
+// MAX_COLONY_DISTANCE]. Below the minimum, the room is close enough to be better used as a remote (or it
+// overlaps a colony's own operating radius); beyond the maximum, it's too far to sponsor/support — travel
+// time for colonizers/settlers and eventual logistics both blow up. Project decision, not derived from
+// any other constant.
+export const MIN_COLONY_DISTANCE = 3;
+export const MAX_COLONY_DISTANCE = 8;
+
+// A candidate's score (see colonizePotentialScore.ts) must be at least this to be auto-picked. Below it,
+// leave the room for manual colonize (console) or a better future candidate — better to wait than to sink
+// a colonize commitment into a mediocre room. Project decision, not derived from any other constant.
+export const MIN_COLONY_SCORE = 80;
+
 // Re-derive at most this many top-scoring candidates' live neighborhoods per firing. Bounds the cost of
 // a throttle tick regardless of how many rooms have been scouted empire-wide; a candidate that misses the
 // cut this pass is simply re-considered (with fresher data) on the next ~5000-tick firing.
@@ -44,8 +57,10 @@ function routeDistance(a: string, b: string): number {
 function cachedCandidates(): Candidate[] {
   const rooms = Memory.rooms ?? {};
   const haveMinerals = knownMinerals();
+  const owned = new Set(Object.keys(Memory.colonies ?? {}));
   const out: Candidate[] = [];
   for (const room in rooms) {
+    if (owned.has(room)) continue; // ScoutInfo.owner is never set on a self-claim, so info.owner alone can't catch this
     const info = rooms[room]?.scouted;
     if (!info || !info.anchor || !info.potentialChecked || !info.potential) continue;
     if (info.owner || info.hostile) continue;
@@ -88,6 +103,55 @@ function liveScore(room: string, ownMineral: ScoutInfo["mineral"], haveMinerals:
   return colonizePotentialScore({ potential, ownMineral, haveMinerals });
 }
 
+/** Nearest owned colony to `room`, in real room-graph hops — Infinity if unreachable from every colony
+ * (mirrors pickColonizeSponsor's own reachability handling, so a candidate no colony can even path to
+ * is excluded here rather than surviving to waste a live-recheck slot). */
+function nearestColonyDistance(colonies: readonly { name: string }[], room: string): number {
+  let best = Infinity;
+  for (const c of colonies) best = Math.min(best, routeDistance(c.name, room));
+  return best;
+}
+
+/** True when `room`'s nearest owned colony sits within [MIN_COLONY_DISTANCE, MAX_COLONY_DISTANCE] real
+ * hops — too close is better used as a remote (or overlaps a colony's own radius); too far is unsupportable
+ * (colonizer/settler travel time, eventual logistics). See those constants' doc for the reasoning. */
+function withinColonyDistanceBand(colonies: readonly { name: string }[], room: string): boolean {
+  const distance = nearestColonyDistance(colonies, room);
+  return distance >= MIN_COLONY_DISTANCE && distance <= MAX_COLONY_DISTANCE;
+}
+
+export interface ColonizeCandidateListing {
+  room: string;
+  score: number;
+  distance: number; // real room-graph hops to the nearest owned colony; Infinity if unreachable
+  // Why this candidate isn't (yet) a legal auto-pick target, on cached data alone — undefined means fully
+  // viable. Mirrors the gates autoPickColonyTarget itself applies, in the same order, so this listing never
+  // shows a candidate as viable that the auto-picker would actually reject.
+  reason?: "remoteMiningOverlap" | "tooClose" | "tooFar" | "unreachable" | "scoreTooLow";
+}
+
+/** Every cached candidate (see cachedCandidates' own doc for what "cached" excludes), scored and annotated
+ * with why it would or wouldn't currently be auto-picked — for console/debugging visibility into the
+ * empire's colonize options, not itself used by autoPickColonyTarget. Cached scores only (no live
+ * re-check), so this can be called any tick without the cost autoPickColonyTarget defers to its throttle.
+ * Sorted by score descending. */
+export function listColonizeCandidates(world: Empire): ColonizeCandidateListing[] {
+  const excluded = remoteMiningRooms();
+
+  return cachedCandidates()
+    .map(c => {
+      const distance = nearestColonyDistance(world.colonies, c.room);
+      let reason: ColonizeCandidateListing["reason"];
+      if (excluded.has(c.room)) reason = "remoteMiningOverlap";
+      else if (!Number.isFinite(distance)) reason = "unreachable";
+      else if (distance < MIN_COLONY_DISTANCE) reason = "tooClose";
+      else if (distance > MAX_COLONY_DISTANCE) reason = "tooFar";
+      else if (c.cachedScore < MIN_COLONY_SCORE) reason = "scoreTooLow";
+      return { room: c.room, score: c.cachedScore, distance, reason };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
 /** Runs on AUTO_PICK_INTERVAL. Picks the best current colonize target empire-wide and hands it off to a
  * sponsor colony (addColonizeTarget), if the GCL room budget allows and some colony can sponsor it.
  * Silent (no candidates / nothing fits) is not an error — it's the normal state between opportunities. */
@@ -100,6 +164,8 @@ export function autoPickColonyTarget(world: Empire): void {
 
   const ranked = cachedCandidates()
     .filter(c => !excluded.has(c.room))
+    .filter(c => withinColonyDistanceBand(world.colonies, c.room))
+    .filter(c => c.cachedScore >= MIN_COLONY_SCORE)
     .sort((a, b) => b.cachedScore - a.cachedScore)
     .slice(0, LIVE_RECHECK_TOP_N);
 

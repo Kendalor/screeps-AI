@@ -173,6 +173,7 @@ Object.assign(globalThis, {
   STRUCTURE_CONTAINER: "container",
   STRUCTURE_CONTROLLER: "controller",
   STRUCTURE_TERMINAL: "terminal",
+  STRUCTURE_INVADER_CORE: "invaderCore",
 
   MAX_CONSTRUCTION_SITES: 100,
 

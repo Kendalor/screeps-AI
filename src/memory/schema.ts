@@ -53,16 +53,29 @@ declare global {
     // currently sent to fight in, owned by operations/defense.ts. Same not-cleared-on-arrival rule — the
     // defender keeps fighting there until Defense reassigns it (danger cleared or a worse room appeared).
     defendTargetRoom?: string;
+    // The attacker equivalent of defendTargetRoom: which room this attacker was sent to clear, owned by
+    // operations/attack.ts. Unlike defendTargetRoom there is no reassignment case — one Attack operation
+    // instance is permanently bound to one target room (see operations/attack.ts's header) — so this is
+    // set once at spawn and never rewritten.
+    attackTargetRoom?: string;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
     // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's
-    // claimStep alone. claimController can be rejected for reasons that never self-resolve (GCL room cap,
-    // room already owned) — without this the creep just retries forever with no visible signal. Set (and
-    // logged once) the first time a given code is seen; cleared back to undefined the tick it's absent
-    // (i.e. the claim finally landed), so a stale code from a past failure can't be misread as current.
-    // Typed to claimController's own return union, not the broader ScreepsReturnCode — it includes
-    // ERR_ACCESS_DENIED (room owned by someone else), which isn't part of that general union.
+    // claimStep alone. Purely diagnostic/logging (the log line fires once per distinct code) — NOT what
+    // Colonize's claimFailedPermanently reads to decide the target is unwinnable; see claimOwnedByOther
+    // below for that. Set the first time a given code is seen; cleared back to undefined the tick it's
+    // absent (i.e. the claim finally landed), so a stale code from a past failure can't be misread as
+    // current. Typed to claimController's own return union, not the broader ScreepsReturnCode — it
+    // includes ERR_ACCESS_DENIED (a shard-access gate), which isn't part of that general union.
     claimError?: CreepActionReturnCode | ERR_FULL | ERR_GCL_NOT_ENOUGH | ERR_ACCESS_DENIED;
+    // True once claimStep has seen the target controller genuinely owned by another player
+    // (controller.owner !== undefined) — the ONE unrecoverable claim failure. Deliberately separate from
+    // claimError: the engine's ERR_INVALID_TARGET is ambiguous, covering both "owned by someone" (this,
+    // terminal) and "reserved by someone" (attackController fights this down over time — a colonizer can
+    // die mid-fight and a fresh one picks up where the reservation level left off, never terminal on its
+    // own). Colonize's claimFailedPermanently reads this flag alone, not claimError, so a contested-but-
+    // winnable reservation fight never silently tears the operation down.
+    claimOwnedByOther?: boolean;
   }
 
   interface RoomMemory {
@@ -86,7 +99,8 @@ export type RoleName =
   | "colonizer"
   | "settler"
   | "pioneer"
-  | "defender";
+  | "defender"
+  | "attacker";
 
 export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building
@@ -104,6 +118,11 @@ export interface ColonyMemory {
   // job is done (reached SELF_SUFFICIENT_ENERGY_CAP) or permanently failed (terminal claimController
   // error) — see colonize.ts's own removal logic.
   colonizing: string[];
+  // Target rooms this colony is actively attacking (sponsoring an attacker for), owned by attack.ts —
+  // the combat equivalent of `colonizing` above, same durable-memory-fact shape: written once by a flag
+  // handoff (addAttackTarget), read every tick by Colony's constructor to attach a real Attack operation
+  // per listed target, removed (removeAttackTarget) once that room has vision and no hostile creeps left.
+  attacking: string[];
 }
 
 // One remote room we've chosen to mine, cached in ColonyMemory so selection is stable and not re-ranked

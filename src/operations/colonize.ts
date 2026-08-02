@@ -8,13 +8,18 @@
 // bypass. The colonizer/settler bodies this operation requests spawn through the completely normal
 // per-tick arbiter (empire/spawning.ts's planSpawning), same as every other operation's demand.
 //
+// The colonizer itself stops being requested the moment the target is claimed — targetEnergyCapacity is
+// only ever defined once the target shows up as a real Colony (see its own doc below) — since the
+// colonizer that landed the claim suicides that same tick (claimStep in behaviors/interpreter.ts) and
+// would otherwise read as "zero owned, request another" the very next tick.
+//
 // Settlers spawn in parallel with the colonizer, not after it claims (project decision: faster bootstrap
 // beats the risk of a wasted settler body on a failed claim). They stop being requested once any of:
 //  - MAX_SETTLERS are already owned for this target;
-//  - the colonizer's claimController call has hit a terminal failure code (ERR_ACCESS_DENIED — room
-//    owned by someone else — or ERR_INVALID_TARGET — not a claimable controller at all; unlike
-//    ERR_GCL_NOT_ENOUGH/ERR_FULL, which are retryable as the empire's GCL/room count changes, these two
-//    can never resolve on their own, so pouring more settlers in after one is pure waste);
+//  - the colonizer has seen the target controller genuinely owned by another player
+//    (memory.claimOwnedByOther — see claimStep in behaviors/interpreter.ts). Deliberately NOT any
+//    claimController failure code: a contested reservation (attackController fighting it down, possibly
+//    across several colonizer lives) is temporary and winnable, never grounds to give up on;
 //  - the target has become self-sufficient (energyCapacity >= SELF_SUFFICIENT_ENERGY_CAP). This alone
 //    isn't derivable from the sponsor's own ColonySnapshot — the target only becomes a real Colony once
 //    its controller is claimed — so the constructor takes it as an explicit optional parameter, the same
@@ -22,7 +27,7 @@
 //    needs but can't derive from its own snapshot alone. Colony (colony/index.ts) is the caller: it looks
 //    the target up in the wider colony list it's constructed from before building each active Colonize.
 //
-// The SAME two conditions (terminal claim error, target self-sufficient) also drive removal: intents()
+// The SAME two conditions (target genuinely owned by someone else, target self-sufficient) also drive removal: intents()
 // emits removeColonizeTarget once either holds, deleting this target from ColonyMemory.colonizing so the
 // operation stops being attached from the next tick on — the operation's own, explicit cleanup, not an
 // implicit "no creeps left" inference.
@@ -34,15 +39,8 @@ import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
-import type { CreepRequest } from "../spawn/request";
+import { opName, type CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
-
-// Terminal claimController codes: the claim can never succeed at this target, no matter how many times
-// the colonizer retries — see claimStep in behaviors/interpreter.ts, which sets/clears this code.
-const TERMINAL_CLAIM_ERRORS: ReadonlySet<CreepActionReturnCode | ERR_FULL | ERR_GCL_NOT_ENOUGH | ERR_ACCESS_DENIED> = new Set([
-  ERR_ACCESS_DENIED,
-  ERR_INVALID_TARGET
-]);
 
 export const MAX_SETTLERS = 4;
 // Once the target colony can afford this much energy capacity on its own, it's expected to sustain
@@ -62,11 +60,25 @@ export class Colonize extends Operation {
     super(room);
   }
 
+  // Overridden to name by the TARGET, not the sponsor (base Operation.name's default) — same reasoning
+  // as Attack.name: the metrics panel is already scoped to one colony (colony/metricsVisual.ts draws
+  // colony.operations verbatim), so "colonize:<sponsor>" is always just this room's own name and tells a
+  // player nothing when several colonize targets are in flight from the same sponsor at once.
+  public override get name(): string {
+    return opName(this.kind, this.targetRoom);
+  }
+
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
     return [...this.desiredColonizer(colony), ...this.desiredSettlers(colony)];
   }
 
   private desiredColonizer(colony: ColonySnapshot): CreepRequest[] {
+    // Already claimed: targetEnergyCapacity is only ever defined once the target shows up in the wider
+    // colony list Colony's constructor builds allSnapshots from (see colony/index.ts) — i.e. the
+    // controller is genuinely ours. The colonizer that landed the claim suicides the same tick
+    // (claimStep in behaviors/interpreter.ts), so without this check owned() would see zero live
+    // colonizers on the very next tick and request a brand new one for a target that's already done.
+    if (this.targetEnergyCapacity !== undefined) return [];
     // Affordability gate: no point requesting a colonizer the home room can never spawn (CLAIM is 600).
     if (colony.energyCapacity < COLONIZER_COST) return [];
     // One colonizer, full stop — claimController is a one-time act, so once it's fired (or one is
@@ -84,13 +96,16 @@ export class Colonize extends Operation {
     ];
   }
 
-  /** True once the target has permanently failed — a terminal claimController code from this
-   * operation's own colonizer. Shared by desiredSettlers (stop requesting) and intents() (remove the
-   * target from ColonyMemory.colonizing entirely). */
+  /** True once the target has permanently failed — this operation's own colonizer has seen the target
+   * controller genuinely owned by another player (memory.claimOwnedByOther — see claimStep in
+   * behaviors/interpreter.ts). Deliberately NOT keyed off claimError/ERR_INVALID_TARGET generally: a
+   * contested reservation (attackController fighting it down) is a temporary, winnable state — a
+   * colonizer can die mid-fight and a fresh one just resumes, never terminal on its own. Shared by
+   * desiredSettlers (stop requesting) and intents() (remove the target from ColonyMemory.colonizing
+   * entirely). */
   private claimFailedPermanently(colony: ColonySnapshot): boolean {
     const colonizers = this.owned(colony, "colonizer").filter(c => c.memory.targetRoom === this.targetRoom);
-    const claimError = colonizers.find(c => c.memory.claimError !== undefined)?.memory.claimError;
-    return claimError !== undefined && TERMINAL_CLAIM_ERRORS.has(claimError);
+    return colonizers.some(c => c.memory.claimOwnedByOther === true);
   }
 
   /** True once the target can sustain itself through its own normal operations — see

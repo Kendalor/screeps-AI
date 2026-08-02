@@ -22,7 +22,8 @@ describe("Colony: colonize targets", () => {
   it("attaches a Colonize operation for each listed target", () => {
     const c = testColony({ colonizing: ["W5N5"] });
     const colonize = c.operations.find(op => op.kind === "colonize");
-    expect(colonize?.name).toBe(opName("colonize", "W1N1"));
+    // Named by the TARGET, not the sponsor — see Colonize.name's override doc.
+    expect(colonize?.name).toBe(opName("colonize", "W5N5"));
   });
 
   it("attaches one Colonize operation per distinct target room", () => {
@@ -74,5 +75,33 @@ describe("Colony: colonize target energy capacity threading", () => {
     const colonize = c.operations.find(op => op.kind === "colonize");
     const settlerRequests = colonize!.desiredCreeps(sponsor).filter(r => r.memory.role === "settler");
     expect(settlerRequests).toHaveLength(1);
+  });
+});
+
+// The combat equivalent of the "colonize targets" section above — Colony's constructor attaches one
+// Attack instance per target listed in snapshot.attacking (ColonyMemory.attacking), same durable-seam
+// shape (see operations/attack.ts's header). No energy-capacity threading here: Attack has no settler
+// equivalent that needs the target's own colony state.
+describe("Colony: attack targets", () => {
+  it("attaches no Attack operation when attacking is empty", () => {
+    const c = testColony();
+    expect(c.operations.some(op => op.kind === "attack")).toBe(false);
+  });
+
+  it("attaches an Attack operation for each listed target", () => {
+    const c = testColony({ attacking: ["W5N5"] });
+    const atk = c.operations.find(op => op.kind === "attack");
+    // Named by the TARGET, not the sponsor — see Attack.name's override doc.
+    expect(atk?.name).toBe(opName("attack", "W5N5"));
+  });
+
+  it("attaches one Attack operation per distinct target room", () => {
+    const c = testColony({ attacking: ["W5N5", "W6N6"] });
+    expect(c.operations.filter(op => op.kind === "attack")).toHaveLength(2);
+  });
+
+  it("attaches no operation for a target that is not listed", () => {
+    const c = testColony({ attacking: [] });
+    expect(c.operations.some(op => op.kind === "attack")).toBe(false);
   });
 });

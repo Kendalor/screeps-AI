@@ -32,6 +32,7 @@ export { Scouting } from "./scouting";
 export { Supply } from "./supply";
 export { Logistics } from "./logistics";
 export { Reservation } from "./reservation";
+export { Attack } from "./attack";
 
 /** Every colony gets every operation kind unconditionally; each decides for itself whether to act.
  * Order matters only for structures(): Mining paths first so later operations converge onto its routes. */
