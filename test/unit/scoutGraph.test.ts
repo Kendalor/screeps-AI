@@ -99,6 +99,26 @@ describe("scoutCandidatesAround", () => {
     expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2"]);
   });
 
+  it("still reaches a room through an unsealed second route, even though one parent to it is sealed", () => {
+    // Diamond: W1N1 -> W1N2 -> W1N3 (sealed leg) and W1N1 -> W2N1 -> W1N3 (open leg). Per the user's
+    // spec — "prune only if there is no other viable route" — W1N3 must survive because the W2N1 leg
+    // still gets there; only a room with EVERY route sealed should ever be pruned.
+    stubGame();
+    stubMap({
+      W1N1: { "3": "W1N2", "5": "W2N1" },
+      W1N2: { "7": "W1N1", "3": "W1N3" },
+      W2N1: { "7": "W1N1", "3": "W1N3" },
+      W1N3: { "7": "W1N2", "5": "W2N1" }
+    });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 1, type: "normal", sources: [], hostile: false, noPathFrom: { W1N1: Game.time } } } }
+    };
+
+    const out = scoutCandidatesAround("W1N1", 2, "W1N1");
+
+    expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2", "W1N3", "W2N1"]);
+  });
+
   it("does not apply the noPathFrom cut when no home is passed (non-scouting callers)", () => {
     stubGame();
     stubMap({ W1N1: { "3": "W1N2" }, W1N2: { "7": "W1N1", "3": "W1N3" }, W1N3: { "7": "W1N2" } });

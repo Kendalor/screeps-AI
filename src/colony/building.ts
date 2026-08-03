@@ -5,7 +5,7 @@ import { plannedObstacles, buildableAtRcl } from "../layouts/goal";
 import GOAL_JSON from "../layouts/Base_2.json";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
-import { range } from "../lib/geometry";
+import { range, type XY } from "../lib/geometry";
 import { needsRepair } from "../lib/repairable";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
@@ -127,7 +127,7 @@ export const wantedStructures = wrapFn(function wantedStructures(
   const gated = throttleGroups ? gateSourceGroups(colony, claimed) : claimed;
   // Bias extension growth toward this room's sources — shortens the miner->filler leg.
   const atRcl = buildableAtRcl(GOAL, colony.controllerLevel, { anchor, sources: colony.sources });
-  const stamped = stampLayout(atRcl, anchor);
+  const stamped = substituteBlockedCapped(colony, stampLayout(atRcl, anchor), anchor);
   const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
   // Bunker roads wait for the capacity gate; an operation's claimed roads (e.g. Mining's source
   // access) are never capacity- or adjacency-gated — claimed is the gate.
@@ -229,6 +229,37 @@ function gateRoads(buildable: PlacedStructure[], colony: ColonySnapshot, claimed
 
 function sameSpot(a: PlacedStructure) {
   return (b: SnapStructure) => a.x === b.x && a.y === b.y && a.type === b.type;
+}
+
+// A capped-in placement occupied by a structure that can never be razed (only spawns, currently — see
+// placeAndDemolish's own blocker?.type === "spawn" check) would otherwise sit skipped forever, silently
+// costing the colony one structure of that type versus the RCL cap. Swap it for the next-best same-type
+// placement from the *full* RCL8 goal (beyond what buildableAtRcl capped in) that isn't itself already
+// wanted, built, or sited — so the slot count at this RCL stays intact instead of quietly shrinking.
+// Order-preserving: the substitute takes the blocked placement's position in the list so build-sequence
+// contiguity (buildableAtRcl's whole point) is unaffected.
+function substituteBlockedCapped(colony: ColonySnapshot, capped: PlacedStructure[], anchor: XY): PlacedStructure[] {
+  const cappedKey = new Set(capped.map(p => `${p.type},${p.x},${p.y}`));
+  const fullByType = new Map<BuildableStructureConstant, PlacedStructure[]>();
+  for (const p of stampLayout(GOAL.placements, anchor)) {
+    (fullByType.get(p.type) ?? fullByType.set(p.type, []).get(p.type)!).push(p);
+  }
+
+  return capped.map(placement => {
+    if (existingAt(colony, placement)) return placement;
+    const blocker = colony.structures.find(s => s.x === placement.x && s.y === placement.y);
+    if (blocker?.type !== "spawn") return placement;
+
+    const pool = fullByType.get(placement.type) ?? [];
+    const replacement = pool.find(
+      p => !cappedKey.has(`${p.type},${p.x},${p.y}`) && !existingAt(colony, p) && !colony.structures.some(s => s.x === p.x && s.y === p.y)
+    );
+    if (!replacement) return placement; // no substitute available — fall back to the old skip behaviour
+
+    cappedKey.delete(`${placement.type},${placement.x},${placement.y}`);
+    cappedKey.add(`${replacement.type},${replacement.x},${replacement.y}`);
+    return replacement;
+  });
 }
 
 // --- idle-builder repurposing -------------------------------------------------

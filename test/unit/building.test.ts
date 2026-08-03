@@ -177,11 +177,11 @@ describe("building planner", () => {
     expect(removals).toEqual([]);
   });
 
-  it("skips a wanted tile occupied by a hand-placed spawn instead of retrying the site forever", () => {
+  it("never demolishes or re-sites a wanted tile occupied by a hand-placed spawn", () => {
     const anchor = { x: 25, y: 25 };
     // A goal-planned extension tile occupied by a spawn placed by hand, off-layout — never demolished
     // (a spawn can't be razed at this RCL/count), so the extension's site must simply be skipped rather
-    // than retried against an occupied tile every tick, and the budget slot it would have used stays free.
+    // than retried against an occupied tile every tick.
     const wantedExt = allNonRoadStructuresAt(anchor, 2).find(s => s.type === "extension")!;
     const blockerSpawn: SnapStructure = { x: wantedExt.x, y: wantedExt.y, type: "spawn" };
 
@@ -196,6 +196,24 @@ describe("building planner", () => {
         i => i.kind === "placeSite" && i.x === wantedExt.x && i.y === wantedExt.y && i.type === "extension"
       )
     ).toBe(false);
+  });
+
+  it("substitutes the next-best extension slot when the capped one is blocked by a spawn, instead of losing the slot", () => {
+    const anchor = { x: 25, y: 25 };
+    // A goal-planned extension tile occupied by a spawn placed by hand, off-layout. The colony should
+    // still reach its full RCL2 extension cap by drawing a replacement from beyond the capped set,
+    // rather than quietly building one fewer extension than the RCL permits forever.
+    const rcl2Exts = allNonRoadStructuresAt(anchor, 2).filter(s => s.type === "extension");
+    const blockerSpawn: SnapStructure = { x: rcl2Exts[0].x, y: rcl2Exts[0].y, type: "spawn" };
+
+    const snap = colony(colonySnap({ anchor, controllerLevel: 2, structures: [blockerSpawn], sites: [] }));
+
+    const intents = snap.building();
+    const placedExtensions = intents.filter(i => i.kind === "placeSite" && i.type === "extension");
+    // Full RCL2 extension cap still reached — the blocked slot's budget went to a substitute, not lost.
+    expect(placedExtensions).toHaveLength(rcl2Exts.length);
+    // The substitute must be a genuinely new tile, not the blocked one.
+    expect(placedExtensions.every(p => p.x !== blockerSpawn.x || p.y !== blockerSpawn.y)).toBe(true);
   });
 
   it("clears a structure blocking a wanted tile in the same tick it places the replacement, not before", () => {
