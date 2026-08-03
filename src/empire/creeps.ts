@@ -14,6 +14,7 @@ import { runSteward } from "../behaviors/steward";
 import { sweepEnRoute } from "../behaviors/sweep";
 import { runTransport } from "../behaviors/transport";
 import type { Step } from "../behaviors/types";
+import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 
 export const runCreepBehaviors = wrapFn(function runCreepBehaviors(): void {
@@ -76,7 +77,12 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
 
     if (result.acted) {
       const state: CreepState = { step, ...storeOf(creep), targetGone: false, didAct: result.didAct };
-      task.step = nextStep(def.steps, state);
+      const next = nextStep(def.steps, state);
+      log.debugCreep(
+        creep.name,
+        `role=${creep.memory.role} step=${step}(${def.steps[step].do}) acted didAct=${result.didAct} target=${result.target ?? "-"} nextStep=${next}`
+      );
+      task.step = next;
       // Carried to next tick so the creep finishes what it started rather than re-picking nearest target every tick.
       task.target = result.target;
       coFireBonusStep(creep, def.steps, step);
@@ -88,6 +94,7 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
   }
 
   // Every step in the loop came back with nothing to resolve — truly idle this tick.
+  log.debugCreep(creep.name, `role=${creep.memory.role} idle — every step had nothing to resolve`);
   task.step = step;
 }, "creeps:runOne");
 

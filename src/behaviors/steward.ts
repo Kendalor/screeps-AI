@@ -9,6 +9,7 @@
 // single tick with no cross-tick task state worth persisting (unlike a transport creep's multi-leg
 // chain), so it acts directly off Game.* the same way runOne's step table does for every other role.
 
+import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import { transferTo, withdrawOrPickup } from "./actions";
 
@@ -73,6 +74,7 @@ export const runSteward = wrapFn(function runSteward(creep: Creep): void {
   if (creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
     const dest = creep.memory.stewardDest && Game.getObjectById(creep.memory.stewardDest);
     if (dest) {
+      log.debugCreep(creep.name, `delivering to stewardDest=${creep.memory.stewardDest}`);
       const result = transferTo(creep, dest as RoomObject, RESOURCE_ENERGY);
       if (result.didAct) creep.memory.stewardDest = undefined;
       return;
@@ -80,6 +82,7 @@ export const runSteward = wrapFn(function runSteward(creep: Creep): void {
     // Destination vanished or was never set (e.g. resuming after a respawn): storage is always a safe
     // dump — never worse than stranding the energy on the creep.
     if (storage) {
+      log.debugCreep(creep.name, "stewardDest gone/unset — dumping carried energy into storage");
       transferTo(creep, storage, RESOURCE_ENERGY);
     }
     return;
@@ -88,6 +91,7 @@ export const runSteward = wrapFn(function runSteward(creep: Creep): void {
   // Drain the link first: it needs headroom for the next source delivery more urgently than any
   // rebalance below, and — unlike storage/terminal — nothing else in the colony can empty it.
   if (link && link.store.getUsedCapacity(RESOURCE_ENERGY) > LINK_DRAIN_FLOOR && storage) {
+    log.debugCreep(creep.name, `draining anchor link (${link.store.getUsedCapacity(RESOURCE_ENERGY)} energy) to storage`);
     creep.memory.stewardDest = storage.id;
     withdrawOrPickup(creep, link, RESOURCE_ENERGY);
     return;
@@ -102,6 +106,7 @@ export const runSteward = wrapFn(function runSteward(creep: Creep): void {
   if (link && storage && storage.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
     const cLink = controllerLink(creep.memory.home);
     if (cLink && controllerLinkNeedsTopUp(cLink) && link.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+      log.debugCreep(creep.name, "controller link running low — feeding anchor link from storage");
       creep.memory.stewardDest = link.id;
       withdrawOrPickup(creep, storage, RESOURCE_ENERGY);
       return;
@@ -114,6 +119,7 @@ export const runSteward = wrapFn(function runSteward(creep: Creep): void {
     const storageSurplus = storage.store.getUsedCapacity(RESOURCE_ENERGY) > storage.store.getCapacity(RESOURCE_ENERGY) * STORAGE_SURPLUS_FRACTION;
     const terminalLow = terminal.store.getUsedCapacity(RESOURCE_ENERGY) < terminal.store.getCapacity(RESOURCE_ENERGY) * TERMINAL_LOW_FRACTION;
     if (storageSurplus && terminalLow) {
+      log.debugCreep(creep.name, "storage surplus + terminal low — rebalancing storage -> terminal");
       creep.memory.stewardDest = terminal.id;
       withdrawOrPickup(creep, storage, RESOURCE_ENERGY);
       return;
@@ -121,4 +127,5 @@ export const runSteward = wrapFn(function runSteward(creep: Creep): void {
   }
 
   // Nothing to do this tick: stay parked (already in position, no travelTo needed).
+  log.debugCreep(creep.name, "idle at anchor — nothing to rebalance");
 }, "steward:runSteward");

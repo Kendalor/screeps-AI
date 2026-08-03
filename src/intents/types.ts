@@ -34,6 +34,9 @@ export type Intent =
   // The defender equivalent, picked by operations/defense.ts off whichever rooms (home or remote) currently
   // have hostiles. See CreepMemory.defendTargetRoom.
   | { kind: "setDefendTargetRoom"; creep: Id<Creep>; room: string }
+  // The attacker equivalent, picked by operations/attack.ts off whichever room in ColonyMemory.attacking
+  // the creep isn't already assigned to. See CreepMemory.attackTargetRoom.
+  | { kind: "setAttackTargetRoom"; creep: Id<Creep>; room: string }
   // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
   // execute.ts owns the memory write" split as setCreepRole above).
   | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }

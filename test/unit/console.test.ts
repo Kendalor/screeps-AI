@@ -32,11 +32,62 @@ describe("console: setDebugMetrics", () => {
   });
 });
 
+describe("console: debugCreep / undebugCreep", () => {
+  it("adds a creep name to Memory.debugCreeps", () => {
+    global.debugCreep("Miner1");
+    expect(Memory.debugCreeps).toEqual(["Miner1"]);
+  });
+
+  it("does not duplicate an already-enabled creep", () => {
+    global.debugCreep("Miner1");
+    global.debugCreep("Miner1");
+    expect(Memory.debugCreeps).toEqual(["Miner1"]);
+  });
+
+  it("removes a creep via undebugCreep", () => {
+    global.debugCreep("Miner1");
+    global.debugCreep("Miner2");
+    global.undebugCreep("Miner1");
+    expect(Memory.debugCreeps).toEqual(["Miner2"]);
+  });
+
+  it("undebugCreep on a never-enabled creep is a no-op", () => {
+    global.undebugCreep("Nobody");
+    expect(Memory.debugCreeps).toBeUndefined();
+  });
+});
+
+describe("console: debugColony / undebugColony", () => {
+  it("adds a room name to Memory.debugColonies", () => {
+    global.debugColony("W1N1");
+    expect(Memory.debugColonies).toEqual(["W1N1"]);
+  });
+
+  it("removes a room via undebugColony", () => {
+    global.debugColony("W1N1");
+    global.undebugColony("W1N1");
+    expect(Memory.debugColonies).toEqual([]);
+  });
+});
+
+describe("console: clearDebug", () => {
+  it("clears both debugCreeps and debugColonies", () => {
+    global.debugCreep("Miner1");
+    global.debugColony("W1N1");
+    global.clearDebug();
+    expect(Memory.debugCreeps).toEqual([]);
+    expect(Memory.debugColonies).toEqual([]);
+  });
+});
+
 describe("console: help", () => {
   it("lists every registered command", () => {
     const text = global.help();
     expect(text).toContain("setLogLevel");
     expect(text).toContain("setDebugMetrics");
+    expect(text).toContain("debugCreep");
+    expect(text).toContain("debugColony");
+    expect(text).toContain("clearDebug");
     expect(text).toContain("help()");
   });
 

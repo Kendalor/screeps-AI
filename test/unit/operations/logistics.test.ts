@@ -53,6 +53,23 @@ describe("Logistics.desiredCreeps", () => {
     expect(bodyCost(request.body)).toBeLessThanOrEqual(300);
   });
 
+  // Regression: transport hitting 0 alive isn't proof of a cold start — the sole transport in a
+  // mature room can die of old age without a queued handoff. A live supply creep means the room's
+  // economy is already established (supply only spawns past its own energy minimum, RCL3+), so the
+  // replacement must size off full capacity even though transport's own live count is 0 — otherwise
+  // the room is stuck forever with a 300-energy transport whose small body throughput headcount math
+  // (which assumes a capacity-sized body) then reports as sufficient on its own.
+  it("sizes the transport off full energyCapacity when none is alive but supply is", () => {
+    const supplyAliveNoTransport = withWork({
+      energyAvailable: 550,
+      energyCapacity: 550,
+      creeps: [snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] }), ...snapCreeps("supply", 1)]
+    });
+    const [request] = logistics.desiredCreeps(supplyAliveNoTransport);
+    expect(request).toBeDefined();
+    expect(bodyCost(request.body)).toBeGreaterThan(300);
+  });
+
   // Once one transport is alive it can fill the extensions, so subsequent ones size off full capacity.
   // Two full-income miners plus a long haul warrant more than one transport, so a second request is
   // still emitted with one alive; its body must be sized off the 550 capacity, not the 300 bootstrap.
