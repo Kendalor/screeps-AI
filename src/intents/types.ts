@@ -71,6 +71,13 @@ export type Intent =
   // `passive`: recorded from ambient vision, not a scout's assigned survey — execute.ts skips re-finding
   // static data (sources/mineral) already on record, refreshing only tick/owner/hostile.
   | { kind: "recordScout"; room: string; passive?: boolean }
+  // Invalidates a room's scout record staleness (without discarding the data itself) so the next
+  // Scouting pass treats it as due for a re-survey regardless of its normal/invader-owned interval.
+  // Emitted by remoteInvaderAttacks.ts the moment a live core is confirmed: a core's neighbourhood needs
+  // eyes back on it promptly, not whenever the ordinary staleness clock happens to expire (see
+  // remoteInvaderAttacks.ts's header for why an unmined neighbour left unscouted can silently hide a
+  // core for a full staleAfter interval). No-ops on a room with no ScoutInfo yet - nothing to invalidate.
+  | { kind: "forceRescout"; room: string }
   // Precomputes and caches a scouted source's real home->source PathFinder distance (see
   // ScoutedSource.paths/.route) before pickRemotes ever runs, so selection ranks/prices sources on the
   // ground truth instead of the cheap remoteDistanceEstimate fallback. Emitted for scouted sources within

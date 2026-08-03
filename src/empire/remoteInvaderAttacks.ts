@@ -18,10 +18,18 @@
 // own call from kernel/tick.ts's tick(), right alongside runAttackFlags — same reasoning, same
 // untiered/unconditional treatment (a missed firing under CPU pressure would silently leave a room
 // undefended, unlike a tier-3 luxury system).
+//
+// Also force-rescouts any room within PRUNE_RADIUS of a freshly-sighted live core (see
+// runRemoteInvaderAttacks' first block, and intents/types.ts's forceRescout doc). Without this, a room
+// whose core spawned after its last scout visit sits at whatever staleness interval its CORE-LESS
+// ScoutInfo already earned it — up to the full 100k-tick "normal room" interval — and is invisible to the
+// `targets` sweep below until that interval happens to lapse on its own.
 
 import { pickAttackSponsor } from "./attackSponsor";
 import { execute } from "../intents/execute";
 import { INVADER_USERNAME } from "../mining/remoteSources";
+import { scoutCandidatesAround } from "../snapshot/scoutGraph";
+import type { Intent } from "../intents/types";
 import type { Empire } from "./index";
 const NON_FORTIFIED_CORE_LEVEL = 0;
 
@@ -43,6 +51,27 @@ function routeDistance(a: string, b: string): number {
  * it. */
 export function runRemoteInvaderAttacks(world: Empire): void {
   const alreadyAttacking = new Set(world.colonies.flatMap(c => c.snapshot.attacking));
+
+  // Any live core seen this tick (fortified or not) forces its own neighbourhood's scout data stale, so
+  // Scouting sends eyes back within PRUNE_RADIUS promptly instead of waiting out whatever interval each
+  // neighbour's last (possibly core-less, possibly ancient) observation happened to earn it. A room whose
+  // ScoutInfo predates the core's own arrival has no way to already carry INVADER_OWNED_STALE_AFTER's
+  // tighter cadence — see the module header — so this is the only thing that ever notices such a room.
+  // visibleRooms is the same shared array on every colony (built once by buildEmpireSnapshot), so this is
+  // scanned once, empire-wide — not per colony — and picks up ANY sighting, not just rooms already
+  // flagged invader-owned from a past scout.
+  const visibleRooms = world.snapshot.colonies[0]?.visibleRooms ?? [];
+  const rescoutIntents: Intent[] = [];
+  const rescouted = new Set<string>();
+  for (const visible of visibleRooms) {
+    if (visible.invaderCoreLevel === undefined) continue;
+    for (const nearby of scoutCandidatesAround(visible.room, PRUNE_RADIUS)) {
+      if (rescouted.has(nearby.room)) continue;
+      rescouted.add(nearby.room);
+      rescoutIntents.push({ kind: "forceRescout", room: nearby.room });
+    }
+  }
+  if (rescoutIntents.length > 0) execute(rescoutIntents);
 
   for (const colony of world.colonies) {
     const targets = new Set(

@@ -1003,13 +1003,21 @@ describe("renew step", () => {
 // range 1 and swings. A RANGED_ATTACK body kites: fires anywhere inside range 3, and flees directly away
 // the moment the hostile has closed inside that range, rather than standing still and trading hits.
 describe("attack step", () => {
-  function fighter(over: { rangedParts?: number; range: number; fx?: number; fy?: number }) {
+  function fighter(over: { rangedParts?: number; range: number; fx?: number; fy?: number; hostileHasAttack?: boolean }) {
     const fx = over.fx ?? 20;
     const fy = over.fy ?? 20;
     const hx = over.range === 0 ? fx : fx + over.range; // hostile placed `range` tiles east of the fighter
-    const hostile = { id: "hostile1", pos: { x: hx, y: fy } };
+    // Defaults to armed (hostileHasAttack: true) so the pre-existing kiting tests keep exercising the
+    // kite path unchanged; only the new "closes on an unarmed hostile" tests opt out.
+    const hasAttack = over.hostileHasAttack ?? true;
+    const hostile = {
+      id: "hostile1",
+      pos: { x: hx, y: fy },
+      getActiveBodyparts: (part: BodyPartConstant) => (part === ATTACK && hasAttack ? 1 : 0)
+    };
     const attacked: string[] = [];
     const rangedAttacked: string[] = [];
+    const rangedMassAttacked: number[] = [];
     const traveled: { x: number; y: number }[] = [];
     stubGame({ objects: {} });
     const creep = {
@@ -1025,9 +1033,10 @@ describe("attack step", () => {
       getActiveBodyparts: (part: BodyPartConstant) => (part === RANGED_ATTACK ? (over.rangedParts ?? 1) : 0),
       attack: (t: { id: string }) => attacked.push(t.id),
       rangedAttack: (t: { id: string }) => rangedAttacked.push(t.id),
+      rangedMassAttack: () => rangedMassAttacked.push(1),
       travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
     };
-    return { creep: creep as unknown as Creep, attacked, rangedAttacked, traveled };
+    return { creep: creep as unknown as Creep, attacked, rangedAttacked, rangedMassAttacked, traveled };
   }
 
   it("ranged-attacks a hostile at the outer edge of range 3 and holds position — no closer, no farther", () => {
@@ -1059,6 +1068,99 @@ describe("attack step", () => {
     expect(result).toEqual({ acted: true, didAct: false, target: "hostile1" });
   });
 
+  it("closes to melee range on an unarmed hostile instead of holding at range 3", () => {
+    // No ATTACK part anywhere nearby (this hostile is the only one, and it's unarmed) — free to close in.
+    const { creep, rangedAttacked, traveled } = fighter({ rangedParts: 1, range: 3, hostileHasAttack: false });
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(rangedAttacked).toEqual(["hostile1"]); // still fires this tick from range 3
+    expect(traveled).toEqual([{ x: 23, y: 20 }]); // travelTo the hostile at range 1, not held at range 3
+    expect(result).toEqual({ acted: true, didAct: true, target: "hostile1" });
+  });
+
+  it("does not flee an unarmed hostile that has closed inside firing range — holds and fires", () => {
+    const { creep, rangedAttacked, traveled } = fighter({ rangedParts: 1, range: 1, hostileHasAttack: false });
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(rangedAttacked).toEqual(["hostile1"]);
+    expect(traveled).toEqual([]); // already within range 1 of the target — the "close in" branch requires range > 1
+    expect(result.didAct).toBe(true);
+  });
+
+  it("still flees a hostile with ATTACK parts even if it isn't the resolved target", () => {
+    // Two hostiles: the resolved (nearest) target is unarmed and already at point-blank range, but a
+    // second, armed hostile sits farther out, still within the engagement zone — must still flee the
+    // *resolved target's* position rather than close in on it, because closing in would walk the fighter
+    // deeper into the armed hostile's reach too. (Two hostiles in range also makes rangedMassAttack the
+    // better call than single-target rangedAttack, so this test only asserts on movement — the separate
+    // "uses rangedMassAttack" test below covers firing mode.)
+    const fx = 20;
+    const fy = 20;
+    const target = { id: "target1", pos: { x: 21, y: 20 }, getActiveBodyparts: () => 0 }; // range 1, nearest
+    const armed = { id: "armed1", pos: { x: 20, y: 23 }, getActiveBodyparts: (part: BodyPartConstant) => (part === ATTACK ? 1 : 0) }; // range 3
+    const traveled: { x: number; y: number }[] = [];
+    stubGame({ objects: {} });
+    const creep = {
+      pos: {
+        x: fx,
+        y: fy,
+        roomName: "W1N1",
+        inRangeTo: (pos: { x: number; y: number }, range: number) => Math.abs(fx - pos.x) <= range && Math.abs(fy - pos.y) <= range,
+        getRangeTo: (pos: { x: number; y: number }) => Math.max(Math.abs(fx - pos.x), Math.abs(fy - pos.y)),
+        findClosestByPath: (list: { pos: { x: number; y: number } }[]) => list[0] ?? null
+      },
+      room: { find: () => [target, armed] },
+      getActiveBodyparts: (part: BodyPartConstant) => (part === RANGED_ATTACK ? 1 : 0),
+      rangedAttack: () => undefined,
+      rangedMassAttack: () => undefined,
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    } as unknown as Creep;
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } }); // default "nearest" resolves target1
+    // Fled away from the resolved target (due east) rather than closed in, because the armed hostile at
+    // range 3 is still within the engagement zone that gates the close-in behavior.
+    expect(traveled).toEqual([{ x: 19, y: 21 }]);
+    expect(result.didAct).toBe(true);
+  });
+
+  it("uses rangedMassAttack over rangedAttack when hitting a cluster deals more total damage", () => {
+    const fx = 20;
+    const fy = 20;
+    // Four unarmed hostiles at range 1 (10 dmg/part each via mass attack = 40) vs a single rangedAttack's
+    // flat 10 — mass attack wins outright.
+    const positions = [
+      { x: 21, y: 20 },
+      { x: 21, y: 21 },
+      { x: 19, y: 20 },
+      { x: 20, y: 21 }
+    ];
+    const cluster = positions.map((pos, i) => ({
+      id: `h${i}`,
+      pos,
+      getActiveBodyparts: () => 0
+    }));
+    const rangedAttacked: string[] = [];
+    const rangedMassAttacked: number[] = [];
+    const traveled: { x: number; y: number }[] = [];
+    stubGame({ objects: {} });
+    const creep = {
+      pos: {
+        x: fx,
+        y: fy,
+        roomName: "W1N1",
+        inRangeTo: (pos: { x: number; y: number }, range: number) => Math.abs(fx - pos.x) <= range && Math.abs(fy - pos.y) <= range,
+        getRangeTo: (pos: { x: number; y: number }) => Math.max(Math.abs(fx - pos.x), Math.abs(fy - pos.y)),
+        findClosestByPath: (list: { pos: { x: number; y: number } }[]) => list[0] ?? null
+      },
+      room: { find: () => cluster },
+      getActiveBodyparts: (part: BodyPartConstant) => (part === RANGED_ATTACK ? 1 : 0),
+      rangedAttack: (t: { id: string }) => rangedAttacked.push(t.id),
+      rangedMassAttack: () => rangedMassAttacked.push(1),
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    } as unknown as Creep;
+    const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(rangedMassAttacked).toEqual([1]);
+    expect(rangedAttacked).toEqual([]);
+    expect(result.didAct).toBe(true);
+  });
+
   it("melee-attacks once in range 1 when the body has no RANGED_ATTACK", () => {
     const { creep, attacked, rangedAttacked, traveled } = fighter({ rangedParts: 0, range: 1 });
     const result = runStep(creep, { do: "attack", from: { find: "hostile" } });
@@ -1088,7 +1190,11 @@ describe("attack step", () => {
   // chased onto a border froze there forever while the (unclamped) hostile kept closing and eventually
   // caught it at point-blank. The fix slides the fighter along the blocked edge instead of freezing.
   function borderFighter(fx: number, fy: number, hx: number, hy: number) {
-    const hostile = { id: "hostile1", pos: { x: hx, y: hy } };
+    const hostile = {
+      id: "hostile1",
+      pos: { x: hx, y: hy },
+      getActiveBodyparts: (part: BodyPartConstant) => (part === ATTACK ? 1 : 0)
+    };
     const traveled: { x: number; y: number }[] = [];
     stubGame({ objects: {} });
     const creep = {
@@ -1103,6 +1209,7 @@ describe("attack step", () => {
       room: { find: () => [hostile] },
       getActiveBodyparts: (part: BodyPartConstant) => (part === RANGED_ATTACK ? 1 : 0),
       rangedAttack: () => undefined,
+      rangedMassAttack: () => undefined,
       travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
     };
     return { creep: creep as unknown as Creep, traveled };

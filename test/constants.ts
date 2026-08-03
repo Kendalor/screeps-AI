@@ -133,6 +133,9 @@ Object.assign(globalThis, {
 
   RESOURCE_ENERGY: "energy",
   RESOURCE_OXYGEN: "O",
+  RESOURCE_LEMERGIUM_OXIDE: "LO",
+  RESOURCE_LEMERGIUM_ALKALIDE: "LHO2",
+  RESOURCE_CATALYZED_LEMERGIUM_ALKALIDE: "XLHO2",
 
   FIND_CREEPS: 101,
   FIND_MY_CREEPS: 102,
@@ -220,6 +223,10 @@ Object.assign(globalThis, {
 
   // Hits repaired per energy spent, from screeps/common constants — the metrics repair-energy conversion.
   REPAIR_POWER: 100,
+
+  // Damage a single RANGED_ATTACK part deals via rangedAttack(), flat anywhere within range 3, from
+  // screeps/common constants.
+  RANGED_ATTACK_POWER: 10,
 
   // Spawn cost per body part, from screeps/common constants.
   BODYPART_COST: {

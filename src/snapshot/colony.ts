@@ -312,6 +312,20 @@ function snapStructure(s: {
   return base;
 }
 
+// Heal-boost multipliers, tier 1-3 (LO/LHO2/XLHO2) — mirrors the game's BOOSTS.heal.heal table, which
+// has no ambient runtime type (see GAME_TOWER_* in defense.ts for why these constants are hand-mirrored).
+const HEAL_BOOST_MULTIPLIER: Partial<Record<string, number>> = {
+  [RESOURCE_LEMERGIUM_OXIDE]: 1.5,
+  [RESOURCE_LEMERGIUM_ALKALIDE]: 3,
+  [RESOURCE_CATALYZED_LEMERGIUM_ALKALIDE]: 4
+};
+
 function snapUnit(c: Creep): SnapUnit {
-  return { id: c.id, x: c.pos.x, y: c.pos.y, hits: c.hits, hitsMax: c.hitsMax };
+  // creep.body (with each part's boost) is visible on any creep with vision, hostile included — so a
+  // boosted enemy healer's real output is knowable, not just our own creeps'.
+  const healParts = c.body.reduce((sum, part) => {
+    if (part.type !== HEAL || part.hits <= 0) return sum;
+    return sum + (part.boost ? (HEAL_BOOST_MULTIPLIER[part.boost] ?? 1) : 1);
+  }, 0);
+  return { id: c.id, x: c.pos.x, y: c.pos.y, hits: c.hits, hitsMax: c.hitsMax, healParts };
 }

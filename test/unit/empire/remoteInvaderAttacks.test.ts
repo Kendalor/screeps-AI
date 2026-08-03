@@ -13,9 +13,16 @@ import { stubGame } from "../../helpers";
 function setUp() {
   stubGame();
   const game = (globalThis as { Game: Record<string, unknown> }).Game;
-  game.map = { findRoute: (_from: string, dest: string) => [{ room: dest }] };
+  game.map = {
+    findRoute: (_from: string, dest: string) => [{ room: dest }],
+    // Also exercised by the new force-rescout sweep (scoutCandidatesAround): no exits keeps its BFS a
+    // single-room no-op, since these tests aren't asserting on rescout behaviour itself.
+    describeExits: () => undefined,
+    getRoomStatus: () => ({ status: "normal" })
+  };
   // addAttackTarget's handler writes Memory.colonies[room] — stubGame() only seeds Memory.creeps.
-  (globalThis as { Memory: { colonies: Record<string, unknown> } }).Memory.colonies = {};
+  (globalThis as { Memory: { colonies: Record<string, unknown>; rooms: Record<string, unknown> } }).Memory.colonies = {};
+  (globalThis as { Memory: { colonies: Record<string, unknown>; rooms: Record<string, unknown> } }).Memory.rooms = {};
 }
 
 const attackingOf = (mem: Record<string, unknown>, room: string): string[] =>

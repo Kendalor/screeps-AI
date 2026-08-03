@@ -95,4 +95,21 @@ describe("scoutCandidatesAround", () => {
 
     expect(out.map(c => c.room)).toEqual(["W1N1"]);
   });
+
+  it("excludes a 'normal' neighbour reached directly from a still-active respawn/novice zone room", () => {
+    // The World places a real (structure, not terrain) wall on the zone-exit border until the zone's
+    // protection timestamp expires — a "normal"-status neighbour is not automatically enterable just
+    // because its own status is normal; it must match the status of the room being exited FROM.
+    // Regression case for scouts routing straight into that border wall and getting stuck.
+    stubGame();
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      describeExits: (room: string) => (room === "W1N1" ? { "3": "W1N2" } : undefined),
+      getRoomStatus: (room: string) => ({ status: room === "W1N1" ? "respawn" : "normal" })
+    };
+
+    const out = scoutCandidatesAround("W1N1", 1);
+
+    expect(out.map(c => c.room)).toEqual(["W1N1"]);
+  });
+
 });

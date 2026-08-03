@@ -115,13 +115,35 @@ function towerDamageAt(dist: number): number {
   return GAME_TOWER_POWER_ATTACK * (1 - GAME_TOWER_FALLOFF * falloffFraction);
 }
 
+// Mirrors HEAL_POWER/RANGED_HEAL_POWER — melee heal (range <= 1) is 3x stronger than ranged heal
+// (range 2-3), so a healer standing back from its tank contributes far less than one in melee range.
+const GAME_HEAL_POWER = 12;
+const GAME_RANGED_HEAL_POWER = 4;
+const HEAL_ASSIST_RANGE = 3;
+
+function healRateAt(dist: number): number {
+  if (dist <= 1) return GAME_HEAL_POWER;
+  if (dist <= HEAL_ASSIST_RANGE) return GAME_RANGED_HEAL_POWER;
+  return 0;
+}
+
+// Total heal this hostile can receive this tick from itself plus every other hostile within heal range —
+// the real in-game ceiling a tower's shot has to beat, not just the target's own HEAL parts. Each healer
+// (including the target healing itself) contributes at its own range-appropriate rate, not a flat one.
+function incomingHeal(hostile: SnapUnit, hostiles: readonly SnapUnit[]): number {
+  return hostiles.reduce((sum, h) => sum + h.healParts * healRateAt(range(hostile, h)), 0);
+}
+
 // A hostile sitting on the room border can simply step out next tick, so shooting it is normally wasted
 // unless the shot actually kills it — or it's already in melee range of something worth defending, where
 // letting it live even one more tick risks real damage. Interior hostiles have no such escape and are
-// always worth shooting.
+// always worth shooting — unless healing (its own, or a healer standing near it) can outpace the tower's
+// damage entirely, in which case the shot never dents it and is pure energy waste regardless of position.
 function worthShooting(colony: ColonySnapshot, tower: { x: number; y: number }, hostile: SnapUnit): boolean {
+  const dmg = towerDamageAt(range(tower, hostile));
+  if (dmg <= incomingHeal(hostile, colony.hostiles)) return false;
   if (!isExitTile(hostile)) return true;
-  if (towerDamageAt(range(tower, hostile)) >= hostile.hits) return true;
+  if (dmg >= hostile.hits) return true;
   return colony.structures.some(s => s.id && range(s, hostile) <= 1);
 }
 

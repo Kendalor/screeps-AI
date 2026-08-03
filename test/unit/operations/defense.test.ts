@@ -121,6 +121,51 @@ describe("Defense.intents", () => {
 
     expect(defense.intents(snap)).toEqual([{ kind: "towerAttack", tower: "towerA", target: interior.id }]);
   });
+
+  it("holds fire on an interior hostile self-healing in melee range faster than the tower can damage it", () => {
+    // Tower at range 5 (optimal) hits for 600. Melee self-heal is HEAL_POWER (12) per part, so 50 parts
+    // clears it — an extreme, boosted-tier body, but the point is the threshold logic, not realism.
+    const outhealed = hostileAt(15, 10, "healer", 50);
+    const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], hostiles: [outhealed] });
+
+    expect(defense.intents(snap)).toEqual([]);
+  });
+
+  it("still shoots a hostile whose own healing falls short of the tower's damage", () => {
+    const underhealed = hostileAt(15, 10, "weakheal", 5);
+    const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], hostiles: [underhealed] });
+
+    expect(defense.intents(snap)).toEqual([{ kind: "towerAttack", tower: "towerA", target: underhealed.id }]);
+  });
+
+  it("holds fire on a tank kept topped up by a healer standing within heal-assist range", () => {
+    const tank = hostileAt(15, 10, "tank");
+    const healer = hostileAt(16, 10, "healerBuddy", 50);
+    const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], hostiles: [tank, healer] });
+
+    expect(defense.intents(snap)).toEqual([]);
+  });
+
+  it("shoots a tank once its healer buddy is out of heal-assist range", () => {
+    const tank = hostileAt(15, 10, "tank");
+    const farHealer = hostileAt(20, 10, "healerBuddy", 50);
+    const snap = colonySnap({ towers: [towerAt(10, 10, "towerA")], hostiles: [tank, farHealer] });
+
+    expect(defense.intents(snap)).toEqual([{ kind: "towerAttack", tower: "towerA", target: tank.id }]);
+  });
+
+  it("prices a ranged healer at a third of a melee healer's rate", () => {
+    // 50 HEAL parts clears 600 dmg in melee (rate 12) but not at range 2-3 (rate 4: 50*4=200 < 600) —
+    // same part count, same distance-to-tower, only the heal-assist range changes.
+    const tank = hostileAt(15, 10, "tank");
+    const meleeHealer = hostileAt(16, 10, "meleeHealer", 50);
+    const meleeSnap = colonySnap({ towers: [towerAt(10, 10, "towerA")], hostiles: [tank, meleeHealer] });
+    expect(defense.intents(meleeSnap)).toEqual([]);
+
+    const rangedHealer = hostileAt(17, 10, "rangedHealer", 50); // range 2 from tank
+    const rangedSnap = colonySnap({ towers: [towerAt(10, 10, "towerA")], hostiles: [tank, rangedHealer] });
+    expect(defense.intents(rangedSnap)).toEqual([{ kind: "towerAttack", tower: "towerA", target: tank.id }]);
+  });
 });
 
 describe("Defense.desiredCreeps", () => {

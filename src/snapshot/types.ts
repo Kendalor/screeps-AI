@@ -6,6 +6,12 @@ export interface SnapUnit {
   y: number;
   hits: number;
   hitsMax: number;
+  // This creep's live (hits > 0) HEAL parts, weighted by their LO/LHO2/XLHO2 boost multiplier (1x when
+  // unboosted) and summed — e.g. 3 plain parts plus 2 XLHO2-boosted (4x) parts is 3 + 8 = 11. A boosted
+  // healer's per-part output still depends on range at the point of use (HEAL_POWER at range <= 1,
+  // RANGED_HEAL_POWER at range 2-3), so Defense's incomingHeal multiplies this by the range-appropriate
+  // rate rather than a flat one — the weighting here only captures the boost, not the range.
+  healParts: number;
 }
 
 export interface SnapTower {

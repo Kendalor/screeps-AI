@@ -182,12 +182,12 @@ export function scouted(over: Partial<ScoutInfo> = {}): ScoutInfo {
   };
 }
 
-export function hostileAt(x: number, y: number, id = `hostile_${x}_${y}`): SnapUnit {
-  return { id: id as Id<Creep>, x, y, hits: 100, hitsMax: 100 };
+export function hostileAt(x: number, y: number, id = `hostile_${x}_${y}`, healParts = 0): SnapUnit {
+  return { id: id as Id<Creep>, x, y, hits: 100, hitsMax: 100, healParts };
 }
 
 export function woundedAt(x: number, y: number, id = `wounded_${x}_${y}`): SnapUnit {
-  return { id: id as Id<Creep>, x, y, hits: 50, hitsMax: 100 };
+  return { id: id as Id<Creep>, x, y, hits: 50, hitsMax: 100, healParts: 0 };
 }
 
 export function towerAt(x: number, y: number, id = `tower_${x}_${y}`, storeEnergy = 0): SnapTower {

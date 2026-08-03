@@ -173,6 +173,12 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       mem.scouted = observeRoom(room, intent.passive ? mem.scouted : undefined);
       return OK;
     }
+    case "forceRescout": {
+      const scouted = (Memory.rooms ??= {})[intent.room]?.scouted;
+      if (!scouted || scouted.tick === undefined) return ERR_NOT_FOUND; // nothing on record to invalidate
+      scouted.tick = 0; // oldest possible tick: needsScouting reads this as maximally stale next check
+      return OK;
+    }
     case "recordPotential": {
       const rooms = (Memory.rooms ??= {});
       const scouted = rooms[intent.room]?.scouted;

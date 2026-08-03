@@ -486,12 +486,52 @@ function renewStep(creep: Creep, below: number, locked: Id<_HasId> | undefined, 
 }
 
 const RANGED_ATTACK_RANGE = 3;
+// rangedMassAttack's damage per RANGED_ATTACK part, keyed by range (engine-hardcoded, not exposed as a
+// JS constant): full rangedAttack power (10) at range 1, falling off to 4 and 1 at range 2 and 3, zero
+// beyond — steep enough that mass attack only wins over a single-target rangedAttack (flat 10/part
+// anywhere inside range 3) with several hostiles clustered close.
+const MASS_ATTACK_DAMAGE_PER_PART: Record<number, number> = { 1: 10, 2: 4, 3: 1 };
+
+// All hostile creeps in the room within range of the fighter, closest lookup shared by the melee-threat
+// check and the mass-attack damage total below — both read off room.find (like every other target
+// lookup in this file, see targets.ts's findCandidates) rather than a position-scoped API, so both stay
+// exercisable against the same hostile fixtures as the rest of this file's tests.
+function hostilesWithin(creep: Creep, range: number): Creep[] {
+  return creep.room
+    .find(FIND_HOSTILE_CREEPS)
+    .filter(h => creep.pos.getRangeTo(h.pos) <= range);
+}
+
+// True if any hostile creep within the defender's own engagement zone (range 3 — the same radius it
+// fires and closes within) carries an ATTACK part. Checked against ALL nearby hostiles, not just the
+// resolved target: an armed hostile sitting at range 3 is exactly the case that must still hold at
+// range 3 rather than close in, and a defender must not wander into a second attacker's melee range
+// while it kites or closes on a different, unarmed one.
+function nearbyMeleeThreat(creep: Creep): boolean {
+  return hostilesWithin(creep, RANGED_ATTACK_RANGE).some(h => h.getActiveBodyparts(ATTACK) > 0);
+}
+
+// Total rangedMassAttack damage the creep would deal this tick from its CURRENT position, summed
+// across every hostile in range 3 with the range-3/2/1 falloff, scaled by how many RANGED_ATTACK parts
+// the creep carries (each part hits every target in range independently, same as rangedAttack).
+// Mirrors the engine's own per-target loop rather than assuming a single cluster distance.
+function massAttackDamage(creep: Creep, rangedParts: number): number {
+  let total = 0;
+  for (const h of hostilesWithin(creep, RANGED_ATTACK_RANGE)) {
+    const perPart = MASS_ATTACK_DAMAGE_PER_PART[creep.pos.getRangeTo(h.pos)];
+    if (perPart) total += perPart * rangedParts;
+  }
+  return total;
+}
 
 // Engages the resolved hostile. A pure-melee body just closes to range 1 and swings. A body with
-// RANGED_ATTACK kites: fires whenever in range 3 (rangedAttack has no falloff worth chasing away from —
-// full damage anywhere inside 3), and if the hostile has closed past that into range 2 or less, flees
-// directly away from it instead of standing still, so a melee invader can never pin it down and trade
-// hits at point-blank. Only closes distance when the hostile is still outside range 3.
+// RANGED_ATTACK fires whenever in range 3 (rangedAttack has no falloff worth chasing away from — full
+// damage anywhere inside 3) and picks rangedAttack vs rangedMassAttack by whichever deals more total
+// damage this tick (mass attack only wins with enough hostiles clustered close, since its single-target
+// falloff is steep). Movement only kites away from a body with no ATTACK part on it or on any other
+// hostile nearby (see nearbyMeleeThreat) — a genuinely unarmed cluster (scouts, healers, claimers) is
+// free to be closed on and mass-attacked instead of fled from. Once any nearby hostile does carry
+// ATTACK, the creep still flees rather than trade hits at point-blank, same as before.
 function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
   const target = resolveTarget(creep, spec, locked);
   if (!target) return { acted: false, didAct: false };
@@ -511,13 +551,27 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
     return { acted: true, didAct: false, target: hostile.id };
   }
 
+  const rangedParts = creep.getActiveBodyparts(RANGED_ATTACK);
   const inFiringRange = creep.pos.inRangeTo(hostile.pos, RANGED_ATTACK_RANGE);
-  if (inFiringRange) creep.rangedAttack(hostile);
+  const meleeThreatened = nearbyMeleeThreat(creep);
+
+  if (inFiringRange) {
+    const single = RANGED_ATTACK_POWER * rangedParts;
+    const mass = massAttackDamage(creep, rangedParts);
+    if (mass > single) creep.rangedMassAttack();
+    else creep.rangedAttack(hostile);
+  }
 
   if (allowTravel) {
-    if (creep.pos.getRangeTo(hostile.pos) < RANGED_ATTACK_RANGE) {
-      // Hostile has closed inside firing range — kite: step directly away from it, still firing this tick.
+    const range = creep.pos.getRangeTo(hostile.pos);
+    if (meleeThreatened && range < RANGED_ATTACK_RANGE) {
+      // A melee-capable hostile is close enough to threaten next tick — kite: step directly away,
+      // still firing this tick.
       creep.travelTo(fleeSpot(creep.pos, hostile.pos), { range: 0 });
+    } else if (!meleeThreatened && range > 1) {
+      // Nothing nearby can punish point-blank range — close in freely for a better mass-attack angle
+      // (and to keep pace with a fleeing unarmed target) instead of holding at range 3.
+      creep.travelTo(hostile.pos, { range: 1 });
     } else if (!inFiringRange) {
       creep.travelTo(hostile.pos, { range: RANGED_ATTACK_RANGE });
     }
