@@ -4,6 +4,7 @@
 
 import type { RoomType } from "../lib/roomName";
 import type { ScoutInfo } from "../memory/schema";
+import { INVADER_USERNAME } from "../mining/remoteSources";
 import type { ScoutCandidate } from "../snapshot/types";
 
 // Re-survey intervals per room type, in ticks; highways carry transient resources so need frequent re-checks.
@@ -13,6 +14,14 @@ const STALE_AFTER: Record<RoomType, number> = {
   highway: 3000,
   intersection: 3000
 };
+
+// Re-survey interval for a room last seen held by the Invader NPC — same cadence as a highway, far
+// shorter than a normal room's 100k. A core reservation can outlive the core itself (see
+// remoteInvaderAttacks.ts's header), so this is what actually gets a scout back for the live vision
+// that pruning needs; without it, a room seen once at "normal" cadence is invisible to pruning for the
+// entire 100k-tick interval even though it's already flagged as worth clearing. Self-clearing: once a
+// revisit finds the core gone, observeRoom drops `owner` and the room falls back to the normal interval.
+const INVADER_OWNED_STALE_AFTER = STALE_AFTER.highway;
 
 /** The re-survey interval for a room type, exposed so behaviour, operation and tests agree on "stale". */
 export function staleAfter(type: RoomType): number {
@@ -34,7 +43,8 @@ export function needsPassiveRecording(info: ScoutInfo | undefined, now: number):
 export function needsScouting(candidate: ScoutCandidate, now = 0): boolean {
   const info = candidate.info;
   if (!info || info.tick === undefined) return true; // never physically seen
-  return now - info.tick >= staleAfter(candidate.type);
+  const interval = info.owner === INVADER_USERNAME ? INVADER_OWNED_STALE_AFTER : staleAfter(candidate.type);
+  return now - info.tick >= interval;
 }
 
 // Rooms still worth dispatching a scout to. Deliberately unordered/undistanced: ranking these by

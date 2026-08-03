@@ -3,8 +3,26 @@
 // Game.map.findRoute (execute.ts's job, covered in execute.test.ts); this pure pool is unit-tested here.
 
 import { describe, expect, it } from "vitest";
-import { needsPassiveRecording, scoutCandidatePool } from "../../src/behaviors/scout";
+import { needsPassiveRecording, needsScouting, scoutCandidatePool, staleAfter } from "../../src/behaviors/scout";
 import { scouted, scoutTarget } from "../fixtures";
+
+describe("needsScouting", () => {
+  // A core's reservation can outlive the core itself, so a room already known to be Invader-held must
+  // get re-checked far sooner than a normal room's 100k-tick interval — otherwise remoteInvaderAttacks.ts
+  // never gets the live vision it needs to confirm the core is still standing and prune it.
+  it("re-checks an Invader-owned room much sooner than an ordinary normal room", () => {
+    const target = scoutTarget("W1N2", scouted({ tick: 0, owner: "Invader" }));
+    const ordinary = scoutTarget("W1N3", scouted({ tick: 0 }));
+    const now = staleAfter("highway"); // the Invader-owned interval
+    expect(needsScouting(target, now)).toBe(true);
+    expect(needsScouting(ordinary, now)).toBe(false);
+  });
+
+  it("falls back to the normal interval once the Invader owner is gone", () => {
+    const target = scoutTarget("W1N2", scouted({ tick: 0 }));
+    expect(needsScouting(target, staleAfter("highway"))).toBe(false);
+  });
+});
 
 describe("needsPassiveRecording", () => {
   it("wants a room never observed", () => {

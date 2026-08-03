@@ -21,6 +21,12 @@ declare global {
     playerReputation?: Record<string, Reputation>;
     logLevel?: LogLevel; // set via the in-game console (commands/console.ts); absent means "error" only
     debugMetrics?: boolean; // set via the in-game console (commands/console.ts); toggles the right-aligned debug panel
+    // Creep names / colony room names currently opted into log.debugCreep/log.debugRoom tracing (see
+    // lib/log.ts), set via the in-game console's debugCreep/debugColony commands. Independent of logLevel:
+    // a debug call only ever prints for a tag listed here, no matter the global level. Absent means no
+    // tracing anywhere — the common case, so a fresh Memory need not initialize these to `[]`.
+    debugCreeps?: string[];
+    debugColonies?: string[];
     // Disables pickRemotes selection empire-wide (mining/pickRemotes.ts) — set via the in-game console
     // or (today) directly by an integration test's patchMemory, to isolate a scenario's spawn economics
     // from a competing remote-mining fleet without faking scout data/terrain to avoid it being
@@ -58,10 +64,11 @@ declare global {
     // currently sent to fight in, owned by operations/defense.ts. Same not-cleared-on-arrival rule — the
     // defender keeps fighting there until Defense reassigns it (danger cleared or a worse room appeared).
     defendTargetRoom?: string;
-    // The attacker equivalent of defendTargetRoom: which room this attacker was sent to clear, owned by
-    // operations/attack.ts. Unlike defendTargetRoom there is no reassignment case — one Attack operation
-    // instance is permanently bound to one target room (see operations/attack.ts's header) — so this is
-    // set once at spawn and never rewritten.
+    // The attacker equivalent of defendTargetRoom: which room this attacker is currently sent to clear,
+    // owned by operations/attack.ts. Same reassignment rule as defendTargetRoom — one Attack operation
+    // per colony pools every queued target (ColonyMemory.attacking) and reassigns its one attacker to the
+    // next open target once its current one clears, so a surviving attacker carries over between rooms
+    // instead of a fresh one spawning per target.
     attackTargetRoom?: string;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom

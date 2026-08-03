@@ -19,6 +19,11 @@ const REASON_LABEL: Record<string, string> = {
 declare global {
   function setLogLevel(level: LogLevel): string;
   function setDebugMetrics(on: boolean): string;
+  function debugCreep(name: string): string;
+  function undebugCreep(name: string): string;
+  function debugColony(room: string): string;
+  function undebugColony(room: string): string;
+  function clearDebug(): string;
   function spawnLoad(room?: string): string;
   function colonizeTargets(): string;
   function help(): string;
@@ -48,6 +53,39 @@ export function installConsoleCommands(): void {
     return `debug metrics ${on ? "enabled" : "disabled"}`;
   };
   register("setDebugMetrics(on)", "toggle the right-aligned debug panel (remote repair + remote source status)");
+
+  global.debugCreep = (name: string): string => {
+    const list = (Memory.debugCreeps ??= []);
+    if (!list.includes(name)) list.push(name);
+    return `debug logging enabled for creep "${name}"`;
+  };
+  register("debugCreep(name)", "trace one creep's per-tick task/step decisions via log.debugCreep");
+
+  global.undebugCreep = (name: string): string => {
+    if (Memory.debugCreeps) Memory.debugCreeps = Memory.debugCreeps.filter(n => n !== name);
+    return `debug logging disabled for creep "${name}"`;
+  };
+  register("undebugCreep(name)", "stop tracing a creep enabled via debugCreep");
+
+  global.debugColony = (room: string): string => {
+    const list = (Memory.debugColonies ??= []);
+    if (!list.includes(room)) list.push(room);
+    return `debug logging enabled for colony "${room}"`;
+  };
+  register("debugColony(room)", "trace one colony's per-tick spawn requests via log.debugRoom");
+
+  global.undebugColony = (room: string): string => {
+    if (Memory.debugColonies) Memory.debugColonies = Memory.debugColonies.filter(r => r !== room);
+    return `debug logging disabled for colony "${room}"`;
+  };
+  register("undebugColony(room)", "stop tracing a colony enabled via debugColony");
+
+  global.clearDebug = (): string => {
+    Memory.debugCreeps = [];
+    Memory.debugColonies = [];
+    return "cleared all debug-traced creeps and colonies";
+  };
+  register("clearDebug()", "clear every creep/colony currently opted into debug tracing");
 
   global.spawnLoad = (room?: string): string => {
     const world = empire(buildEmpireSnapshot());

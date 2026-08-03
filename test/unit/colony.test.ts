@@ -105,29 +105,28 @@ describe("Colony: cross-colony remote-source exclusion", () => {
   });
 });
 
-// The combat equivalent of the "colonize targets" section above — Colony's constructor attaches one
-// Attack instance per target listed in snapshot.attacking (ColonyMemory.attacking), same durable-seam
-// shape (see operations/attack.ts's header). No energy-capacity threading here: Attack has no settler
-// equivalent that needs the target's own colony state.
+// The combat equivalent of the "colonize targets" section above, but pooled rather than one-per-target:
+// Colony's constructor attaches a SINGLE Attack instance whenever snapshot.attacking (ColonyMemory.attacking)
+// is non-empty, and that one instance pools every listed target behind a shared attacker (see
+// operations/attack.ts's header) — unlike Colonize, more queued targets never means more operations.
 describe("Colony: attack targets", () => {
   it("attaches no Attack operation when attacking is empty", () => {
     const c = testColony();
     expect(c.operations.some(op => op.kind === "attack")).toBe(false);
   });
 
-  it("attaches an Attack operation for each listed target", () => {
+  it("attaches one Attack operation, named by the sponsoring colony, when a target is listed", () => {
     const c = testColony({ attacking: ["W5N5"] });
     const atk = c.operations.find(op => op.kind === "attack");
-    // Named by the TARGET, not the sponsor — see Attack.name's override doc.
-    expect(atk?.name).toBe(opName("attack", "W5N5"));
+    expect(atk?.name).toBe(opName("attack", "W1N1"));
   });
 
-  it("attaches one Attack operation per distinct target room", () => {
+  it("still attaches only one Attack operation with multiple targets queued", () => {
     const c = testColony({ attacking: ["W5N5", "W6N6"] });
-    expect(c.operations.filter(op => op.kind === "attack")).toHaveLength(2);
+    expect(c.operations.filter(op => op.kind === "attack")).toHaveLength(1);
   });
 
-  it("attaches no operation for a target that is not listed", () => {
+  it("attaches no operation once attacking is empty again", () => {
     const c = testColony({ attacking: [] });
     expect(c.operations.some(op => op.kind === "attack")).toBe(false);
   });

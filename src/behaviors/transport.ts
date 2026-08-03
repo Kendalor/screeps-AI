@@ -7,6 +7,7 @@
 // the time this runs — see kernel/tick.ts's SYSTEMS order.
 
 import type { LogisticsTask, NodeRef } from "../logistics/types";
+import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import { transferTo, withdrawOrPickup } from "./actions";
 
@@ -114,9 +115,11 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
   const task = creep.memory.logistics?.current;
   if (!task) {
     // Nothing assigned this tick — planLogistics runs upstream, not from here. Loiter near the bunker.
+    log.debugCreep(creep.name, "no logistics task assigned — parking near bunker");
     parkNearBunker(creep);
     return;
   }
+  log.debugCreep(creep.name, `task=${task.kind} resource=${task.resource} carrying=${creep.store.getUsedCapacity()}`);
 
   // A loaded creep still out in a remote room: just head for the home room. No `from`/`to` to resolve —
   // the deliver consumer is deliberately left unpicked until a later tick finds it idle back home (see

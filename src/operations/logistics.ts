@@ -67,8 +67,16 @@ export class Logistics extends Operation {
     // Nothing alive yet: size the first transport off base spawn capacity (300, always affordable),
     // not full energyCapacity — otherwise the room stalls waiting for the extensions to fill, which
     // is exactly what a transport creep is needed for in the first place. Once one is alive, size
-    // subsequent ones off full capacity.
-    const energyForBody = this.owned(colony, "transport").length === 0 ? config.bootstrapEnergy : colony.energyCapacity;
+    // subsequent ones off full capacity. A live supply creep means the room's economy is already
+    // established (supply only spawns once energyCapacity clears supply's own minimum, see
+    // operations/supply.ts) — that's true even if transport itself momentarily hits 0 (e.g. the
+    // sole transport died without a queued handoff), so gate the emergency-cold-start body on
+    // supply's presence too, not transport's live count alone. Without this, a mature RCL4+ room
+    // whose one transport dies would get a fresh 300-energy replacement instead of one sized off
+    // the room's real capacity, permanently undersizing the fleet since headcount math (which
+    // assumes a capacity-sized body) then reports that single small creep as sufficient.
+    const roomIsStale = this.owned(colony, "transport").length === 0 && this.owned(colony, "supply").length === 0;
+    const energyForBody = roomIsStale ? config.bootstrapEnergy : colony.energyCapacity;
     const body = orderBody(roleDef("transport")?.body(energyForBody, bodyContext(colony)) ?? []);
     const wanted = this.wantedTransport(colony, energyForBody);
     const transport = fillTo(wanted, this.owned(colony, "transport").length, body, roleDef("transport")!.priority, {

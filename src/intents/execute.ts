@@ -119,6 +119,12 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       creep.memory.defendTargetRoom = intent.room;
       return OK;
     }
+    case "setAttackTargetRoom": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      creep.memory.attackTargetRoom = intent.room;
+      return OK;
+    }
     case "assignLogisticsTask": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;

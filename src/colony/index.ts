@@ -7,6 +7,7 @@ import { Colonize } from "../operations/colonize";
 import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
+import { log } from "../lib/log";
 import { claimsOf, planBuilding, repurposeIdleBuilders, wantedStructures } from "./building";
 import { collectMetrics } from "./metrics";
 import { visualize } from "./metricsVisual";
@@ -47,8 +48,10 @@ export class Colony {
       // between "flag resolved" and "operation attached").
       ...snapshot.colonizing.map(t => new Colonize(snapshot.name, t, targetCapacity.get(t))),
       // Attack isn't in operationsFor() either (no colony gets it by default), same reason: attached only
-      // per listed target from ColonyMemory.attacking, a flag handoff's addAttackTarget (see attackFlags.ts).
-      ...snapshot.attacking.map(t => new Attack(snapshot.name, t))
+      // while at least one target is listed in ColonyMemory.attacking, a flag handoff's addAttackTarget
+      // (see attackFlags.ts). ONE instance pools every listed target behind a shared attacker (see
+      // operations/attack.ts's header) — unlike Colonize above, this is not one-instance-per-target.
+      ...(snapshot.attacking.length > 0 ? [new Attack(snapshot.name)] : [])
     ];
   }
 
@@ -68,7 +71,13 @@ export class Colony {
 
   /** This colony's spawn demand; the empire arbiter sorts and routes across all colonies. Not sorted here. */
   public requests(): CreepRequest[] {
-    return (this.cachedRequests ??= this.operations.flatMap(op => op.desiredCreeps(this.snapshot)));
+    if (this.cachedRequests) return this.cachedRequests;
+    const requests = this.operations.flatMap(op => op.desiredCreeps(this.snapshot));
+    log.debugRoom(
+      this.name,
+      `requests: ${requests.length === 0 ? "none" : requests.map(r => `${r.memory.role}(p${r.priority})`).join(", ")}`
+    );
+    return (this.cachedRequests = requests);
   }
 
   /**
