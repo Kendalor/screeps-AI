@@ -740,6 +740,39 @@ describe("moveToRoom to a creep's targetRoom", () => {
   });
 });
 
+// Regression: Traveler's own useFindRoute heuristic (roomDistance>2) is recomputed fresh from the
+// creep's CURRENT position on every travelTo call, so a long avoidDanger trip can silently fall into a
+// blind PathFinder.search (no routeCallback, no danger-routing at all) partway through, once the
+// remaining hop count looks short — confirmed live on shard0 as a scout oscillating forever between two
+// rooms near a hostile-owned room it was supposed to be routed around. Forcing useFindRoute:true whenever
+// avoidDanger is set closes that gap regardless of how close the creep currently is to its destination.
+describe("moveToRoom forces useFindRoute for avoidDanger steps", () => {
+  function roamerWithOptions(room: string, targetRoom: string) {
+    const options: unknown[] = [];
+    const creep = {
+      room: { name: room },
+      memory: { targetRoom, home: room },
+      travelTo: (_p: unknown, opts?: unknown) => {
+        options.push(opts);
+        return OK;
+      }
+    };
+    return { creep: creep as unknown as Creep, options };
+  }
+
+  it("passes useFindRoute:true when avoidDanger is set", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    expect((options[0] as { useFindRoute?: boolean }).useFindRoute).toBe(true);
+  });
+
+  it("leaves useFindRoute unset when avoidDanger is not set", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom" });
+    expect((options[0] as { useFindRoute?: boolean }).useFindRoute).toBeUndefined();
+  });
+});
+
 // A scout that fails to path into its assigned room (Traveler's travelTo comes back ERR_NO_PATH — a real
 // PathFinder search at the border with the scout's own vision, e.g. the shared border is walled solid by
 // another player) records that failure on the destination's ScoutInfo so dangerRouteCost stops offering

@@ -272,6 +272,17 @@ function moveToRoom(
   const nextRoom = route && route.dest === dest ? advanceRoute(route, creep.room.name) : dest;
   const result = creep.travelTo(new RoomPosition(25, 25, nextRoom), {
     range: 3,
+    // Forced rather than left to Traveler's own roomDistance>2 heuristic: that heuristic is recomputed
+    // fresh from the creep's CURRENT position on every call, so it silently drops to a blind
+    // PathFinder.search (no routeCallback at all) once the remaining hop count looks short enough — which
+    // happens precisely when a multi-room trip is passing near/through the room avoidDanger exists to
+    // route around. Confirmed live on shard0: a scout travelling E28S4->...->E27S2 past hostile-owned
+    // E28S2 got real danger-routing while far away, then flipped to blind mode after crossing into E28S3
+    // (linear distance to E27S2 dropped to 2), and the resulting blind search cut straight back through
+    // E28S2 — forcing another blind repath from inside it that reversed again, oscillating forever.
+    // avoidDanger steps always cross multiple rooms by construction (a same-room step never reaches
+    // here — see the arrival check above), so there's no case where forcing this trades away anything.
+    useFindRoute: step.avoidDanger ? true : undefined,
     roomCallback: step.avoidDanger ? (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix) : undefined,
     routeCallback: step.avoidDanger ? (roomName: string) => dangerRouteCallback(creep.memory.home, roomName) : undefined
   });
