@@ -75,7 +75,11 @@ export class Logistics extends Operation {
     // whose one transport dies would get a fresh 300-energy replacement instead of one sized off
     // the room's real capacity, permanently undersizing the fleet since headcount math (which
     // assumes a capacity-sized body) then reports that single small creep as sufficient.
-    const roomIsStale = this.owned(colony, "transport").length === 0 && this.owned(colony, "supply").length === 0;
+    // colony.creeps directly, not this.owned() — owned() filters by op-name ownership (undefined or
+    // this operation's own name), meant for dedup between same-kind operations (Mining vs
+    // RemoteMining). A live supply creep is stamped op:"supply:<room>", which owned() would reject as
+    // not belonging to Logistics — checking role alone across the whole colony is what's needed here.
+    const roomIsStale = this.owned(colony, "transport").length === 0 && !colony.creeps.some(c => c.role === "supply");
     const energyForBody = roomIsStale ? config.bootstrapEnergy : colony.energyCapacity;
     const body = orderBody(roleDef("transport")?.body(energyForBody, bodyContext(colony)) ?? []);
     const wanted = this.wantedTransport(colony, energyForBody);

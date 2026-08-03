@@ -60,10 +60,14 @@ describe("Logistics.desiredCreeps", () => {
   // the room is stuck forever with a 300-energy transport whose small body throughput headcount math
   // (which assumes a capacity-sized body) then reports as sufficient on its own.
   it("sizes the transport off full energyCapacity when none is alive but supply is", () => {
+    // op stamped as the real Supply operation would (operations/supply.ts) — NOT left undefined,
+    // since a real live supply creep is never op-less and this.owned() would wrongly reject it as
+    // belonging to a different operation if the check used owned() instead of a plain role scan.
+    const supplyCreep = snapCreep("supply", { memory: { role: "supply", home: "W1N1", op: "supply:W1N1" } });
     const supplyAliveNoTransport = withWork({
       energyAvailable: 550,
       energyCapacity: 550,
-      creeps: [snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] }), ...snapCreeps("supply", 1)]
+      creeps: [snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] }), supplyCreep]
     });
     const [request] = logistics.desiredCreeps(supplyAliveNoTransport);
     expect(request).toBeDefined();

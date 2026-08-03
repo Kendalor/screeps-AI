@@ -71,4 +71,28 @@ describe("scoutCandidatesAround", () => {
 
     expect(out.map(c => c.room)).toEqual(["W1N1"]);
   });
+
+  it("includes a neighbour sharing the origin's own non-normal status (e.g. both inside a respawn zone)", () => {
+    stubGame();
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      describeExits: (room: string) => (room === "W1N1" ? { "3": "W1N2" } : undefined),
+      getRoomStatus: () => ({ status: "respawn" })
+    };
+
+    const out = scoutCandidatesAround("W1N1", 1);
+
+    expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2"]);
+  });
+
+  it("still excludes a neighbour whose status matches neither normal nor the origin's own", () => {
+    stubGame();
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      describeExits: (room: string) => (room === "W1N1" ? { "3": "W1N2" } : undefined),
+      getRoomStatus: (room: string) => ({ status: room === "W1N1" ? "respawn" : "novice" })
+    };
+
+    const out = scoutCandidatesAround("W1N1", 1);
+
+    expect(out.map(c => c.room)).toEqual(["W1N1"]);
+  });
 });
