@@ -4,7 +4,7 @@
 
 import { countPart, orderBody } from "../spawn/body";
 import { roleDef } from "../behaviors/roles";
-import { REMOTE_UNRESERVED_WORK, SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
+import { REMOTE_MINER_PRIORITY, REMOTE_UNRESERVED_WORK, SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
 import { pickRemotes } from "../mining/pickRemotes";
 import { remoteSourceLoadParts } from "../mining/load";
 import { PARTS_PER_SPAWN } from "../colony/metrics";
@@ -125,7 +125,20 @@ export class Mining extends Operation {
       // across sources, and it must never leak into a remote source's body (see below).
       const body = orderBody(roleDef("miner")?.body(colony.energyCapacity, bodyContext(colony, false, source.id)) ?? []);
       const bodyWork = Math.max(1, countPart(body, WORK));
-      local.push(...this.requestsForSource(colony, source.id, source.openTiles, colony.name, miners, pool, body, bodyWork, config.workPerSource));
+      local.push(
+        ...this.requestsForSource(
+          colony,
+          source.id,
+          source.openTiles,
+          colony.name,
+          miners,
+          pool,
+          body,
+          bodyWork,
+          config.workPerSource,
+          roleDef("miner")!.priority
+        )
+      );
     }
 
     // Local-first gate: hold all remote requests until every local source is fully staffed, so the
@@ -155,7 +168,20 @@ export class Mining extends Operation {
       // 6-WORK target — asking for 6 worth of miners here would overstaff it 2x, each one idling half
       // its WORK parts every tick.
       const wantedWork = source.reserved ? config.workPerSource : REMOTE_UNRESERVED_WORK;
-      remote.push(...this.requestsForSource(colony, source.id, source.openTiles, source.room, miners, pool, body, bodyWork, wantedWork));
+      remote.push(
+        ...this.requestsForSource(
+          colony,
+          source.id,
+          source.openTiles,
+          source.room,
+          miners,
+          pool,
+          body,
+          bodyWork,
+          wantedWork,
+          REMOTE_MINER_PRIORITY
+        )
+      );
     }
     return remote;
   }
@@ -170,7 +196,8 @@ export class Mining extends Operation {
     pool: { miners: SnapCreep[]; next: number },
     body: BodyPartConstant[],
     bodyWork: number,
-    wantedWork: number
+    wantedWork: number,
+    priority: number
   ): CreepRequest[] {
     const onSource = miners.filter(c => c.memory.sourceId === sourceId);
     const assignedWork = onSource.reduce((s, c) => s + workOf(c), 0);
@@ -191,7 +218,7 @@ export class Mining extends Operation {
     for (let i = 0; i < wantedBodies; i++) {
       out.push({
         body,
-        priority: roleDef("miner")!.priority,
+        priority,
         memory: { role: "miner", home: colony.name, op: this.name, sourceId },
         targetRoom,
         // Pinned to this colony even for a remote-room targetRoom: only the ONE colony that selected
@@ -365,7 +392,7 @@ export class Mining extends Operation {
     const reevaluate = colony.tick % config.remoteReevaluateEvery === 0;
     if (colony.tick % config.remoteSelectionEvery !== 0 && !reevaluate) return undefined;
 
-    const remotes = pickRemotes({
+    const { remotes, strikes } = pickRemotes({
       candidates: colony.scoutTargets,
       home: {
         name: colony.name,
@@ -375,10 +402,11 @@ export class Mining extends Operation {
       },
       currentlySelected: colony.remoteSources.map(s => s.id),
       reevaluate,
-      excludedSourceIds: this.siblingRemoteSourceIds
+      excludedSourceIds: this.siblingRemoteSourceIds,
+      strikes: colony.remoteStrikes
     });
     if (remotes.length === 0) return undefined;
-    return { kind: "setRemotes", room: colony.name, remotes };
+    return { kind: "setRemotes", room: colony.name, remotes, strikes };
   }
 
   /**

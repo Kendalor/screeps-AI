@@ -995,6 +995,95 @@ describe("resolveTarget structure type lists", () => {
   });
 });
 
+// requireReachableAlive excludes a pickup a low-ticksToLive creep would die walking to, using
+// getRangeTo as a cheap lower-bound on travel time (safe for a 1-MOVE-per-CARRY hauler, which never
+// fatigues, so its real travel time is never less than range).
+describe("resolveTarget requireReachableAlive gate", () => {
+  function creepWithLife(ticksToLive: number | undefined, candidates: object[], lockedTarget?: string): Creep {
+    return {
+      pos: {
+        x: 5,
+        y: 5,
+        findClosestByPath: (list: object[]) => list[0] ?? null,
+        getRangeTo: (o: { x: number; y: number }) => Math.max(Math.abs(o.x - 5), Math.abs(o.y - 5))
+      },
+      room: { find: () => candidates },
+      store: { getFreeCapacity: () => 200 },
+      ticksToLive,
+      memory: { task: lockedTarget ? { step: 0, target: lockedTarget } : { step: 0 } }
+    } as unknown as Creep;
+  }
+
+  it("excludes a pile farther than the creep's remaining ticksToLive", () => {
+    const far = fakeDrop("far", 500);
+    (far as { pos: { x: number; y: number } }).pos = { x: 25, y: 5 }; // range 20
+    stubGame({ objects: { far } });
+
+    const got = resolveTarget(creepWithLife(10, [far]), { find: "dropped", requireReachableAlive: true });
+
+    expect(got).toBeNull();
+  });
+
+  it("offers a pile within reach of the creep's remaining ticksToLive", () => {
+    const near = fakeDrop("near", 500);
+    (near as { pos: { x: number; y: number } }).pos = { x: 10, y: 5 }; // range 5
+    stubGame({ objects: { near } });
+
+    const got = resolveTarget(creepWithLife(10, [near]), { find: "dropped", requireReachableAlive: true });
+
+    expect((got as { id: string }).id).toBe("near");
+  });
+
+  it("without the flag, distance never excludes a candidate regardless of ticksToLive", () => {
+    const far = fakeDrop("far", 500);
+    (far as { pos: { x: number; y: number } }).pos = { x: 25, y: 5 };
+    stubGame({ objects: { far } });
+
+    const got = resolveTarget(creepWithLife(10, [far]), { find: "dropped" });
+
+    expect((got as { id: string }).id).toBe("far");
+  });
+
+  it("an undefined ticksToLive (never dies of age) always passes the gate", () => {
+    const far = fakeDrop("far", 500);
+    (far as { pos: { x: number; y: number } }).pos = { x: 25, y: 5 };
+    stubGame({ objects: { far } });
+
+    const got = resolveTarget(creepWithLife(undefined, [far]), { find: "dropped", requireReachableAlive: true });
+
+    expect((got as { id: string }).id).toBe("far");
+  });
+
+  it("releases a locked pile once ticksToLive drops below what the trip needs", () => {
+    const pile = fakeDrop("pile", 500);
+    (pile as { pos: { x: number; y: number } }).pos = { x: 25, y: 5 }; // range 20
+    stubGame({ objects: { pile } });
+
+    const got = resolveTarget(
+      creepWithLife(10, [pile], "pile"),
+      { find: "dropped", requireReachableAlive: true },
+      "pile" as Id<_HasId>
+    );
+
+    expect(got).toBeNull();
+  });
+
+  it("gates a structure candidate the same way", () => {
+    const farContainer = fakeSite("cont1", { structureType: STRUCTURE_CONTAINER, used: 100, free: 100 });
+    (farContainer as { pos: { x: number; y: number } }).pos = { x: 25, y: 5 }; // range 20
+    stubGame({ objects: { cont1: farContainer } });
+
+    const got = resolveTarget(creepWithLife(10, [farContainer]), {
+      find: "structure",
+      type: STRUCTURE_CONTAINER,
+      where: "hasEnergy",
+      requireReachableAlive: true
+    });
+
+    expect(got).toBeNull();
+  });
+});
+
 // "any" merges several specs' candidate pools into one before ranking, so the step never commits to
 // a worse match from an earlier-listed kind just because that kind's search happened to find something
 // first — the exact failure mode a priority-ordered chain of single-kind steps has.

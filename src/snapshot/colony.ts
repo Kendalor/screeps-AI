@@ -2,6 +2,7 @@
 
 import { openHarvestTiles } from "../behaviors/targets";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
+import { ATTACK_BOOST_MULTIPLIER, HEAL_BOOST_MULTIPLIER, RANGED_ATTACK_BOOST_MULTIPLIER, TOUGH_BOOST_MULTIPLIER } from "../lib/combat";
 import type { XY } from "../lib/geometry";
 import { wrapFn } from "../lib/profiler";
 import { buildRemoteSources, type RemoteRoomVision } from "../mining/remoteSources";
@@ -125,6 +126,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
     mineral: room.find(FIND_MINERALS)[0]?.mineralType,
     remoteSources: buildRemoteSources(remotes, vision, tick),
+    remoteStrikes: Memory.colonies[room.name]?.remoteStrikes ?? {},
     remoteEnergy: remoteEnergyFor(remotes),
     drops: room.find(FIND_DROPPED_RESOURCES).map(d => ({ id: d.id, x: d.pos.x, y: d.pos.y, amount: d.amount })),
     tombstones: room
@@ -338,20 +340,28 @@ function snapStructure(s: {
   return base;
 }
 
-// Heal-boost multipliers, tier 1-3 (LO/LHO2/XLHO2) — mirrors the game's BOOSTS.heal.heal table, which
-// has no ambient runtime type (see GAME_TOWER_* in defense.ts for why these constants are hand-mirrored).
-const HEAL_BOOST_MULTIPLIER: Partial<Record<string, number>> = {
-  [RESOURCE_LEMERGIUM_OXIDE]: 1.5,
-  [RESOURCE_LEMERGIUM_ALKALIDE]: 3,
-  [RESOURCE_CATALYZED_LEMERGIUM_ALKALIDE]: 4
-};
+// Boost-weighted sum of one part type's live (hits > 0) parts — e.g. 3 plain parts plus 2 parts boosted
+// 4x is 3 + 8 = 11. Shared by healParts/attackParts/rangedAttackParts below, which only differ in which
+// part type and multiplier table they read.
+function boostWeightedPartCount(body: BodyPartDefinition[], type: BodyPartConstant, table: Partial<Record<string, number>>): number {
+  return body.reduce((sum, part) => {
+    if (part.type !== type || part.hits <= 0) return sum;
+    return sum + (part.boost ? (table[part.boost] ?? 1) : 1);
+  }, 0);
+}
 
 function snapUnit(c: Creep): SnapUnit {
   // creep.body (with each part's boost) is visible on any creep with vision, hostile included — so a
-  // boosted enemy healer's real output is knowable, not just our own creeps'.
-  const healParts = c.body.reduce((sum, part) => {
-    if (part.type !== HEAL || part.hits <= 0) return sum;
-    return sum + (part.boost ? (HEAL_BOOST_MULTIPLIER[part.boost] ?? 1) : 1);
-  }, 0);
-  return { id: c.id, x: c.pos.x, y: c.pos.y, hits: c.hits, hitsMax: c.hitsMax, healParts };
+  // boosted enemy's real output/toughness is knowable, not just our own creeps'.
+  const healParts = boostWeightedPartCount(c.body, HEAL, HEAL_BOOST_MULTIPLIER);
+  const attackParts = boostWeightedPartCount(c.body, ATTACK, ATTACK_BOOST_MULTIPLIER);
+  const rangedAttackParts = boostWeightedPartCount(c.body, RANGED_ATTACK, RANGED_ATTACK_BOOST_MULTIPLIER);
+
+  const toughParts = c.body.filter(part => part.type === TOUGH && part.hits > 0);
+  const toughReduction =
+    toughParts.length > 0
+      ? toughParts.reduce((sum, part) => sum + (part.boost ? (TOUGH_BOOST_MULTIPLIER[part.boost] ?? 1) : 1), 0) / toughParts.length
+      : 1;
+
+  return { id: c.id, x: c.pos.x, y: c.pos.y, hits: c.hits, hitsMax: c.hitsMax, healParts, attackParts, rangedAttackParts, toughReduction };
 }

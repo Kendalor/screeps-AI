@@ -599,6 +599,54 @@ describe("building planner — remote construction", () => {
     expect(placed.some(i => i.room === "W2N1")).toBe(false);
     expect(placed).toContainEqual(expect.objectContaining({ room: "W1N1", x: 26, y: 25, type: "road" }));
   });
+
+  // The actual W8N3 incident: a remote source that was selected, built out (home-leg road + remote
+  // container/road), then dropped from colony.remoteSources entirely (pickRemotes' reevaluate branch
+  // evicting it — see mining/pickRemotes.ts — or a scenario where the source simply no longer scouts as
+  // worthwhile). Mining.structures() only claims tiles for sources still in colony.remoteSources (see
+  // mining.ts's structures(), the `for (const source of colony.remoteSources)` loop), so an evicted
+  // source's entire route drops out of `claimed` the very next tick, home-room leg included.
+  describe("after a remote source is evicted from colony.remoteSources", () => {
+    // No remoteSources at all — as if the source that built this route has since been dropped.
+    // The home-room leg (26,25) is a real, already-built road; nothing claims it any more.
+    const evictedSnap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 800,
+        sources: [],
+        // Home-room leg's road, already built while the source was still selected.
+        structures: [...built, { x: 26, y: 25, type: "road" }],
+        sites: [],
+        remoteSources: [], // evicted: no longer selected
+        remoteStructures: {}
+      })
+    );
+
+    it("demolishes the orphaned home-room-leg road as unwanted stale structure — this is the actual bug", () => {
+      // This documents CURRENT (buggy) behavior: once a source drops out of colony.remoteSources,
+      // Mining no longer claims its home-room-leg road at all, so placeAndDemolish's stale/unwanted
+      // check (building.ts's `unwanted` filter) has nothing shielding it and tears it down — even
+      // though the physical road is still standing and perfectly serviceable. This is the mechanism
+      // that destroys W8N3's roads: eviction, not hostiles/danger/reservation.
+      const removals = evictedSnap.building().filter(i => i.kind === "removeStructure");
+      expect(removals).toContainEqual({ kind: "removeStructure", room: "W1N1", x: 26, y: 25, type: "road" });
+    });
+
+    it("never emits a removeStructure for a remote room's own structures, even after eviction", () => {
+      // placeAndDemolish only ever inspects colony.structures (home room) for staleness — a remote
+      // room's own already-built container/road is simply never considered for demolition by this
+      // arbiter at all (see building.ts's structuresAt/roomOf). So the remote room's own structures
+      // are orphaned (unmaintained, unclaimed) rather than actively torn down.
+      const removals = evictedSnap.building().filter(i => i.kind === "removeStructure");
+      expect(removals.every(r => r.room === "W1N1")).toBe(true);
+    });
+
+    it("stops claiming the evicted source's route at all (structures() returns nothing for it)", () => {
+      const claims = minedStructures(evictedSnap.snapshot);
+      expect(claims).toEqual([]);
+    });
+  });
 });
 
 // The arbiter finishes one source's entire claimed group (container + its road tiles) before opening

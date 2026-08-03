@@ -260,7 +260,7 @@ describe("actuator", () => {
 
       // pickRemotes' own estimate (999) must be discarded in favour of the real path's length.
       const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
-      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+      execute([{ kind: "setRemotes", room: "W1N1", remotes, strikes: {} }]);
 
       expect(mem().colonies.W1N1.remotes[0].sources[0].distance).toBe(path.length);
       expect(mem().rooms.W2N1.scouted.sources[0].paths?.W1N1).toHaveLength(path.length);
@@ -280,7 +280,7 @@ describe("actuator", () => {
       // No stubPathFinder() call: PathFinder.search would throw if this test hit it.
 
       const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
-      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+      execute([{ kind: "setRemotes", room: "W1N1", remotes, strikes: {} }]);
 
       expect(mem().colonies.W1N1.remotes[0].sources[0].distance).toBe(3);
       expect(mem().colonies.W1N1.remotes[0].sources[0].route).toEqual([{ room: "W2N1", x: 1, y: 25 }]);
@@ -294,7 +294,7 @@ describe("actuator", () => {
       stubPathFinder(() => ({ path, incomplete: false, ops: 10, cost: 10 }));
 
       const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
-      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+      execute([{ kind: "setRemotes", room: "W1N1", remotes, strikes: {} }]);
 
       expect(mem().colonies.W1N1.remotes[0].sources[0].distance).toBe(path.length);
       expect(mem().rooms.W2N1.scouted.sources[0].route?.W1N1).toEqual([{ room: "W1N1", x: 26, y: 25 }]);
@@ -306,7 +306,7 @@ describe("actuator", () => {
       stubPathFinder(() => ({ path: [], incomplete: true, ops: 2000, cost: 0 }));
 
       const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
-      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+      execute([{ kind: "setRemotes", room: "W1N1", remotes, strikes: {} }]);
 
       expect(mem().colonies.W1N1.remotes).toEqual([]);
     });
@@ -316,7 +316,7 @@ describe("actuator", () => {
       memoryWithAnchor(undefined);
 
       const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
-      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+      execute([{ kind: "setRemotes", room: "W1N1", remotes, strikes: {} }]);
 
       expect(mem().colonies.W1N1.remotes).toEqual([]);
     });
@@ -332,7 +332,7 @@ describe("actuator", () => {
       ];
 
       const remotes = [{ room: "W2N1", reserved: false, sources: [{ id: "s1" as Id<Source>, x: 25, y: 25, distance: 999 }] }];
-      execute([{ kind: "setRemotes", room: "W1N1", remotes }]);
+      execute([{ kind: "setRemotes", room: "W1N1", remotes, strikes: {} }]);
 
       expect((mem().colonies.W1N1.remotes[0] as { dangerUntil?: number }).dangerUntil).toBe(5000);
     });

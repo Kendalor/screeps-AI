@@ -304,10 +304,11 @@ describe("hauler role", () => {
           find: "any",
           of: [
             // Source containers only (near: notController) — never the controller container it fills.
-            { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController" },
-            { find: "dropped" },
-            { find: "tombstone" },
-            { find: "ruin" }
+            // requireReachableAlive: skip a pickup this hauler would die en route to.
+            { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController", requireReachableAlive: true },
+            { find: "dropped", requireReachableAlive: true },
+            { find: "tombstone", requireReachableAlive: true },
+            { find: "ruin", requireReachableAlive: true }
           ],
           prefer: "largest"
         }
@@ -375,7 +376,8 @@ describe("upgrader role", () => {
         }
       },
       // Build outstanding sites first; only fall through to upgrade when none remain to resolve.
-      { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } },
+      // A 1-CARRY body skips sites farther than 7 from the controller — too far a round trip to refill.
+      { do: "build", at: { find: "constructionSite", prefer: "mostProgress", onlyIfCarryOver: { carry: 1, range: 7 } } },
       { do: "upgrade" }
     ]);
     // A hauler drained mid-run can't deliver its load, so the upgrader must never steal from it.

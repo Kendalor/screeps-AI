@@ -17,6 +17,12 @@ export abstract class Role {
   // between rooms/targets rather than parking on one tile. Gates whether a parked worker bothers
   // stepping off a road at all — only set on roles that actually walk roads to do their job.
   static readonly mover: boolean = false;
+  // Opt in to fleeing an armed hostile (behaviors/interpreter.ts's fleeThreat): a creep with no means to
+  // fight back breaks off whatever it's doing and retreats once a hostile carrying ATTACK/RANGED_ATTACK
+  // closes within FLEE_RADIUS, rather than working on obliviously. Only non-combat roles exposed to
+  // remote/hostile rooms want this — a defender/attacker must never set it, or it'd flee the very hostile
+  // it's meant to engage.
+  static readonly flee: boolean = false;
   static body(_energy: number, _ctx: BodyContext): BodyPartConstant[] {
     return [];
   }

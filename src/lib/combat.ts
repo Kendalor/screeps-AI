@@ -7,6 +7,42 @@
 
 import { range, type XY } from "./geometry";
 
+// --- Boost multipliers ------------------------------------------------------------------------------
+//
+// Mirrors the game's BOOSTS table (no ambient runtime export outside a live game tick, same rationale
+// as the header note above) — verified against the private-server engine source
+// (node_modules/@screeps/engine/src/processor/intents/creeps/tick.js and
+// node_modules/@screeps/common/lib/constants.js), not guessed. Each tier is the *tool*'s (attack/
+// rangedAttack/heal) or *reduction*'s (tough's `damage`) multiplier for one boosted part of that type.
+export const ATTACK_BOOST_MULTIPLIER: Partial<Record<string, number>> = {
+  [RESOURCE_UTRIUM_HYDRIDE]: 2,
+  [RESOURCE_UTRIUM_ACID]: 3,
+  [RESOURCE_CATALYZED_UTRIUM_ACID]: 4
+};
+
+export const RANGED_ATTACK_BOOST_MULTIPLIER: Partial<Record<string, number>> = {
+  [RESOURCE_KEANIUM_OXIDE]: 2,
+  [RESOURCE_KEANIUM_ALKALIDE]: 3,
+  [RESOURCE_CATALYZED_KEANIUM_ALKALIDE]: 4
+};
+
+// Heal-boost multipliers, tier 1-3 (LO/LHO2/XLHO2) — shared by SnapUnit.healParts (colony.ts) so both
+// heal-output accounting and the incomingHeal math below agree on the same table.
+export const HEAL_BOOST_MULTIPLIER: Partial<Record<string, number>> = {
+  [RESOURCE_LEMERGIUM_OXIDE]: 2,
+  [RESOURCE_LEMERGIUM_ALKALIDE]: 3,
+  [RESOURCE_CATALYZED_LEMERGIUM_ALKALIDE]: 4
+};
+
+// TOUGH's boost multiplies *damage taken*, not damage dealt — 0.7/0.5/0.3 means a boosted TOUGH part
+// only takes 70%/50%/30% of the raw damage a hit would otherwise deal. Unboosted TOUGH (and every other
+// body part) takes damage at the unreduced 1x rate.
+export const TOUGH_BOOST_MULTIPLIER: Partial<Record<string, number>> = {
+  [RESOURCE_GHODIUM_OXIDE]: 0.7,
+  [RESOURCE_GHODIUM_ALKALIDE]: 0.5,
+  [RESOURCE_CATALYZED_GHODIUM_ALKALIDE]: 0.3
+};
+
 // --- Tower damage -----------------------------------------------------------------------------------
 
 const TOWER_OPTIMAL_RANGE = 5;
@@ -21,6 +57,23 @@ export function towerDamageAt(dist: number): number {
   if (dist >= TOWER_FALLOFF_RANGE) return TOWER_POWER_ATTACK * (1 - TOWER_FALLOFF);
   const falloffFraction = (dist - TOWER_OPTIMAL_RANGE) / (TOWER_FALLOFF_RANGE - TOWER_OPTIMAL_RANGE);
   return TOWER_POWER_ATTACK * (1 - TOWER_FALLOFF * falloffFraction);
+}
+
+/** Raw damage a target actually takes after its TOUGH boost's damage reduction — a flat blended ratio
+ * (see SnapUnit.toughReduction for how it's derived from the body), not the engine's exact per-part
+ * hit-pool walk. 1 (no reduction) when the target has no boosted TOUGH. */
+export function effectiveIncomingDamage(rawDamage: number, toughReduction: number): number {
+  return rawDamage * toughReduction;
+}
+
+// --- Melee attack -------------------------------------------------------------------------------------
+
+export const ATTACK_POWER = 30;
+
+/** Damage a body's live ATTACK parts deal in melee, boost-weighted (see SnapUnit.attackParts for what
+ * "boost-weighted" means) — melee has no range falloff, unlike towers/ranged attack. */
+export function meleeAttackDamage(attackParts: number): number {
+  return attackParts * ATTACK_POWER;
 }
 
 // --- Healing ------------------------------------------------------------------------------------------
@@ -56,6 +109,15 @@ export function incomingHeal(target: XY, sources: readonly HealSource[]): number
 // --- Ranged attack / mass attack -----------------------------------------------------------------------
 
 export const RANGED_ATTACK_RANGE = 3;
+export const RANGED_ATTACK_POWER = 10;
+
+/** Single-target rangedAttack damage a body's live RANGED_ATTACK parts deal — flat per part at any
+ * range inside RANGED_ATTACK_RANGE (unlike rangedMassAttack below, single-target ranged has no falloff),
+ * boost-weighted (see SnapUnit.rangedAttackParts). 0 beyond range. */
+export function rangedAttackDamage(rangedAttackParts: number, dist: number): number {
+  if (dist > RANGED_ATTACK_RANGE) return 0;
+  return rangedAttackParts * RANGED_ATTACK_POWER;
+}
 
 // rangedMassAttack's damage per RANGED_ATTACK part, keyed by range (engine-hardcoded, not exposed as a
 // JS constant): full rangedAttack power (10) at range 1, falling off to 4 and 1 at range 2 and 3, zero
@@ -66,4 +128,14 @@ const MASS_ATTACK_DAMAGE_PER_PART: Record<number, number> = { 1: 10, 2: 4, 3: 1 
 /** Per-RANGED_ATTACK-part rangedMassAttack damage at a given range, 0 beyond RANGED_ATTACK_RANGE. */
 export function massAttackDamagePerPartAt(dist: number): number {
   return MASS_ATTACK_DAMAGE_PER_PART[dist] ?? 0;
+}
+
+// --- Effective HP ---------------------------------------------------------------------------------
+
+/** A target's real HP against incoming damage, once boosted TOUGH's reduction is priced in — e.g. 100
+ * raw hits behind a 0.5 toughReduction survive like 200 hits would unboosted. Not the creep's actual
+ * hits (that's still just SnapUnit.hits); this is "how much raw damage it takes to kill it", the number
+ * that matters when comparing a target against an attacker's damage-per-tick. */
+export function effectiveHp(hits: number, toughReduction: number): number {
+  return toughReduction > 0 ? hits / toughReduction : Infinity;
 }

@@ -4,6 +4,7 @@
 import {
   canCoFire,
   firstRunnableStep,
+  fleeThreat,
   isGatherStep,
   nextStep,
   runStep,
@@ -27,6 +28,10 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(): void {
     // logistics/graph.ts's supplyProviders/supplyConsumers), so falling into runOne would hit its
     // `def.steps.length === 0` early-return and do nothing.
     if (creep.memory.role === "transport" || creep.memory.role === "supply") {
+      // Neither role runs through runOne's step table, so its flee check (gated on Role.flee) never
+      // sees them — checked here instead, ahead of the same diversion, so a hauler running the
+      // logistics allocator's own task retreats from an armed hostile exactly like a step-table hauler.
+      if (fleeThreat(creep)) continue;
       runTransport(creep);
       continue;
     }
@@ -55,6 +60,11 @@ function atLockedTarget(creep: Creep, locked: Id<_HasId> | undefined): boolean {
 const runOne = wrapFn(function runOne(creep: Creep): void {
   const def = roleDef(creep.memory.role);
   if (!def || def.steps.length === 0) return;
+
+  // Break off whatever this creep is doing and retreat if an armed hostile has closed within range —
+  // checked before the step dispatch below (not woven into an individual step) so it pre-empts every
+  // step in the table uniformly, not just moveToRoom's between-room travel.
+  if (def.flee && fleeThreat(creep)) return;
 
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us

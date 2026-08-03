@@ -61,7 +61,10 @@ export class Upgrader extends Role {
         prefer: "nearest"
       }
     },
-    { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } },
+    // A 1-CARRY upgrader (the base/floor body) skips sites more than 7 tiles from the controller — too
+    // far a round trip to refill from without draining the store it needs for upgrading. A 2-CARRY body
+    // (the 300-energy variant) has the buffer to spare and builds anywhere, same as before.
+    { do: "build", at: { find: "constructionSite", prefer: "mostProgress", onlyIfCarryOver: { carry: 1, range: 7 } } },
     { do: "upgrade" }
   ];
 }

@@ -20,6 +20,9 @@ export class Hauler extends Role {
   // Sweep loose piles passed near while travelling to a far miner container, so energy doesn't decay.
   static override readonly sweep = true;
   static override readonly mover = true;
+  // Unarmed and ranges into remote rooms — retreats from an armed hostile rather than hauling on
+  // obliviously. See Role.flee.
+  static override readonly flee = true;
   static override body(energy: number): BodyPartConstant[] {
     return haulerBody(energy);
   }
@@ -41,10 +44,13 @@ export class Hauler extends Role {
       from: {
         find: "any",
         of: [
-          { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController" },
-          { find: "dropped" },
-          { find: "tombstone" },
-          { find: "ruin" }
+          // requireReachableAlive: a hauler near the end of its life must not lock onto a pickup (e.g. a
+          // far remote container) it will die en route to, stranding the trip's energy and leaving the
+          // pile for whichever creep actually reaches it.
+          { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController", requireReachableAlive: true },
+          { find: "dropped", requireReachableAlive: true },
+          { find: "tombstone", requireReachableAlive: true },
+          { find: "ruin", requireReachableAlive: true }
         ],
         prefer: "largest"
       }

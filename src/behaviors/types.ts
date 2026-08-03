@@ -31,17 +31,37 @@ export type TargetSpec =
       // fillTo. Lets a miner start repairing its container only once it has decayed past a floor (0.7)
       // rather than chasing every point of decay. Combines with `where` (both must pass).
       repairBelow?: number;
+      // Exclude a candidate the creep can't reach before it dies (see requireReachableAlive doc below).
+      requireReachableAlive?: boolean;
     }
   // unlessSpawnNeedsEnergy: skip this pool while the room's spawn/extensions aren't full, so builders/
   // upgraders leave ground piles for the hauler (whose own gather step has no such gate) rather than
   // competing with it for the exact energy the spawn system needs to produce replacements.
-  | { find: "dropped"; share?: Share; prefer?: Prefer; unlessSpawnNeedsEnergy?: boolean }
-  | { find: "tombstone"; share?: Share; prefer?: Prefer }
-  | { find: "ruin"; share?: Share; prefer?: Prefer }
+  //
+  // requireReachableAlive: exclude a candidate whose straight-line range exceeds the creep's own
+  // ticksToLive — a lower bound on travel time (a hauler is built 1 MOVE per CARRY, so it never fatigues
+  // and covers a tile in at most 1 tick), cheap enough to check per-candidate without a real path search.
+  // Keeps a transport creep near the end of its life from locking onto a pickup (e.g. a remote container)
+  // it will die en route to, stranding the energy and wasting the trip. Undefined/false means unchecked,
+  // matching every existing caller's behavior.
+  | { find: "dropped"; share?: Share; prefer?: Prefer; unlessSpawnNeedsEnergy?: boolean; requireReachableAlive?: boolean }
+  | { find: "tombstone"; share?: Share; prefer?: Prefer; requireReachableAlive?: boolean }
+  | { find: "ruin"; share?: Share; prefer?: Prefer; requireReachableAlive?: boolean }
   | { find: "source" }
   // structureType/near scope which sites qualify, mirroring the structure spec: a miner builds only the
   // CONTAINER site at its own source, not whatever construction site happens to be nearest.
-  | { find: "constructionSite"; structureType?: StructureConstant; near?: "assignedSource" | "controller" | "notController"; share?: Share; prefer?: Prefer }
+  // onlyIfCarryOver: a single-CARRY creep (e.g. the base upgrader body) can't afford a long round trip
+  // to refill after building — sites farther than this range from the controller are excluded unless the
+  // creep's own CARRY part count exceeds the given floor. Range is against the room's controller, not the
+  // creep's position, since it gates by the site's inherent distance from where the creep actually works.
+  | {
+      find: "constructionSite";
+      structureType?: StructureConstant;
+      near?: "assignedSource" | "controller" | "notController";
+      share?: Share;
+      prefer?: Prefer;
+      onlyIfCarryOver?: { carry: number; range: number };
+    }
   | { find: "controller" }
   | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share; prefer?: Prefer } // friendly creep as source/sink, filtered by role
   | { find: "hostile"; prefer?: Prefer } // enemy creep in the room; defaults to "nearest" — a defender wants "mostThreatening" instead
@@ -133,4 +153,7 @@ export interface RoleDef {
   // than parking on one tile (behaviors/roadAvoidance.ts). stepOffRoad only evacuates for these —
   // no point ceding a tile when nothing nearby actually wants to walk through it.
   mover?: boolean;
+  // Opt in to fleeing an armed hostile (behaviors/interpreter.ts's fleeThreat) instead of working on
+  // obliviously. Only non-combat roles want this — see Role.flee's doc for the full rationale.
+  flee?: boolean;
 }

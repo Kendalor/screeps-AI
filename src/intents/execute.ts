@@ -240,6 +240,13 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
         .map(room => resolveRemoteRoom(intent.room, room, mem.anchor, resolvedRouteTiles))
         .filter(hasSourcesLeft)
         .map(room => ({ ...room, dangerUntil: priorDangerUntil.get(room.room) }));
+      // Same replace-whole-map write as remotes above, restricted to sources that actually survived
+      // resolution (resolveRemoteRoom can drop one with no path yet) â€” a strike entry for a source no
+      // longer selected at all would just grow this map forever, see pickRemotes.ts's own doc on this.
+      const survivingIds = new Set(mem.remotes.flatMap(r => r.sources.map(s => s.id)));
+      mem.remoteStrikes = Object.fromEntries(
+        Object.entries(intent.strikes).filter(([id]) => survivingIds.has(id as Id<Source>))
+      );
       return OK;
     }
     case "recordRemoteDanger": {

@@ -3,7 +3,7 @@
 
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
-import { incomingHeal, towerDamageAt } from "../lib/combat";
+import { effectiveIncomingDamage, incomingHeal, towerDamageAt } from "../lib/combat";
 import { closest, range } from "../lib/geometry";
 import { log } from "../lib/log";
 import { needsRepair } from "../lib/repairable";
@@ -118,7 +118,7 @@ export class Defense extends Operation {
 // always worth shooting — unless healing (its own, or a healer standing near it) can outpace the tower's
 // damage entirely, in which case the shot never dents it and is pure energy waste regardless of position.
 function worthShooting(colony: ColonySnapshot, tower: { x: number; y: number }, hostile: SnapUnit): boolean {
-  const dmg = towerDamageAt(range(tower, hostile));
+  const dmg = effectiveIncomingDamage(towerDamageAt(range(tower, hostile)), hostile.toughReduction);
   if (dmg <= incomingHeal(hostile, colony.hostiles)) return false;
   if (!isExitTile(hostile)) return true;
   if (dmg >= hostile.hits) return true;

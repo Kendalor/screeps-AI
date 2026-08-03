@@ -119,6 +119,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     energyCapacity: 300,
     sources: [sourceAt(20, 10)],
     remoteSources: [],
+    remoteStrikes: {},
     remoteEnergy: [],
     drops: [],
     tombstones: [],
@@ -182,12 +183,18 @@ export function scouted(over: Partial<ScoutInfo> = {}): ScoutInfo {
   };
 }
 
-export function hostileAt(x: number, y: number, id = `hostile_${x}_${y}`, healParts = 0): SnapUnit {
-  return { id: id as Id<Creep>, x, y, hits: 100, hitsMax: 100, healParts };
+export function hostileAt(
+  x: number,
+  y: number,
+  id = `hostile_${x}_${y}`,
+  healParts = 0,
+  over: Partial<Pick<SnapUnit, "attackParts" | "rangedAttackParts" | "toughReduction">> = {}
+): SnapUnit {
+  return { id: id as Id<Creep>, x, y, hits: 100, hitsMax: 100, healParts, attackParts: 0, rangedAttackParts: 0, toughReduction: 1, ...over };
 }
 
 export function woundedAt(x: number, y: number, id = `wounded_${x}_${y}`): SnapUnit {
-  return { id: id as Id<Creep>, x, y, hits: 50, hitsMax: 100, healParts: 0 };
+  return { id: id as Id<Creep>, x, y, hits: 50, hitsMax: 100, healParts: 0, attackParts: 0, rangedAttackParts: 0, toughReduction: 1 };
 }
 
 export function towerAt(x: number, y: number, id = `tower_${x}_${y}`, storeEnergy = 0): SnapTower {

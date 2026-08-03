@@ -12,6 +12,15 @@ export interface SnapUnit {
   // RANGED_HEAL_POWER at range 2-3), so Defense's incomingHeal multiplies this by the range-appropriate
   // rate rather than a flat one — the weighting here only captures the boost, not the range.
   healParts: number;
+  // Live ATTACK/RANGED_ATTACK parts, same boost-weighted-sum convention as healParts — combat.ts's
+  // meleeAttackDamage/rangedAttackDamage multiply these by the range-appropriate power.
+  attackParts: number;
+  rangedAttackParts: number;
+  // Blended TOUGH damage-reduction ratio: the average boost multiplier (0.7/0.5/0.3, GO/GHO2/XGHO2)
+  // across this creep's live TOUGH parts, 1 (no reduction) when none are boosted or none exist. A flat
+  // approximation of the engine's real per-part hit-pool walk (see combat.ts's effectiveIncomingDamage
+  // header) — good enough for "is this fight worth taking", not a tick-exact hits simulation.
+  toughReduction: number;
 }
 
 export interface SnapTower {
@@ -218,6 +227,9 @@ export interface ColonySnapshot {
   // mineral is scouting data only, see ScoutInfo.mineral, until keeper-room mining exists).
   mineral?: MineralConstant;
   remoteSources: SnapRemoteSource[]; // selected remote sources; empty until pickRemotes chooses some. Mining/Reservation/Logistics all read it.
+  // Straight copy of ColonyMemory.remoteStrikes (see its doc there) — pure bookkeeping, not a live game
+  // fact, so unlike remoteStructures/remoteDanger this needs no vision gating at all.
+  remoteStrikes: Partial<Record<Id<Source>, number>>;
   remoteEnergy: SnapRemoteEnergy[]; // energy in remote rooms to haul home (the return-haul provider set); empty without remote vision
   drops: SnapDrop[]; // ground-level energy from drop mining
   tombstones: SnapTombstone[]; // energy left behind by a dead creep

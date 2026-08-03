@@ -44,8 +44,19 @@ function minerBody(energy: number, ctx: BodyContext): BodyPartConstant[] {
   return [...parts(WORK, work), ...parts(CARRY, carry), ...parts(MOVE, move)];
 }
 
+// A remote miner's own spawn request (see mining.ts's requestsForSource) uses this instead of
+// Miner.priority — below local miner/hauler/transport, so spawn-queue pressure sheds a colony's
+// growth into new remote sources first rather than pickRemotes evicting the source outright (which
+// tears down its already-built claim, see building.ts's placeAndDemolish). Still well above
+// builder/upgrader (65/60): remote mining is real, standing economic activity, just subordinate to
+// keeping the home colony itself running. Exported so mining.ts's request builder can't drift from it.
+export const REMOTE_MINER_PRIORITY = 80;
+
 export class Miner extends Role {
   static override readonly priority = 95;
+  // Unarmed and often alone in a remote room — retreats from an armed hostile rather than mining on
+  // (and dying) obliviously. See Role.flee.
+  static override readonly flee = true;
   static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
     return minerBody(energy, ctx);
   }

@@ -102,8 +102,10 @@ export type Intent =
   // Emitted when the current scouting radius is fully surveyed; execute.ts owns the Memory write and cap.
   | { kind: "advanceScoutRadius" }
   // pickRemotes decides which remote rooms/sources to mine (throttled); execute.ts owns the
-  // Memory.colonies[room].remotes write. The cached selection the snapshot builder reads back.
-  | { kind: "setRemotes"; room: string; remotes: RemoteMemory[] }
+  // Memory.colonies[room].remotes write. The cached selection the snapshot builder reads back. `strikes`
+  // is pickRemotes' eviction-hysteresis bookkeeping (see PickRemotesResult) — execute.ts owns the
+  // Memory.colonies[room].remoteStrikes write, same as remotes.
+  | { kind: "setRemotes"; room: string; remotes: RemoteMemory[]; strikes: Record<Id<Source>, number> }
   // A flag/auto-pick handoff resolved `room` as the sponsor for colonizing `target` — execute.ts owns
   // the Memory.colonies[room].colonizing write (append, deduped). From the next tick on, Colony's
   // constructor reads it back to attach a real Colonize operation, same as setRemotes above.

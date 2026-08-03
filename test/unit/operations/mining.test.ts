@@ -12,6 +12,7 @@ import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { roleDef } from "../../../src/behaviors/roles";
+import { REMOTE_MINER_PRIORITY } from "../../../src/behaviors/roles/miner";
 import { Mining } from "../../../src/operations/mining";
 import { colonySnap, containerAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt, spawn } from "../../fixtures";
 import type { Intent } from "../../../src/intents/types";
@@ -426,7 +427,11 @@ describe("Mining.desiredCreeps — remote miners", () => {
   });
 });
 
-// Every request now comes from a flat, uniform priority — no interleave, no hauler channel.
+// Local requests come from a flat, uniform priority (roleDef("miner").priority) — no interleave, no
+// hauler channel. Remote requests use a separately lower priority (REMOTE_MINER_PRIORITY) — see the
+// "remote miner priority" describe block below for why: spawn-queue pressure should throttle remote
+// mining first, rather than pickRemotes evicting (and orphaning/demolishing) an already-built source's
+// claim just because spawn load spiked for a tick.
 describe("Mining.desiredCreeps — priority", () => {
   it("asks only for miners, all at the miner role's priority", () => {
     const snap = colonySnap({
@@ -440,6 +445,37 @@ describe("Mining.desiredCreeps — priority", () => {
       expect(r.memory.role).toBe("miner");
       expect(r.priority).toBe(roleDef("miner")!.priority);
     }
+  });
+});
+
+describe("Mining.desiredCreeps — remote miner priority", () => {
+  it("requests a remote miner at REMOTE_MINER_PRIORITY, below local miner's priority", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60 });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [remote],
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    const requests = remoteMinerRequests(snap);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const r of requests) {
+      expect(r.priority).toBe(REMOTE_MINER_PRIORITY);
+      expect(r.priority).toBeLessThan(roleDef("miner")!.priority);
+    }
+  });
+
+  it("still requests the LOCAL miner at the higher local priority even in the same colony as a selected remote", () => {
+    const bareLocal = sourceAt(20, 10, "local", 1); // no miner assigned -> local deficit
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60 });
+    const snap = colonySnap({ sources: [bareLocal], remoteSources: [remote] });
+
+    // Local-first gate means only local requests exist this tick, but confirms they're unaffected by
+    // the remote source's mere presence in colony.remoteSources.
+    const requests = minerRequests(snap);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const r of requests) expect(r.priority).toBe(roleDef("miner")!.priority);
   });
 });
 
@@ -772,6 +808,29 @@ describe("Mining.structures — remote sources", () => {
 
     const claims = mining.structures(snap, [homeClaimSameCoords]);
     expect(claims).toContainEqual({ x: 1, y: 10, room: "W2N1", type: "container", sourceId: source.id });
+  });
+
+  // The W8N3 incident's actual mechanism: pickRemotes' reevaluate branch (mining/pickRemotes.ts) can
+  // evict a previously-selected source outright — it simply isn't in the next setRemotes write, so
+  // colony.remoteSources no longer contains it at all (a stronger condition than "still selected but
+  // danger/reservedBy is set", which the tests above already cover and no longer drop the claim for).
+  // structures() only ever iterates colony.remoteSources (see the `for (const source of
+  // colony.remoteSources)` loop) — once a source is absent from that array, NOTHING claims its tiles
+  // any more, home-room leg included. This is what starves an already-built road of its claim and lets
+  // building.ts's stale/unwanted check (which only shields home-room tiles still in `claimed`) tear it
+  // down as unwanted — see building.test.ts's "after a remote source is evicted" suite for the
+  // demolition side of this.
+  it("claims nothing at all for a source once it is absent from colony.remoteSources (evicted)", () => {
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [], // evicted: the source that owned `route` is no longer selected
+      remoteStructures: {}
+    });
+
+    expect(mining.structures(snap)).toEqual([]);
   });
 });
 
@@ -1139,11 +1198,15 @@ describe("Mining.intents — remote selection", () => {
     expect(setRemotesOf(snap, 500)).toEqual([]);
   });
 
-  it("fires on the full-reevaluation tick and can evict a stale source even though it isn't new", () => {
+  it("fires on the full-reevaluation tick and can evict a stale source even though it isn't new, once eviction hysteresis's grace period elapses", () => {
     // remoteReevaluateEvery (5000) is itself a multiple of remoteSelectionEvery (1000), so this tick
     // would fire regardless — the real thing under test is that it runs in reevaluate mode, which is
     // only observable via eviction: a previously-selected-but-now-worse source loses its slot to a
-    // better one once the cap is full, which the plain append-only throttle could never do.
+    // better one once the cap is full, which the plain append-only throttle could never do. Eviction
+    // hysteresis (pickRemotes.ts's EVICTION_STRIKES_THRESHOLD) protects an incumbent for its first
+    // couple of misses, so this drives 3 consecutive reevaluate ticks (5000, 10000, 15000), threading
+    // each tick's returned remoteStrikes into the next snapshot exactly as the real memory round-trip
+    // (ColonyMemory.remoteStrikes) would, to reach the tick where the eviction actually lands.
     const packed = scoutTarget(
       "W2N1",
       scouted({
@@ -1159,28 +1222,36 @@ describe("Mining.intents — remote selection", () => {
       "W3N1",
       scouted({ sources: [{ id: "better" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } }] })
     );
-    const snap = colonySnap({
-      tick: 5000,
-      anchor: { x: 25, y: 25 },
-      controllerLevel: 3,
-      energyCapacity: 800,
-      spawns: [spawn()],
-      remoteSources: Array.from({ length: 6 }, (_, i) => ({
-        id: `worse${i}` as Id<Source>,
-        room: "W2N1",
-        x: 25,
-        y: 25,
-        distance: 80,
-        openTiles: 1,
-        reserved: false,
-        danger: 0
-      })),
-      scoutTargets: [packed, better]
-    });
+    const remoteSources = Array.from({ length: 6 }, (_, i) => ({
+      id: `worse${i}` as Id<Source>,
+      room: "W2N1",
+      x: 25,
+      y: 25,
+      distance: 80,
+      openTiles: 1,
+      reserved: false,
+      danger: 0
+    }));
 
-    const [intent] = setRemotesOf(snap);
+    let remoteStrikes: Partial<Record<Id<Source>, number>> = {};
+    let intent: Extract<Intent, { kind: "setRemotes" }> | undefined;
+    for (const tick of [5000, 10000, 15000]) {
+      const snap = colonySnap({
+        tick,
+        anchor: { x: 25, y: 25 },
+        controllerLevel: 3,
+        energyCapacity: 800,
+        spawns: [spawn()],
+        remoteSources,
+        remoteStrikes,
+        scoutTargets: [packed, better]
+      });
+      [intent] = setRemotesOf(snap);
+      if (intent) remoteStrikes = intent.strikes;
+    }
+
     expect(intent).toBeDefined();
-    const ids = intent.remotes.flatMap(r => r.sources.map(s => s.id));
+    const ids = intent!.remotes.flatMap(r => r.sources.map(s => s.id));
     expect(ids).toContain("better");
   });
 });

@@ -136,6 +136,15 @@ Object.assign(globalThis, {
   RESOURCE_LEMERGIUM_OXIDE: "LO",
   RESOURCE_LEMERGIUM_ALKALIDE: "LHO2",
   RESOURCE_CATALYZED_LEMERGIUM_ALKALIDE: "XLHO2",
+  RESOURCE_UTRIUM_HYDRIDE: "UH",
+  RESOURCE_UTRIUM_ACID: "UH2O",
+  RESOURCE_CATALYZED_UTRIUM_ACID: "XUH2O",
+  RESOURCE_KEANIUM_OXIDE: "KO",
+  RESOURCE_KEANIUM_ALKALIDE: "KHO2",
+  RESOURCE_CATALYZED_KEANIUM_ALKALIDE: "XKHO2",
+  RESOURCE_GHODIUM_OXIDE: "GO",
+  RESOURCE_GHODIUM_ALKALIDE: "GHO2",
+  RESOURCE_CATALYZED_GHODIUM_ALKALIDE: "XGHO2",
 
   FIND_CREEPS: 101,
   FIND_MY_CREEPS: 102,
@@ -227,6 +236,9 @@ Object.assign(globalThis, {
   // Damage a single RANGED_ATTACK part deals via rangedAttack(), flat anywhere within range 3, from
   // screeps/common constants.
   RANGED_ATTACK_POWER: 10,
+
+  // Damage a single ATTACK part deals in melee, from screeps/common constants.
+  ATTACK_POWER: 30,
 
   // Spawn cost per body part, from screeps/common constants.
   BODYPART_COST: {

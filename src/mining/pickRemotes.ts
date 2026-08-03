@@ -52,6 +52,19 @@ export interface PickRemotesInput {
   // remoteSelection) computes this from the empire's other colonies; this colony's own current selection
   // is handled separately via currentlySelected above, not folded into this set.
   excludedSourceIds: ReadonlySet<Id<Source>>;
+  // Consecutive reevaluate passes each currently-selected source has already failed to make the cut on
+  // (ColonyMemory.remoteStrikes) — see EVICTION_STRIKES_THRESHOLD below. Absent/0 entries are the common
+  // case (a source currently making the cut, or one never selected at all).
+  strikes: Partial<Record<Id<Source>, number>>;
+}
+
+export interface PickRemotesResult {
+  remotes: RemoteMemory[];
+  // Updated strike counts to persist as ColonyMemory.remoteStrikes — every source considered this pass
+  // gets a fresh entry (0 if it made the cut or isn't currently selected, incremented if a reevaluate
+  // pass excluded it and it was protected). A source dropped from `strikes` entirely means it's neither
+  // selected nor being protected any more — pruned so this can't grow unbounded across a colony's life.
+  strikes: Record<Id<Source>, number>;
 }
 
 // Below this, energyCapacity can't build a miner worth sending (RCL2 with all extensions = 550).
@@ -67,6 +80,16 @@ const MAX_REMOTE_SOURCES = 6;
 // roles, not just the remote fleet. Same 0..1 units as the metrics panel, so this ceiling reads directly
 // against what's on screen.
 const MAX_SPAWN_LOAD = 0.65;
+
+// A previously-selected source must fail to make the reevaluate cut this many CONSECUTIVE passes before
+// it's actually dropped. Adding a remote is a sunk-cost bet (its road/container only pays back over
+// time — see mining.ts's structures() and building.ts's placeAndDemolish, which tear an evicted source's
+// already-built home-leg road down as unwanted the very next tick), so the bar to walk away from one
+// should sit higher than the bar to take one on — a candidate that's merely marginally better, or one
+// whose edge is a single noisy spawn-load snapshot, must not immediately unwind that investment. Only
+// gates REMOVAL: a genuinely better new candidate can still join immediately (see the reevaluate branch's
+// admission loop below) — hysteresis only protects incumbents, it never slows down picking up a find.
+const EVICTION_STRIKES_THRESHOLD = 3;
 
 // A room farther than this is never worth remote-mining, full stop — not every scouted room is a
 // realistic candidate, and the scouting frontier (Memory.scouting.radius) grows well past this for
@@ -87,21 +110,26 @@ interface Candidate {
   claimerShare: number; // this candidate's share of its room's amortized claimer upkeep, energy/tick
 }
 
-export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput): RemoteMemory[] {
+export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput): PickRemotesResult {
   // Empire-wide kill switch (Memory.debugDisableRemoteMining) — see its doc in memory/schema.ts. Lets a
   // scenario isolate a colony's spawn economics from a competing remote-mining fleet without faking
   // scout data/terrain to avoid it being discovered.
-  if (typeof Memory !== "undefined" && Memory.debugDisableRemoteMining) return [];
+  if (typeof Memory !== "undefined" && Memory.debugDisableRemoteMining) return { remotes: [], strikes: {} };
 
   const { home } = input;
 
   // Gate 2 (affordability) and gate 3 (spawn capacity) are room-wide: if either fails, attempt nothing.
-  if (home.energyCapacity < MIN_ENERGY_CAPACITY || home.spawnCapacity <= 0) return [];
+  // A hard stop, not something hysteresis should soften — if the colony genuinely can't spawn or afford
+  // anything, protecting a claim buys nothing, since staffing gates downstream (Mining/Reservation) will
+  // starve it out regardless of what's returned here.
+  if (home.energyCapacity < MIN_ENERGY_CAPACITY || home.spawnCapacity <= 0) return { remotes: [], strikes: {} };
   // Already over the load ceiling: the frequent append-only pass can only ever grow the selection, so it
   // has nothing useful to do here — bail before touching candidates at all. The rarer reevaluate pass is
   // the one mechanism that can shed load (see below), so it must NOT bail here: skipping it would freeze
-  // an overloaded colony's remote fleet in place forever with no way back under the ceiling.
-  if (home.spawnLoad >= MAX_SPAWN_LOAD && !input.reevaluate) return [];
+  // an overloaded colony's remote fleet in place forever with no way back under the ceiling. An empty
+  // result here is pure silence, not a write — the caller (Mining's remoteSelection) only emits setRemotes
+  // when the result is non-empty, so the existing selection (and its strikes) simply carry over untouched.
+  if (home.spawnLoad >= MAX_SPAWN_LOAD && !input.reevaluate) return { remotes: [], strikes: {} };
 
   const ctx = defaultEconomyContext();
 
@@ -173,6 +201,8 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
 
   const alreadySelected = new Set(input.currentlySelected);
   let capped: Candidate[];
+  // Populated only on a reevaluate pass (the only branch that ever changes strikes) — see below.
+  let reevaluateStrikes: Record<Id<Source>, number> | undefined;
   if (input.reevaluate) {
     // Full re-rank: every worthwhile candidate (previously-selected or not) competes on equal footing,
     // re-priced with whatever distance/economics apply right now. This is the only branch that can drop
@@ -226,6 +256,53 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
         loadBudget -= c.loadParts;
       }
     }
+    // Eviction hysteresis: a previously-selected source that just missed the cut gets protected until it's
+    // failed EVICTION_STRIKES_THRESHOLD consecutive reevaluate passes in a row — see the constant's doc for
+    // why (an already-built claim is a sunk cost, so removal needs a higher bar than admission).
+    // `protectedThisPass` is exactly the set that survived on borrowed time (not on its own merit) — the
+    // strikes computation below uses it directly rather than re-deriving "was this protected" from
+    // anything else.
+    const worthwhileById = new Map(worthwhile.map(c => [c.id, c]));
+    const cappedIds = new Set(capped.map(c => c.id));
+    const protectedThisPass = new Set<Id<Source>>();
+    for (const id of alreadySelected) {
+      if (cappedIds.has(id)) continue; // made the cut on its own merits — nothing to protect
+      const priorStrikes = input.strikes[id] ?? 0;
+      if (priorStrikes + 1 >= EVICTION_STRIKES_THRESHOLD) continue; // out of grace — let the eviction happen
+      // Still worthwhile at all (its room/distance still pay off), just squeezed out by the budget/cap this
+      // pass — a source that's stopped being worthwhile in absolute terms (e.g. now reserved-by-another or
+      // genuinely unprofitable) is never protected regardless of strikes, since worthwhile has already
+      // dropped it upstream and there's nothing left here to re-admit.
+      const candidate = worthwhileById.get(id);
+      if (!candidate) continue;
+      capped.push(candidate);
+      cappedIds.add(id);
+      protectedThisPass.add(id);
+    }
+    // The hard cap (MAX_REMOTE_SOURCES) always wins, even over a protected incumbent's grace period —
+    // hysteresis softens WHEN a source loses its slot, never whether the total fleet size stays bounded.
+    // If protection alone would push the count past the cap, bump brand-new admissions first (candidates
+    // that were never previously selected at all): they haven't paid any sunk cost yet, so simply waiting
+    // one more reevaluate pass costs them nothing an incumbent's already-built claim doesn't also risk.
+    // Bumped in reverse admission order (last admitted, first bumped) so the bump falls on whichever new
+    // candidate is least established in this pass's own ranking.
+    if (capped.length > MAX_REMOTE_SOURCES) {
+      const newAdmissions = capped.filter(c => !alreadySelected.has(c.id));
+      let overflow = capped.length - MAX_REMOTE_SOURCES;
+      const bumped = new Set<Id<Source>>();
+      for (let i = newAdmissions.length - 1; i >= 0 && overflow > 0; i--) {
+        bumped.add(newAdmissions[i].id);
+        overflow--;
+      }
+      capped = capped.filter(c => !bumped.has(c.id));
+    }
+    reevaluateStrikes = {};
+    for (const c of capped) {
+      // Protected: carries its incremented strike count forward. Made the cut cleanly (whether a
+      // longtime incumbent or a brand-new admission): resets to 0 — a source that was once struggling
+      // but is now clearly fine again shouldn't still be one bad pass from eviction.
+      reevaluateStrikes[c.id] = protectedThisPass.has(c.id) ? (input.strikes[c.id] ?? 0) + 1 : 0;
+    }
   } else {
     // Never drop a source we've already committed to, even if it'd fall outside the cap on a re-rank (e.g.
     // nearer candidates appeared) — pruning an over-budget colony back down is reevaluate's job (above),
@@ -265,5 +342,17 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
     }
     entry.sources.push({ id: c.id, x: c.x, y: c.y, distance: c.distance });
   }
-  return [...byRoom.values()];
+
+  // Strikes only move on a reevaluate pass (reevaluateStrikes is already fully computed there — see
+  // above). The append-only pass never evicts, so it has no basis to reset or increment anything; every
+  // currently-selected source just carries its strikes forward unchanged. Either way, a source that's no
+  // longer selected at all (fully evicted, or never picked) is simply absent — carrying a stale entry
+  // forward for a source that's gone would only grow this map forever.
+  const strikes: Record<Id<Source>, number> =
+    reevaluateStrikes ??
+    Object.fromEntries(
+      (Object.entries(input.strikes) as [Id<Source>, number][]).filter(([id]) => alreadySelected.has(id))
+    );
+
+  return { remotes: [...byRoom.values()], strikes };
 }, "planning:pickRemotes");

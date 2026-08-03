@@ -6,6 +6,7 @@ import { massAttackDamagePerPartAt, RANGED_ATTACK_RANGE } from "../lib/combat";
 import { isDangerous } from "../memory/reputation";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import { wrapFn } from "../lib/profiler";
+import { roomType } from "../lib/roomName";
 import { stepOffRoad } from "./roadAvoidance";
 import { resolveTarget } from "./targets";
 import type { Step, TargetSpec } from "./types";
@@ -293,9 +294,18 @@ function moveToRoom(
   // dangerRouteCost can stop pricing it as a viable transit hop for other routes; the room stays a valid
   // scouting candidate regardless (see schema.ts's noPathFrom doc) — the scout can still always reach the
   // exit tile itself and observe the room from there.
+  // The destination may never have been scouted yet (no ScoutInfo on record at all) — the exact case that
+  // makes this failure worth caching in the first place, since a still-unscouted room is the one every
+  // frontier pick keeps re-offering. A bare `if (info)` guard here would silently drop the write for
+  // precisely that case, leaving the scout to repeat the same failing travelTo forever (confirmed live on
+  // shard0: a scout parked at a solid-walled border, destination never yet visited, retried every tick
+  // until it died of old age). So a never-seen stub (tick left absent, same as observeRoom's convention)
+  // is created on demand rather than requiring one to already exist.
   if (step.to === "scoutTarget" && result === ERR_NO_PATH) {
-    const info = Memory.rooms?.[nextRoom]?.scouted;
-    if (info) (info.noPathFrom ??= {})[creep.memory.home] = Game.time;
+    const rooms = (Memory.rooms ??= {});
+    const roomMem = (rooms[nextRoom] ??= {});
+    const info = (roomMem.scouted ??= { type: roomType(nextRoom), sources: [], hostile: false });
+    (info.noPathFrom ??= {})[creep.memory.home] = Game.time;
   }
   return { acted: true, didAct: false };
 }
@@ -643,6 +653,45 @@ function fleeSpot(from: { x: number; y: number; roomName: string }, threat: { x:
   const dx = Math.sign(from.x - threat.x) || 1;
   const dy = Math.sign(from.y - threat.y) || 1;
   return clampInterior({ x: from.x + dx, y: from.y + dy }, from.roomName);
+}
+
+// How close an armed hostile may get before a Role.flee creep (miner, hauler, repairer — anything with
+// no means to fight back) breaks off its current step and retreats. One tile wider than a defender's own
+// engagement radius (RANGED_ATTACK_RANGE, 3): these creeps have no counter-fire to make holding at exactly
+// 3 safe, so the margin buys a tick of travel before the hostile would be in firing range at all.
+export const FLEE_RADIUS = 4;
+
+// The nearest hostile actually capable of damaging an unarmed creep — reputation-flagged (isDangerous,
+// same bar dangerCostMatrix/dangerRouteCallback use for pathing avoidance) AND carrying ATTACK or
+// RANGED_ATTACK. A merely "hostile"-flagged but unarmed creep (scout, healer, claimer) poses no threat
+// worth interrupting work for. undefined when nothing within FLEE_RADIUS qualifies. Ranks by getRangeTo
+// (like hostilesWithin's callers elsewhere in this file) rather than findClosestByRange, which several
+// of this file's lightweight test position stubs don't implement.
+function nearestArmedThreat(creep: Creep): Creep | undefined {
+  let nearest: Creep | undefined;
+  let nearestRange = Infinity;
+  for (const h of creep.room.find(FIND_HOSTILE_CREEPS)) {
+    if (!isDangerous(h.owner.username)) continue;
+    if (h.getActiveBodyparts(ATTACK) === 0 && h.getActiveBodyparts(RANGED_ATTACK) === 0) continue;
+    const range = creep.pos.getRangeTo(h.pos);
+    if (range > FLEE_RADIUS || range >= nearestRange) continue;
+    nearest = h;
+    nearestRange = range;
+  }
+  return nearest;
+}
+
+// For a Role.flee creep: if an armed, reputation-dangerous hostile has closed within FLEE_RADIUS, step
+// directly away from it (mirroring attackStep's own kiting move) instead of running the creep's normal
+// step this tick, and report true so the caller skips its usual dispatch. False (no travelTo issued)
+// whenever nothing qualifies, so a caller can fall straight through to its normal behavior with no extra
+// cost on the common, threat-free tick.
+export function fleeThreat(creep: Creep): boolean {
+  const threat = nearestArmedThreat(creep);
+  if (!threat) return false;
+  log.debugCreep(creep.name, `fleeThreat: fleeing armed hostile ${threat.id} (range=${creep.pos.getRangeTo(threat.pos)})`);
+  creep.travelTo(fleeSpot(creep.pos, threat.pos), { range: 0, maxRooms: 1 });
+  return true;
 }
 
 // Nudge an in-range upgrader toward a better standing tile: the free controller container if there is

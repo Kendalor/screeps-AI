@@ -9,6 +9,8 @@ function transportCreep(over: {
   inRange?: boolean;
   name?: string;
   pos?: { x: number; y: number };
+  /** Candidate objects (each needs a `pos: {x,y}`) findInRange filters by real range, keyed by FIND_* constant. */
+  nearby?: Partial<Record<number, { pos: { x: number; y: number } }[]>>;
 }): {
   creep: Creep;
   calls: { withdraw: number; pickup: number; transfer: number };
@@ -31,7 +33,11 @@ function transportCreep(over: {
       y: over.pos?.y ?? 25,
       inRangeTo: () => over.inRange ?? true,
       getRangeTo: (x: number, y: number) => Math.max(Math.abs((over.pos?.x ?? 25) - x), Math.abs((over.pos?.y ?? 25) - y)),
-      findClosestByPath: (list: object[]) => list[0] ?? null
+      findClosestByPath: (list: object[]) => list[0] ?? null,
+      findInRange: (type: number, range: number) =>
+        (over.nearby?.[type] ?? []).filter(
+          o => Math.max(Math.abs((over.pos?.x ?? 25) - o.pos.x), Math.abs((over.pos?.y ?? 25) - o.pos.y)) <= range
+        )
     },
     room: { name: over.memory.home, find: () => [] },
     withdraw: () => {
@@ -166,6 +172,113 @@ describe("runTransport", () => {
 
     expect(calls.withdraw).toBe(1); // it did withdraw this tick
     expect(creep.memory.logistics?.current).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "cont2" } });
+  });
+
+  it("tops off from a nearby container in a remote room instead of advancing to travelHome-bound idle", () => {
+    // The scenario: transport was sent to pick up a dropped pile, but another (non-logistics) creep
+    // grabbed most of it first, leaving only scraps. A container one tile away still has energy.
+    // Rather than going idle with a near-empty load (which allocate.ts would then send straight home),
+    // it should splice in a live top-off pickup for the nearby container.
+    const drop = { id: "drop1", pos: { x: 5, y: 5 }, resourceType: RESOURCE_ENERGY, amount: 0 };
+    const container = {
+      id: "cont1",
+      pos: { x: 5, y: 5 },
+      structureType: STRUCTURE_CONTAINER,
+      store: { getUsedCapacity: () => 500 }
+    };
+    stubGame({ objects: { drop1: drop, cont1: container }, roomLinearDistance: () => 1 });
+    const { creep, calls } = transportCreep({
+      memory: {
+        role: "transport",
+        home: "W1N1",
+        logistics: {
+          current: { kind: "pickup", from: { kind: "dropped", id: "drop1" as Id<Resource> }, resource: RESOURCE_ENERGY, amount: 100 }
+        }
+      },
+      free: 620, // 650 - 30 already carried; still lots of room
+      inRange: true,
+      pos: { x: 5, y: 5 },
+      nearby: { [FIND_STRUCTURES]: [container] }
+    });
+    (creep.room as unknown as { name: string }).name = "W2N1"; // remote room, not home
+
+    runTransport(creep);
+
+    expect(calls.pickup).toBe(1); // withdrew/picked up the original drop (now empty)
+    expect(creep.memory.logistics?.current).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "cont1" } });
+  });
+
+  it("does not top off inside the home room — lets normal idle re-planning handle it", () => {
+    const drop = { id: "drop1", pos: { x: 5, y: 5 }, resourceType: RESOURCE_ENERGY, amount: 0 };
+    const container = { id: "cont1", pos: { x: 5, y: 5 }, structureType: STRUCTURE_CONTAINER, store: { getUsedCapacity: () => 500 } };
+    stubGame({ objects: { drop1: drop, cont1: container } });
+    const { creep, calls } = transportCreep({
+      memory: {
+        role: "transport",
+        home: "W1N1",
+        logistics: { current: { kind: "pickup", from: { kind: "dropped", id: "drop1" as Id<Resource> }, resource: RESOURCE_ENERGY, amount: 100 } }
+      },
+      free: 620,
+      inRange: true,
+      pos: { x: 5, y: 5 },
+      nearby: { [FIND_STRUCTURES]: [container] }
+    });
+    // room defaults to memory.home (W1N1) — already home
+
+    runTransport(creep);
+
+    expect(calls.pickup).toBe(1);
+    expect(creep.memory.logistics?.current).toBeUndefined(); // released to idle, not auto-chained
+  });
+
+  it("does NOT top off from a container 3 tiles away one room out (detour budget too small there)", () => {
+    // 1 room from home: topoffRange = min(5, 1 + 1*2) = 3. A container 4 tiles away exceeds that budget,
+    // so no candidate qualifies and the creep is released to travelHome planning instead of detouring.
+    const drop = { id: "drop1", pos: { x: 5, y: 5 }, resourceType: RESOURCE_ENERGY, amount: 0 };
+    const farContainer = { id: "cont1", pos: { x: 9, y: 5 }, structureType: STRUCTURE_CONTAINER, store: { getUsedCapacity: () => 500 } };
+    stubGame({ objects: { drop1: drop, cont1: farContainer }, roomLinearDistance: () => 1 });
+    const { creep, calls } = transportCreep({
+      memory: {
+        role: "transport",
+        home: "W1N1",
+        logistics: { current: { kind: "pickup", from: { kind: "dropped", id: "drop1" as Id<Resource> }, resource: RESOURCE_ENERGY, amount: 100 } }
+      },
+      free: 620,
+      inRange: true,
+      pos: { x: 5, y: 5 },
+      nearby: { [FIND_STRUCTURES]: [farContainer] } // 4 tiles from (5,5), beyond a range-3 budget
+    });
+    (creep.room as unknown as { name: string }).name = "W2N1"; // 1 room from home
+
+    runTransport(creep);
+
+    expect(calls.pickup).toBe(1);
+    expect(creep.memory.logistics?.current).toBeUndefined(); // too far for this trip's detour budget
+  });
+
+  it("widens the topoff detour range on a longer remote trip", () => {
+    // 2 rooms from home: topoffRange = min(5, 1 + 2*2) = 5, wide enough to reach the same container that
+    // a 1-room trip's range-3 budget (previous test) couldn't.
+    const drop = { id: "drop1", pos: { x: 5, y: 5 }, resourceType: RESOURCE_ENERGY, amount: 0 };
+    const farContainer = { id: "cont1", pos: { x: 9, y: 5 }, structureType: STRUCTURE_CONTAINER, store: { getUsedCapacity: () => 500 } };
+    stubGame({ objects: { drop1: drop, cont1: farContainer }, roomLinearDistance: () => 2 });
+    const { creep, calls } = transportCreep({
+      memory: {
+        role: "transport",
+        home: "W1N1",
+        logistics: { current: { kind: "pickup", from: { kind: "dropped", id: "drop1" as Id<Resource> }, resource: RESOURCE_ENERGY, amount: 100 } }
+      },
+      free: 620,
+      inRange: true,
+      pos: { x: 5, y: 5 },
+      nearby: { [FIND_STRUCTURES]: [farContainer] } // 4 tiles away, within a range-5 budget
+    });
+    (creep.room as unknown as { name: string }).name = "W3N1"; // 2 rooms from home
+
+    runTransport(creep);
+
+    expect(calls.pickup).toBe(1);
+    expect(creep.memory.logistics?.current).toMatchObject({ kind: "pickup", from: { kind: "structure", id: "cont1" } });
   });
 
   it("does NOT advance a pickup that is still filling a provider that still has energy", () => {

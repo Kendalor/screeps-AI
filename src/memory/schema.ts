@@ -119,6 +119,13 @@ export interface ColonyMemory {
   sources: Record<Id<Source>, SourceMemory>; // owned by mining
   links?: LinkNetworkMemory; // owned by links
   remotes: RemoteMemory[]; // the selected remote rooms + their mined sources; owned by mining (pickRemotes writes it)
+  // Consecutive reevaluate passes each still-selected source has failed to make the cut on, keyed by
+  // source id — owned by mining (pickRemotes writes it). A source's already-built claim (roads,
+  // container) is a sunk cost that only pays back over time, so eviction requires several consecutive
+  // bad passes, not a single one — see pickRemotes.ts's EVICTION_STRIKES_THRESHOLD. Absent/0 means
+  // "currently making the cut, or never selected." Entries for sources no longer selected at all (fully
+  // evicted, or never picked) are pruned by pickRemotes each reevaluate pass so this can't grow unbounded.
+  remoteStrikes?: Partial<Record<Id<Source>, number>>;
   danger: number; // owned by defense
   // Target rooms this colony is actively colonizing (sponsoring a colonizer/settler for), owned by
   // colonize.ts. Written once when a flag/auto-pick resolves this colony as the sponsor

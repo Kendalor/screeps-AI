@@ -33,6 +33,28 @@ function nearMatches(creep: Creep, s: { pos: RoomPosition }, near: Near | undefi
   }
 }
 
+// True unless the spec asks for the reachability gate AND the creep can't survive the trip: ticksToLive
+// undefined (a fresh test double, or a creep type that never dies of age within a run) always passes: the
+// gate only fires when we can actually name a deadline. Range is a straight-line lower bound on travel
+// time — cheap enough to check per-candidate, and safe for a hauler (built 1 MOVE per CARRY, never
+// fatigues) since its real travel time is never less than range.
+function reachableAlive(creep: Creep, s: { pos: RoomPosition }, required: boolean | undefined): boolean {
+  if (!required) return true;
+  if (creep.ticksToLive === undefined) return true;
+  return creep.pos.getRangeTo(s.pos) < creep.ticksToLive;
+}
+
+// True unless the creep's own CARRY count is at/below the given floor AND the site sits farther than
+// `range` from the room's controller — a low-CARRY creep (e.g. the base upgrader body's single CARRY)
+// can't afford the round trip to refill after a long walk to a distant site, so it leaves those to a
+// creep built for it. No `onlyIfCarryOver` set means unconditional (every existing caller's behavior).
+function withinCarryRange(creep: Creep, s: { pos: RoomPosition }, gate: { carry: number; range: number } | undefined): boolean {
+  if (!gate) return true;
+  if (creep.getActiveBodyparts(CARRY) > gate.carry) return true;
+  const controller = creep.room.controller;
+  return !!controller && s.pos.inRangeTo(controller.pos, gate.range);
+}
+
 // Ready-made "any" groups for the two directions energy moves: gathering it up (storage/containers
 // with energy, dropped piles, tombstones, ruins) and spending it down (extensions/spawn/storage/containers
 // with room to take more). Pooling these into one "any" spec — rather than a priority-ordered chain of
@@ -215,6 +237,7 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
     if (!nearMatches(creep, s, memberSpec.near)) return null;
     if (!belowFillTo(toCandidate(obj), memberSpec.fillTo)) return null;
     if (!belowRepair(toCandidate(obj), memberSpec.repairBelow)) return null;
+    if (!reachableAlive(creep, s, memberSpec.requireReachableAlive)) return null;
   }
   // A locked source must release the instant its room's controller becomes hostile-reserved — same
   // rule a fresh search applies (see findCandidates' "source" case) — otherwise a creep that locked on
@@ -227,12 +250,20 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
   if (memberSpec.find === "constructionSite") {
     const s = obj as unknown as { pos: RoomPosition };
     if (!nearMatches(creep, s, memberSpec.near)) return null;
+    if (!withinCarryRange(creep, s, memberSpec.onlyIfCarryOver)) return null;
   }
   // A locked drop pile must release the instant the spawn system starts needing energy, same as a
   // fresh search would never offer it — otherwise a builder/upgrader already travelling to one keeps
   // going even after another creep's delivery (or the miner's own overflow) reopens spawn demand.
   if (memberSpec.find === "dropped" && memberSpec.unlessSpawnNeedsEnergy && spawnNeedsEnergy(creep.room)) {
     return null;
+  }
+  // A locked dropped/tombstone/ruin pile must release once the creep's own remaining lifespan can no
+  // longer cover the trip — same rule a fresh search applies below, so a lock taken while ticksToLive was
+  // still comfortable doesn't survive stale as it ticks down mid-approach.
+  if (memberSpec.find === "dropped" || memberSpec.find === "tombstone" || memberSpec.find === "ruin") {
+    const s = obj as unknown as { pos: RoomPosition };
+    if (!reachableAlive(creep, s, memberSpec.requireReachableAlive)) return null;
   }
   // A locked dropped/tombstone/ruin pile must release once another creep drains it to nothing — the
   // object itself keeps resolving (a tombstone/ruin persists, decaying, until its timer runs out; a
@@ -278,13 +309,21 @@ function poolFor(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find
   // per-candidate. Unlike fillTo/worthwhile there is no fallback to the full set: while the spawn system
   // needs energy the pool is genuinely empty, so the step falls through to whatever comes next (self-harvest).
   if (spec.find === "dropped" && spec.unlessSpawnNeedsEnergy && spawnNeedsEnergy(creep.room)) return [];
-  const candidates = findCandidates(creep, spec).filter(c => {
-    if (spec.find !== "structure" && spec.find !== "creep") return true;
-    if (!matchesWhere(toCandidate(c), spec.where)) return false;
-    if (spec.find === "structure" && !belowFillTo(toCandidate(c), spec.fillTo)) return false;
-    if (spec.find === "structure" && !belowRepair(toCandidate(c), spec.repairBelow)) return false;
-    return true;
-  });
+  const candidates = findCandidates(creep, spec)
+    .filter(c => {
+      if (spec.find !== "structure" && spec.find !== "creep") return true;
+      if (!matchesWhere(toCandidate(c), spec.where)) return false;
+      if (spec.find === "structure" && !belowFillTo(toCandidate(c), spec.fillTo)) return false;
+      if (spec.find === "structure" && !belowRepair(toCandidate(c), spec.repairBelow)) return false;
+      return true;
+    })
+    // A hard exclusion, not a fallback-to-full-set stage like worthwhile/share below: offering the
+    // creep's own death back as a candidate defeats the point, so a pool with nothing reachable alive
+    // stays empty and the step falls through to whatever comes next.
+    .filter(c => {
+      if (spec.find !== "structure" && spec.find !== "dropped" && spec.find !== "tombstone" && spec.find !== "ruin") return true;
+      return reachableAlive(creep, c as unknown as { pos: RoomPosition }, spec.requireReachableAlive);
+    });
   // Below-floor piles are deprioritized, not excluded — falls back to the full set if nothing clears the bar.
   const worthwhile = spec.find !== "dropped" ? candidates : candidates.filter(c => isWorthwhile(creep, c));
   const consider = worthwhile.length > 0 ? worthwhile : candidates;
@@ -469,7 +508,7 @@ function findCandidates(
       return room.find(FIND_HOSTILE_CREEPS);
     case "constructionSite": {
       const sites = room.find(FIND_MY_CONSTRUCTION_SITES).filter(s => spec.structureType === undefined || s.structureType === spec.structureType);
-      return sites.filter(s => nearMatches(creep, s, spec.near));
+      return sites.filter(s => nearMatches(creep, s, spec.near) && withinCarryRange(creep, s, spec.onlyIfCarryOver));
     }
     case "structure": {
       const wantedTypes = Array.isArray(spec.type) ? spec.type : [spec.type];
