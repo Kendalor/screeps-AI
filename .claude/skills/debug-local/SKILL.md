@@ -63,6 +63,20 @@ to the user unnecessarily.
   `log.error/warn/info`. Defaults to `"error"` (quiet). Bump to `"info"` via
   `pserver-console.mjs 'setLogLevel("info")'` when chasing a specific bug, then set
   it back to `"error"` afterward — `"info"` is noisy in a long-running colony.
+- `debugCreep("<name>")` / `undebugCreep("<name>")` — opt one creep into
+  `log.debugCreep` tracing (adds/removes it in `Memory.debugCreeps`). Prints every
+  tick that creep's role/step/target/idle decisions from `empire/creeps.ts`'s
+  `runOne`, plus task/branch tracing from `behaviors/transport.ts` and
+  `behaviors/steward.ts` for transport/supply/steward creeps. Independent of
+  `setLogLevel` — fires regardless of the current log level, and only for the named
+  creep, so it's safe to leave the global level at `"error"` while tracing one creep.
+  Example: `pserver-console.mjs 'debugCreep("Miner1")' 15` then watch for
+  `[DEBUG] Miner1: ...` lines.
+- `debugColony("<room>")` / `undebugColony("<room>")` — same idea, per colony: traces
+  that colony's per-tick spawn-request list (`colony/index.ts`'s `requests()`) via
+  `log.debugRoom`, added to `Memory.debugColonies`.
+- `clearDebug()` — clears both `Memory.debugCreeps` and `Memory.debugColonies` in one
+  call; run this when done tracing so the console doesn't stay noisy.
 - `Profiler.start()` / `Profiler.stop()` / `Profiler.status()` / `Profiler.clear()` /
   `Profiler.output()` — only exists if the currently-deployed build was pushed with
   `PROFILE=1` (see below). Calling `Profiler.*` when the normal (non-profiled) build
@@ -77,6 +91,10 @@ to the user unnecessarily.
 - `Memory.stats.cpu` — per-system CPU from last tick (`src/kernel/stats.ts`)
 - `Memory.profiler.{data,start,total}` — raw profiler accumulator
 - `Memory.logLevel` — current log gate
+- `Memory.debugCreeps` / `Memory.debugColonies` — creeps/colonies currently opted
+  into `debugCreep`/`debugColony` tracing above; check these if debug tracing seems
+  to have gone quiet (e.g. after a respawn cleared a stale entry) or noisier than
+  expected (an old target left enabled from a past session).
 - Colony/room memory — whatever the bot's own `src/memory/schema.ts` defines; read
   that file if you need the shape of a specific colony's saved state.
 
