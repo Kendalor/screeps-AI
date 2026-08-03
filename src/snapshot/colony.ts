@@ -192,6 +192,26 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
   };
 }
 
+// A hostile worth treating as danger: can fight (ATTACK/RANGED_ATTACK), sustain a fight (HEAL), or
+// dismantle a structure (WORK). An unarmed scout/claimer body has none of these and is harmless.
+function isCombatCapable(c: Creep): boolean {
+  return (
+    c.getActiveBodyparts(ATTACK) > 0 ||
+    c.getActiveBodyparts(RANGED_ATTACK) > 0 ||
+    c.getActiveBodyparts(HEAL) > 0 ||
+    c.getActiveBodyparts(WORK) > 0
+  );
+}
+
+// Direct evidence a fight is actually happening, not just possible: one of our own creeps standing in
+// the room is missing hits. Creeps only lose hits from combat (no passive decay), so this alone proves
+// danger even for a body isCombatCapable's part-list doesn't recognize (e.g. an exotic boosted body).
+// Kept as a second, independent signal rather than a replacement — it can't fire before the first hit
+// lands, so isCombatCapable's proactive check is still what catches an ambush before any damage is dealt.
+function hasDamagedFriendly(room: Room): boolean {
+  return room.find(FIND_MY_CREEPS).some(c => c.hits < c.hitsMax);
+}
+
 // Live facts about each selected remote room we currently have vision of (a creep is standing in it).
 // Rooms with no vision are simply absent, and buildRemoteSources falls back to memory/defaults for them.
 // This is the sole Game.* read for remote data — the join itself (buildRemoteSources) stays pure.
@@ -220,7 +240,13 @@ function remoteRoomVision(
     }
 
     const reservation = room.controller?.reservation;
-    const hostiles = room.find(FIND_HOSTILE_CREEPS);
+    // Danger requires either a body that could actually hurt a miner/builder/container (proactive — catches
+    // a threat before it lands a hit) or direct evidence one of our creeps is already being hurt (catches
+    // any exotic body the part-list misses). An unarmed scout/claimer passing through triggers neither, so
+    // it's no longer a reason to pull staffing or tear down an already-built route (see mining.ts's
+    // structures() and building.ts's unsafeRemoteRooms, both gated on this).
+    const allHostiles = room.find(FIND_HOSTILE_CREEPS);
+    const hostiles = allHostiles.some(isCombatCapable) || hasDamagedFriendly(room) ? allHostiles : [];
     // How long the room should still be considered dangerous once we lose vision of it: the latest tick
     // any current hostile is expected to still be alive. A creep with no ticksToLive (some invader-core
     // spawned units) is treated as permanent until seen gone, so it can't under-count danger.

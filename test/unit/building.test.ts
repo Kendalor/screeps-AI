@@ -554,6 +554,51 @@ describe("building planner — remote construction", () => {
     // Home-room placement proceeds unaffected by the remote-room crowding.
     expect(placed.some(i => i.room === "W1N1")).toBe(true);
   });
+
+  // Regression coverage for the E28S4 incident: an unarmed scout's mere presence flipped danger,
+  // Mining dropped its whole route's claim, and building.ts's demolition read the already-built
+  // home-room-leg road as stale and tore down the entire route. Danger must now only stop a site
+  // going up (and a builder being sent) IN the remote room — the claim itself, and the home-room
+  // leg's construction, must be unaffected.
+  it("does not place a site in a dangerous remote room, but still builds the route's home-room leg", () => {
+    const source = remoteSourceAt(2, 25, "W2N1", { route, danger: 1 });
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 800,
+        sources: [],
+        structures: built,
+        sites: [],
+        remoteSources: [source],
+        remoteStructures: { W2N1: [] }
+      })
+    );
+
+    const placed = placeSites(snap.building());
+    expect(placed.some(i => i.room === "W2N1")).toBe(false);
+    expect(placed).toContainEqual(expect.objectContaining({ room: "W1N1", x: 26, y: 25, type: "road" }));
+  });
+
+  it("does not place a site in a remote room reserved by someone else, but still builds the home-room leg", () => {
+    const source = remoteSourceAt(2, 25, "W2N1", { route, reservedBy: "SomePlayer" });
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 800,
+        sources: [],
+        structures: built,
+        sites: [],
+        remoteSources: [source],
+        remoteStructures: { W2N1: [] }
+      })
+    );
+
+    const placed = placeSites(snap.building());
+    expect(placed.some(i => i.room === "W2N1")).toBe(false);
+    expect(placed).toContainEqual(expect.objectContaining({ room: "W1N1", x: 26, y: 25, type: "road" }));
+  });
 });
 
 // The arbiter finishes one source's entire claimed group (container + its road tiles) before opening

@@ -70,20 +70,47 @@ function existingAt(colony: ColonySnapshot, p: PlacedStructure): boolean {
   return builtAt(colony, p) || sitesAt(colony, roomOf(p, colony)).some(sameSpot(p));
 }
 
+// Remote rooms currently unsafe to place a site or send a builder into — same definition as
+// operations/building.ts's unsafeRemoteRooms (danger or a reservation held by someone else). Mining's
+// own claim no longer withholds itself for this (see mining.ts's structures()), so this is now the
+// only thing stopping a site from going up in a dangerous remote room; the home-room leg of the same
+// route is never affected, since roomOf() only reads this set for non-home placements.
+function unsafeRemoteRooms(colony: ColonySnapshot): Set<string> {
+  const out = new Set<string>();
+  for (const s of colony.remoteSources) {
+    if (s.danger > 0 || s.reservedBy !== undefined) out.add(s.room);
+  }
+  return out;
+}
+
 // Holds back every source group but the first not-yet-fully-built one, so a colony finishes one
 // source's container+road before starting the next's — the same reasoning MAX_CONTAINER_SITES already
 // applies to local containers, generalized to whole routes (local and remote alike) and to more than
 // one at a time. Group order is first-appearance order in `claimed`, which mirrors Mining's own emission
 // order (local sources, then colony.remoteSources — pickRemotes' own selection order): no new ranking
 // metric invented here. Claims with no sourceId (bunker layout, controller path) are never touched.
+//
+// A group's incomplete claims sitting in a currently-unsafe remote room don't count toward "this group
+// is still in progress" — it can't place there regardless (see placeAndDemolish's own unsafeRemote
+// check), so treating it as blocking would stall every later group's construction for as long as the
+// danger persists. Its own safe tiles (home-room leg, or already-built ones) stay eligible either way:
+// an unsafe group is never dropped from the result, only skipped when picking which group's *remaining*
+// work gates everyone else.
 function gateSourceGroups(colony: ColonySnapshot, claimed: readonly PlacedStructure[]): PlacedStructure[] {
+  const unsafeRemote = unsafeRemoteRooms(colony);
+  const blockedByDanger = (p: PlacedStructure) => !builtAt(colony, p) && unsafeRemote.has(roomOf(p, colony));
+
   const order: Id<Source>[] = [];
   for (const p of claimed) {
     if (p.sourceId !== undefined && !order.includes(p.sourceId)) order.push(p.sourceId);
   }
-  const firstIncomplete = order.find(id => claimed.some(p => p.sourceId === id && !builtAt(colony, p)));
-  if (firstIncomplete === undefined) return claimed as PlacedStructure[]; // every group already built, or none exist
-  return claimed.filter(p => p.sourceId === undefined || p.sourceId === firstIncomplete);
+  const firstIncomplete = order.find(id =>
+    claimed.some(p => p.sourceId === id && !builtAt(colony, p) && !blockedByDanger(p))
+  );
+  // Every group is either fully built or currently only blocked by danger: nothing to throttle, so pass
+  // every claim through as-is (each one's own safety gate in placeAndDemolish still applies).
+  if (firstIncomplete === undefined) return claimed as PlacedStructure[];
+  return claimed.filter(p => p.sourceId === undefined || p.sourceId === firstIncomplete || blockedByDanger(p));
 }
 
 export function planBuilding(colony: ColonySnapshot, operations: Operation[]): Intent[] {
@@ -143,6 +170,7 @@ export const wantedStructures = wrapFn(function wantedStructures(
 
 function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
   const anchor = colony.anchor!;
+  const unsafeRemote = unsafeRemoteRooms(colony);
   // Full RCL8 goal, not this RCL's subset — a higher-tier structure built pre-downgrade must not read as
   // stale. Only home-room claims: demolition never touches a remote room (no goal-layout concept exists
   // there), so a remote claim coincidentally sharing (x,y,type) with a home structure must not shield it.
@@ -182,8 +210,10 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
   }
 
   for (const placement of prioritised) {
-    const home = roomOf(placement, colony) === colony.name;
+    const room = roomOf(placement, colony);
+    const home = room === colony.name;
     if (home ? homeBudget <= 0 : remoteBudget <= 0) continue;
+    if (!home && unsafeRemote.has(room)) continue;
     if (placement.type === "container" && containerSites >= MAX_CONTAINER_SITES) continue;
     if (existingAt(colony, placement)) continue;
     const blocker = home ? blocking.get(`${colony.name},${placement.x},${placement.y}`) : undefined;

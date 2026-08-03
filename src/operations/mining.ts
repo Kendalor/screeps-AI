@@ -249,12 +249,12 @@ export class Mining extends Operation {
     for (const source of colony.remoteSources) {
       const route = source.route;
       if (!route || route.length === 0) continue;
-      // Same gate this file's own staffing loop uses (danger>0 || reservedBy set, invader or player
-      // alike): a container/road claimed here would never get built anyway once staffing stops, and
-      // walking a builder into a reserved/dangerous room to work it is exactly what building.ts's
-      // unsafeRemoteRooms now also refuses to dispatch into.
-      if (source.danger > 0 || source.reservedBy !== undefined) continue;
-
+      // Danger/reservedBy no longer withholds the claim itself — only whether new sites get placed
+      // and builders dispatched into the remote room (building.ts's unsafeRemoteRooms handles both).
+      // Dropping the claim here demolished the whole route (home-room leg included) the instant a
+      // single hostile — even an unarmed scout passing through, see isCombatCapable — entered the
+      // remote room, only to have it re-claimed and re-sited once danger cleared. The claim now
+      // simply tracks source selection, same as the local-source loop above.
       const container = route[route.length - 1];
       if (colony.remoteStructures[source.room] !== undefined) {
         claim({ x: container.x, y: container.y, room: container.room, type, sourceId: source.id });
