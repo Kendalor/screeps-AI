@@ -3,6 +3,7 @@
 
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
+import { incomingHeal, towerDamageAt } from "../lib/combat";
 import { closest, range } from "../lib/geometry";
 import { needsRepair } from "../lib/repairable";
 import { isExitTile } from "../lib/remotePath";
@@ -97,41 +98,6 @@ export class Defense extends Operation {
     }
     return out;
   }
-}
-
-// Mirrors the game's TOWER_* constants (declared ambient-only in @types/screeps, with no runtime value
-// outside a live game tick) so this pure planner can compute damage without touching Game.*.
-const GAME_TOWER_OPTIMAL_RANGE = 5;
-const GAME_TOWER_FALLOFF_RANGE = 20;
-const GAME_TOWER_POWER_ATTACK = 600;
-const GAME_TOWER_FALLOFF = 0.75;
-
-// Screeps' tower damage formula: full power out to TOWER_OPTIMAL_RANGE, linear falloff to
-// TOWER_POWER_ATTACK * (1 - TOWER_FALLOFF) by TOWER_FALLOFF_RANGE, flat beyond that.
-function towerDamageAt(dist: number): number {
-  if (dist <= GAME_TOWER_OPTIMAL_RANGE) return GAME_TOWER_POWER_ATTACK;
-  if (dist >= GAME_TOWER_FALLOFF_RANGE) return GAME_TOWER_POWER_ATTACK * (1 - GAME_TOWER_FALLOFF);
-  const falloffFraction = (dist - GAME_TOWER_OPTIMAL_RANGE) / (GAME_TOWER_FALLOFF_RANGE - GAME_TOWER_OPTIMAL_RANGE);
-  return GAME_TOWER_POWER_ATTACK * (1 - GAME_TOWER_FALLOFF * falloffFraction);
-}
-
-// Mirrors HEAL_POWER/RANGED_HEAL_POWER — melee heal (range <= 1) is 3x stronger than ranged heal
-// (range 2-3), so a healer standing back from its tank contributes far less than one in melee range.
-const GAME_HEAL_POWER = 12;
-const GAME_RANGED_HEAL_POWER = 4;
-const HEAL_ASSIST_RANGE = 3;
-
-function healRateAt(dist: number): number {
-  if (dist <= 1) return GAME_HEAL_POWER;
-  if (dist <= HEAL_ASSIST_RANGE) return GAME_RANGED_HEAL_POWER;
-  return 0;
-}
-
-// Total heal this hostile can receive this tick from itself plus every other hostile within heal range —
-// the real in-game ceiling a tower's shot has to beat, not just the target's own HEAL parts. Each healer
-// (including the target healing itself) contributes at its own range-appropriate rate, not a flat one.
-function incomingHeal(hostile: SnapUnit, hostiles: readonly SnapUnit[]): number {
-  return hostiles.reduce((sum, h) => sum + h.healParts * healRateAt(range(hostile, h)), 0);
 }
 
 // A hostile sitting on the room border can simply step out next tick, so shooting it is normally wasted

@@ -68,9 +68,17 @@ describe("Reservation demand", () => {
     expect(claimerRequests(colonySnap({ ...affordable, remoteSources: [remote] }))).toEqual([]);
   });
 
-  it("skips a remote room reserved by someone else", () => {
-    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reservedBy: "Invader" });
+  it("skips a remote room reserved by another player", () => {
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reservedBy: "SomePlayer" });
     expect(claimerRequests(colonySnap({ ...affordable, remoteSources: [remote] }))).toEqual([]);
+  });
+
+  // An Invader-core reservation is not a player's — reserveController contests it (ticks it down)
+  // instead of being rejected outright the way it would against a player's reservation, so a claimer
+  // should still be requested to go compete for the room rather than sit out.
+  it("still requests a claimer for a room reserved by the Invader NPC", () => {
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, reservedBy: "Invader" });
+    expect(claimerRequests(colonySnap({ ...affordable, remoteSources: [remote] }))).toHaveLength(1);
   });
 
   // Regression: reservedBy must never suppress demand for a room WE reserve — only a foreign

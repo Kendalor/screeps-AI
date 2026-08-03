@@ -1215,24 +1215,35 @@ describe("attack step", () => {
     return { creep: creep as unknown as Creep, traveled };
   }
 
-  it("slides along the west edge instead of freezing when pinned against x=0", () => {
-    // Fighter on the west wall (x=0); hostile has closed in from due east at range 1.
+  it("steps off the exit tile onto x=1 rather than holding on the border when pinned against x=0", () => {
+    // Fighter caught standing on the west exit row (x=0); hostile has closed in from due east at range 1.
     const { creep, traveled } = borderFighter(0, 20, 1, 20);
     runStep(creep, { do: "attack", from: { find: "hostile" } });
-    // x can't retreat past 0, so it holds; y (the free axis) carries the flee instead of both freezing.
-    expect(traveled).toEqual([{ x: 0, y: 21 }]);
+    // x can't retreat past the room-interior clamp (1), so it's pulled back onto x=1 instead of staying
+    // on the exit tile; y (the free axis) carries the rest of the flee.
+    expect(traveled).toEqual([{ x: 1, y: 21 }]);
   });
 
-  it("slides along the north edge instead of freezing when pinned against y=0", () => {
+  it("steps off the exit tile onto y=1 rather than holding on the border when pinned against y=0", () => {
     const { creep, traveled } = borderFighter(20, 0, 20, 1);
     runStep(creep, { do: "attack", from: { find: "hostile" } });
-    expect(traveled).toEqual([{ x: 21, y: 0 }]);
+    expect(traveled).toEqual([{ x: 21, y: 1 }]);
   });
 
-  it("stays put only when truly cornered on both axes with nowhere left to retreat", () => {
-    // Fighter pinned in the top-left corner (0,0); hostile bearing from the southeast blocks both axes.
+  it("retreats off both exit rows into the room interior even when cornered", () => {
+    // Fighter caught standing in the top-left corner exit tile (0,0); hostile bearing from the southeast.
     const { creep, traveled } = borderFighter(0, 0, 1, 1);
     runStep(creep, { do: "attack", from: { find: "hostile" } });
-    expect(traveled).toEqual([{ x: 0, y: 0 }]);
+    // Both axes clamp to the interior (1,1) rather than holding on the corner exit tile — the corner is
+    // itself never a legal flee destination anymore, so there's always somewhere to step off it to.
+    expect(traveled).toEqual([{ x: 1, y: 1 }]);
+  });
+
+  it("never targets an exit tile even when already one step off the border", () => {
+    // Fighter at x=1 (one tile inside the west wall); hostile closing from due east forces a flee west,
+    // which the old, unclamped math would have landed squarely on the x=0 exit tile.
+    const { creep, traveled } = borderFighter(1, 20, 2, 20);
+    runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(traveled).toEqual([{ x: 1, y: 21 }]); // held at x=1, not pushed onto x=0
   });
 });

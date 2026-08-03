@@ -2,6 +2,7 @@
 
 import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
 import { log } from "../lib/log";
+import { massAttackDamagePerPartAt, RANGED_ATTACK_RANGE } from "../lib/combat";
 import { isDangerous } from "../memory/reputation";
 import { wrapFn } from "../lib/profiler";
 import { stepOffRoad } from "./roadAvoidance";
@@ -485,13 +486,6 @@ function renewStep(creep: Creep, below: number, locked: Id<_HasId> | undefined, 
   return { acted: true, didAct: result === OK, target: (spawn as unknown as { id: Id<_HasId> }).id };
 }
 
-const RANGED_ATTACK_RANGE = 3;
-// rangedMassAttack's damage per RANGED_ATTACK part, keyed by range (engine-hardcoded, not exposed as a
-// JS constant): full rangedAttack power (10) at range 1, falling off to 4 and 1 at range 2 and 3, zero
-// beyond — steep enough that mass attack only wins over a single-target rangedAttack (flat 10/part
-// anywhere inside range 3) with several hostiles clustered close.
-const MASS_ATTACK_DAMAGE_PER_PART: Record<number, number> = { 1: 10, 2: 4, 3: 1 };
-
 // All hostile creeps in the room within range of the fighter, closest lookup shared by the melee-threat
 // check and the mass-attack damage total below — both read off room.find (like every other target
 // lookup in this file, see targets.ts's findCandidates) rather than a position-scoped API, so both stay
@@ -518,8 +512,7 @@ function nearbyMeleeThreat(creep: Creep): boolean {
 function massAttackDamage(creep: Creep, rangedParts: number): number {
   let total = 0;
   for (const h of hostilesWithin(creep, RANGED_ATTACK_RANGE)) {
-    const perPart = MASS_ATTACK_DAMAGE_PER_PART[creep.pos.getRangeTo(h.pos)];
-    if (perPart) total += perPart * rangedParts;
+    total += massAttackDamagePerPartAt(creep.pos.getRangeTo(h.pos)) * rangedParts;
   }
   return total;
 }
@@ -566,14 +559,21 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
     const range = creep.pos.getRangeTo(hostile.pos);
     if (meleeThreatened && range < RANGED_ATTACK_RANGE) {
       // A melee-capable hostile is close enough to threaten next tick — kite: step directly away,
-      // still firing this tick.
-      creep.travelTo(fleeSpot(creep.pos, hostile.pos), { range: 0 });
+      // still firing this tick. maxRooms:1 belt-and-suspenders fleeSpot's own room-interior clamp: even
+      // if the flee tile ever ended up choosable via a neighboring room's edge, Traveler must never
+      // route the escape through a border crossing — a defender that flees INTO an unscouted, possibly
+      // hostile-held room is worse off than one that holds and traded a hit.
+      creep.travelTo(fleeSpot(creep.pos, hostile.pos), { range: 0, maxRooms: 1 });
     } else if (!meleeThreatened && range > 1) {
       // Nothing nearby can punish point-blank range — close in freely for a better mass-attack angle
-      // (and to keep pace with a fleeing unarmed target) instead of holding at range 3.
-      creep.travelTo(hostile.pos, { range: 1 });
+      // (and to keep pace with a fleeing unarmed target) instead of holding at range 3. maxRooms:1 stops
+      // a hostile camped near the border from baiting the chase across it: the target always resolves
+      // from THIS room (see targets.ts's find:"hostile" — room.find never sees a neighboring room's
+      // creeps), so "range 1 of it" is always satisfiable without leaving, and pinning the search to one
+      // room forces Traveler to find that in-room approach instead of a shorter path through the exit.
+      creep.travelTo(hostile.pos, { range: 1, maxRooms: 1 });
     } else if (!inFiringRange) {
-      creep.travelTo(hostile.pos, { range: RANGED_ATTACK_RANGE });
+      creep.travelTo(hostile.pos, { range: RANGED_ATTACK_RANGE, maxRooms: 1 });
     }
   }
   return inFiringRange
@@ -583,18 +583,18 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
 
 // A tile one step directly away from the threat, mirrored across the fighter's own position — travelTo
 // walks toward this point, which walks the fighter backward along the same line the hostile is closing on.
-// Pinned against a room edge (x/y already 0 or 49) the naive mirror clamps to the fighter's own tile —
-// a no-op destination that leaves it stuck on the border while the hostile keeps closing. When an axis
-// is wall-blocked, that axis holds still and the other axis alone carries the flee, sliding along the
-// edge instead of freezing against it; only if both axes are simultaneously blocked (a corner, with the
-// hostile bearing from outside the room) does the fighter have nowhere left to retreat.
+// Clamped to [1,48], never [0,49]: a defender must never flee ONTO an exit tile — every tile at x/y 0 or
+// 49 is a live room border, and a fighter mid-fight standing there (let alone routed across it chasing
+// the mirror) is exactly the "baited into an adjacent room" failure this guards against. Pinned against
+// that interior boundary (already at x/y 1 fleeing further out), the axis simply holds instead of
+// stepping onto the border — the other, still-free axis alone carries the flee, sliding along one tile
+// off the wall instead of walking the border itself; only if both axes are simultaneously pinned (a
+// corner, with the hostile bearing from outside the room) does the fighter have nowhere left to retreat.
 function fleeSpot(from: { x: number; y: number; roomName: string }, threat: { x: number; y: number }): RoomPosition {
   const dx = Math.sign(from.x - threat.x) || 1;
   const dy = Math.sign(from.y - threat.y) || 1;
-  const xBlocked = (from.x === 0 && dx < 0) || (from.x === 49 && dx > 0);
-  const yBlocked = (from.y === 0 && dy < 0) || (from.y === 49 && dy > 0);
-  const x = xBlocked ? from.x : Math.min(49, Math.max(0, from.x + dx));
-  const y = yBlocked ? from.y : Math.min(49, Math.max(0, from.y + dy));
+  const x = Math.min(48, Math.max(1, from.x + dx));
+  const y = Math.min(48, Math.max(1, from.y + dy));
   return new RoomPosition(x, y, from.roomName);
 }
 

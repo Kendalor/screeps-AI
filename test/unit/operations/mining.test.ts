@@ -690,6 +690,51 @@ describe("Mining.structures — remote sources", () => {
     expect(mining.structures(snap)).toEqual([]);
   });
 
+  // Same gate this operation's staffing loop already applies (danger>0 || reservedBy set, invader or
+  // player alike) — a site claimed here would never get built once staffing stops, and a builder has no
+  // business being walked into a room it can't work.
+  it("claims nothing for a remote source in a room reserved by the Invader NPC", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route, reservedBy: "Invader" });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+
+    expect(mining.structures(snap)).toEqual([]);
+  });
+
+  it("claims nothing for a remote source in a room reserved by another player", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route, reservedBy: "SomePlayer" });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+
+    expect(mining.structures(snap)).toEqual([]);
+  });
+
+  it("claims nothing for a remote source in a dangerous room", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route, danger: 1 });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+
+    expect(mining.structures(snap)).toEqual([]);
+  });
+
   it("claims a route's road tiles but not its container when the remote room has no vision this tick", () => {
     const source = remoteSourceAt(2, 10, "W2N1", { route });
     const snap = colonySnap({

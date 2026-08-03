@@ -6,6 +6,7 @@
 import { roleDef } from "../behaviors/roles";
 import { CLAIMER_MIN_COST } from "../behaviors/roles/claimer";
 import { defaultEconomyContext, worthReserving } from "../mining/remoteEconomics";
+import { INVADER_USERNAME } from "../mining/remoteSources";
 import type { ColonySnapshot, SnapRemoteSource } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
@@ -25,10 +26,14 @@ export class Reservation extends Operation {
 
     const out: CreepRequest[] = [];
     for (const [room, sources] of this.byRoom(colony.remoteSources)) {
-      // A hostile room, or one already reserved by someone else, stops reserving (age-out, not retreat).
+      // A hostile room, or one already reserved by another PLAYER, stops reserving (age-out, not retreat).
       // reservedBy excludes our own reservation by construction (see remoteRoomVision) — a claimer we
-      // sent must not read as "someone else reserved this."
-      if (sources.some(s => s.danger > 0 || s.reservedBy !== undefined)) continue;
+      // sent must not read as "someone else reserved this." An Invader-core reservation is deliberately
+      // NOT a stop condition here: unlike a player's reservation (which claimController/reserveController
+      // both reject outright), reserveController contests an Invader reservation just fine, ticking it
+      // down same as a fresh room — so a claimer sent at an invader-held room competes for it instead of
+      // sitting out.
+      if (sources.some(s => s.danger > 0 || (s.reservedBy !== undefined && s.reservedBy !== INVADER_USERNAME))) continue;
       if (!worthReserving(sources, ctx)) continue; // summed marginal 5/tick must beat one claimer's upkeep
       // One claimer per room: skip if this operation already has one aimed at this room.
       if (claimers.some(c => c.memory.targetRoom === room)) continue;

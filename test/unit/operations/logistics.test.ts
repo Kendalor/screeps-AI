@@ -123,6 +123,8 @@ describe("Logistics.desiredCreeps steward", () => {
       storageEnergy: 1000,
       storageCapacity: 10000,
       energyCapacity: 550,
+      controllerLevel: 5,
+      links: [linkAt(10, 10), linkAt(20, 20)],
       ...over
     });
 
@@ -132,7 +134,20 @@ describe("Logistics.desiredCreeps steward", () => {
     expect(logistics.desiredCreeps(noStorage).some(r => r.memory.role === "steward")).toBe(false);
   });
 
-  it("wants exactly one steward once storage exists", () => {
+  // Regression: a steward has nothing to referee before RCL5/2 links exist even if storage is already
+  // built (storage lands at RCL4, a full level ahead of links) — asking anyway wastes a spawn slot on
+  // a creep that just parks and idles.
+  it("wants no steward before RCL5, even with storage", () => {
+    const belowRcl5 = withStorage({ controllerLevel: 4 });
+    expect(logistics.desiredCreeps(belowRcl5).some(r => r.memory.role === "steward")).toBe(false);
+  });
+
+  it("wants no steward with only one link built", () => {
+    const oneLink = withStorage({ links: [linkAt(10, 10)] });
+    expect(logistics.desiredCreeps(oneLink).some(r => r.memory.role === "steward")).toBe(false);
+  });
+
+  it("wants exactly one steward once storage exists at RCL5 with 2 links", () => {
     const requests = logistics.desiredCreeps(withStorage());
     expect(requests.filter(r => r.memory.role === "steward")).toHaveLength(1);
   });

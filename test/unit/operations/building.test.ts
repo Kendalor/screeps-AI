@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Building } from "../../../src/operations/building";
-import { colonySnap, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
+import { colonySnap, remoteSourceAt, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
 
 describe("builder workforce", () => {
   const building = new Building("W1N1");
@@ -137,6 +137,55 @@ describe("builder workforce", () => {
       const upgrader = snapCreep("upgrader");
       const snap = colonySnap({ siteSummary: [{ room: "W1N1", type: "extension" }], creeps: [upgrader] });
       expect(building.intents(snap)).toEqual([]);
+    });
+
+    // A room reserved by anyone (Invader or a player) or currently dangerous is off-limits to dispatch
+    // into: Mining's own staffing gate already stops working sources there (see mining.ts), so a builder
+    // walked in would sit uselessly, and unlike Reservation's claimer it has no way to contest either kind.
+    it("does not dispatch a builder into a remote room reserved by the Invader NPC", () => {
+      const creep = snapCreep("builder");
+      const snap = colonySnap({
+        siteSummary: [{ room: "W2N1", type: "container" }],
+        remoteSources: [remoteSourceAt(25, 25, "W2N1", { reservedBy: "Invader" })],
+        creeps: [creep]
+      });
+      expect(building.intents(snap)).toEqual([]);
+    });
+
+    it("does not dispatch a builder into a remote room reserved by another player", () => {
+      const creep = snapCreep("builder");
+      const snap = colonySnap({
+        siteSummary: [{ room: "W2N1", type: "container" }],
+        remoteSources: [remoteSourceAt(25, 25, "W2N1", { reservedBy: "SomePlayer" })],
+        creeps: [creep]
+      });
+      expect(building.intents(snap)).toEqual([]);
+    });
+
+    it("does not dispatch a builder into a dangerous remote room", () => {
+      const creep = snapCreep("builder");
+      const snap = colonySnap({
+        siteSummary: [{ room: "W2N1", type: "container" }],
+        remoteSources: [remoteSourceAt(25, 25, "W2N1", { danger: 1 })],
+        creeps: [creep]
+      });
+      expect(building.intents(snap)).toEqual([]);
+    });
+
+    it("still dispatches to a safe remote room while a different remote is reserved", () => {
+      const creep = snapCreep("builder");
+      const snap = colonySnap({
+        siteSummary: [
+          { room: "W2N1", type: "container" }, // reserved, unsafe
+          { room: "W3N1", type: "extension" } // safe
+        ],
+        remoteSources: [
+          remoteSourceAt(25, 25, "W2N1", { reservedBy: "Invader" }),
+          remoteSourceAt(25, 25, "W3N1")
+        ],
+        creeps: [creep]
+      });
+      expect(building.intents(snap)).toEqual([{ kind: "setBuildTargetRoom", creep: creep.id, room: "W3N1" }]);
     });
   });
 });

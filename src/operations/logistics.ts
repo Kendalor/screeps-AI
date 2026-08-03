@@ -91,10 +91,12 @@ export class Logistics extends Operation {
     return [...transport, ...this.desiredStewards(colony)];
   }
 
-  // A steward only earns its keep once storage exists — before that there's no storage/terminal/link
-  // triangle to referee, just the same pre-storage economy transport already covers alone.
+  // A steward only earns its keep once storage exists AND the link triangle it's meant to referee is
+  // actually there: links don't unlock until RCL5, and even then a single link (typically the first
+  // source link) leaves nothing worth rebalancing until a second one completes the loop.
   private desiredStewards(colony: ColonySnapshot): CreepRequest[] {
     if (!colony.storageId) return [];
+    if (colony.controllerLevel < 5 || colony.links.length < 2) return [];
     return this.fillRole(colony, "steward", config.wantedStewards, roleDef("steward")!.priority);
   }
 

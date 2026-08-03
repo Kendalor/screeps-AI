@@ -67,13 +67,28 @@ function wantedBuilders(colony: ColonySnapshot): number {
   return Math.min(config.maxBuilders, bodies);
 }
 
+// A remote room currently unsafe/off-limits to work in: hostile presence, or a controller reservation
+// held by ANYONE else (invader core or player alike — unlike Reservation's own gate, which deliberately
+// lets a claimer contest an Invader's reservation, a builder has no way to contest either kind and must
+// not be walked into either). Mining's own harvest gate already stops miners the same way (source.danger
+// > 0 || source.reservedBy !== undefined, see mining.ts), so a site there would never get worked anyway —
+// this just stops Building from claiming/placing/dispatching into a room that can't be built efficiently.
+function unsafeRemoteRooms(colony: ColonySnapshot): Set<string> {
+  const out = new Set<string>();
+  for (const s of colony.remoteSources) {
+    if (s.danger > 0 || s.reservedBy !== undefined) out.add(s.room);
+  }
+  return out;
+}
+
 // Every room this colony currently owns a construction site in, nearest first — siteSummary is
 // vision-independent (Game.constructionSites), so a remote room's backlog counts even without a creep
 // standing in it right now. roomLinearDistance (pure Chebyshev, no Game.map) is the same cheap ranking
 // pickRemotes/scoutCandidatesAround use for a first-pass distance estimate; a builder crossing rooms
 // doesn't need a real pathed distance the way remote staffing economics do.
 function roomsWithSites(colony: ColonySnapshot): string[] {
-  const rooms = new Set(colony.siteSummary.map(s => s.room));
+  const unsafe = unsafeRemoteRooms(colony);
+  const rooms = new Set(colony.siteSummary.map(s => s.room).filter(r => !unsafe.has(r)));
   return [...rooms].sort((a, b) => roomLinearDistance(colony.name, a) - roomLinearDistance(colony.name, b));
 }
 
