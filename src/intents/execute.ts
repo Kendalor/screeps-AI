@@ -3,7 +3,7 @@
 import { log } from "../lib/log";
 import { recordManual, wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
-import { remoteRouteTileKey, resolvePathToSource } from "../lib/remotePath";
+import { NO_PATH_RETRY_AFTER, remoteRouteTileKey, resolvePathToSource } from "../lib/remotePath";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
 import { neighborhoodFullyScouted, summarizePotential } from "../mining/colonizationPotential";
 import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
@@ -171,11 +171,13 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       const rooms = (Memory.rooms ??= {});
       const mem = (rooms[intent.room] ??= {} as RoomMemory);
       mem.scouted = observeRoom(room, intent.passive ? mem.scouted : undefined);
+      log.debugRoom(intent.room, `recordScout${intent.passive ? " (passive)" : ""}: owner=${mem.scouted.owner ?? "-"} sources=${mem.scouted.sources.length}`);
       return OK;
     }
     case "forceRescout": {
       const scouted = (Memory.rooms ??= {})[intent.room]?.scouted;
       if (!scouted || scouted.tick === undefined) return ERR_NOT_FOUND; // nothing on record to invalidate
+      log.debugRoom(intent.room, "forceRescout: marking stale (invader core sighted nearby)");
       scouted.tick = 0; // oldest possible tick: needsScouting reads this as maximally stale next check
       return OK;
     }
@@ -199,21 +201,34 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
     }
     case "setScoutTargets": {
       let anyAssigned = false;
-      for (const { creep: id, target } of assignScoutTargets(intent.assignments)) {
+      const assigned = assignScoutTargets(intent.assignments);
+      if (assigned.length < intent.assignments.length) {
+        const unassignedIds = new Set(intent.assignments.map(a => a.creep));
+        for (const a of assigned) unassignedIds.delete(a.creep);
+        for (const id of unassignedIds) {
+          const creep = Game.getObjectById(id);
+          if (creep) log.debugCreep(creep.name, "setScoutTargets: no reachable candidate won the assignment round this tick");
+        }
+      }
+      for (const { creep: id, target } of assigned) {
         const creep = Game.getObjectById(id);
         if (!creep) continue;
         anyAssigned = true;
+        log.debugCreep(creep.name, `setScoutTargets: assigned scoutTarget=${target} (from ${creep.room.name}, lastRoom=${creep.memory.lastRoom ?? "-"})`);
         // Recorded before overwriting scoutTarget so the next pick can avoid sending the scout straight
         // back here â€” without it, two rooms mutually nearest each other ping-pong a scout forever.
         creep.memory.lastRoom = creep.room.name;
         creep.memory.scoutTarget = target;
-        creep.memory.route = routeTo(creep.room.name, target);
+        creep.memory.route = routeTo(creep.memory.home, creep.room.name, target);
       }
       return anyAssigned ? OK : ERR_NOT_FOUND;
     }
     case "advanceScoutRadius": {
       const mem = (Memory.scouting ??= { radius: 1 });
-      if (mem.radius < MAX_SCOUT_RANGE) mem.radius += 1;
+      if (mem.radius < MAX_SCOUT_RANGE) {
+        mem.radius += 1;
+        log.info(`scouting: radius advanced to ${mem.radius}`);
+      }
       return OK;
     }
     case "setRemotes": {
@@ -402,8 +417,15 @@ function assignScoutTargets(
   for (const { creep: id, candidates } of assignments) {
     const creep = Game.getObjectById(id);
     if (!creep) continue;
+    const home = creep.memory.home;
     for (const room of candidates) {
-      const route = Game.map.findRoute(creep.room.name, room, { routeCallback: dangerRouteCost });
+      // The destination itself is exempt from the noPathFrom exclusion inside dangerRouteCost: a room
+      // confirmed unreachable past its border is still a legal scout candidate (see schema.ts's
+      // noPathFrom doc â€” the scout just ends up parked at the exit tile, which already fulfills the
+      // scouting order). Only rooms findRoute considers passing THROUGH should ever be priced Infinity.
+      const route = Game.map.findRoute(creep.room.name, room, {
+        routeCallback: (roomName: string) => (roomName === room ? 1 : dangerRouteCost(home, roomName))
+      });
       const hops = route === ERR_NO_PATH ? Infinity : route.length;
       if (hops !== Infinity) pairs.push({ creep: id, room, hops });
     }
@@ -425,8 +447,13 @@ function assignScoutTargets(
 }
 
 // Room-by-room route via Game.map.findRoute; on failure, falls back to just the destination.
-function routeTo(from: string, dest: string): RouteMemory {
-  const route = Game.map.findRoute(from, dest, { routeCallback: dangerRouteCost });
+// `home`: whose noPathFrom cache to consult in dangerRouteCost â€” the colony the travelling creep belongs
+// to, not necessarily `from` (a creep may already be mid-route, standing in a transit room).
+function routeTo(home: string, from: string, dest: string): RouteMemory {
+  // dest is exempt from the noPathFrom exclusion below â€” see assignScoutTargets' identical exemption for why.
+  const route = Game.map.findRoute(from, dest, {
+    routeCallback: (roomName: string) => (roomName === dest ? 1 : dangerRouteCost(home, roomName))
+  });
   const rooms = route === ERR_NO_PATH ? [dest] : route.map(step => step.room);
   return { dest, rooms, index: 0 };
 }
@@ -437,10 +464,19 @@ function routeTo(from: string, dest: string): RouteMemory {
 // passing through. Mirrors interpreter.ts's dangerRouteCallback for the same reason (Traveler doesn't
 // cover a scout's own precomputed room-by-room route); priced high rather than Infinity so a route still
 // resolves when no detour exists.
+//
+// Also excludes (Infinity, not just DANGEROUS_ROOM_HOPS) a room `home`'s own scout has already confirmed
+// unreachable at every border it can find from here (see moveToRoom's noPathFrom write, and schema.ts's
+// doc) â€” a real PathFinder-backed "no route exists" result, not a mere danger rating, so there's nothing
+// to lose by never offering it as a transit hop for a DIFFERENT destination. Does not affect the room's
+// own candidacy as a scout target: assignScoutTargets/routeTo only ever call this for rooms findRoute is
+// considering passing THROUGH or resolving a direct route span across, never to gate candidate selection.
 const DANGEROUS_ROOM_HOPS = 50;
-function dangerRouteCost(roomName: string): number {
-  const owner = Memory.rooms?.[roomName]?.scouted?.owner;
-  return isDangerous(owner) ? DANGEROUS_ROOM_HOPS : 1;
+function dangerRouteCost(home: string, roomName: string): number {
+  const info = Memory.rooms?.[roomName]?.scouted;
+  const noPathAt = info?.noPathFrom?.[home];
+  if (noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER) return Infinity;
+  return isDangerous(info?.owner) ? DANGEROUS_ROOM_HOPS : 1;
 }
 
 // All walkable exits around the spawn, ordered as a preference: road tiles first (so the newborn

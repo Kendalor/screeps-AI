@@ -779,6 +779,65 @@ describe("actuator — scouting", () => {
     expect(creep.memory.scoutTarget).toBe("W1N3");
   });
 
+  // A room this colony's own scout already confirmed is walled off at every border (see interpreter.ts's
+  // moveToRoom writing noPathFrom on a real travelTo failure) must never be used as a transit hop for a
+  // DIFFERENT candidate's route â€” priced Infinity, not just the 50-hop hostile penalty, since there is
+  // provably no way through at all.
+  it("prices a noPathFrom-flagged transit room as impassable via findRoute's routeCallback", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ time: 5000, objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { noPathFrom: { W1N1: 1000 } } } }
+    };
+    const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
+      expect(options.routeCallback("W1N2")).toBe(Infinity);
+      return [{ room: "W1N9" }, { room: "W1N3" }];
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
+    expect(creep.memory.scoutTarget).toBe("W1N3");
+  });
+
+  // The exact same room stays a fully legal DIRECT scout destination despite the same noPathFrom entry:
+  // the exit tile itself is always reachable (structures can never sit on one), which already fulfills
+  // the scouting order (see schema.ts's noPathFrom doc). The exclusion above only ever fires for rooms
+  // findRoute is considering passing THROUGH, never for the candidate being routed TO.
+  it("still assigns a noPathFrom-flagged room as a direct scout destination", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ time: 5000, objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { noPathFrom: { W1N1: 1000 } } } }
+    };
+    const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
+      expect(options.routeCallback("W1N2")).toBe(1); // destination itself: never priced by noPathFrom/danger
+      return [{ room: "W1N2" }];
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N2"] }] }]);
+    expect(creep.memory.scoutTarget).toBe("W1N2");
+  });
+
+  // A stale noPathFrom entry past NO_PATH_RETRY_AFTER (20000 ticks) is trusted again as a normal transit
+  // hop â€” the negative cache is a backoff, not a permanent verdict (mirrors ScoutedSource.noPathAt's same
+  // rule for remote-mining source paths), in case a border wall genuinely comes down later.
+  it("stops treating a noPathFrom entry as impassable once the backoff window has elapsed", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ time: 25000, objects: { scout1: creep } }); // 25000 - 1000 = 24000 >= 20000
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { noPathFrom: { W1N1: 1000 } } } }
+    };
+    const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
+      expect(options.routeCallback("W1N2")).toBe(1);
+      return [{ room: "W1N9" }, { room: "W1N3" }];
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
+    expect(creep.memory.scoutTarget).toBe("W1N3");
+  });
+
   it("grows the scouting radius, capped, on advanceScoutRadius", () => {
     stubGame();
     (globalThis as Record<string, unknown>).Memory = { scouting: { radius: 1 } };

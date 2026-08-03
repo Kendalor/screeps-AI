@@ -84,6 +84,46 @@ describe("scoutCandidatesAround", () => {
     expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2"]);
   });
 
+  it("stops expanding past a room proven unreachable from home, but still includes the room itself", () => {
+    // W1N2 is walled solid at every border a scout could enter from — moveToRoom already recorded that
+    // via noPathFrom. W1N3 sits beyond it and must not appear: nothing has ever proven a scout can reach
+    // W1N2's own exits from here, so the frontier has no business claiming W1N3 needs scouting yet.
+    stubGame();
+    stubMap({ W1N1: { "3": "W1N2" }, W1N2: { "7": "W1N1", "3": "W1N3" }, W1N3: { "7": "W1N2" } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 1, type: "normal", sources: [], hostile: false, noPathFrom: { W1N1: Game.time } } } }
+    };
+
+    const out = scoutCandidatesAround("W1N1", 2, "W1N1");
+
+    expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2"]);
+  });
+
+  it("does not apply the noPathFrom cut when no home is passed (non-scouting callers)", () => {
+    stubGame();
+    stubMap({ W1N1: { "3": "W1N2" }, W1N2: { "7": "W1N1", "3": "W1N3" }, W1N3: { "7": "W1N2" } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 1, type: "normal", sources: [], hostile: false, noPathFrom: { W1N1: Game.time } } } }
+    };
+
+    const out = scoutCandidatesAround("W1N1", 2);
+
+    expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2", "W1N3"]);
+  });
+
+  it("resumes expanding past a room once its noPathFrom entry has aged out the retry window", () => {
+    stubGame();
+    stubMap({ W1N1: { "3": "W1N2" }, W1N2: { "7": "W1N1", "3": "W1N3" }, W1N3: { "7": "W1N2" } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 1, type: "normal", sources: [], hostile: false, noPathFrom: { W1N1: 0 } } } }
+    };
+    Game.time = 999999;
+
+    const out = scoutCandidatesAround("W1N1", 2, "W1N1");
+
+    expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2", "W1N3"]);
+  });
+
   it("still excludes a neighbour whose status matches neither normal nor the origin's own", () => {
     stubGame();
     (globalThis as { Game: { map: unknown } }).Game.map = {

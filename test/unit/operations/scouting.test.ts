@@ -166,6 +166,23 @@ describe("Scouting intents", () => {
     expect(scouting.intents(snap)).not.toContainEqual(expect.objectContaining({ kind: "setScoutTargets" }));
   });
 
+  // A scout can be assigned a target that the frontier walk later stops offering at all — e.g. it turns
+  // out to sit across a respawn/novice zone boundary (see scoutGraph.ts's status-match filter): the room
+  // is walled off, so the scout can never arrive and "still travelling" would otherwise leave it pointed
+  // at that target forever. It must be reassigned from whatever's still actually in scoutTargets, exactly
+  // like a scout that already arrived.
+  it("reassigns a scout whose target has dropped out of scoutTargets entirely", () => {
+    const scout = snapCreep("scout", {
+      room: "W1N1",
+      memory: { op: "scouting:W1N1", scoutTarget: "W1N9" } // W1N9 no longer a candidate at all
+    });
+    const snap = colonySnap({ creeps: [scout], scoutTargets: [scoutTarget("W1N2")] });
+    expect(scouting.intents(snap)).toContainEqual({
+      kind: "setScoutTargets",
+      assignments: [{ creep: scout.id, candidates: ["W1N2"] }]
+    });
+  });
+
   // Another operation's scout is not driven by this one.
   it("ignores scouts it does not own", () => {
     const scout = snapCreep("scout", { room: "W1N2", memory: { op: "scouting:W9N9" } });

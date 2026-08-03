@@ -185,7 +185,7 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
       .filter(s => s.pos.roomName !== room.name)
       .reduce((remaining, site) => remaining + (site.progressTotal - site.progress), 0),
     // Rooms within the current scouting radius; radius grows as the frontier is exhausted.
-    scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1),
+    scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1, room.name),
     visibleRooms,
     colonizing,
     attacking

@@ -67,16 +67,36 @@ to the user unnecessarily.
   `log.debugCreep` tracing (adds/removes it in `Memory.debugCreeps`). Prints every
   tick that creep's role/step/target/idle decisions from `empire/creeps.ts`'s
   `runOne`, plus task/branch tracing from `behaviors/transport.ts` and
-  `behaviors/steward.ts` for transport/supply/steward creeps. Independent of
+  `behaviors/steward.ts` for transport/supply/steward creeps, plus (for a fighter)
+  the kite/close-in/hold/fire decision from `behaviors/interpreter.ts`'s
+  `attackStep`, plus (for a defender/attacker) its cross-room target reassignment
+  from `operations/defense.ts`/`operations/attack.ts`, plus (for a scout) its
+  still-travelling/candidate-pool/assignment decisions from `operations/scouting.ts`
+  and `intents/execute.ts`'s `setScoutTargets`. Independent of
   `setLogLevel` — fires regardless of the current log level, and only for the named
   creep, so it's safe to leave the global level at `"error"` while tracing one creep.
   Example: `pserver-console.mjs 'debugCreep("Miner1")' 15` then watch for
   `[DEBUG] Miner1: ...` lines.
 - `debugColony("<room>")` / `undebugColony("<room>")` — same idea, per colony: traces
   that colony's per-tick spawn-request list (`colony/index.ts`'s `requests()`) via
-  `log.debugRoom`, added to `Memory.debugColonies`.
+  `log.debugRoom`, added to `Memory.debugColonies` — plus the *why* behind gaps in
+  that request list: `operations/reservation.ts` and `operations/mining.ts` log why
+  a remote room isn't getting a claimer/miner this tick (danger, reservedBy,
+  not-worth-reserving economics), `operations/defense.ts` logs invaded-room
+  threat/wanted-defender counts and tower hold-fire decisions,
+  `operations/attack.ts` logs target selection, and
+  `empire/remoteInvaderAttacks.ts` logs the automatic invader-core sponsor pickup
+  (or why no sponsor was found this tick). `operations/scouting.ts` also logs the
+  stale-frontier size and wanted scout count, the frontier-radius advance trigger,
+  and (via `intents/execute.ts`'s `recordScout`/`forceRescout` handlers) what got
+  observed in a freshly-scouted room and when a nearby core forces a rescout.
 - `clearDebug()` — clears both `Memory.debugCreeps` and `Memory.debugColonies` in one
   call; run this when done tracing so the console doesn't stay noisy.
+- `resetDebug()` — the one-command "remove all the noise" reset: sets
+  `Memory.logLevel` back to `"error"`, `Memory.debugMetrics` to `false`, and clears
+  both `Memory.debugCreeps` and `Memory.debugColonies`. Use this instead of manually
+  undoing several `setLogLevel("info")`/`debugCreep(...)`/`setDebugMetrics(true)`
+  calls left over from an earlier debugging session.
 - `Profiler.start()` / `Profiler.stop()` / `Profiler.status()` / `Profiler.clear()` /
   `Profiler.output()` — only exists if the currently-deployed build was pushed with
   `PROFILE=1` (see below). Calling `Profiler.*` when the normal (non-profiled) build

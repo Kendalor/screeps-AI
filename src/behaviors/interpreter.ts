@@ -4,6 +4,7 @@ import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
 import { log } from "../lib/log";
 import { massAttackDamagePerPartAt, RANGED_ATTACK_RANGE } from "../lib/combat";
 import { isDangerous } from "../memory/reputation";
+import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import { wrapFn } from "../lib/profiler";
 import { stepOffRoad } from "./roadAvoidance";
 import { resolveTarget } from "./targets";
@@ -216,9 +217,17 @@ const DANGEROUS_ROOM_HOPS = 50;
 // on record, so it's never treated as dangerous by this alone. Returns the same neutral cost (1) Traveler's
 // own findRoute defaults to for every other room, not undefined — Traveler forwards options.routeCallback's
 // result as-is only when it returns something, but here there's always an opinion (dangerous or not).
-function dangerRouteCallback(roomName: string): number {
-  const owner = Memory.rooms?.[roomName]?.scouted?.owner;
-  return isDangerous(owner) ? DANGEROUS_ROOM_HOPS : 1;
+//
+// Also excludes a room this same colony has already confirmed (via moveToRoom's own travelTo failure,
+// below) is walled solid at every border reachable from `home` — Infinity rather than DANGEROUS_ROOM_HOPS,
+// since unlike a merely-dangerous room there is provably no route through it at all, so nothing is lost by
+// never offering it as a transit hop. Does not affect the room's own eligibility as a scout destination
+// (see schema.ts's noPathFrom doc) — this callback only prices rooms Traveler considers passing THROUGH.
+function dangerRouteCallback(home: string, roomName: string): number {
+  const info = Memory.rooms?.[roomName]?.scouted;
+  const noPathAt = info?.noPathFrom?.[home];
+  if (noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER) return Infinity;
+  return isDangerous(info?.owner) ? DANGEROUS_ROOM_HOPS : 1;
 }
 
 // Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
@@ -261,11 +270,22 @@ function moveToRoom(
   // Head for the next room's centre with a small range: Traveler's early-out compares global cross-room range, so a large range would stop the creep short of the border.
   const route = creep.memory.route;
   const nextRoom = route && route.dest === dest ? advanceRoute(route, creep.room.name) : dest;
-  creep.travelTo(new RoomPosition(25, 25, nextRoom), {
+  const result = creep.travelTo(new RoomPosition(25, 25, nextRoom), {
     range: 3,
     roomCallback: step.avoidDanger ? (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix) : undefined,
-    routeCallback: step.avoidDanger ? dangerRouteCallback : undefined
+    routeCallback: step.avoidDanger ? (roomName: string) => dangerRouteCallback(creep.memory.home, roomName) : undefined
   });
+  // A scout genuinely can't path into nextRoom from here (Traveler's own PathFinder search, with real
+  // vision at this border, came back empty) — e.g. the shared border is walled solid by another player.
+  // Game.map.findRoute/scoutCandidatesAround can't detect this at all (they don't see constructed walls),
+  // so this is the only place the failure is ever observed. Cached on the DESTINATION room's ScoutInfo so
+  // dangerRouteCost can stop pricing it as a viable transit hop for other routes; the room stays a valid
+  // scouting candidate regardless (see schema.ts's noPathFrom doc) — the scout can still always reach the
+  // exit tile itself and observe the room from there.
+  if (step.to === "scoutTarget" && result === ERR_NO_PATH) {
+    const info = Memory.rooms?.[nextRoom]?.scouted;
+    if (info) (info.noPathFrom ??= {})[creep.memory.home] = Game.time;
+  }
   return { acted: true, didAct: false };
 }
 
@@ -553,6 +573,7 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
     const mass = massAttackDamage(creep, rangedParts);
     if (mass > single) creep.rangedMassAttack();
     else creep.rangedAttack(hostile);
+    log.debugCreep(creep.name, `attackStep: firing at ${hostile.id} (mass=${mass.toFixed(0)} single=${single})`);
   }
 
   if (allowTravel) {
@@ -563,6 +584,7 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
       // if the flee tile ever ended up choosable via a neighboring room's edge, Traveler must never
       // route the escape through a border crossing — a defender that flees INTO an unscouted, possibly
       // hostile-held room is worse off than one that holds and traded a hit.
+      log.debugCreep(creep.name, `attackStep: kiting away from ${hostile.id} (range=${range}, melee threat nearby)`);
       creep.travelTo(fleeSpot(creep.pos, hostile.pos), { range: 0, maxRooms: 1 });
     } else if (!meleeThreatened && range > 1) {
       // Nothing nearby can punish point-blank range — close in freely for a better mass-attack angle
@@ -571,9 +593,16 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
       // from THIS room (see targets.ts's find:"hostile" — room.find never sees a neighboring room's
       // creeps), so "range 1 of it" is always satisfiable without leaving, and pinning the search to one
       // room forces Traveler to find that in-room approach instead of a shorter path through the exit.
-      creep.travelTo(hostile.pos, { range: 1, maxRooms: 1 });
+      // clampInterior on the DESTINATION too — an unarmed hostile camped on or beside the exit tile is
+      // itself a bait: closing to literal range 1 of it would park the defender on the border. Chasing
+      // the clamped-inward stand-in instead still narrows the gap without ever stepping onto the exit.
+      log.debugCreep(creep.name, `attackStep: closing in on unarmed ${hostile.id} (range=${range})`);
+      creep.travelTo(clampInterior(hostile.pos, creep.pos.roomName), { range: 1, maxRooms: 1 });
     } else if (!inFiringRange) {
+      log.debugCreep(creep.name, `attackStep: moving into firing range of ${hostile.id} (range=${range})`);
       creep.travelTo(hostile.pos, { range: RANGED_ATTACK_RANGE, maxRooms: 1 });
+    } else {
+      log.debugCreep(creep.name, `attackStep: holding position at range=${range} (melee threat=${meleeThreatened})`);
     }
   }
   return inFiringRange
@@ -581,21 +610,28 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
     : { acted: true, didAct: false, target: hostile.id };
 }
 
+// Pulls a point's x/y into [1,48], never [0,49] — every tile at x/y 0 or 49 is a live room exit, and a
+// fighter mid-fight must never treat one as a legal destination, whether fleeing to it or closing in on
+// a hostile that's baiting from on or beside the border. Shared by fleeSpot (the flee destination itself)
+// and attackStep's close-in branch (clamping the approached hostile's position before handing it to
+// travelTo), so both movement decisions share one guarantee instead of two independent clamps drifting.
+function clampInterior(p: { x: number; y: number }, roomName: string): RoomPosition {
+  return new RoomPosition(Math.min(48, Math.max(1, p.x)), Math.min(48, Math.max(1, p.y)), roomName);
+}
+
 // A tile one step directly away from the threat, mirrored across the fighter's own position — travelTo
 // walks toward this point, which walks the fighter backward along the same line the hostile is closing on.
-// Clamped to [1,48], never [0,49]: a defender must never flee ONTO an exit tile — every tile at x/y 0 or
-// 49 is a live room border, and a fighter mid-fight standing there (let alone routed across it chasing
-// the mirror) is exactly the "baited into an adjacent room" failure this guards against. Pinned against
-// that interior boundary (already at x/y 1 fleeing further out), the axis simply holds instead of
-// stepping onto the border — the other, still-free axis alone carries the flee, sliding along one tile
-// off the wall instead of walking the border itself; only if both axes are simultaneously pinned (a
-// corner, with the hostile bearing from outside the room) does the fighter have nowhere left to retreat.
+// Clamped to the room interior (see clampInterior): a fighter mid-fight standing on the border, let alone
+// routed across it chasing the mirror, is exactly the "baited into an adjacent room" failure this guards
+// against. Pinned against that interior boundary (already at x/y 1 fleeing further out), the axis simply
+// holds instead of stepping onto the border — the other, still-free axis alone carries the flee, sliding
+// along one tile off the wall instead of walking the border itself; only if both axes are simultaneously
+// pinned (a corner, with the hostile bearing from outside the room) does the fighter have nowhere left to
+// retreat.
 function fleeSpot(from: { x: number; y: number; roomName: string }, threat: { x: number; y: number }): RoomPosition {
   const dx = Math.sign(from.x - threat.x) || 1;
   const dy = Math.sign(from.y - threat.y) || 1;
-  const x = Math.min(48, Math.max(1, from.x + dx));
-  const y = Math.min(48, Math.max(1, from.y + dy));
-  return new RoomPosition(x, y, from.roomName);
+  return clampInterior({ x: from.x + dx, y: from.y + dy }, from.roomName);
 }
 
 // Nudge an in-range upgrader toward a better standing tile: the free controller container if there is

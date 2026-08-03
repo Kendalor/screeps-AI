@@ -24,6 +24,7 @@ declare global {
   function debugColony(room: string): string;
   function undebugColony(room: string): string;
   function clearDebug(): string;
+  function resetDebug(): string;
   function spawnLoad(room?: string): string;
   function colonizeTargets(): string;
   function help(): string;
@@ -86,6 +87,15 @@ export function installConsoleCommands(): void {
     return "cleared all debug-traced creeps and colonies";
   };
   register("clearDebug()", "clear every creep/colony currently opted into debug tracing");
+
+  global.resetDebug = (): string => {
+    Memory.logLevel = "error";
+    Memory.debugMetrics = false;
+    Memory.debugCreeps = [];
+    Memory.debugColonies = [];
+    return "debug settings reset: logLevel=error, debugMetrics off, all traced creeps/colonies cleared";
+  };
+  register("resetDebug()", "reset every debug setting at once (logLevel, debug panel, traced creeps/colonies) back to quiet defaults");
 
   global.spawnLoad = (room?: string): string => {
     const world = empire(buildEmpireSnapshot());

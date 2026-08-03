@@ -72,17 +72,21 @@ while — expansions change this.
 ## In-game console commands (bot-defined, in `src/commands/console.ts`)
 
 Same command set as the local pserver — `setLogLevel(...)`, `debugCreep`/
-`undebugCreep`/`debugColony`/`undebugColony`/`clearDebug`, `Profiler.*` (only if
-the currently-deployed build was pushed with `PROFILE=1`, see below). See
-`debug-local`'s SKILL.md for the full behavioral notes on these; they're identical
-code, just running against a different deployment. Send them scoped to a shard via
-`main-console.mjs`, e.g. `main-console.mjs 'debugCreep("Miner1")' 15 shard0`.
+`undebugCreep`/`debugColony`/`undebugColony`/`clearDebug`/`resetDebug`,
+`Profiler.*` (only if the currently-deployed build was pushed with `PROFILE=1`,
+see below). See `debug-local`'s SKILL.md for the full behavioral notes on these
+(including which files each trace point covers — combat/defense/attack/reservation/
+mining decisions, not just spawn requests); they're identical code, just running
+against a different deployment. Send them scoped to a shard via `main-console.mjs`,
+e.g. `main-console.mjs 'debugCreep("Miner1")' 15 shard0`.
 
 Same "real production colony" caution applies here as everywhere else in this
-file: `debugCreep`/`debugColony`/`clearDebug` are read-only-ish (they only toggle
-what gets logged, spend no resources) so they're safe to run freely, but tracing
-prints every tick and adds a small amount of CPU/console-channel noise — remember
-to `clearDebug()` when done rather than leaving it live indefinitely.
+file: `debugCreep`/`debugColony`/`clearDebug`/`resetDebug` are read-only-ish (they
+only toggle what gets logged, spend no resources) so they're safe to run freely,
+but tracing prints every tick and adds a small amount of CPU/console-channel
+noise — remember to `resetDebug()` when done (one call undoes everything, instead
+of separately undoing `setLogLevel`/`debugCreep`/`setDebugMetrics` calls left over
+from an earlier session) rather than leaving it live indefinitely.
 
 ## Reading Memory directly
 

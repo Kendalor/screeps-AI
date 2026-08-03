@@ -5,6 +5,7 @@
 
 import { roleDef } from "../behaviors/roles";
 import { CLAIMER_MIN_COST } from "../behaviors/roles/claimer";
+import { log } from "../lib/log";
 import { defaultEconomyContext, worthReserving } from "../mining/remoteEconomics";
 import { INVADER_USERNAME } from "../mining/remoteSources";
 import type { ColonySnapshot, SnapRemoteSource } from "../snapshot/types";
@@ -33,8 +34,18 @@ export class Reservation extends Operation {
       // both reject outright), reserveController contests an Invader reservation just fine, ticking it
       // down same as a fresh room — so a claimer sent at an invader-held room competes for it instead of
       // sitting out.
-      if (sources.some(s => s.danger > 0 || (s.reservedBy !== undefined && s.reservedBy !== INVADER_USERNAME))) continue;
-      if (!worthReserving(sources, ctx)) continue; // summed marginal 5/tick must beat one claimer's upkeep
+      if (sources.some(s => s.danger > 0 || (s.reservedBy !== undefined && s.reservedBy !== INVADER_USERNAME))) {
+        const blocker = sources.find(s => s.danger > 0 || s.reservedBy !== undefined);
+        log.debugRoom(
+          colony.name,
+          `reservation skip ${room}: ${blocker?.danger ? "danger" : `reservedBy=${blocker?.reservedBy}`}`
+        );
+        continue;
+      }
+      if (!worthReserving(sources, ctx)) {
+        log.debugRoom(colony.name, `reservation skip ${room}: not worth reserving (${sources.length} source(s))`);
+        continue;
+      }
       // One claimer per room: skip if this operation already has one aimed at this room.
       if (claimers.some(c => c.memory.targetRoom === room)) continue;
 

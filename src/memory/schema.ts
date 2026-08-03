@@ -243,6 +243,18 @@ export interface ScoutInfo {
   // OR attempted but the neighborhood wasn't fully scouted yet" — retried on a later scouting pass either
   // way, same as anchorChecked distinguishes "never attempted" from "attempted, no fit" for anchor.
   potentialChecked?: boolean;
+  // Negative cache: the tick a scout last failed to path into this room from `home` (Traveler's travelTo
+  // came back ERR_NO_PATH — a real PathFinder search with the scout's own vision at the border, not a
+  // findRoute/describeExits guess; see remotePath.ts's ScoutedSource.noPathAt for the same pattern applied
+  // to source paths). Game.map.findRoute has no concept of constructed walls at all, so a room can be
+  // graph-reachable and zone-status-eligible (scoutCandidatesAround already filters the respawn/novice
+  // case) yet still be 100% walled off by another player at every shared border. This does NOT exclude the
+  // room from scoutTargets/candidate picking — a scout can always reach the exit tile itself (structures
+  // can never occupy one, see remotePath.ts's isExitTile) and observes the room fine from there, fulfilling
+  // the scouting order even if it can never walk further in. It only marks the room too expensive to use as
+  // a transit hop for OTHER routes (see execute.ts's dangerRouteCost), so a real border wall can't keep
+  // getting rediscovered by every route that happens to cross it.
+  noPathFrom?: Partial<Record<string, number>>;
 }
 
 // The two topology-only colonization numbers for one room, plus the extra keeper minerals reachable if

@@ -4,6 +4,7 @@
 import { roleDef } from "../behaviors/roles";
 import { needsPassiveRecording, needsScouting, scoutCandidatePool } from "../behaviors/scout";
 import type { Intent } from "../intents/types";
+import { log } from "../lib/log";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
@@ -28,6 +29,7 @@ export class Scouting extends Operation {
     if (todo.length === 0) return [];
 
     const wanted = Math.min(config.maxScouts, Math.ceil(todo.length / config.roomsPerScout));
+    log.debugRoom(colony.name, `scouting: stale frontier=${todo.length} (${todo.map(t => t.room).join(", ")}) wanted=${wanted} owned=${this.owned(colony, "scout").length}`);
     return this.fillRole(colony, "scout", wanted, roleDef("scout")!.priority);
   }
 
@@ -69,7 +71,10 @@ export class Scouting extends Operation {
     // forever. needsScouting's "never seen" rule already makes this vacuously false before anything's
     // been surveyed, so there's no need to gate on scout count to avoid a premature first advance.
     const nothingToDo = !colony.scoutTargets.some(t => t.room !== colony.name && needsScouting(t, colony.tick));
-    if (nothingToDo) out.push({ kind: "advanceScoutRadius" });
+    if (nothingToDo) {
+      log.debugRoom(colony.name, "scouting: frontier fully fresh — advancing scout radius");
+      out.push({ kind: "advanceScoutRadius" });
+    }
 
     return out;
   }
@@ -136,12 +141,31 @@ export class Scouting extends Operation {
   // thrash the route). execute.ts picks the nearest of these via Game.map.findRoute.
   private candidatesFor(colony: ColonySnapshot, scout: SnapCreep): string[] {
     const assigned = scout.memory.scoutTarget;
+    // A room the scout was assigned before the frontier walk stopped offering it (e.g. it turned out to
+    // sit across a respawn/novice zone boundary — see scoutGraph.ts's status-match filter) no longer
+    // appears in scoutTargets at all. Without this check, "still travelling" below leaves a scout
+    // permanently pointed at a now-illegal target forever: it can never arrive (the room is walled off),
+    // so it never self-clears, and nothing else re-validates an in-flight assignment against the current pool.
+    const stillLegal = assigned === undefined || colony.scoutTargets.some(t => t.room === assigned);
     const stillTravelling = assigned !== undefined && assigned !== scout.room;
-    if (stillTravelling) return [];
+    if (stillTravelling && stillLegal) {
+      log.debugCreep(scout.name, `scouting: still travelling to ${assigned} — not reassigning this tick`);
+      return [];
+    }
+    if (stillTravelling && !stillLegal) {
+      log.debugCreep(scout.name, `scouting: assigned target ${assigned} no longer a legal candidate — reassigning`);
+    }
     // Exclude the room the scout stands in (recorded this tick, not re-targeted) and the colony's own
     // home room: it's a scoutTargets entry (distance 0) for passive-recording purposes only, and
     // already has permanent vision, so a scout must never be dispatched to sit in it.
     const elsewhere = colony.scoutTargets.filter(t => t.room !== scout.room && t.room !== colony.name);
-    return scoutCandidatePool(elsewhere, colony.tick, scout.memory.lastRoom);
+    const pool = scoutCandidatePool(elsewhere, colony.tick, scout.memory.lastRoom);
+    log.debugCreep(
+      scout.name,
+      pool.length === 0
+        ? "scouting: no stale candidate room left to reassign to"
+        : `scouting: candidate pool (avoiding lastRoom=${scout.memory.lastRoom ?? "-"}): ${pool.join(", ")}`
+    );
+    return pool;
   }
 }

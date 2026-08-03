@@ -2,6 +2,7 @@
 // Shared by the snapshot builder and the scout behaviour so both see the same frontier.
 
 import { roomType } from "../lib/roomName";
+import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import type { ScoutCandidate } from "./types";
 
 /** Every room reachable from `origin` within `radius` steps (BFS over describeExits), including
@@ -22,8 +23,22 @@ import type { ScoutCandidate } from "./types";
  * captured once at `origin`: once the walk has legitimately crossed out into a "normal" room (both
  * sides "normal", no wall), every further hop compares against "normal" too, not origin's original
  * zone status — a bare `origin`-status comparison would incorrectly wall off everything past the first
- * legitimate crossing. */
-export function scoutCandidatesAround(origin: string, radius: number): ScoutCandidate[] {
+ * legitimate crossing.
+ *
+ * `home` (optional) additionally stops the walk from expanding PAST a room a scout has already proven,
+ * empirically, it cannot walk into from this home — see schema.ts's ScoutInfo.noPathFrom doc. Unlike the
+ * zone-status wall above, a player-built border wall is invisible to describeExits/getTerrain entirely;
+ * the only place that ever learns about it is moveToRoom's travelTo failure, recorded on the
+ * DESTINATION room's own ScoutInfo. That room still gets included in the output at its own distance (a
+ * scout can always reach its exit tile and observe it — see noPathFrom's doc), only its neighbours are
+ * skipped, so the frontier stops silently inflating scoutTargets/todo with rooms behind a sealed border.
+ * Omitted entirely by callers that don't root the walk at an actual scouting colony (pickColonyTargets.ts,
+ * remoteInvaderAttacks.ts use this for pure topology scoring/staleness, not frontier dispatch), since
+ * noPathFrom is keyed by the home a scout actually failed to enter from — meaningless without one. The
+ * retry window (NO_PATH_RETRY_AFTER) matches remotePath.ts's identical negative-cache pattern: a border
+ * wall is usually permanent, but this stays a retry rather than a forever-cache in case the observation
+ * was a transient fluke (e.g. a creep briefly blocking the only open tile). */
+export function scoutCandidatesAround(origin: string, radius: number, home?: string): ScoutCandidate[] {
   const seen = new Set<string>([origin]);
   let frontier: string[] = [origin];
   const originStatus = Game.map.getRoomStatus(origin).status;
@@ -35,6 +50,9 @@ export function scoutCandidatesAround(origin: string, radius: number): ScoutCand
   for (let depth = 0; depth < radius && frontier.length > 0; depth++) {
     const next: string[] = [];
     for (const name of frontier) {
+      // A sealed border is only known once the room itself has already been reached (see doc above), so
+      // it's checked here — before expanding ITS exits — rather than when the room was first added.
+      if (home !== undefined && isSealedFrom(name, home)) continue;
       const exits = Game.map.describeExits(name);
       if (!exits) continue;
       const fromStatus = statusOf.get(name)!;
@@ -57,4 +75,10 @@ export function scoutCandidatesAround(origin: string, radius: number): ScoutCand
     frontier = next;
   }
   return out;
+}
+
+// Whether a scout has already proven, within the retry window, that it cannot enter `room` from `home`.
+function isSealedFrom(room: string, home: string): boolean {
+  const noPathAt = Memory.rooms?.[room]?.scouted?.noPathFrom?.[home];
+  return noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER;
 }

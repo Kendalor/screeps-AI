@@ -80,6 +80,22 @@ describe("console: clearDebug", () => {
   });
 });
 
+describe("console: resetDebug", () => {
+  it("resets logLevel, debugMetrics, and clears traced creeps/colonies in one call", () => {
+    global.setLogLevel("info");
+    global.setDebugMetrics(true);
+    global.debugCreep("Miner1");
+    global.debugColony("W1N1");
+
+    global.resetDebug();
+
+    expect(Memory.logLevel).toBe("error");
+    expect(Memory.debugMetrics).toBe(false);
+    expect(Memory.debugCreeps).toEqual([]);
+    expect(Memory.debugColonies).toEqual([]);
+  });
+});
+
 describe("console: help", () => {
   it("lists every registered command", () => {
     const text = global.help();
@@ -88,6 +104,7 @@ describe("console: help", () => {
     expect(text).toContain("debugCreep");
     expect(text).toContain("debugColony");
     expect(text).toContain("clearDebug");
+    expect(text).toContain("resetDebug");
     expect(text).toContain("help()");
   });
 

@@ -19,6 +19,7 @@
 import { roleDef } from "../behaviors/roles";
 import { ATTACKER_MIN_COST } from "../behaviors/roles/attacker";
 import type { Intent } from "../intents/types";
+import { log } from "../lib/log";
 import type { ColonySnapshot } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import type { CreepRequest } from "../spawn/request";
@@ -38,6 +39,7 @@ export class Attack extends Operation {
     // A fresh spawn is never "already assigned," so the staffed set is exactly today's live attackers —
     // same target-spreading rule intents() applies to reassignment.
     const target = this.nextUnstaffedTarget(open, this.staffedTargets(colony, open));
+    log.debugRoom(colony.name, `attack: requesting attacker for ${target} (open targets: ${open.join(", ")})`);
     const body = orderBody(roleDef("attacker")?.body(colony.energyCapacity, { hasContainer: false, hasLink: false }) ?? []);
     return [
       {
@@ -83,9 +85,9 @@ export class Attack extends Operation {
   /** Keeps the shared attacker pool pointed at open targets (spreading across distinct ones, see
    * nextUnstaffedTarget), and drops any target that's been cleared. */
   public override intents(colony: ColonySnapshot): Intent[] {
-    const out: Intent[] = colony.attacking
-      .filter(t => this.roomCleared(colony, t))
-      .map(target => ({ kind: "removeAttackTarget", room: colony.name, target }));
+    const cleared = colony.attacking.filter(t => this.roomCleared(colony, t));
+    for (const target of cleared) log.debugRoom(colony.name, `attack: ${target} seen clear — dropping as a target`);
+    const out: Intent[] = cleared.map(target => ({ kind: "removeAttackTarget", room: colony.name, target }));
 
     const open = this.openTargets(colony);
     if (open.length > 0) {
@@ -98,6 +100,7 @@ export class Attack extends Operation {
         if (creep.memory.attackTargetRoom && open.includes(creep.memory.attackTargetRoom)) continue;
         const room = this.nextUnstaffedTarget(open, staffed);
         staffed.add(room);
+        log.debugCreep(creep.name, `attack: assigning attackTargetRoom=${room} (was ${creep.memory.attackTargetRoom ?? "-"})`);
         out.push({ kind: "setAttackTargetRoom", creep: creep.id, room });
       }
     }

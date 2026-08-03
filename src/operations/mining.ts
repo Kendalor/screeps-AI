@@ -12,6 +12,7 @@ import type { Intent } from "../intents/types";
 import GOAL_JSON from "../layouts/Base_2.json";
 import { plannedObstacles } from "../layouts/goal";
 import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../layouts/roads";
+import { log } from "../lib/log";
 import { isExitTile } from "../lib/remotePath";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
@@ -137,7 +138,13 @@ export class Mining extends Operation {
       // A hostile remote, or one reserved by someone else (e.g. an Invader-core reservation), stops new
       // miners; in-flight ones age out. reservedBy is already filtered to exclude our own reservation
       // (see remoteRoomVision) — never re-derive that check here.
-      if (source.danger > 0 || source.reservedBy !== undefined) continue;
+      if (source.danger > 0 || source.reservedBy !== undefined) {
+        log.debugRoom(
+          colony.name,
+          `mining skip remote ${source.room}: ${source.danger > 0 ? "danger" : `reservedBy=${source.reservedBy}`}`
+        );
+        continue;
+      }
       // bodyContext(colony) would answer with the HOME room's container/link/site state — meaningless
       // for a source that lives in a different room. Remote sizing keys off remote/reserved instead
       // (see minerBody): hasContainer/hasLink no longer drive body shape at all.

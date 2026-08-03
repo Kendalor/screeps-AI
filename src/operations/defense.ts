@@ -5,6 +5,7 @@ import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import { incomingHeal, towerDamageAt } from "../lib/combat";
 import { closest, range } from "../lib/geometry";
+import { log } from "../lib/log";
 import { needsRepair } from "../lib/repairable";
 import { isExitTile } from "../lib/remotePath";
 import { roomLinearDistance } from "../lib/roomName";
@@ -53,6 +54,7 @@ function defendTargetRoomIntents(colony: ColonySnapshot, invadedRooms: string[])
   for (const creep of colony.creeps) {
     if (creep.role !== "defender") continue;
     if (creep.memory.defendTargetRoom && invadedRooms.includes(creep.memory.defendTargetRoom)) continue;
+    log.debugCreep(creep.name, `defense: assigning defendTargetRoom=${invadedRooms[0]} (was ${creep.memory.defendTargetRoom ?? "-"})`);
     out.push({ kind: "setDefendTargetRoom", creep: creep.id, room: invadedRooms[0] });
   }
   return out;
@@ -68,6 +70,10 @@ export class Defense extends Operation {
     const invadedRooms = roomsWithHostiles(colony);
     if (invadedRooms.length === 0) return [];
     const wanted = Math.min(MAX_DEFENDERS, Math.ceil(totalThreat(colony, invadedRooms) / HOSTILES_PER_DEFENDER));
+    log.debugRoom(
+      colony.name,
+      `defense: invaded=${invadedRooms.join(",")} threat=${totalThreat(colony, invadedRooms)} wanted=${wanted} owned=${this.owned(colony, "defender").length}`
+    );
     return this.fillRole(colony, "defender", wanted, roleDef("defender")!.priority);
   }
 
@@ -77,11 +83,17 @@ export class Defense extends Operation {
     if (colony.hostiles.length > 0) {
       // Towerless and invaded: safemode is the only defence left, so it short-circuits the rest.
       if (colony.towers.length === 0 && colony.safeModeAvailable) {
+        log.debugRoom(colony.name, "defense: towerless and invaded — triggering safe mode");
         return [{ kind: "safeMode", room: colony.name }];
       }
       for (const tower of colony.towers) {
-        const target = closest(tower, colony.hostiles.filter(h => worthShooting(colony, tower, h)));
-        if (target) out.push({ kind: "towerAttack", tower: tower.id, target: target.id });
+        const worthwhile = colony.hostiles.filter(h => worthShooting(colony, tower, h));
+        const target = closest(tower, worthwhile);
+        if (target) {
+          out.push({ kind: "towerAttack", tower: tower.id, target: target.id });
+        } else if (colony.hostiles.length > 0) {
+          log.debugRoom(colony.name, `defense: tower ${tower.id} holds fire — no hostile worth shooting (${colony.hostiles.length} present)`);
+        }
       }
       return out;
     }

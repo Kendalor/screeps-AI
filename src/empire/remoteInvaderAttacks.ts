@@ -27,6 +27,7 @@
 
 import { pickAttackSponsor } from "./attackSponsor";
 import { execute } from "../intents/execute";
+import { log } from "../lib/log";
 import { INVADER_USERNAME } from "../mining/remoteSources";
 import { scoutCandidatesAround } from "../snapshot/scoutGraph";
 import type { Intent } from "../intents/types";
@@ -91,8 +92,12 @@ export function runRemoteInvaderAttacks(world: Empire): void {
       if (!visible || visible.invaderCoreLevel !== NON_FORTIFIED_CORE_LEVEL) continue;
 
       const pick = pickAttackSponsor(world.colonies, target, routeDistance);
-      if (!pick.colony) continue; // no fitting sponsor this tick; retried automatically next tick
+      if (!pick.colony) {
+        log.debugRoom(colony.name, `remoteInvaderAttacks: no sponsor for ${target} this tick (${pick.reason}) — retrying next tick`);
+        continue; // no fitting sponsor this tick; retried automatically next tick
+      }
 
+      log.debugRoom(pick.colony.name, `remoteInvaderAttacks: sponsoring attack on ${target}`);
       execute([{ kind: "addAttackTarget", room: pick.colony.name, target }]);
       alreadyAttacking.add(target);
     }

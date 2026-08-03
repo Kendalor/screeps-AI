@@ -740,6 +740,46 @@ describe("moveToRoom to a creep's targetRoom", () => {
   });
 });
 
+// A scout that fails to path into its assigned room (Traveler's travelTo comes back ERR_NO_PATH — a real
+// PathFinder search at the border with the scout's own vision, e.g. the shared border is walled solid by
+// another player) records that failure on the destination's ScoutInfo so dangerRouteCost stops offering
+// it as a transit hop for other routes (see schema.ts's noPathFrom doc). Game.map.findRoute/
+// scoutCandidatesAround can never detect this on their own since neither sees constructed walls.
+describe("moveToRoom records noPathFrom on a scout's travelTo failure", () => {
+  function scoutAt(travelResult: number | undefined, scouted?: { noPathFrom?: Record<string, number> }) {
+    const creep = {
+      room: { name: "W1N1" },
+      memory: { home: "W1N1", scoutTarget: "W2N1" },
+      travelTo: () => travelResult
+    };
+    (globalThis as { Memory: { rooms?: Record<string, { scouted?: unknown }> } }).Memory.rooms = {
+      W2N1: { scouted }
+    };
+    return creep as unknown as Creep;
+  }
+
+  beforeEach(() => stubGame({ time: 12345 }));
+
+  it("writes noPathFrom keyed by the scout's home when travelTo fails", () => {
+    const scouted: { noPathFrom?: Record<string, number> } = {};
+    const creep = scoutAt(ERR_NO_PATH, scouted);
+    runStep(creep, { do: "moveToRoom", to: "scoutTarget" });
+    expect(scouted.noPathFrom).toEqual({ W1N1: 12345 });
+  });
+
+  it("does not write noPathFrom when travelTo succeeds", () => {
+    const scouted: { noPathFrom?: Record<string, number> } = {};
+    const creep = scoutAt(OK, scouted);
+    runStep(creep, { do: "moveToRoom", to: "scoutTarget" });
+    expect(scouted.noPathFrom).toBeUndefined();
+  });
+
+  it("is a no-op when the destination has no ScoutInfo on record yet", () => {
+    const creep = scoutAt(ERR_NO_PATH, undefined);
+    expect(() => runStep(creep, { do: "moveToRoom", to: "scoutTarget" })).not.toThrow();
+  });
+});
+
 // A claimer reserves the controller of the room it stands in. reserveController is range 1, like upgrade.
 describe("reserve step", () => {
   function claimerAt(inRange: boolean) {
@@ -1003,10 +1043,12 @@ describe("renew step", () => {
 // range 1 and swings. A RANGED_ATTACK body kites: fires anywhere inside range 3, and flees directly away
 // the moment the hostile has closed inside that range, rather than standing still and trading hits.
 describe("attack step", () => {
-  function fighter(over: { rangedParts?: number; range: number; fx?: number; fy?: number; hostileHasAttack?: boolean }) {
+  function fighter(over: { rangedParts?: number; range: number; fx?: number; fy?: number; hx?: number; hostileHasAttack?: boolean }) {
     const fx = over.fx ?? 20;
     const fy = over.fy ?? 20;
-    const hx = over.range === 0 ? fx : fx + over.range; // hostile placed `range` tiles east of the fighter
+    // hostile placed `range` tiles east of the fighter, unless an explicit hx pins it elsewhere (e.g. on
+    // the room border, where "east of fx by `range`" can't express a fixed absolute position).
+    const hx = over.hx ?? (over.range === 0 ? fx : fx + over.range);
     // Defaults to armed (hostileHasAttack: true) so the pre-existing kiting tests keep exercising the
     // kite path unchanged; only the new "closes on an unarmed hostile" tests opt out.
     const hasAttack = over.hostileHasAttack ?? true;
@@ -1075,6 +1117,16 @@ describe("attack step", () => {
     expect(rangedAttacked).toEqual(["hostile1"]); // still fires this tick from range 3
     expect(traveled).toEqual([{ x: 23, y: 20 }]); // travelTo the hostile at range 1, not held at range 3
     expect(result).toEqual({ acted: true, didAct: true, target: "hostile1" });
+  });
+
+  it("closes toward an unarmed hostile camped on the exit tile without stepping onto the border itself", () => {
+    // Fighter at x=3, unarmed hostile sitting right on the west exit tile (x=0). Closing to literal
+    // range 1 of it would require standing at x=1 — clampInterior pulls the approach target to x=1
+    // instead (its own clamp floor), which travelTo(..., {range:1}) is handed as-is; the fighter still
+    // narrows the gap without ever being routed onto x=0.
+    const { creep, traveled } = fighter({ rangedParts: 1, range: 3, hostileHasAttack: false, fx: 3, hx: 0 });
+    runStep(creep, { do: "attack", from: { find: "hostile" } });
+    expect(traveled).toEqual([{ x: 1, y: 20 }]);
   });
 
   it("does not flee an unarmed hostile that has closed inside firing range — holds and fires", () => {
