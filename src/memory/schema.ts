@@ -262,6 +262,16 @@ export interface ScoutInfo {
   // a transit hop for OTHER routes (see execute.ts's dangerRouteCost), so a real border wall can't keep
   // getting rediscovered by every route that happens to cross it.
   noPathFrom?: Partial<Record<string, number>>;
+  // Negative cache: the tick one of our creeps was last destroyed in this room while it carried a
+  // reputation-flagged hostile/dangerous owner (see kernel/hostileActions.ts's scan, memory/reputation.ts).
+  // Unlike noPathFrom, there is no exit-tile fallback here — a room that kills on contact means a scout
+  // dispatched there dies before it can observe anything, so this DOES exclude the room as a scout
+  // destination outright (scoutCandidatesAround), not merely as a transit hop. A room can be graph- and
+  // wall-reachable (dangerRouteCost only detours around a hostile owner, never refuses to enter one) yet
+  // still be lethal on arrival if it's towered — this is the only signal that catches that case. Same
+  // backoff-retry shape as noPathFrom (NO_PATH_RETRY_AFTER) rather than a forever-cache, since towers can
+  // be destroyed or the room can change hands.
+  lethalAt?: number;
 }
 
 // The two topology-only colonization numbers for one room, plus the extra keeper minerals reachable if

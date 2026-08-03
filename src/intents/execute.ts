@@ -478,11 +478,18 @@ function routeTo(home: string, from: string, dest: string): RouteMemory {
 // to lose by never offering it as a transit hop for a DIFFERENT destination. Does not affect the room's
 // own candidacy as a scout target: assignScoutTargets/routeTo only ever call this for rooms findRoute is
 // considering passing THROUGH or resolving a direct route span across, never to gate candidate selection.
+//
+// Also excludes (Infinity) a room proven lethal (schema.ts's ScoutInfo.lethalAt doc) â€” unlike a merely
+// hostile owner, DANGEROUS_ROOM_HOPS' "still worth walking through as a detour cost" reasoning doesn't
+// apply: a scout that dies crossing it never reaches whatever lay beyond, so routing through is pure loss,
+// not a discouraged-but-viable option. needsScouting already keeps a lethal room from being assigned as
+// the destination itself, so this only ever matters for rooms findRoute considers passing THROUGH.
 const DANGEROUS_ROOM_HOPS = 50;
 function dangerRouteCost(home: string, roomName: string): number {
   const info = Memory.rooms?.[roomName]?.scouted;
   const noPathAt = info?.noPathFrom?.[home];
   if (noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER) return Infinity;
+  if (info?.lethalAt !== undefined && Game.time - info.lethalAt < NO_PATH_RETRY_AFTER) return Infinity;
   return isDangerous(info?.owner) ? DANGEROUS_ROOM_HOPS : 1;
 }
 

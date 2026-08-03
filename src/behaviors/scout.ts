@@ -3,6 +3,7 @@
 // only execute.ts can reach — see scoutCandidatePool's note below.
 
 import type { RoomType } from "../lib/roomName";
+import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import type { ScoutInfo } from "../memory/schema";
 import { INVADER_USERNAME } from "../mining/remoteSources";
 import type { ScoutCandidate } from "../snapshot/types";
@@ -42,6 +43,12 @@ export function needsPassiveRecording(info: ScoutInfo | undefined, now: number):
 /** `now` is passed explicitly (the snapshot's tick) so this stays pure and testable without Game.time. */
 export function needsScouting(candidate: ScoutCandidate, now = 0): boolean {
   const info = candidate.info;
+  // A room that killed one of our creeps on arrival (see schema.ts's ScoutInfo.lethalAt doc) is never
+  // worth dispatching a fresh scout to, even if it's "never seen"/stale by the normal rules — a scout
+  // sent there dies before recordScout's intent gets a chance to run, so `tick` may never even update to
+  // reflect the visit, which would otherwise leave this permanently "never seen" and re-offered forever.
+  // Backoff, not a forever-cache, since a tower can be destroyed later (mirrors noPathFrom's retry window).
+  if (info?.lethalAt !== undefined && now - info.lethalAt < NO_PATH_RETRY_AFTER) return false;
   if (!info || info.tick === undefined) return true; // never physically seen
   const interval = info.owner === INVADER_USERNAME ? INVADER_OWNED_STALE_AFTER : staleAfter(candidate.type);
   return now - info.tick >= interval;

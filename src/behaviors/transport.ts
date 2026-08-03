@@ -183,6 +183,18 @@ function nodeRefFor(obj: Resource | Tombstone | Ruin | StructureContainer): Node
   return { kind: "structure", id: obj.id as Id<AnyStoreStructure> };
 }
 
+// Builds a pickup task for a live-found topoff object, capped to the creep's free capacity, resuming
+// `resumeWith` (the chain/task to fall back into) once that pickup completes. Shared by advanceOrTopOff
+// (splices ahead of a pickup chain's `next`) and the travelHome branch (resumes travelHome itself after
+// the detour) — both are "grab this first, then continue what I was already doing."
+function topoffTask(creep: Creep, topoff: Resource | Tombstone | Ruin | StructureContainer, resumeWith: LogisticsTask | undefined): LogisticsTask {
+  const amount = Math.min(
+    creep.store.getFreeCapacity(RESOURCE_ENERGY),
+    (topoff as { store?: { getUsedCapacity(r: ResourceConstant): number } }).store?.getUsedCapacity(RESOURCE_ENERGY) ?? (topoff as Resource).amount
+  );
+  return { kind: "pickup", from: nodeRefFor(topoff), resource: RESOURCE_ENERGY, amount, next: resumeWith };
+}
+
 // A pickup leg that came up short (its provider was drained, whether by this withdraw or by something
 // else before the creep arrived) but left the creep with spare capacity: rather than falling straight
 // to advanceOrPark — which, with no `next` queued, would leave the creep idle far from home and hand it
@@ -195,8 +207,7 @@ function advanceOrTopOff(creep: Creep, exhaustedId: Id<_HasId> | undefined): voi
   if (creep.room.name !== creep.memory.home && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
     const topoff = findLiveTopoff(creep, exhaustedId, topoffRange(creep));
     if (topoff) {
-      const amount = Math.min(creep.store.getFreeCapacity(RESOURCE_ENERGY), (topoff as { store?: { getUsedCapacity(r: ResourceConstant): number } }).store?.getUsedCapacity(RESOURCE_ENERGY) ?? (topoff as Resource).amount);
-      creep.memory.logistics = { current: { kind: "pickup", from: nodeRefFor(topoff), resource: RESOURCE_ENERGY, amount, next: remainingChain } };
+      creep.memory.logistics = { current: topoffTask(creep, topoff, remainingChain) };
       return;
     }
   }
@@ -220,6 +231,18 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
     if (creep.room.name === creep.memory.home) {
       advanceOrPark(creep);
       return;
+    }
+    // Detour for a nearby topoff before continuing (see topoffRange/findLiveTopoff): allocate.ts commits
+    // to travelHome the instant it sees a loaded, idle, off-home creep, with no minimum load and no live
+    // check of what's around it (it's a pure snapshot planner, can't do that check itself). Re-checked
+    // every tick while still travelling, not just once at assignment, so a creep also picks up whatever
+    // it happens to walk past en route, not only what was nearby the tick it went idle.
+    if (creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+      const topoff = findLiveTopoff(creep, undefined, topoffRange(creep));
+      if (topoff) {
+        creep.memory.logistics = { current: topoffTask(creep, topoff, task) };
+        return;
+      }
     }
     creep.travelTo(homeRoomWaypoint(creep));
     return;

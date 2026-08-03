@@ -224,10 +224,18 @@ const DANGEROUS_ROOM_HOPS = 50;
 // since unlike a merely-dangerous room there is provably no route through it at all, so nothing is lost by
 // never offering it as a transit hop. Does not affect the room's own eligibility as a scout destination
 // (see schema.ts's noPathFrom doc) — this callback only prices rooms Traveler considers passing THROUGH.
+//
+// Also excludes (Infinity) a room proven lethal (schema.ts's ScoutInfo.lethalAt doc, kernel/hostileActions.ts's
+// recordLethalRoom write) — confirmed live on shard0: a scout assigned a destination beyond a towered room
+// (its only route in) walked straight through the tower fire as a mere DANGEROUS_ROOM_HOPS detour cost and
+// died there every single generation, never actually reaching its real destination. A merely-hostile room
+// is still worth a detour-cost crossing since the scout usually survives to reach whatever's beyond it; a
+// lethal one never does, so routing through is pure loss rather than a discouraged-but-viable option.
 function dangerRouteCallback(home: string, roomName: string): number {
   const info = Memory.rooms?.[roomName]?.scouted;
   const noPathAt = info?.noPathFrom?.[home];
   if (noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER) return Infinity;
+  if (info?.lethalAt !== undefined && Game.time - info.lethalAt < NO_PATH_RETRY_AFTER) return Infinity;
   return isDangerous(info?.owner) ? DANGEROUS_ROOM_HOPS : 1;
 }
 
@@ -681,16 +689,70 @@ function nearestArmedThreat(creep: Creep): Creep | undefined {
   return nearest;
 }
 
+// Unlike attackStep's kiting (a defender that must hold the room, never get baited across a border), an
+// unarmed Role.flee creep has nothing to gain by staying — the room it's fleeing into can only be as bad
+// as the one it's already in danger in. So this mirrors fleeSpot's step-away math but clamps only to the
+// legal RoomPosition range [0,49], onto the exit tile itself rather than pulled back to the interior,
+// letting travelTo (maxRooms raised below) actually carry the creep across the border.
+function fleeSpotAcrossRooms(from: { x: number; y: number; roomName: string }, threat: { x: number; y: number }): RoomPosition {
+  const dx = Math.sign(from.x - threat.x) || 1;
+  const dy = Math.sign(from.y - threat.y) || 1;
+  return new RoomPosition(Math.min(49, Math.max(0, from.x + dx)), Math.min(49, Math.max(0, from.y + dy)), from.roomName);
+}
+
 // For a Role.flee creep: if an armed, reputation-dangerous hostile has closed within FLEE_RADIUS, step
-// directly away from it (mirroring attackStep's own kiting move) instead of running the creep's normal
-// step this tick, and report true so the caller skips its usual dispatch. False (no travelTo issued)
-// whenever nothing qualifies, so a caller can fall straight through to its normal behavior with no extra
-// cost on the common, threat-free tick.
+// directly away from it (mirroring attackStep's own kiting move, but free to leave the room — see
+// fleeSpotAcrossRooms) instead of running the creep's normal step this tick, and report true so the
+// caller skips its usual dispatch. False (no travelTo issued) whenever nothing qualifies, so a caller can
+// fall straight through to its normal behavior with no extra cost on the common, threat-free tick.
 export function fleeThreat(creep: Creep): boolean {
   const threat = nearestArmedThreat(creep);
   if (!threat) return false;
   log.debugCreep(creep.name, `fleeThreat: fleeing armed hostile ${threat.id} (range=${creep.pos.getRangeTo(threat.pos)})`);
-  creep.travelTo(fleeSpot(creep.pos, threat.pos), { range: 0, maxRooms: 1 });
+  creep.travelTo(fleeSpotAcrossRooms(creep.pos, threat.pos), { range: 0, maxRooms: 2 });
+  return true;
+}
+
+// The nearest living creep of ours carrying an active HEAL part, visible in the same room as the
+// disarmed defender — walking toward it lets a healer top the defender back up rather than the
+// defender continuing to soak hits with nothing to shoot back with. Only considers the CURRENT room
+// (like nearestArmedThreat/hostilesWithin above): a healer in a different room isn't reachable this
+// tick regardless, and the retreat-home fallback covers that case.
+function nearestFriendlyHealer(creep: Creep): Creep | undefined {
+  let nearest: Creep | undefined;
+  let nearestRange = Infinity;
+  for (const c of creep.room.find(FIND_MY_CREEPS)) {
+    if (c.id === creep.id) continue;
+    if (c.getActiveBodyparts(HEAL) === 0) continue;
+    const range = creep.pos.getRangeTo(c.pos);
+    if (range >= nearestRange) continue;
+    nearest = c;
+    nearestRange = range;
+  }
+  return nearest;
+}
+
+// For Defender only (never Role.flee — see its doc): once every RANGED_ATTACK part on the body has
+// been destroyed (hits reduced to 0, so getActiveBodyparts no longer counts it), the creep is a bare
+// MOVE husk that can't fight back at all — continuing to run attackStep would walk it into MELEE range
+// of the hostile it can no longer even shoot at (attackStep's own no-RANGED_ATTACK branch treats a
+// body with no ranged weapon as pure melee and closes to range 1). Retreats toward the nearest
+// friendly HEAL creep in the room if one is visible (so it can actually get topped up), else falls
+// back to walking home (same cross-room travel shape as moveToRoom). Always reports true once
+// disarmed — even with nowhere left to retreat to (already home, no healer) — so the caller always
+// skips the normal attack step rather than letting a weaponless husk walk into melee.
+export function retreatIfDisarmed(creep: Creep): boolean {
+  if (creep.getActiveBodyparts(RANGED_ATTACK) > 0) return false;
+  const healer = nearestFriendlyHealer(creep);
+  if (healer) {
+    log.debugCreep(creep.name, `retreatIfDisarmed: no rangedAttack parts left — retreating to healer ${healer.id}`);
+    creep.travelTo(healer.pos, { range: 1 });
+    return true;
+  }
+  if (creep.room.name !== creep.memory.home) {
+    log.debugCreep(creep.name, "retreatIfDisarmed: no rangedAttack parts left, no healer in sight — heading home");
+    creep.travelTo(new RoomPosition(25, 25, creep.memory.home), { range: 3 });
+  }
   return true;
 }
 

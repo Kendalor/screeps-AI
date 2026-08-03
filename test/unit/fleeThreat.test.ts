@@ -148,8 +148,7 @@ describe("Role.flee: does not apply to combat roles", () => {
   it("a defender does not flee the hostile it is meant to engage", () => {
     stubGame({ objects: {} });
     const traveled: { x: number; y: number }[] = [];
-    const attacked: string[] = [];
-    const h = hostile(9, 5, { armed: true }); // range 4 — inside FLEE_RADIUS, outside melee range
+    const h = hostile(9, 5, { armed: true }); // range 4 — inside FLEE_RADIUS, outside firing range
     const creep = {
       name: "d1",
       spawning: false,
@@ -164,18 +163,20 @@ describe("Role.flee: does not apply to combat roles", () => {
           Math.max(Math.abs(5 - p.x), Math.abs(5 - p.y)) <= range,
         findClosestByPath: (list: object[]) => list[0] ?? null
       },
-      room: { find: (kind: FindConstant) => (kind === FIND_HOSTILE_CREEPS ? [h] : []) },
-      getActiveBodyparts: () => 0, // no RANGED_ATTACK — melee body
-      attack: (t: { id: string }) => attacked.push(t.id),
+      room: { name: "W1N1", find: (kind: FindConstant) => (kind === FIND_HOSTILE_CREEPS ? [h] : []) },
+      // An active RANGED_ATTACK part, same as a real defender body (defender.ts's DEFENDER_SET) —
+      // keeps retreatIfDisarmed from treating this as a disarmed husk that must retreat instead.
+      getActiveBodyparts: (part: BodyPartConstant) => (part === RANGED_ATTACK ? 1 : 0),
+      rangedAttack: () => OK,
+      rangedMassAttack: () => OK,
       travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
     } as unknown as Creep;
     Game.creeps = { d1: creep };
 
     runCreepBehaviors();
 
-    // Closes on the hostile (attack step's own melee-travel logic) rather than retreating from it —
-    // Defender has no Role.flee, so fleeThreat is never even consulted for it.
+    // Closes in on the hostile (attackStep's own close-in logic, since nothing nearby carries ATTACK)
+    // rather than retreating from it — Defender has no Role.flee, so fleeThreat never even runs for it.
     expect(traveled).toEqual([{ x: 9, y: 5 }]);
-    expect(attacked).toEqual([]);
   });
 });

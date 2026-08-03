@@ -7,6 +7,7 @@ import {
   fleeThreat,
   isGatherStep,
   nextStep,
+  retreatIfDisarmed,
   runStep,
   type CreepState
 } from "../behaviors/interpreter";
@@ -65,6 +66,12 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
   // checked before the step dispatch below (not woven into an individual step) so it pre-empts every
   // step in the table uniformly, not just moveToRoom's between-room travel.
   if (def.flee && fleeThreat(creep)) return;
+
+  // A defender that has lost every RANGED_ATTACK part to damage can't fight back at all — pull it out
+  // toward a healer (or home) instead of running attackStep, which would just keep it standing in the
+  // fight for zero return. Checked only for "defender" (not gated via a Role flag like Role.flee) since
+  // this is about a body that's been shot down to a husk, not a role that was never meant to fight.
+  if (creep.memory.role === "defender" && retreatIfDisarmed(creep)) return;
 
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us

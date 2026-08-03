@@ -536,6 +536,63 @@ describe("runTransport", () => {
       expect(travelTargets).toHaveLength(0);
       expect(creep.memory.logistics?.current).toBeUndefined();
     });
+
+    it("detours for a nearby topoff instead of walking home mostly empty (the 77-energy scenario)", () => {
+      // Mirrors a real case: allocate.ts committed this creep to travelHome with only 77/650 energy
+      // (a partial pickup, no minimum-load gate there — it's a pure snapshot planner and can't check
+      // what's physically nearby). Every tick of travelHome should re-check live, not just the tick it
+      // went idle, so a creep that ends up walking past a worthwhile container detours for it instead of
+      // hauling a near-empty load the whole way home.
+      const container = { id: "cont1", pos: { x: 6, y: 5 }, structureType: STRUCTURE_CONTAINER, store: { getUsedCapacity: () => 400 } };
+      stubGame({ objects: { cont1: container }, roomLinearDistance: () => 1 });
+      const { creep, calls, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: { current: { kind: "travelHome", resource: RESOURCE_ENERGY, amount: 77 } }
+        },
+        used: 77,
+        free: 573, // 650 - 77: plenty of spare capacity
+        pos: { x: 5, y: 5 },
+        inRange: true,
+        nearby: { [FIND_STRUCTURES]: [container] } // 1 tile away, within a 1-room-out topoff budget
+      });
+      (creep.room as unknown as { name: string }).name = "W2N1"; // still away from home
+
+      runTransport(creep);
+
+      // Re-plans this tick (splices in the pickup, resuming travelHome via `next`) rather than acting on
+      // it same-tick — mirrors advanceOrTopOff's own splice-then-act-next-tick shape.
+      expect(travelTargets).toHaveLength(0);
+      expect(calls.withdraw).toBe(0);
+      expect(creep.memory.logistics?.current).toMatchObject({
+        kind: "pickup",
+        from: { kind: "structure", id: "cont1" },
+        next: { kind: "travelHome" } // resumes the original travelHome once this pickup completes
+      });
+    });
+
+    it("does not detour once back in the home room, even with spare capacity and something nearby", () => {
+      const container = { id: "cont1", pos: { x: 6, y: 5 }, structureType: STRUCTURE_CONTAINER, store: { getUsedCapacity: () => 400 } };
+      stubGame({ objects: { cont1: container } });
+      const { creep, calls, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: { current: { kind: "travelHome", resource: RESOURCE_ENERGY, amount: 77 } }
+        },
+        used: 77,
+        free: 573,
+        pos: { x: 5, y: 5 },
+        nearby: { [FIND_STRUCTURES]: [container] }
+      }); // room defaults to memory.home (W1N1) — already arrived
+
+      runTransport(creep);
+
+      expect(calls.withdraw).toBe(0);
+      expect(travelTargets).toHaveLength(0);
+      expect(creep.memory.logistics?.current).toBeUndefined(); // completed normally, released to idle
+    });
   });
 
   it("resolves a spawnSystem ref to the nearest structure that can still take energy", () => {

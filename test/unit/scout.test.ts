@@ -22,6 +22,25 @@ describe("needsScouting", () => {
     const target = scoutTarget("W1N2", scouted({ tick: 0 }));
     expect(needsScouting(target, staleAfter("highway"))).toBe(false);
   });
+
+  // A room that killed one of our creeps on arrival must not be re-offered while the backoff is fresh,
+  // even though it's otherwise "never seen" (tick absent) and would normally always need scouting — a
+  // scout dispatched there dies before recordScout's intent can run, so waiting for `tick` to update
+  // would mean it's re-offered to every replacement scout, forever (see schema.ts's lethalAt doc).
+  it("refuses a lethal room within the backoff window even when never physically recorded", () => {
+    const target = scoutTarget("W1N2", { type: "normal", sources: [], hostile: true, lethalAt: 1000 });
+    expect(needsScouting(target, 1000)).toBe(false);
+  });
+
+  it("resumes offering a lethal room once its backoff window has elapsed", () => {
+    const target = scoutTarget("W1N2", { type: "normal", sources: [], hostile: true, lethalAt: 0 });
+    expect(needsScouting(target, 20000)).toBe(true); // NO_PATH_RETRY_AFTER
+  });
+
+  it("still refuses a lethal room even if tick looks fresh (e.g. recorded the instant it died)", () => {
+    const target = scoutTarget("W1N2", scouted({ tick: 999, lethalAt: 1000 }));
+    expect(needsScouting(target, 1000)).toBe(false);
+  });
 });
 
 describe("needsPassiveRecording", () => {

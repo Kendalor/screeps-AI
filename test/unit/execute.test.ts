@@ -799,6 +799,43 @@ describe("actuator — scouting", () => {
     expect(creep.memory.scoutTarget).toBe("W1N3");
   });
 
+  // Confirmed live on shard0: a scout assigned a destination whose only route in crossed a towered room
+  // walked straight through it as a mere DANGEROUS_ROOM_HOPS detour and died there every generation,
+  // never reaching the real destination. A lethal transit room must price Infinity, not 50, since routing
+  // through it is pure loss (the scout never survives to reach anything beyond it) — unlike a merely
+  // hostile room, which is still worth the detour cost because the scout usually does survive the crossing.
+  it("prices a lethal-flagged transit room as impassable via findRoute's routeCallback", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ time: 5000, objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { lethalAt: 1000 } } }
+    };
+    const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
+      expect(options.routeCallback("W1N2")).toBe(Infinity);
+      return [{ room: "W1N9" }, { room: "W1N3" }];
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
+    expect(creep.memory.scoutTarget).toBe("W1N3");
+  });
+
+  it("stops treating a lethalAt entry as impassable once the backoff window has elapsed", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ time: 25000, objects: { scout1: creep } }); // 25000 - 1000 = 24000 >= 20000
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { lethalAt: 1000 } } }
+    };
+    const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
+      expect(options.routeCallback("W1N2")).toBe(1);
+      return [{ room: "W1N9" }, { room: "W1N3" }];
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
+    expect(creep.memory.scoutTarget).toBe("W1N3");
+  });
+
   // The exact same room stays a fully legal DIRECT scout destination despite the same noPathFrom entry:
   // the exit tile itself is always reachable (structures can never sit on one), which already fulfills
   // the scouting order (see schema.ts's noPathFrom doc). The exclusion above only ever fires for rooms
