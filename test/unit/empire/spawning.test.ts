@@ -28,6 +28,7 @@ describe("spawn arbiter — single colony", () => {
   it("emits nothing when every requester is satisfied", () => {
     // A single-tile source seats exactly one miner; that 1-WORK miner's output warrants one hauler.
     // No container energy or drops, so no pre-storage upgraders; no construction, so no builders.
+    // A live supply creep satisfies supply's own RCL1-and-up quota of 1.
     const source = sourceAt(20, 10, "source_20_10", 1);
     expect(
       arbitrate({
@@ -35,7 +36,8 @@ describe("spawn arbiter — single colony", () => {
         sources: [source],
         creeps: [
           snapCreep("miner", { memory: { sourceId: source.id, op: "mining:W1N1" } }),
-          ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } })
+          ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } }),
+          ...snapCreeps("supply", 1)
         ]
       })
     ).toEqual([]);
@@ -55,10 +57,11 @@ describe("spawn arbiter — single colony", () => {
       energyCapacity: 300,
       controllerLevel: 1,
       sources: [source],
-      // Economy staffed so upgrading is the only outstanding demand.
+      // Economy (and supply, priority 100) staffed so upgrading is the only outstanding demand.
       creeps: [
         snapCreep("miner", { memory: { sourceId: source.id, op: "mining:W1N1" } }),
-        ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } })
+        ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } }),
+        ...snapCreeps("supply", 1)
       ],
       // Energy in the controller container (a logistics *consumer*, not a provider) gives the upgrader
       // something to draw from without also creating a transport provider — a ground drop would, and
@@ -121,11 +124,11 @@ describe("spawn arbiter — single colony", () => {
   it("waits for a refill rather than spawning a runt sized to a drained room", () => {
     expect(
       arbitrate({
-        creeps: snapCreeps("bootstrap", 1),
+        // A live supply creep satisfies supply's own quota (wanted from RCL1 on) so it doesn't take
+        // the spawn slot ahead of the refill-wait behaviour this test targets.
+        creeps: [...snapCreeps("bootstrap", 1), ...snapCreeps("supply", 1)],
         spawns: [spawn()],
         energyAvailable: 300,
-        // Below supply's 550 energyCapacity threshold on purpose: at/above that this room can already
-        // afford a real (non-runt) supply body, which would spawn here and defeat the point of the test.
         energyCapacity: 500,
         sources: [sourceAt(20, 10)]
       })

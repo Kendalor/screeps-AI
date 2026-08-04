@@ -12,13 +12,10 @@ import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
 const config = {
-  rclForSecondSupply: 7, // one round trip starts falling behind once extensions spread out this far
-  minEnergyCapacity: 550 // RCL3's cap — the room can afford a real supply body well before storage exists
+  rclForSecondSupply: 7 // one round trip starts falling behind once extensions spread out this far
 } as const;
 
-// Bootstrap's recovery creep covers a fresh colony until the room can afford a real supply body.
 function wantedSupply(colony: ColonySnapshot): number {
-  if (colony.energyCapacity < config.minEnergyCapacity) return 0;
   return colony.controllerLevel >= config.rclForSecondSupply ? 2 : 1;
 }
 

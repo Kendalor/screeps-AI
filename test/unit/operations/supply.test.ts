@@ -1,6 +1,6 @@
 // Ported from legacy SupplyOperation: a flat RCL-gated quota, not a per-source deficit like Mining.
-// Gated on energyCapacity (RCL3's 550 cap) rather than storage — supply must spawn well before storage
-// exists, since that's exactly the window a stalling spawn hurts most (see operations/supply.ts).
+// Spawnable from RCL1 — a starved spawn stalls the whole colony, so supply must be available before
+// storage or even the RCL3 energy cap exist (see operations/supply.ts).
 // Task assignment (where it withdraws/delivers) is Logistics-owned, not tested here — see
 // test/unit/logistics/ for the provider/consumer graph and allocator this operation's creeps run under.
 
@@ -12,8 +12,8 @@ const supply = new Supply("W1N1");
 const supplyRequests = (over: Parameters<typeof colonySnap>[0]) => supply.desiredCreeps(colonySnap(over));
 
 describe("Supply.desiredCreeps", () => {
-  it("asks for nothing below the energy-capacity threshold — bootstrap's recovery creep covers that gap", () => {
-    expect(supplyRequests({ energyCapacity: 300, controllerLevel: 2 })).toEqual([]);
+  it("wants one supply creep from RCL1, before the room can afford the RCL3-sized body", () => {
+    expect(supplyRequests({ energyCapacity: 300, controllerLevel: 2 })).toHaveLength(1);
   });
 
   it("wants one supply creep once energyCapacity reaches the RCL3 threshold", () => {
