@@ -2,7 +2,7 @@
 
 import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
 import { log } from "../lib/log";
-import { massAttackDamagePerPartAt, RANGED_ATTACK_RANGE } from "../lib/combat";
+import { HEAL_ASSIST_RANGE, massAttackDamagePerPartAt, RANGED_ATTACK_RANGE } from "../lib/combat";
 import { isDangerous } from "../memory/reputation";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import { wrapFn } from "../lib/profiler";
@@ -29,7 +29,8 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   renew: "move", // store-less — see renewStep: falls through via acted:false whenever renewal isn't needed/possible
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
   sit: "move",
-  attack: "move" // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
+  attack: "move", // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
+  heal: "move" // store-less healer — never self-completes; ends only via targetGone (target gone)
 };
 
 // The engine's per-tick action pipelines (docs.screeps.com/simultaneous-actions.html): harvest/build/
@@ -162,6 +163,8 @@ export const runStep = wrapFn(function runStep(
       return renewStep(creep, step.below, locked, allowTravel);
     case "attack":
       return attackStep(creep, step.from, locked, allowTravel);
+    case "heal":
+      return healStep(creep, step.at, locked, allowTravel);
     case "moveToRoom":
       return allowTravel ? moveToRoom(creep, step) : { acted: false, didAct: false };
     case "sit":
@@ -637,6 +640,30 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
   return inFiringRange
     ? { acted: true, didAct: true, target: hostile.id }
     : { acted: true, didAct: false, target: hostile.id };
+}
+
+// Heals the resolved target (a squad-mate, including possibly self — see targets.ts's find:"squadMate").
+// creep.heal() at range 1 for full HEAL_POWER; creep.rangedHeal() at range 2-3 for reduced
+// RANGED_HEAL_POWER; travelTo closes distance when out of range 3 entirely. No kiting logic (unlike
+// attackStep) — a healer just needs to get in range and heal, never needs to back away from its own
+// squad-mate. Store-less: never self-completes on store state, only via targetGone (target gone/no
+// longer resolves), handled by isComplete/STEP_KIND above.
+function healStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  const target = resolveTarget(creep, spec, locked);
+  if (!target) return { acted: false, didAct: false };
+  const patient = target as Creep;
+
+  if (creep.pos.inRangeTo(patient.pos, 1)) {
+    creep.heal(patient);
+    return { acted: true, didAct: true, target: patient.id };
+  }
+  if (creep.pos.inRangeTo(patient.pos, HEAL_ASSIST_RANGE)) {
+    creep.rangedHeal(patient);
+    return { acted: true, didAct: true, target: patient.id };
+  }
+  if (!allowTravel) return { acted: false, didAct: false };
+  creep.travelTo(patient.pos);
+  return { acted: true, didAct: false, target: patient.id };
 }
 
 // Pulls a point's x/y into [1,48], never [0,49] — every tile at x/y 0 or 49 is a live room exit, and a
