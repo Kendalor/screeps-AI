@@ -134,7 +134,7 @@ export type TargetKind =
   | { kind: "dropped" }
   | { kind: "tombstone" }
   | { kind: "ruin" }
-  | { kind: "creep"; role?: string }
+  | { kind: "creep"; role?: string; op?: string }
   | { kind: "hostile" };
 
 // Role match for a creep spec: the spec names one role or a list, and the target must carry one of them.
@@ -165,6 +165,11 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
     case "ruin":
     case "hostile":
       return k.kind === spec.find;
+    // op equality can't be expressed here — fitsSpec only sees the target's own kind, not the acting
+    // creep's memory.op to compare against. Enforced instead where the acting creep is available:
+    // findCandidates (fresh search) and validLock (re-check) below.
+    case "squadMate":
+      return k.kind === "creep";
     case "any":
       return spec.of.some(member => fitsSpec(k, member));
   }
@@ -196,7 +201,7 @@ function toKind(obj: RoomObject): TargetKind | null {
     deathTime?: number;
     destroyTime?: number;
     body?: unknown[];
-    memory?: { role?: string };
+    memory?: { role?: string; op?: string };
     my?: boolean;
   };
   // A construction site carries progressTotal AND a structureType (what it will become); capture the
@@ -206,9 +211,10 @@ function toKind(obj: RoomObject): TargetKind | null {
   if (o.deathTime !== undefined) return { kind: "tombstone" };
   if (o.destroyTime !== undefined) return { kind: "ruin" };
   if (o.resourceType !== undefined) return { kind: "dropped" };
-  // A creep is the only positioned object with a body; `.my` splits it into a friendly (role read off
-  // memory, which only exists on owned creeps) or a hostile (no memory, never role-filtered).
-  if (o.body !== undefined) return o.my ? { kind: "creep", role: o.memory?.role } : { kind: "hostile" };
+  // A creep is the only positioned object with a body; `.my` splits it into a friendly (role AND op read
+  // off memory, which only exists on owned creeps — a hostile creep has no .memory at all) or a hostile
+  // (never role/op-filtered).
+  if (o.body !== undefined) return o.my ? { kind: "creep", role: o.memory?.role, op: o.memory?.op } : { kind: "hostile" };
   if (o.energyCapacity !== undefined) return { kind: "source" };
   if (o.level !== undefined) return { kind: "controller" };
   return null;
@@ -226,6 +232,11 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
   // Re-check the store-based `where` so a lock on a now-filled extension or emptied hauler is dropped.
   const where = memberSpec.find === "structure" || memberSpec.find === "creep" ? memberSpec.where : undefined;
   if ((kind.kind === "structure" || kind.kind === "creep") && !matchesWhere(toCandidate(obj), where)) {
+    return null;
+  }
+  // A locked squad-mate must still share the acting creep's own op — a stale lock taken before a
+  // reassignment (or on a creep whose op changed) must not survive, same as any other locked-target re-check.
+  if (memberSpec.find === "squadMate" && kind.kind === "creep" && kind.op !== creep.memory.op) {
     return null;
   }
   // A locked container/link must still pass the same positional and fill/repair-fraction tests a fresh
@@ -522,5 +533,9 @@ function findCandidates(
         .find(FIND_MY_CREEPS)
         .filter(c => c.id !== creep.id && c.memory.role !== undefined && wanted.includes(c.memory.role as never));
     }
+    case "squadMate":
+      // Unlike "creep" above, the acting creep IS included — a healer can target itself (see ADR 0006's
+      // "squad membership is derived, not stored": every creep sharing the same memory.op, full stop).
+      return room.find(FIND_MY_CREEPS).filter(c => c.memory.op !== undefined && c.memory.op === creep.memory.op);
   }
 }

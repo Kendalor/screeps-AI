@@ -65,6 +65,11 @@ export type TargetSpec =
   | { find: "controller" }
   | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share; prefer?: Prefer } // friendly creep as source/sink, filtered by role
   | { find: "hostile"; prefer?: Prefer } // enemy creep in the room; defaults to "nearest" — a defender wants "mostThreatening" instead
+  // The acting creep's squad-mates: every friendly creep sharing the same memory.op value (see
+  // operations/operation.ts's owned(), the same op-based ownership stamp), INCLUDING the acting creep
+  // itself — a healer can target itself. Squad membership is derived, not stored (see ADR 0006): there is
+  // no squadId, just "same op". Ranked with "mostDamaged" (a healer's use), same as a repair pool.
+  | { find: "squadMate"; prefer?: Prefer }
   | { find: "id"; id: Id<_HasId> }
   // Groups several specs into one pool (e.g. every viable energy sink) so a step picks the nearest
   // across kinds in one shot instead of falling through a priority-ordered chain of single-kind steps.
@@ -105,6 +110,11 @@ export type Step = ({
     // melee range 1. Never self-completes on store state (a fighter carries nothing) — only targetGone
     // (no hostile left in the room) ends it, same as reserve.
     | { do: "attack"; from: TargetSpec }
+    // Heal the resolved target: creep.heal() at range 1 (full HEAL_POWER), creep.rangedHeal() at range
+    // 2-3 (reduced RANGED_HEAL_POWER), closing distance via travelTo when out of range 3 entirely. No
+    // kiting logic (unlike attackStep) — a healer just needs to get in range and heal. Store-less like
+    // attack — never self-completes on store state, only via targetGone (target gone/no longer resolves).
+    | { do: "heal"; at: TargetSpec }
     | {
         do: "moveToRoom";
         room?: string;

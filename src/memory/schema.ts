@@ -112,7 +112,9 @@ export type RoleName =
   | "settler"
   | "pioneer"
   | "defender"
-  | "attacker";
+  | "attacker"
+  | "drainAttacker"
+  | "drainHealer";
 
 export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building

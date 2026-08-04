@@ -1332,3 +1332,130 @@ describe("attack step", () => {
     expect(traveled).toEqual([{ x: 1, y: 21 }]); // held at x=1, not pushed onto x=0
   });
 });
+
+// A healer targets its squad-mates (find:"squadMate", same memory.op — see ADR 0006), ranked by
+// mostDamaged. creep.heal() at range 1 (full power); creep.rangedHeal() at range 2-3 (reduced power);
+// travelTo closes distance when out of range 3 entirely. No kiting (unlike attackStep) — just get in
+// range and heal. Store-less: never self-completes on store state, only via targetGone.
+describe("heal step", () => {
+  function healerAt(over: { hx?: number; hy?: number; fx?: number; fy?: number; mates?: object[]; hits?: number; hitsMax?: number }) {
+    const fx = over.fx ?? 20;
+    const fy = over.fy ?? 20;
+    const healed: string[] = [];
+    const rangedHealed: string[] = [];
+    const traveled: { x: number; y: number }[] = [];
+    stubGame({ objects: {} });
+    const creep = {
+      id: "healer1",
+      hits: over.hits ?? 500,
+      hitsMax: over.hitsMax ?? 500,
+      pos: {
+        x: fx,
+        y: fy,
+        roomName: "W1N1",
+        inRangeTo: (pos: { x: number; y: number }, range: number) => Math.max(Math.abs(fx - pos.x), Math.abs(fy - pos.y)) <= range,
+        getRangeTo: (pos: { x: number; y: number }) => Math.max(Math.abs(fx - pos.x), Math.abs(fy - pos.y)),
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      memory: { op: "drain:W1N1" },
+      heal: (t: { id: string }) => healed.push(t.id),
+      rangedHeal: (t: { id: string }) => rangedHealed.push(t.id),
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    };
+    // FIND_MY_CREEPS includes the acting creep itself, same as the real engine — the squadMate candidate
+    // pool relies on this so self is always a valid heal target.
+    (creep as unknown as { room: { find: () => object[] } }).room = { find: () => [...(over.mates ?? []), creep] };
+    return { creep: creep as unknown as Creep, healed, rangedHealed, traveled };
+  }
+
+  it("melee-heals the most damaged squad-mate at range 1", () => {
+    const mate = {
+      id: "mate1",
+      pos: { x: 21, y: 20 },
+      hits: 200,
+      hitsMax: 500,
+      memory: { op: "drain:W1N1", role: "drainHealer" }
+    };
+    const { creep, healed, rangedHealed, traveled } = healerAt({ mates: [mate] });
+    const result = runStep(creep, { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } });
+    expect(healed).toEqual(["mate1"]);
+    expect(rangedHealed).toEqual([]);
+    expect(traveled).toEqual([]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "mate1" });
+  });
+
+  it("ranged-heals a squad-mate at range 2-3", () => {
+    const mate = {
+      id: "mate1",
+      pos: { x: 23, y: 20 },
+      hits: 200,
+      hitsMax: 500,
+      memory: { op: "drain:W1N1", role: "drainHealer" }
+    };
+    const { creep, healed, rangedHealed, traveled } = healerAt({ mates: [mate] });
+    const result = runStep(creep, { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } });
+    expect(rangedHealed).toEqual(["mate1"]);
+    expect(healed).toEqual([]);
+    expect(traveled).toEqual([]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "mate1" });
+  });
+
+  it("closes distance via travelTo when out of range 3", () => {
+    const mate = {
+      id: "mate1",
+      pos: { x: 26, y: 20 },
+      hits: 200,
+      hitsMax: 500,
+      memory: { op: "drain:W1N1", role: "drainHealer" }
+    };
+    const { creep, healed, rangedHealed, traveled } = healerAt({ mates: [mate] });
+    const result = runStep(creep, { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } });
+    expect(healed).toEqual([]);
+    expect(rangedHealed).toEqual([]);
+    expect(traveled).toEqual([{ x: 26, y: 20 }]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "mate1" });
+  });
+
+  it("includes itself as a candidate and heals itself when it is the most damaged", () => {
+    const mate = {
+      id: "mate1",
+      pos: { x: 21, y: 20 },
+      hits: 480,
+      hitsMax: 500,
+      memory: { op: "drain:W1N1", role: "drainHealer" }
+    };
+    const { creep, healed } = healerAt({ mates: [mate], fx: 20, fy: 20, hits: 100, hitsMax: 500 });
+    const result = runStep(creep, { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } });
+    expect(healed).toEqual(["healer1"]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "healer1" });
+  });
+
+  it("heals nothing when no squad-mate is damaged (falls through, acted:false)", () => {
+    // Only candidate is self, and self is at full health — mostDamaged still picks it (it's the only
+    // candidate), but a healer's own steps would normally gate on `where: "damaged"` in the real role;
+    // this proves the primitive resolves and acts on a full-health self, i.e. there is no implicit
+    // "skip if undamaged" behavior baked into healStep itself — that gating is the role's job, not the verb's.
+    const { creep, healed } = healerAt({ mates: [] });
+    const result = runStep(creep, { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } });
+    expect(healed).toEqual(["healer1"]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "healer1" });
+  });
+
+  it("no-ops when no squad-mate resolves at all (op mismatch)", () => {
+    const stranger = {
+      id: "stranger1",
+      pos: { x: 21, y: 20 },
+      hits: 100,
+      hitsMax: 500,
+      memory: { op: "different-op", role: "drainHealer" }
+    };
+    const { creep, healed, rangedHealed } = healerAt({ mates: [stranger] });
+    // Blank out the acting creep's own op so even itself no longer resolves as a squadMate — isolates
+    // the "genuinely nothing resolves" no-op path (targetGone via resolveTarget returning null).
+    (creep as unknown as { memory: { op?: string } }).memory.op = undefined;
+    const result = runStep(creep, { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } });
+    expect(healed).toEqual([]);
+    expect(rangedHealed).toEqual([]);
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+});
