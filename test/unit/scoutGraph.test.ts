@@ -2,7 +2,7 @@
 // place in scouting that needs a live Game.map stub rather than a plain snapshot fixture.
 
 import { describe, expect, it } from "vitest";
-import { scoutCandidatesAround } from "../../src/snapshot/scoutGraph";
+import { crossesSealedBorder, scoutCandidatesAround } from "../../src/snapshot/scoutGraph";
 import { stubGame } from "../helpers";
 
 function stubMap(exits: Record<string, Partial<Record<"1" | "3" | "5" | "7", string>>>): void {
@@ -172,4 +172,38 @@ describe("scoutCandidatesAround", () => {
     expect(out.map(c => c.room)).toEqual(["W1N1"]);
   });
 
+});
+
+describe("crossesSealedBorder", () => {
+  it("is false when every consecutive room shares the same status", () => {
+    stubGame();
+    (globalThis as { Game: { map: unknown } }).Game.map = { getRoomStatus: () => ({ status: "normal" }) };
+
+    expect(crossesSealedBorder(["W1N1", "W1N2", "W1N3"])).toBe(false);
+  });
+
+  // Game.map.findRoute is blind to the invisible respawn/novice-zone border wall (it's a structure, not
+  // terrain), so it will report a route straight through one as reachable. This is the guard that catches
+  // what findRoute can't — same status-match rule scoutCandidatesAround's BFS already applies.
+  it("is true when a hop crosses from respawn to normal status", () => {
+    stubGame();
+    const statuses: Record<string, string> = { W1N1: "respawn", W1N2: "normal" };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      getRoomStatus: (room: string) => ({ status: statuses[room] ?? "normal" })
+    };
+
+    expect(crossesSealedBorder(["W1N1", "W1N2"])).toBe(true);
+  });
+
+  it("only checks consecutive pairs, not every room against the first", () => {
+    stubGame();
+    // W1N1 (respawn) -> W1N2 (respawn) -> W1N3 (normal): the only real boundary is the last hop.
+    const statuses: Record<string, string> = { W1N1: "respawn", W1N2: "respawn", W1N3: "normal" };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      getRoomStatus: (room: string) => ({ status: statuses[room] ?? "normal" })
+    };
+
+    expect(crossesSealedBorder(["W1N1", "W1N2", "W1N3"])).toBe(true);
+    expect(crossesSealedBorder(["W1N1", "W1N2"])).toBe(false);
+  });
 });

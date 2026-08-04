@@ -684,7 +684,8 @@ describe("actuator — scouting", () => {
     stubGame({ objects: { scout1: creep } });
     (globalThis as Record<string, unknown>).Memory = { rooms: {} };
     (globalThis as { Game: { map: unknown } }).Game.map = {
-      findRoute: () => [{ room: "W1N2" }, { room: "W1N3" }]
+      findRoute: () => [{ room: "W1N2" }, { room: "W1N3" }],
+      getRoomStatus: () => ({ status: "normal" })
     };
 
     execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
@@ -703,7 +704,7 @@ describe("actuator — scouting", () => {
     const findRoute = vi.fn((_from: string, dest: string) =>
       dest === "W1N2" ? [{ room: "W1N9" }, { room: "W1N8" }, { room: "W1N2" }] : [{ room: "W1N3" }]
     );
-    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
 
     execute([
       { kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N2", "W1N3"] }] }
@@ -718,7 +719,8 @@ describe("actuator — scouting", () => {
     stubGame({ objects: { scout1: creep } });
     (globalThis as Record<string, unknown>).Memory = { rooms: {} };
     (globalThis as { Game: { map: unknown } }).Game.map = {
-      findRoute: () => [{ room: "X" }]
+      findRoute: () => [{ room: "X" }],
+      getRoomStatus: () => ({ status: "normal" })
     };
 
     execute([
@@ -740,7 +742,7 @@ describe("actuator — scouting", () => {
       const hops: Record<string, number> = { W1N2: 1, W1N3: 2 };
       return Array.from({ length: hops[dest] }, () => ({ room: dest }));
     });
-    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
 
     execute([
       {
@@ -754,6 +756,48 @@ describe("actuator — scouting", () => {
 
     const targets = [creep1.memory.scoutTarget, creep2.memory.scoutTarget].sort();
     expect(targets).toEqual(["W1N2", "W1N3"]);
+  });
+
+  // Confirmed live on shard0: Game.map.findRoute is blind to the invisible respawn/novice-zone border
+  // wall (it's a structure, not terrain — see scoutGraph.ts's crossesSealedBorder doc), so it happily
+  // reports a "reachable" route straight through one. A scout sent on that route walks up to the real
+  // wall and wedges there forever (Traveler's PathFinder call returns an incomplete-but-nonempty best
+  // path, so travelTo never returns ERR_NO_PATH and the usual noPathFrom cache never kicks in). The fix
+  // has to reject the route before ever assigning it, by cross-checking each hop's room status.
+  it("rejects a findRoute result that crosses a respawn/novice-zone status boundary", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    const statuses: Record<string, string> = { W1N1: "respawn", W1N2: "normal" };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      findRoute: () => [{ room: "W1N2" }],
+      getRoomStatus: (room: string) => ({ status: statuses[room] ?? "normal" })
+    };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N2"] }] }]);
+
+    expect(creep.memory.scoutTarget).toBeUndefined();
+  });
+
+  // Same guard applied to a scout's own precomputed route (routeTo, used by setScoutTargets to fill in
+  // creep.memory.route once a target has already been picked) — falls back to a direct [dest] hop rather
+  // than trusting a findRoute path that crosses the sealed border, same as an outright ERR_NO_PATH.
+  it("falls back to a direct route when findRoute's path crosses a status boundary", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+    const statuses: Record<string, string> = { W1N1: "respawn", W1N9: "normal", W1N3: "normal" };
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      findRoute: () => [{ room: "W1N9" }, { room: "W1N3" }],
+      getRoomStatus: (room: string) => ({ status: statuses[room] ?? "normal" })
+    };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
+
+    // The candidate itself is unreachable via this sealed route too, so it loses the assignment round
+    // entirely (assignScoutTargets rejects it the same as an ERR_NO_PATH) — matches production behaviour:
+    // there's no legal candidate left to send this scout to this tick.
+    expect(creep.memory.scoutTarget).toBeUndefined();
   });
 
   // Issue 3: a scout's own precomputed route (unlike Traveler's internal findRoute, which other roles
@@ -771,7 +815,7 @@ describe("actuator — scouting", () => {
       expect(options.routeCallback("W1N9")).toBe(1);
       return [{ room: "W1N9" }, { room: "W1N3" }];
     });
-    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
 
     execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
 
@@ -793,7 +837,7 @@ describe("actuator — scouting", () => {
       expect(options.routeCallback("W1N2")).toBe(Infinity);
       return [{ room: "W1N9" }, { room: "W1N3" }];
     });
-    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
 
     execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
     expect(creep.memory.scoutTarget).toBe("W1N3");
@@ -814,7 +858,7 @@ describe("actuator — scouting", () => {
       expect(options.routeCallback("W1N2")).toBe(Infinity);
       return [{ room: "W1N9" }, { room: "W1N3" }];
     });
-    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
 
     execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
     expect(creep.memory.scoutTarget).toBe("W1N3");
@@ -830,7 +874,7 @@ describe("actuator — scouting", () => {
       expect(options.routeCallback("W1N2")).toBe(1);
       return [{ room: "W1N9" }, { room: "W1N3" }];
     });
-    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
 
     execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
     expect(creep.memory.scoutTarget).toBe("W1N3");
@@ -850,7 +894,7 @@ describe("actuator — scouting", () => {
       expect(options.routeCallback("W1N2")).toBe(1); // destination itself: never priced by noPathFrom/danger
       return [{ room: "W1N2" }];
     });
-    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
 
     execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N2"] }] }]);
     expect(creep.memory.scoutTarget).toBe("W1N2");
@@ -869,7 +913,7 @@ describe("actuator — scouting", () => {
       expect(options.routeCallback("W1N2")).toBe(1);
       return [{ room: "W1N9" }, { room: "W1N3" }];
     });
-    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute };
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
 
     execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
     expect(creep.memory.scoutTarget).toBe("W1N3");

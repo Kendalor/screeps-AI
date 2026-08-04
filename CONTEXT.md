@@ -115,3 +115,31 @@ The wipe state in which a colony has zero live creeps. Its restart creep is an
 ordinary request at a reserved top priority, sized against energy actually
 available rather than capacity — a dead colony has nothing to fill its extensions.
 _Avoid_: emergency, panic, bootstrap (which is a role, not a state)
+
+### Military
+
+**Squad**:
+A fixed group of creeps belonging to one military operation, sharing a single
+`op` value and required to be complete before it may enter a target room. A
+squad's membership is derived from its creeps' `op` and role, never a separate
+ID — an operation scoped to one target already identifies its own squad.
+_Avoid_: party, group, formation (formation is squad behaviour, not the squad itself)
+
+**Staging room**:
+The room a squad gathers in before entering a target room — the nearest room on
+the route that isn't itself a hostile-owned target. Distinct from Rendezvous,
+which is a hauler/consumer pairing in the energy economy, not a military
+assembly point.
+_Avoid_: rendezvous (already means the hauler/consumer hand-off), forward base, muster point
+
+**Assembled**:
+A squad's readiness gate: every creep the operation requires is alive and
+present in the staging room. An assembled squad may advance into the target
+room; an incomplete one waits or retreats to the staging room instead.
+_Avoid_: ready, formed up
+
+**Leader**:
+The squad member whose position the rest of the squad paths relative to while
+holding formation. Chosen by role when a role-appropriate member is alive;
+otherwise picked deterministically among whoever remains.
+_Avoid_: point, anchor

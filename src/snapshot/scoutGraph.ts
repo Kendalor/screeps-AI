@@ -82,3 +82,16 @@ function isSealedFrom(room: string, home: string): boolean {
   const noPathAt = Memory.rooms?.[room]?.scouted?.noPathFrom?.[home];
   return noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER;
 }
+
+/** Whether consecutive rooms in a Game.map.findRoute-style hop list cross a respawn/novice zone boundary
+ * — the same status-match rule scoutCandidatesAround's BFS applies (see its doc for why: the World places
+ * a real, invisible-to-findRoute STRUCTURE_WALL there). `rooms` includes `origin` at index 0 so every
+ * consecutive pair is checked, matching the BFS's from-room (not origin) comparison. findRoute itself is
+ * blind to these walls and will happily price a route straight through one, so this is the only guard —
+ * callers must reject (not just deprioritize) any route this flags, the way they already reject ERR_NO_PATH. */
+export function crossesSealedBorder(rooms: readonly string[]): boolean {
+  for (let i = 1; i < rooms.length; i++) {
+    if (Game.map.getRoomStatus(rooms[i - 1]).status !== Game.map.getRoomStatus(rooms[i]).status) return true;
+  }
+  return false;
+}

@@ -9,7 +9,7 @@ import { neighborhoodFullyScouted, summarizePotential } from "../mining/coloniza
 import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
 import { INVADER_USERNAME } from "../mining/remoteSources";
 import { isDangerous } from "../memory/reputation";
-import { scoutCandidatesAround } from "../snapshot/scoutGraph";
+import { crossesSealedBorder, scoutCandidatesAround } from "../snapshot/scoutGraph";
 import type { RemoteMemory, RemoteSourceMemory, RouteMemory, ScoutInfo } from "../memory/schema";
 import type { Intent } from "./types";
 
@@ -433,7 +433,13 @@ function assignScoutTargets(
       const route = Game.map.findRoute(creep.room.name, room, {
         routeCallback: (roomName: string) => (roomName === room ? 1 : dangerRouteCost(home, roomName))
       });
-      const hops = route === ERR_NO_PATH ? Infinity : route.length;
+      // findRoute can't see the invisible respawn/novice-zone border wall (see crossesSealedBorder's
+      // doc) and will happily price straight through one; reject any such route rather than trusting its
+      // "reachable" verdict, same as an outright ERR_NO_PATH.
+      const hops =
+        route === ERR_NO_PATH || crossesSealedBorder([creep.room.name, ...route.map(step => step.room)])
+          ? Infinity
+          : route.length;
       if (hops !== Infinity) pairs.push({ creep: id, room, hops });
     }
   }
@@ -461,7 +467,11 @@ function routeTo(home: string, from: string, dest: string): RouteMemory {
   const route = Game.map.findRoute(from, dest, {
     routeCallback: (roomName: string) => (roomName === dest ? 1 : dangerRouteCost(home, roomName))
   });
-  const rooms = route === ERR_NO_PATH ? [dest] : route.map(step => step.room);
+  // Same sealed-border check as assignScoutTargets: a route findRoute reports as reachable can still
+  // cross an invisible respawn/novice-zone wall it has no way to see. Falling back to [dest] here (same
+  // as the ERR_NO_PATH case) still lets the creep attempt a direct walk rather than wedging on a route
+  // that's provably impossible.
+  const rooms = route === ERR_NO_PATH || crossesSealedBorder([from, ...route.map(step => step.room)]) ? [dest] : route.map(step => step.room);
   return { dest, rooms, index: 0 };
 }
 
