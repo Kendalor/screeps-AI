@@ -156,6 +156,15 @@ export interface ColonyMemory {
   // not yet built) the same way addAttackTarget writes `attacking`; read every tick by Colony's
   // constructor to attach a real Drain operation when set, same pattern as `attacking`.
   draining?: string;
+  // Operation-owned observation history of `draining`'s target room — tower energy and storage/room
+  // energy samples taken whenever the drain squad has vision of it (issue #40/ADR 0006's "Enemy room
+  // snapshot is operation-owned, not general room intel": deliberately NOT folded into ScoutInfo, since
+  // this is one operation's tactical log, not general room intel other systems should read or mutate).
+  // Scoped to a single target at a time via `room` — switching `draining` to a different room starts a
+  // fresh `{ room, samples: [] }` rather than appending to the old target's history (drain.ts owns the
+  // reset check). Observability only for now: nothing reads this to drive advance/retreat/spawn
+  // decisions (see ADR 0006's consequences — "already positioned to drive this later").
+  drainHistory?: { room: string; samples: { tick: number; towerEnergy: number; storageEnergy: number }[] };
 }
 
 // One remote room we've chosen to mine, cached in ColonyMemory so selection is stable and not re-ranked

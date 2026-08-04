@@ -288,6 +288,16 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       mem.attacking = (mem.attacking ?? []).filter(t => t !== intent.target);
       return OK;
     }
+    case "recordDrainSample": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      // Scoped per target room (#40/ADR 0006): a stored history against a different (or no) target is
+      // stale and replaced with a fresh one rather than appended to.
+      if (!mem.drainHistory || mem.drainHistory.room !== intent.target) {
+        mem.drainHistory = { room: intent.target, samples: [] };
+      }
+      mem.drainHistory.samples.push({ tick: intent.tick, towerEnergy: intent.towerEnergy, storageEnergy: intent.storageEnergy });
+      return OK;
+    }
     case "recordSourceSpot": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       const source = (mem.sources[intent.source] ??= {});

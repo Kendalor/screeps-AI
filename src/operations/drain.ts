@@ -9,6 +9,7 @@ import type { Intent } from "../intents/types";
 import { incomingHeal, towerDamageAt, type HealSource } from "../lib/combat";
 import { followerOffsets } from "../lib/formation";
 import { range, type XY } from "../lib/geometry";
+import { log } from "../lib/log";
 import type { ColonySnapshot, SnapCreep, SnapTower } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import type { CreepRequest } from "../spawn/request";
@@ -157,7 +158,25 @@ export class Drain extends Operation {
       if (!offset) return;
       out.push({ kind: "setSquadTargetPos", creep: follower.id, pos: { x: offset.x, y: offset.y, room: leaderPos.room } });
     });
+    out.push(...this.drainSample(colony));
     return out;
+  }
+
+  /** #40/ADR 0006's operation-owned observation history: a `{tick, towerEnergy, storageEnergy}` sample
+   * whenever the target room has vision this tick — visibleRooms is the authoritative vision signal (not
+   * hostileRoomTowers' presence, which is also empty for a genuinely visible-but-towerless room and would
+   * wrongly read as "no vision"). towerEnergy/storageEnergy each default to 0 when their own map has no
+   * entry for the target (towerless room / no storage structure, respectively) — vision is what gates
+   * whether a sample is taken at all, not whether either quantity happens to be present. No sample, no
+   * intent, when the target room isn't visible this tick — a gap in the history, not a zero-filled entry. */
+  private drainSample(colony: ColonySnapshot): Intent[] {
+    const target = colony.draining;
+    if (!target) return [];
+    if (!colony.visibleRooms.some(r => r.room === target)) return [];
+    const towerEnergy = (colony.hostileRoomTowers[target] ?? []).reduce((sum, t) => sum + t.storeEnergy, 0);
+    const storageEnergy = colony.hostileRoomStorageEnergy[target] ?? 0;
+    log.debugRoom(colony.name, `drain: sample ${target} tick=${colony.tick} towerEnergy=${towerEnergy} storageEnergy=${storageEnergy}`);
+    return [{ kind: "recordDrainSample", room: colony.name, target, tick: colony.tick, towerEnergy, storageEnergy }];
   }
 }
 

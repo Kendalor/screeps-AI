@@ -305,6 +305,13 @@ export interface ColonySnapshot {
   // target. Absent/empty for a room with no vision this tick, same vision-gated convention every other
   // live-read field here follows. Drain's advance/retreat check reads this for its current target room.
   hostileRoomTowers: Partial<Record<string, SnapTower[]>>;
+  // A visible room's storage energy, keyed by room name — the storage-content equivalent of
+  // hostileRoomTowers above, same empire-wide/vision-gated population (any room with vision this tick,
+  // not scoped to this colony's own remotes). Absent for a room with no vision OR no storage structure —
+  // the two are indistinguishable here, same as hostileRoomTowers being absent for "no vision" and
+  // "no towers" alike; a room known (via prior observation) to have a storage just isn't sampled that
+  // tick. Drain's snapshot-history recorder (#40/ADR 0006) reads this for its current target room.
+  hostileRoomStorageEnergy: Partial<Record<string, number>>;
 }
 
 export interface EmpireSnapshot {
