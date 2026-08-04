@@ -143,3 +143,11 @@ The squad member whose position the rest of the squad paths relative to while
 holding formation. Chosen by role when a role-appropriate member is alive;
 otherwise picked deterministically among whoever remains.
 _Avoid_: point, anchor
+
+**Enemy room snapshot**:
+A military operation's own running record of what it has observed of a target
+room over time — tower energy, storage/room energy — kept to judge whether
+sustained pressure is having an effect. Owned by the operation, not general
+room intel; a different operation targeting the same room keeps its own.
+_Avoid_: intel (too broad — this is one operation's observation log, not a
+general-purpose record)
