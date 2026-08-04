@@ -5,6 +5,7 @@ import type { Colony } from "../colony";
 import { empire, type Empire } from "../empire";
 import { runAttackFlags } from "../empire/attackFlags";
 import { runColonizeFlags } from "../empire/colonizeFlags";
+import { runDrainFlags } from "../empire/drainFlags";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
 import { runRemoteInvaderAttacks } from "../empire/remoteInvaderAttacks";
 import { execute } from "../intents/execute";
@@ -115,6 +116,8 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   runGuarded("colonizeFlags", () => runColonizeFlags(world));
   // Flag-triggered attack, same reasoning as colonizeFlags above — Attack isn't a default operation either.
   runGuarded("attackFlags", () => runAttackFlags(world));
+  // Flag-triggered drain, same reasoning as attackFlags above — Drain isn't a default operation either.
+  runGuarded("drainFlags", () => runDrainFlags(world));
   // Automatic counterpart to attackFlags: launches an Attack at any selected remote reserved by the
   // Invader NPC with its core still standing — see remoteInvaderAttacks.ts's header.
   runGuarded("remoteInvaderAttacks", () => runRemoteInvaderAttacks(world));

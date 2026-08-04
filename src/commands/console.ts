@@ -6,6 +6,7 @@ import { empire } from "../empire";
 import type { LogLevel } from "../lib/log";
 import { buildEmpireSnapshot } from "../snapshot/colony";
 import { listColonizeCandidates } from "../empire/pickColonyTargets";
+import { execute } from "../intents/execute";
 
 const VALID: LogLevel[] = ["error", "warn", "info"];
 
@@ -27,6 +28,7 @@ declare global {
   function resetDebug(): string;
   function spawnLoad(room?: string): string;
   function colonizeTargets(): string;
+  function clearDrainTarget(room: string): string;
   function help(): string;
 }
 
@@ -127,6 +129,13 @@ export function installConsoleCommands(): void {
       .join("\n");
   };
   register("colonizeTargets()", "list every cached colonize candidate, sorted by score, with distance and auto-pick viability");
+
+  global.clearDrainTarget = (room: string): string => {
+    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
+    execute([{ kind: "clearDrainTarget", room }]);
+    return `cleared draining target for "${room}" — Drain operation stops attaching from the next tick`;
+  };
+  register("clearDrainTarget(room)", "manually stop a colony's active drain (clears ColonyMemory.draining), same effect as removing the drain flag");
 
   global.help = (): string => COMMANDS.map(([usage, description]) => `${usage} — ${description}`).join("\n");
   register("help()", "list available console commands");

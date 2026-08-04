@@ -124,6 +124,16 @@ export type Intent =
   // Attack.intents() owns removal: the target room has been seen with zero hostile creeps left — see
   // attack.ts for the exact condition.
   | { kind: "removeAttackTarget"; room: string; target: string }
+  // The drain equivalent of addAttackTarget: a flag handoff resolved `room` as the sponsor for draining
+  // `target` — execute.ts owns the Memory.colonies[room].draining write. Unlike addAttackTarget this is a
+  // plain overwrite, not an append: ColonyMemory.draining is a scalar (ADR 0006's exactly-one-drain-
+  // target-per-colony), so there's no list to dedupe into and no separate remove intent needed — setting
+  // the same target again is just a harmless no-op overwrite.
+  | { kind: "setDrainTarget"; room: string; target: string }
+  // Manual CLI-driven stop (see commands/console.ts's clearDrainTarget) — clears ColonyMemory.draining so
+  // Colony's constructor stops attaching a Drain operation for that colony from the next tick on. No
+  // automatic emitter yet (ADR 0006: no automatic end condition in this slice).
+  | { kind: "clearDrainTarget"; room: string }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
   // Drawing primitives for one room's RoomVisual; drawn in order so later ops paint over earlier ones.

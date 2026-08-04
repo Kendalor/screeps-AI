@@ -96,6 +96,21 @@ describe("console: resetDebug", () => {
   });
 });
 
+describe("console: clearDrainTarget", () => {
+  it("clears ColonyMemory.draining for the given room", () => {
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], draining: "W5N5" } };
+    const result = global.clearDrainTarget("W1N1");
+    expect(Memory.colonies.W1N1.draining).toBeUndefined();
+    expect(result).toMatch(/W1N1/);
+  });
+
+  it("reports when the room has no colony memory yet", () => {
+    Memory.colonies = {};
+    const result = global.clearDrainTarget("W1N1");
+    expect(result).toMatch(/no colony/i);
+  });
+});
+
 describe("console: help", () => {
   it("lists every registered command", () => {
     const text = global.help();
