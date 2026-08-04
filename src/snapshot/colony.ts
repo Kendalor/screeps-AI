@@ -53,12 +53,22 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
       }));
     if (towers.length > 0) hostileRoomTowers[name] = towers;
   }
+  // Same empire-wide/vision-gated population as hostileRoomTowers above, but the room's storage contents
+  // rather than its towers — Drain's snapshot history (#40) samples both. Only rooms with vision AND an
+  // actual storage structure get an entry (undefined for either).
+  const hostileRoomStorageEnergy: Partial<Record<string, number>> = {};
+  for (const name in Game.rooms) {
+    const storage = Game.rooms[name].storage;
+    if (storage) hostileRoomStorageEnergy[name] = storage.store.getUsedCapacity(RESOURCE_ENERGY);
+  }
 
   const colonies: ColonySnapshot[] = [];
   for (const name in Game.rooms) {
     const room = Game.rooms[name];
     if (!room.controller?.my) continue;
-    colonies.push(buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms, hostileRoomTowers));
+    colonies.push(
+      buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms, hostileRoomTowers, hostileRoomStorageEnergy)
+    );
   }
   return { tick: Game.time, colonies };
 }, "planning:buildEmpireSnapshot");
@@ -87,7 +97,8 @@ function buildColonySnapshot(
   creeps: SnapCreep[],
   tick: number,
   visibleRooms: VisibleRoom[],
-  hostileRoomTowers: Partial<Record<string, SnapTower[]>>
+  hostileRoomTowers: Partial<Record<string, SnapTower[]>>,
+  hostileRoomStorageEnergy: Partial<Record<string, number>>
 ): ColonySnapshot {
   const controller = room.controller!;
   const myCreeps = room.find(FIND_MY_CREEPS);
@@ -220,7 +231,8 @@ function buildColonySnapshot(
     attacking,
     draining,
     drainRoute,
-    hostileRoomTowers
+    hostileRoomTowers,
+    hostileRoomStorageEnergy
   };
 }
 

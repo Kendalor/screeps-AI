@@ -215,6 +215,78 @@ describe("actuator", () => {
     expect(mem.remotes[0].dangerUntil).toBeUndefined();
   });
 
+  describe("recordDrainSample (#40)", () => {
+    it("starts a fresh history and appends the first sample when none exists yet", () => {
+      stubGame();
+      (globalThis as Record<string, unknown>).Memory = { colonies: { W1N1: { sources: {}, danger: 0, remotes: [] } } };
+
+      execute([{ kind: "recordDrainSample", room: "W1N1", target: "W2N1", tick: 100, towerEnergy: 400, storageEnergy: 5000 }]);
+
+      const mem = (
+        globalThis as {
+          Memory: { colonies: Record<string, { drainHistory?: { room: string; samples: unknown[] } }> };
+        }
+      ).Memory.colonies.W1N1;
+      expect(mem.drainHistory).toEqual({
+        room: "W2N1",
+        samples: [{ tick: 100, towerEnergy: 400, storageEnergy: 5000 }]
+      });
+    });
+
+    it("appends to the existing history when the sample's target matches the stored history's room", () => {
+      stubGame();
+      (globalThis as Record<string, unknown>).Memory = {
+        colonies: {
+          W1N1: {
+            sources: {},
+            danger: 0,
+            remotes: [],
+            drainHistory: { room: "W2N1", samples: [{ tick: 100, towerEnergy: 400, storageEnergy: 5000 }] }
+          }
+        }
+      };
+
+      execute([{ kind: "recordDrainSample", room: "W1N1", target: "W2N1", tick: 101, towerEnergy: 300, storageEnergy: 5100 }]);
+
+      const mem = (
+        globalThis as {
+          Memory: { colonies: Record<string, { drainHistory?: { room: string; samples: unknown[] } }> };
+        }
+      ).Memory.colonies.W1N1;
+      expect(mem.drainHistory?.samples).toEqual([
+        { tick: 100, towerEnergy: 400, storageEnergy: 5000 },
+        { tick: 101, towerEnergy: 300, storageEnergy: 5100 }
+      ]);
+    });
+
+    it("resets to a fresh history (discarding old samples) when the target room changes", () => {
+      stubGame();
+      (globalThis as Record<string, unknown>).Memory = {
+        colonies: {
+          W1N1: {
+            sources: {},
+            danger: 0,
+            remotes: [],
+            drainHistory: { room: "W2N1", samples: [{ tick: 100, towerEnergy: 400, storageEnergy: 5000 }] }
+          }
+        }
+      };
+
+      // Squad switched to a new drain target, W3N1 — the old W2N1 history must not carry over.
+      execute([{ kind: "recordDrainSample", room: "W1N1", target: "W3N1", tick: 200, towerEnergy: 900, storageEnergy: 0 }]);
+
+      const mem = (
+        globalThis as {
+          Memory: { colonies: Record<string, { drainHistory?: { room: string; samples: unknown[] } }> };
+        }
+      ).Memory.colonies.W1N1;
+      expect(mem.drainHistory).toEqual({
+        room: "W3N1",
+        samples: [{ tick: 200, towerEnergy: 900, storageEnergy: 0 }]
+      });
+    });
+  });
+
   it("repurposes a creep: sets the new role, clears task, and re-stamps op for the new owner", () => {
     const creep = {
       memory: { home: "W1N1", role: "builder", op: "building:W1N1", task: { step: 2, target: "x" } } as CreepMemory

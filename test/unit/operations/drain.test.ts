@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { Drain, leaderOf, pickStagingRoom } from "../../../src/operations/drain";
 import { DRAIN_ATTACKER_MIN_COST } from "../../../src/behaviors/roles/drainAttacker";
 import { DRAIN_HEALER_MIN_COST } from "../../../src/behaviors/roles/drainHealer";
-import { colonySnap, snapCreep, towerAt } from "../../fixtures";
+import { colonySnap, snapCreep, towerAt, visibleRoom } from "../../fixtures";
 
 const drain = new Drain("W1N1");
 
@@ -283,6 +283,49 @@ describe("Drain.intents loss handling (#39)", () => {
     const deathIntents = drain.intents(deathSnap).map(i => ({ ...i, creep: undefined }));
     const expiryIntents = drain.intents(expirySnap).map(i => ({ ...i, creep: undefined }));
     expect(deathIntents).toEqual(expiryIntents);
+  });
+});
+
+describe("Drain.intents drainHistory sample (#40)", () => {
+  it("records a sample (tick, tower energy, storage energy) when the target room is visible", () => {
+    const members = squad({ room: "W2N1" });
+    const snap = colonySnap({
+      tick: 123,
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      hostileRoomTowers: { W2N1: [towerAt(25, 25, "t1", 400), towerAt(10, 10, "t2", 200)] },
+      hostileRoomStorageEnergy: { W2N1: 5000 },
+      visibleRooms: [visibleRoom("W2N1")],
+      creeps: members
+    });
+
+    const intents = drain.intents(snap);
+    expect(intents).toContainEqual({
+      kind: "recordDrainSample",
+      room: "W1N1",
+      target: "W2N1",
+      tick: 123,
+      towerEnergy: 600, // summed across both visible towers
+      storageEnergy: 5000
+    });
+  });
+
+  it("records no sample (a gap, not a zero-filled entry) on a tick without vision of the target room", () => {
+    const members = squad({ room: "W2N1" });
+    const snap = colonySnap({
+      tick: 124,
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      // No vision this tick: visibleRooms doesn't include W2N1, even though stale hostileRoomTowers/
+      // hostileRoomStorageEnergy data might still be lying around from an earlier tick's snapshot.
+      hostileRoomTowers: { W2N1: [towerAt(25, 25, "t1", 400)] },
+      hostileRoomStorageEnergy: { W2N1: 5000 },
+      visibleRooms: [],
+      creeps: members
+    });
+
+    const intents = drain.intents(snap);
+    expect(intents.some(i => i.kind === "recordDrainSample")).toBe(false);
   });
 });
 

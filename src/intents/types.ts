@@ -134,6 +134,12 @@ export type Intent =
   // Colony's constructor stops attaching a Drain operation for that colony from the next tick on. No
   // automatic emitter yet (ADR 0006: no automatic end condition in this slice).
   | { kind: "clearDrainTarget"; room: string }
+  // Drain's per-tick observation sample (#40/ADR 0006's operation-owned snapshot history) — emitted by
+  // drain.ts's intents() whenever it has vision of colony.draining's target this tick (same
+  // hostileRoomTowers-presence vision check the advance/retreat rule already uses). execute.ts owns the
+  // Memory.colonies[room].drainHistory write, including the reset-on-target-switch: if the stored
+  // history's `room` doesn't match `target`, it starts a fresh history instead of appending.
+  | { kind: "recordDrainSample"; room: string; target: string; tick: number; towerEnergy: number; storageEnergy: number }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
   // Drawing primitives for one room's RoomVisual; drawn in order so later ops paint over earlier ones.
