@@ -288,6 +288,16 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       mem.attacking = (mem.attacking ?? []).filter(t => t !== intent.target);
       return OK;
     }
+    case "setDrainTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      mem.draining = intent.target;
+      return OK;
+    }
+    case "clearDrainTarget": {
+      const mem = Memory.colonies[intent.room];
+      if (mem) mem.draining = undefined;
+      return OK;
+    }
     case "recordSourceSpot": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       const source = (mem.sources[intent.source] ??= {});
