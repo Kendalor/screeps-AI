@@ -471,7 +471,9 @@ export class BootedColony {
       scoutTargets: [],
       visibleRooms: [],
       colonizing: [],
-      attacking: []
+      attacking: [],
+      drainRoute: [],
+      hostileRoomTowers: {}
     };
   }
 

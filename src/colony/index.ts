@@ -4,6 +4,7 @@
 import type { Intent } from "../intents/types";
 import { Attack } from "../operations/attack";
 import { Colonize } from "../operations/colonize";
+import { Drain } from "../operations/drain";
 import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
@@ -51,7 +52,12 @@ export class Colony {
       // while at least one target is listed in ColonyMemory.attacking, a flag handoff's addAttackTarget
       // (see attackFlags.ts). ONE instance pools every listed target behind a shared attacker (see
       // operations/attack.ts's header) — unlike Colonize above, this is not one-instance-per-target.
-      ...(snapshot.attacking.length > 0 ? [new Attack(snapshot.name)] : [])
+      ...(snapshot.attacking.length > 0 ? [new Attack(snapshot.name)] : []),
+      // Drain isn't in operationsFor() either, same reason: attached only while snapshot.draining
+      // (ColonyMemory.draining) is set, a flag handoff's future addDrainTarget equivalent (issue #38, not
+      // yet built). Unlike Attack's `attacking` list, `draining` is a scalar — ADR 0006's exactly-one-
+      // target-per-colony constraint — so this is unconditionally one-instance-or-none, no pooling.
+      ...(snapshot.draining !== undefined ? [new Drain(snapshot.name)] : [])
     ];
   }
 

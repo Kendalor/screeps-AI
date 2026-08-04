@@ -289,6 +289,22 @@ export interface ColonySnapshot {
   // The combat equivalent of `colonizing` above, owned by attack.ts (ColonyMemory.attacking). Colony's
   // constructor reads this to attach a real Attack operation per listed target.
   attacking: string[];
+  // The drain equivalent of `attacking`, but a scalar (ColonyMemory.draining) rather than a list — see
+  // ColonyMemory.draining's doc for why exactly one drain target per colony is load-bearing. Owned by
+  // drain.ts; Colony's constructor attaches a real Drain operation while this is set.
+  draining?: string;
+  // Room-by-room path from this colony's home room to `draining` (via Game.map.findRoute), each tagged
+  // with its cached ScoutInfo.hostile (false when the room has never been scouted) — the input Drain's
+  // pure staging-room picker walks. Empty whenever `draining` is unset; computed once here (the snapshot
+  // boundary) so Drain itself never needs Game.map, matching every other operation's ColonySnapshot-only
+  // contract (see operations/operation.ts's header).
+  drainRoute: { room: string; hostile: boolean }[];
+  // Every hostile-owned tower with vision this tick, keyed by room name — populated empire-wide (like
+  // visibleRooms) rather than joined through the remote-mining vision pipeline (remoteStructures), since
+  // that join is scoped to this colony's own selected remote rooms and would never see a hostile drain
+  // target. Absent/empty for a room with no vision this tick, same vision-gated convention every other
+  // live-read field here follows. Drain's advance/retreat check reads this for its current target room.
+  hostileRoomTowers: Partial<Record<string, SnapTower[]>>;
 }
 
 export interface EmpireSnapshot {

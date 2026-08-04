@@ -125,6 +125,12 @@ export type Step = ({
         avoidDanger?: boolean;
       } // static room, or a memory field name, to read the destination + memory.route from creep memory
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
+    // Travels toward a position read off creep memory rather than a literal (unlike "sit"): Drain's
+    // squad formation/advance-retreat target is recomputed fresh every tick by the operation (see
+    // operations/drain.ts), so — unlike "sit"'s fixed anchor spot — it can't be a constant in the role's
+    // step list. No-ops (falls through) while memory.squadTargetPos is unset, same "static field, memory
+    // field name" split moveToRoom's `to` already has. Room-crossing via travelTo, same as "sit".
+    | { do: "moveToPos"; to: "squadTargetPos" }
   );
 
 export interface TaskState {

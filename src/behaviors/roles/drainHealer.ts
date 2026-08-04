@@ -23,13 +23,23 @@ function drainHealerBody(energy: number): BodyPartConstant[] {
 
 // The Drain Energy operation's (issue #34/ADR 0006) squad healer: keeps the squad's melee attacker (and
 // itself/other healers — squad membership includes self, see targets.ts's find:"squadMate") topped up
-// via the new heal verb. No operation wiring here (out of scope for issue #35) — targeting/movement into
-// the target room is issue #37's job; this role is only the primitive step list + body.
+// via the heal verb. moveToPos closes onto the operation's per-tick formation tile (see
+// operations/drain.ts's intents()) FIRST — heal's own target-chasing travelTo isn't enough on its own to
+// hold the strict range-1-of-everyone 2x2 block ADR 0006 requires, only loose proximity. Listed before
+// heal so the same "acted:false on arrival falls through same-tick to the next step" mechanism
+// moveToRoom->attack already relies on lets a healer already in position still heal every tick, not just
+// once every step cycle — while still out of position, heal fires as the co-fired bonus step (in range
+// only, no travel — see empire/creeps.ts's coFireBonusStep) so it never stops healing just because it's
+// mid-repositioning. No operation wiring here (out of scope for issue #35) — targeting the position
+// itself is issue #37's job; this role is only the primitive step list + body.
 export class DrainHealer extends Role {
   static override readonly priority = 110; // same table as DrainAttacker — a squad's healers are exactly as urgent as its striker
   static override readonly mover = true;
   static override body(energy: number): BodyPartConstant[] {
     return drainHealerBody(energy);
   }
-  static override readonly steps: Step[] = [{ do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } }];
+  static override readonly steps: Step[] = [
+    { do: "moveToPos", to: "squadTargetPos" },
+    { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } }
+  ];
 }

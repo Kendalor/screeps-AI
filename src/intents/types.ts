@@ -37,6 +37,11 @@ export type Intent =
   // The attacker equivalent, picked by operations/attack.ts off whichever room in ColonyMemory.attacking
   // the creep isn't already assigned to. See CreepMemory.attackTargetRoom.
   | { kind: "setAttackTargetRoom"; creep: Id<Creep>; room: string }
+  // Drain's per-tick formation/advance-retreat position for one squad member — picked by
+  // operations/drain.ts's intents() every tick (leader's next advance/retreat tile, or a follower's
+  // leader-relative offset via lib/formation.ts's followerOffsets), consumed by the "moveToPos" step.
+  // See CreepMemory.squadTargetPos.
+  | { kind: "setSquadTargetPos"; creep: Id<Creep>; pos: { x: number; y: number; room: string } }
   // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
   // execute.ts owns the memory write" split as setCreepRole above).
   | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }

@@ -14,6 +14,7 @@ import type {
   SnapCreep,
   SnapRemoteEnergy,
   SnapStructure,
+  SnapTower,
   SnapUnit,
   VisibleRoom
 } from "./types";
@@ -34,12 +35,30 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
       ...(invaderCore ? { invaderCoreLevel: invaderCore.level } : {})
     };
   });
+  // Also shared across colonies, same "any room's vision is empire-wide" reasoning as visibleRooms above:
+  // a hostile room's own towers, for whichever colony's Drain operation is currently targeting it (or not
+  // — this is unconditional on any colony's `draining`, just like visibleRooms is unconditional on
+  // `attacking`/`colonizing`). Only rooms actually holding a hostile tower get an entry.
+  const hostileRoomTowers: Partial<Record<string, SnapTower[]>> = {};
+  for (const name in Game.rooms) {
+    const towers = Game.rooms[name]
+      .find(FIND_HOSTILE_STRUCTURES)
+      .filter((s): s is StructureTower => s.structureType === STRUCTURE_TOWER)
+      .map(t => ({
+        id: t.id,
+        x: t.pos.x,
+        y: t.pos.y,
+        storeEnergy: t.store.getUsedCapacity(RESOURCE_ENERGY),
+        storeCapacity: t.store.getCapacity(RESOURCE_ENERGY)
+      }));
+    if (towers.length > 0) hostileRoomTowers[name] = towers;
+  }
 
   const colonies: ColonySnapshot[] = [];
   for (const name in Game.rooms) {
     const room = Game.rooms[name];
     if (!room.controller?.my) continue;
-    colonies.push(buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms));
+    colonies.push(buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms, hostileRoomTowers));
   }
   return { tick: Game.time, colonies };
 }, "planning:buildEmpireSnapshot");
@@ -63,12 +82,20 @@ function snapCreep(c: Creep): SnapCreep {
   };
 }
 
-function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visibleRooms: VisibleRoom[]): ColonySnapshot {
+function buildColonySnapshot(
+  room: Room,
+  creeps: SnapCreep[],
+  tick: number,
+  visibleRooms: VisibleRoom[],
+  hostileRoomTowers: Partial<Record<string, SnapTower[]>>
+): ColonySnapshot {
   const controller = room.controller!;
   const myCreeps = room.find(FIND_MY_CREEPS);
   const remotes = Memory.colonies[room.name]?.remotes ?? [];
   const colonizing = Memory.colonies[room.name]?.colonizing ?? [];
   const attacking = Memory.colonies[room.name]?.attacking ?? [];
+  const draining = Memory.colonies[room.name]?.draining;
+  const drainRoute = draining ? drainRouteTo(room.name, draining) : [];
   const vision = remoteRoomVision(remotes, controller.owner?.username);
   const remoteStructures: Partial<Record<string, SnapStructure[]>> = {};
   const remoteSites: Partial<Record<string, SnapStructure[]>> = {};
@@ -190,8 +217,24 @@ function buildColonySnapshot(room: Room, creeps: SnapCreep[], tick: number, visi
     scoutTargets: scoutCandidatesAround(room.name, Memory.scouting?.radius ?? 1, room.name),
     visibleRooms,
     colonizing,
-    attacking
+    attacking,
+    draining,
+    drainRoute,
+    hostileRoomTowers
   };
+}
+
+// Room-by-room path from `home` to `target`, each tagged with its cached ScoutInfo.hostile (false when
+// the room has never been scouted — see ScoutInfo's "unscouted treated as safe" convention, same as
+// Drain's staging-room rule in ADR 0006). Recomputed fresh every tick rather than cached: unlike remote
+// mining's route (walked by many haulers every tick, worth caching), a drain squad's route is read by
+// one operation, at most once per tick, so a cheap Game.map.findRoute here is not worth persisting.
+// ERR_NO_PATH (no route at all) yields an empty route — Drain's staging picker then has nothing to walk
+// and simply finds no safe room, which is the correct "can't get there" signal.
+function drainRouteTo(home: string, target: string): { room: string; hostile: boolean }[] {
+  const route = Game.map.findRoute(home, target);
+  if (route === ERR_NO_PATH) return [];
+  return route.map(step => ({ room: step.room, hostile: Memory.rooms?.[step.room]?.scouted?.hostile ?? false }));
 }
 
 // A hostile worth treating as danger: can fight (ATTACK/RANGED_ATTACK), sustain a fight (HEAL), or

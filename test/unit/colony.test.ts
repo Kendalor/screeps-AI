@@ -131,3 +131,19 @@ describe("Colony: attack targets", () => {
     expect(c.operations.some(op => op.kind === "attack")).toBe(false);
   });
 });
+
+// The drain equivalent of the attack-targets section above, but scalar rather than pooled: Colony's
+// constructor attaches a Drain instance whenever snapshot.draining (ColonyMemory.draining) is set — see
+// ADR 0006/issue #37 for why exactly one drain target per colony is load-bearing, unlike attacking's list.
+describe("Colony: drain target", () => {
+  it("attaches no Drain operation when draining is unset", () => {
+    const c = testColony();
+    expect(c.operations.some(op => op.kind === "drain")).toBe(false);
+  });
+
+  it("attaches one Drain operation, named by the sponsoring colony, when a target is set", () => {
+    const c = testColony({ draining: "W5N5" });
+    const drain = c.operations.find(op => op.kind === "drain");
+    expect(drain?.name).toBe(opName("drain", "W1N1"));
+  });
+});
