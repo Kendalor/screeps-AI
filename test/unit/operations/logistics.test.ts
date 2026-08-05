@@ -218,4 +218,15 @@ describe("Logistics.intents anchor link recording", () => {
     const intents = logistics.intents(colonySnap({ anchor, links: [elsewhere] }));
     expect(intents.some(i => i.kind === "recordLinkNetwork")).toBe(false);
   });
+
+  // recordLinkNetwork only ever adds an id (never clears one), so once the live link behind a recorded
+  // id is destroyed, the stale id would otherwise block re-recording forever — see operations/upgrading's
+  // matching fix for the controller link, which hit this exact staleness bug.
+  it("re-records once a replacement link is built after the old recorded one is destroyed", () => {
+    const replacement = linkAt(anchorLinkPos.x, anchorLinkPos.y, 0);
+    const intents = logistics.intents(
+      colonySnap({ anchor, links: [replacement], linkNetwork: { storage: "dead-id" as Id<StructureLink> } })
+    );
+    expect(intents).toContainEqual({ kind: "recordLinkNetwork", room: "W1N1", storage: replacement.id });
+  });
 });

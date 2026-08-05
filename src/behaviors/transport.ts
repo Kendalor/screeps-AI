@@ -10,6 +10,7 @@ import type { LogisticsTask, NodeRef } from "../logistics/types";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import { transferTo, withdrawOrPickup } from "./actions";
+import { stepOffRoad } from "./roadAvoidance";
 
 const PARK_RADIUS = 3; // "near the bunker" — anywhere within this range of the anchor counts as parked
 const PARK_SPREAD = 2; // per-creep offset off the anchor so idle creeps fan out instead of stacking
@@ -65,7 +66,15 @@ function parkNearBunker(creep: Creep): void {
   const anchor = typeof Memory !== "undefined" ? Memory.colonies?.[creep.memory.home]?.anchor : undefined;
   if (!anchor) return;
 
-  if (creep.pos.getRangeTo(anchor.x, anchor.y) <= PARK_RADIUS) return; // close enough already
+  if (creep.pos.getRangeTo(anchor.x, anchor.y) <= PARK_RADIUS) {
+    // Already "close enough" to stay put — but a road tile right by the bunker can be the sole approach
+    // to an adjacent structure (confirmed live: a parked supply creep squatting on the only tile next to
+    // an extension permanently blocked a sibling's deliveries, since Traveler's cost matrix ignores
+    // creep occupancy and never repaths around one). Cede it the same way a stationary
+    // builder/upgrader does.
+    stepOffRoad(creep, new RoomPosition(anchor.x, anchor.y, creep.room.name), PARK_RADIUS);
+    return;
+  }
 
   const h = nameHash(creep.name);
   const dx = (h % (2 * PARK_SPREAD + 1)) - PARK_SPREAD;

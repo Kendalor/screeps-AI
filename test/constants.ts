@@ -50,6 +50,12 @@ class RoomPositionStub {
     const other = "pos" in target ? target.pos : target;
     return this.roomName === other.roomName && Math.max(Math.abs(this.x - other.x), Math.abs(this.y - other.y)) <= range;
   }
+  // Real RoomPosition.getRangeTo also accepts (x, y) or a position/RoomObject-shaped thing.
+  getRangeTo(targetOrX: number | { x: number; y: number } | { pos: { x: number; y: number } }, y?: number): number {
+    if (typeof targetOrX === "number") return Math.max(Math.abs(this.x - targetOrX), Math.abs(this.y - (y ?? 0)));
+    const other = "pos" in targetOrX ? targetOrX.pos : targetOrX;
+    return Math.max(Math.abs(this.x - other.x), Math.abs(this.y - other.y));
+  }
   getDirectionTo(target: { x: number; y: number; roomName: string }): number {
     const dx = Math.sign(worldX(target.roomName, target.x) - worldX(this.roomName, this.x));
     const dy = Math.sign(worldY(target.roomName, target.y) - worldY(this.roomName, this.y));

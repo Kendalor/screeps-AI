@@ -31,15 +31,32 @@ function drainHealerBody(energy: number): BodyPartConstant[] {
 
 // The Drain Energy operation's (issue #34/ADR 0006) squad healer: keeps the squad's melee attacker (and
 // itself/other healers — squad membership includes self, see targets.ts's find:"squadMate") topped up
-// via the heal verb. moveToPos closes onto the operation's per-tick formation tile (see
-// operations/drain.ts's intents()) FIRST — heal's own target-chasing travelTo isn't enough on its own to
-// hold the strict range-1-of-everyone 2x2 block ADR 0006 requires, only loose proximity. Listed before
-// heal so the same "acted:false on arrival falls through same-tick to the next step" mechanism
-// moveToRoom->attack already relies on lets a healer already in position still heal every tick, not just
-// once every step cycle — while still out of position, heal fires as the co-fired bonus step (in range
-// only, no travel — see empire/creeps.ts's coFireBonusStep) so it never stops healing just because it's
-// mid-repositioning. No operation wiring here (out of scope for issue #35) — targeting the position
-// itself is issue #37's job; this role is only the primitive step list + body.
+// via the heal verb. moveToPos alone carries the healer everywhere — home to staging, staging to the
+// advancing formation slot, and back on retreat — because drain.ts's intents() now sets squadTargetPos
+// EVERY tick this operation runs, for every squad member unconditionally (a staging rally point while
+// assembling, a formation offset once underway), never leaving it stale. This used to be a two-step
+// moveToRoom+moveToPos handoff, but moveToRoom only ever pointed at the staging room and fell through
+// (acted:false) the instant a healer arrived there OR whenever attackTargetRoom was momentarily unset
+// (e.g. the first tick after spawning, before drain.ts's intents() had run) — either way the step cursor
+// latched onto moveToPos and, since moveToRoom/moveToPos/heal are all "move"-kind steps that never
+// self-complete (see interpreter.ts's isComplete), nothing ever sent it back. A healer that fell through
+// on that spawn-time gap stood frozen at home forever, chasing a squadTargetPos left over from that one
+// tick, even after attackTargetRoom was later populated correctly — confirmed live on shard0
+// (2026-08-05). A single step whose target is always fresh can't go stale the same way: there's no
+// earlier step to skip past, and moveToPos's own travelTo crosses room borders on its own already.
+// Listed before heal so the same "acted:false on arrival falls through same-tick to the next step"
+// mechanism lets a healer already in position still heal every tick, not just once every step cycle —
+// while still out of position, heal fires as the co-fired bonus step (in range only, no travel — see
+// empire/creeps.ts's coFireBonusStep) so it never stops healing just because it's mid-repositioning.
+// heal's own standStill:true (Step's flag) is load-bearing, not decorative: heal is ALSO a "move"-kind
+// step (see interpreter.ts's isComplete — it never self-completes except via targetGone) and its target
+// (mostDamaged squadmate) is computed independently of squadTargetPos. Without standStill, the one tick
+// moveToPos's exact-tile-equality "arrived" check happens to be satisfied, the loop falls through
+// same-tick into heal, which resolves a target and travels toward IT — grabbing primary-step status
+// permanently, since nothing ever routes the cursor back to moveToPos afterward. Confirmed live on
+// shard0 (2026-08-05): two healers froze mid-formation, walking toward whichever squadmate `heal` had
+// picked instead of their assigned 2x2 slot, forever after that one coincidental tick. standStill keeps
+// heal action-only in every context (primary or bonus) — formation position is exclusively moveToPos's job.
 export class DrainHealer extends Role {
   static override readonly priority = 110; // same table as DrainAttacker — a squad's healers are exactly as urgent as its striker
   static override readonly mover = true;
@@ -48,6 +65,6 @@ export class DrainHealer extends Role {
   }
   static override readonly steps: Step[] = [
     { do: "moveToPos", to: "squadTargetPos" },
-    { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } }
+    { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" }, standStill: true }
   ];
 }

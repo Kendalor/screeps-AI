@@ -63,7 +63,8 @@ describe("DrainHealer steps", () => {
       travelTo: () => undefined
     };
     (creep as unknown as { room: { find: () => object[] } }).room = { find: () => [mate, creep] };
-    // steps[0] is moveToPos (squad formation positioning, issue #37); heal is steps[1].
+    // steps[0] is moveToPos (squad formation positioning, driven fresh every tick by drain.ts's
+    // intents() — see drainHealer.ts's header for why there's no separate moveToRoom step); heal is steps[1].
     const result = runStep(creep as unknown as Creep, DrainHealer.steps[1]);
     expect(healed).toEqual(["mate1"]);
     expect(result).toEqual({ acted: true, didAct: true, target: "mate1" });

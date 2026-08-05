@@ -49,7 +49,7 @@ describe("DrainAttacker steps", () => {
       getActiveBodyparts: (part: BodyPartConstant) => (part === ATTACK ? 1 : 0)
     };
     const { creep, attacked } = fighter({ tower, hostiles: [hostile] });
-    const result = runStep(creep, DrainAttacker.steps[2]);
+    const result = runStep(creep, DrainAttacker.steps[1]);
     expect(attacked).toEqual(["tower1"]);
     expect(result).toEqual({ acted: true, didAct: true, target: "tower1" });
   });
@@ -65,12 +65,12 @@ describe("DrainAttacker steps", () => {
       pos: { x: 20, y: 21 },
       getActiveBodyparts: () => 0
     };
-    // Tower step (index 2) resolves nothing — no tower present at all.
+    // Tower step (index 1) resolves nothing — no tower present at all.
     const { creep, attacked } = fighter({ hostiles: [unarmed, armed] });
-    const towerResult = runStep(creep, DrainAttacker.steps[2]);
+    const towerResult = runStep(creep, DrainAttacker.steps[1]);
     expect(towerResult).toEqual({ acted: false, didAct: false });
 
-    const hostileResult = runStep(creep, DrainAttacker.steps[3]);
+    const hostileResult = runStep(creep, DrainAttacker.steps[2]);
     expect(attacked).toEqual(["armed1"]); // mostThreatening: armed beats unarmed
     expect(hostileResult).toEqual({ acted: true, didAct: true, target: "armed1" });
   });

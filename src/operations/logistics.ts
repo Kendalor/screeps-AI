@@ -132,7 +132,10 @@ export class Logistics extends Operation {
    * one). Checked every tick until recorded; cheap (one array find) and execute.ts's write is idempotent.
    */
   private recordAnchorLink(colony: ColonySnapshot): Intent[] {
-    if (colony.linkNetwork.storage) return []; // already recorded; only ever adds an id
+    // Re-detects rather than trusting the recorded id blindly: if that link was destroyed (combat,
+    // manual removal), colony.links no longer contains it and a replacement must be found again — see
+    // operations/upgrading.ts's matching fix for the controller link, which hit this exact staleness bug.
+    if (colony.linkNetwork.storage && colony.links.some(l => l.id === colony.linkNetwork.storage)) return [];
     if (!colony.anchor) return [];
 
     const placement = GOAL.placements.find(p => p.type === "link");

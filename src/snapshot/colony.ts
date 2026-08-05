@@ -86,6 +86,8 @@ function snapCreep(c: Creep): SnapCreep {
     room: c.pos.roomName,
     x: c.pos.x,
     y: c.pos.y,
+    hits: c.hits,
+    hitsMax: c.hitsMax,
     storeEnergy: c.store.getUsedCapacity(RESOURCE_ENERGY),
     storeCapacity: c.store.getCapacity(),
     memory: c.memory
@@ -232,8 +234,23 @@ function buildColonySnapshot(
     draining,
     drainRoute,
     hostileRoomTowers,
-    hostileRoomStorageEnergy
+    hostileRoomStorageEnergy,
+    drainRoomTerrain: drainTerrainFor(draining, drainRoute)
   };
+}
+
+// Terrain for every room Drain might place a squad member in — `draining` itself plus every room on the
+// route to it (drainRoute already carries the full home->target path, so the staging room drainRoute's
+// own picker resolves is guaranteed to be included without recomputing which one that is here). Not
+// vision-gated (unlike hostileRoomTowers/hostileRoomStorageEnergy above): Game.map.getRoomTerrain reads
+// static map data for any room name, seen or not, so there's nothing to gate on. Small — a drain route
+// is a handful of rooms at most — and only computed while draining is actually set.
+function drainTerrainFor(draining: string | undefined, drainRoute: readonly { room: string }[]): Partial<Record<string, Uint8Array>> {
+  if (!draining) return {};
+  const rooms = new Set([draining, ...drainRoute.map(r => r.room)]);
+  const out: Partial<Record<string, Uint8Array>> = {};
+  for (const room of rooms) out[room] = walkablePixelsForRoom(room);
+  return out;
 }
 
 // Room-by-room path from `home` to `target`, each tagged with its cached ScoutInfo.hostile (false when

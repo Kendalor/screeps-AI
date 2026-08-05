@@ -1,17 +1,20 @@
-// Flag-triggered drain entry point — the combat equivalent of attackFlags.ts, mirrored file-for-file
-// (ADR 0006: "Parallel to Attack, not merged into it"). A flag named "drain" or "drain:<room>" is the
-// manual trigger for a squad-vs-room drain: pick the nearest affordable colony, hand the target off via
-// setDrainTarget, and let the normal per-tick operation pipeline take it from there (see
-// colony/index.ts's constructor and operations/drain.ts). Not wired into SYSTEMS/operationsFor (Drain
-// itself isn't a default operation), so this runs as its own call from kernel/tick.ts's tick(),
+// Flag-triggered drain entry point — the combat equivalent of attackFlags.ts, but unlike every other
+// flag-triggered operation (attack/colonize), a drain's flag is its *lifetime*, not a one-shot trigger.
+// A flag named "drain" or "drain:<room>" both starts a squad-vs-room drain (pick the nearest affordable
+// colony, hand the target off via setDrainTarget) AND keeps it alive: the flag is left in place after
+// handoff, and the moment it's gone (player deletes it, or it was never resolvable), the next tick's
+// pass here clears ColonyMemory.draining via clearDrainTarget, detaching the Drain operation. This
+// mirrors why the operation exists at all — the player's flag is the on/off switch, so removing it must
+// actually turn drain off, not just stop new colonies from being recruited into an already-running one
+// (confirmed live on shard0, 2026-08-05: a removed flag left the colony spawning/draining forever,
+// recoverable only via the clearDrainTarget console command). Not wired into SYSTEMS/operationsFor
+// (Drain itself isn't a default operation), so this runs as its own call from kernel/tick.ts's tick(),
 // independent of the per-colony operation pipeline — same reasoning as attackFlags.ts.
 //
-// One flag = one handoff: on success the target is durably recorded (ColonyMemory.draining, via
-// setDrainTarget) and the flag is removed immediately. From that tick on, Colony's constructor attaches
-// a real Drain operation for the target and it spawns/fights through the completely normal per-tick
-// arbiter — this module's job ends at the handoff. On failure (no fitting colony) the flag is left in
-// place and an error is logged every tick it's still unresolved, so the player sees why nothing is
-// happening.
+// Two passes per tick: (1) every drain flag still resolves/re-affirms its target's handoff, same as
+// before, except the flag is NOT removed on success — it stays as the live marker; (2) every colony
+// currently draining something gets checked against the current flag set, and any colony whose target
+// no longer has a matching flag gets cleared.
 //
 // Unlike attacking (a list, many concurrent targets per colony), draining is a scalar — ADR 0006 fixes
 // exactly one drain target per colony at a time. Two dedup rules follow from that: placing the same
@@ -52,9 +55,13 @@ function routeDistance(a: string, b: string): number {
 
 /** Runs once per tick from kernel/tick.ts. Resolves every active drain flag against the current empire,
  * hands the target off to the nearest affordable colony with no drain of its own already in progress,
- * and clears the flag on success. */
+ * and clears any colony whose drain target no longer has a live flag — the flag's presence IS the
+ * operation's lifetime (see file doc). */
 export function runDrainFlags(world: Empire): void {
-  for (const flag of drainFlags()) {
+  const flags = drainFlags();
+  const liveTargets = new Set(flags.map(targetRoomFor).filter((t): t is string => t !== undefined));
+
+  for (const flag of flags) {
     const target = targetRoomFor(flag);
     if (!target) {
       log.error(`drain flag "${flag.name}": can't tell the target room — place it in-room or name it "drain:<room>"`);
@@ -78,6 +85,17 @@ export function runDrainFlags(world: Empire): void {
 
     execute([{ kind: "setDrainTarget", room: pick.colony.name, target }]);
     log.info(`drain flag "${flag.name}": handed ${target} off to ${pick.colony.name}`);
-    flag.remove();
+    // Flag deliberately left in place: it's the live on/off switch for this drain, not a one-shot
+    // trigger (see file doc) — removing it here would sever that link the instant the handoff succeeds.
+  }
+
+  // The flag is gone (removed, or its target changed) for a colony that's still draining: stop it. This
+  // is what makes flag removal actually turn a drain off instead of just blocking new recruitment.
+  for (const colony of world.colonies) {
+    const target = colony.snapshot.draining;
+    if (target !== undefined && !liveTargets.has(target)) {
+      execute([{ kind: "clearDrainTarget", room: colony.name }]);
+      log.info(`drain flag for ${target} is gone: stopping ${colony.name}'s drain`);
+    }
   }
 }

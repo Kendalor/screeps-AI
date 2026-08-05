@@ -159,7 +159,12 @@ export class Upgrading extends Operation {
    */
   public override intents(colony: ColonySnapshot): Intent[] {
     if (colony.controllerLevel < upgraderConfig.linkRcl) return [];
-    if (colony.linkNetwork.controller) return []; // already recorded; only ever adds an id
+    // Re-detects rather than trusting the recorded id blindly: if that link was destroyed (combat,
+    // manual removal), colony.links no longer contains it, and route()'s own live-link check below
+    // would then treat the dead id as just another obstacle — silently re-siting a replacement next
+    // to the old (now-empty) tile instead of rebuilding in place. Recording only ever *adds* an id
+    // (recordLinkNetwork's own rule), so once a live replacement is found this fires again and wins.
+    if (colony.linkNetwork.controller && colony.links.some(l => l.id === colony.linkNetwork.controller)) return [];
 
     const sourceLinkIds = new Set(
       Object.values(colony.sourceMemory)
@@ -195,11 +200,27 @@ export class Upgrading extends Operation {
     // which correctly blocks pathing): a link isn't in roads.ts's WALKABLE_STRUCTURES because it truly
     // isn't walkable, but leaving it as an obstacle here means the instant it's built, this search can no
     // longer land back on its own tile and instead finds a different tile adjacent to the controller —
-    // claiming a second link next to the first, since nothing's built at the new spot yet. Once recorded
-    // (colony.linkNetwork.controller), treat that one tile as passable so the route keeps re-deriving the
-    // same endpoint it already built, the same way a container (genuinely walkable) always has.
-    const controllerLinkId = colony.linkNetwork.controller;
-    const structures = colony.structures.filter(s => s.id !== controllerLinkId);
+    // claiming a second link next to the first, since nothing's built at the new spot yet.
+    //
+    // Detected the same way intents() detects it (any built link within range of the controller that
+    // isn't the anchor/a source link) rather than trusting colony.linkNetwork.controller by id: that
+    // field only gets *set* the tick intents() runs, which reads the same once-per-tick snapshot this
+    // route() call does — so on the very tick the link first appears in colony.structures, the recorded
+    // id is still stale/unset here even though the live link already exists. Falling back to id-only
+    // would treat that brand-new link as an obstacle for one tick, re-site a replacement next to it, and
+    // then raze the original as unwanted — the exact razed/rebuilt loop this route is trying to prevent.
+    const sourceLinkIds = new Set(
+      Object.values(colony.sourceMemory)
+        .map(m => m?.linkId)
+        .filter((id): id is Id<StructureLink> => id !== undefined)
+    );
+    const controllerLink = colony.links.find(
+      l =>
+        l.id !== colony.linkNetwork.storage &&
+        !sourceLinkIds.has(l.id) &&
+        Math.max(Math.abs(l.x - colony.controller.x), Math.abs(l.y - colony.controller.y)) <= upgraderConfig.controllerLinkRange
+    );
+    const structures = colony.structures.filter(s => s.id !== controllerLink?.id);
     const costMatrix = buildCostMatrix({
       terrain: colony.terrain,
       structures: [...structures, ...planned]

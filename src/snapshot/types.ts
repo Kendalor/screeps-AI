@@ -64,6 +64,9 @@ export interface SnapCreep {
   x: number; // creep.pos.x — lets a planner range-gate a creep (e.g. only upgraders near the controller)
   y: number; // creep.pos.y
 
+  hits: number; // current hit points — lets a planner tell a wounded creep from a healthy one (e.g. Drain's advance-only-when-healed gate)
+  hitsMax: number;
+
   storeEnergy: number; // current carried energy — lets a planner tell a loaded creep from an empty one
   storeCapacity: number; // total store capacity across all resource types
 
@@ -312,6 +315,14 @@ export interface ColonySnapshot {
   // "no towers" alike; a room known (via prior observation) to have a storage just isn't sampled that
   // tick. Drain's snapshot-history recorder (#40/ADR 0006) reads this for its current target room.
   hostileRoomStorageEnergy: Partial<Record<string, number>>;
+  // Terrain for `draining` and its staging room only (not vision-gated like hostileRoomTowers/
+  // hostileRoomStorageEnergy above — Room.Terrain reads static map data for ANY room, visible or not, so
+  // there's nothing to gate). Same 1=walkable/0=wall, [x*50+y]-indexed convention as the home room's own
+  // `terrain` field. Drain's formation math must never place a squad member on a wall tile — confirmed
+  // live on shard0 (2026-08-05): a follower's assigned 2x2 slot landed on a wall, so it could never
+  // physically reach it, holding the whole squad in place forever (the inFormation gate correctly held
+  // the leader, but nothing had reason to expect the block itself to be unreachable in the first place).
+  drainRoomTerrain: Partial<Record<string, Uint8Array>>;
 }
 
 export interface EmpireSnapshot {

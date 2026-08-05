@@ -272,6 +272,28 @@ describe("Upgrading.structures — link swap at RCL5", () => {
     expect(links).toHaveLength(1);
     expect({ x: links[0].x, y: links[0].y }).toEqual({ x: natural.x, y: natural.y });
   });
+
+  // A second live bug, same family as the one above: once the recorded link is destroyed (combat,
+  // manual removal), colony.links no longer contains it — trusting the recorded id blindly would treat
+  // it as a dead obstacle-exclusion that matches nothing, so the route lands on a fresh nearby tile,
+  // that tile gets sited, and once *that* one finishes building the same gap strikes again — an endless
+  // razed/rebuilt cycle. structures() must fall back to re-deriving a fresh natural spot once the
+  // recorded link is confirmed gone, not orbit around a dead id forever.
+  it("re-derives a fresh spot once the recorded link no longer exists (destroyed)", () => {
+    const natural = upgrading.structures(gated()).find(s => s.type === "link")!;
+
+    const claimed = upgrading.structures(
+      gated({
+        structures: [], // the link is gone from the room
+        links: [], // and gone from the live link list
+        linkNetwork: { controller: "dead-id" as Id<StructureLink> } // but memory still points at it
+      })
+    );
+
+    const links = claimed.filter(s => s.type === "link");
+    expect(links).toHaveLength(1);
+    expect({ x: links[0].x, y: links[0].y }).toEqual({ x: natural.x, y: natural.y });
+  });
 });
 
 describe("Upgrading.intents — controller link recording", () => {
@@ -322,5 +344,15 @@ describe("Upgrading.intents — controller link recording", () => {
   it("does not record anything below the link tier (still on a container)", () => {
     const link = linkAt(controller.x + 1, controller.y, 0); // a link oddly present pre-RCL5 shouldn't be recorded yet
     expect(upgrading.intents(gated({ controllerLevel: 4, links: [link] }))).toEqual([]);
+  });
+
+  // recordLinkNetwork only ever adds an id (never clears one), so once the live link behind a recorded
+  // id is destroyed, the stale id would otherwise block re-recording forever — intents() must re-detect.
+  it("re-records once a replacement link is built after the old recorded one is destroyed", () => {
+    const replacement = linkAt(controller.x + 1, controller.y, 0);
+    const intents = upgrading.intents(
+      gated({ links: [replacement], linkNetwork: { controller: "dead-id" as Id<StructureLink> } })
+    );
+    expect(intents).toContainEqual({ kind: "recordLinkNetwork", room: "W1N1", controller: replacement.id });
   });
 });

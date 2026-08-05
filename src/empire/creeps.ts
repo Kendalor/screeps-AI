@@ -58,6 +58,33 @@ function atLockedTarget(creep: Creep, locked: Id<_HasId> | undefined): boolean {
   return !!obj?.pos && creep.pos.inRangeTo(obj.pos, 1);
 }
 
+// True when memory.squadTargetPos is set and the creep isn't exactly there yet — mirrors moveToPos's own
+// "arrived" check (interpreter.ts's runStep, case "moveToPos") so this and the real step agree on what
+// counts as away. No target at all reads as NOT away (nothing to preempt toward).
+function creepAwayFromSquadTargetPos(creep: Creep): boolean {
+  const target = creep.memory.squadTargetPos;
+  if (!target) return false;
+  return creep.pos.roomName !== target.room || !creep.pos.isEqualTo(target.x, target.y);
+}
+
+// Forces moveToPos (at `posStep`) to run as this tick's primary step, bypassing the normal
+// firstRunnableStep scan — see runOne's call site doc for why standStill actions can otherwise hold
+// primary-step status forever once task.step lands on them. Mirrors runOne's own primary-step bookkeeping
+// (task.step/task.target update, debug log, co-fired bonus step) so this reads as "the same dispatch,
+// just aimed at a specific step" rather than a parallel code path.
+function runMoveToPos(creep: Creep, steps: Step[], posStep: number, task: { step: number; target?: Id<_HasId> }): void {
+  const result = runStep(creep, steps[posStep], undefined, true);
+  const state: CreepState = { step: posStep, ...storeOf(creep), targetGone: false, didAct: result.didAct };
+  const next = nextStep(steps, state);
+  log.debugCreep(
+    creep.name,
+    `role=${creep.memory.role} step=${posStep}(moveToPos) acted(preempt) didAct=${result.didAct} target=${result.target ?? "-"} nextStep=${next}`
+  );
+  task.step = next;
+  task.target = result.target;
+  coFireBonusStep(creep, steps, posStep);
+}
+
 const runOne = wrapFn(function runOne(creep: Creep): void {
   const def = roleDef(creep.memory.role);
   if (!def || def.steps.length === 0) return;
@@ -76,6 +103,23 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us
 
+  // moveToPos always wins over a standStill step (heal/attack — see Step.standStill's doc) once the
+  // creep has drifted from its assigned position: a squadMate/hostile target that resolves to something
+  // ALREADY in range (trivially true for heal — "squadMate" includes the acting creep itself, so an
+  // undamaged healer can always self-heal a no-op) reports acted:true every tick regardless of position,
+  // which would otherwise let it hold primary-step status forever once task.step lands there — the
+  // ordinary forward-scanning dispatch below has no reason to ever prefer moveToPos again, since
+  // firstRunnableStep only looks forward from task.step and a "move"-kind step never self-completes (see
+  // interpreter.ts's isComplete). Confirmed live on shard0 (2026-08-05): two drain healers sat exactly
+  // one tile from their assigned formation slot, self-healing every tick, never covering that last tile.
+  // Checked ahead of the normal dispatch specifically because standStill exists to stop heal/attack from
+  // ever DRIVING travel — it must not also let them silently outrank the step whose entire job is travel.
+  const posStep = def.steps.findIndex(s => s.do === "moveToPos");
+  if (posStep !== -1 && creepAwayFromSquadTargetPos(creep)) {
+    runMoveToPos(creep, def.steps, posStep, task);
+    return;
+  }
+
   // Skip straight to a step with something to do, rather than wasting a tick on one already complete on arrival.
   let step = firstRunnableStep(def.steps, task.step, storeOf(creep));
   if (step !== task.step) task.target = undefined; // lock belonged to the skipped step
@@ -90,7 +134,7 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
 
   // A dead target costs no API call, so retry the next step immediately; bounded to one full pass.
   for (let i = 0; i < def.steps.length; i++) {
-    const result = runStep(creep, def.steps[step], task.target, true, { doNotBlockRoads: def.doNotBlockRoads });
+    const result = runStep(creep, def.steps[step], task.target, !def.steps[step].standStill, { doNotBlockRoads: def.doNotBlockRoads });
 
     if (result.acted) {
       const state: CreepState = { step, ...storeOf(creep), targetGone: false, didAct: result.didAct };

@@ -66,6 +66,42 @@ function advanceIsSafe(nextPos: XY, towers: readonly SnapTower[], healers: reado
   return projectedDamage <= incomingHeal(nextPos, healers);
 }
 
+// One representative DirectionConstant per each of the 4 distinct 2x2-block orientations formation.ts's
+// QUADRANT collapses 8 compass directions down to — see followerOffsets' own doc for why only 4 exist.
+const ORIENTATIONS: DirectionConstant[] = [TOP, RIGHT, BOTTOM, LEFT];
+
+function walkable(terrain: Uint8Array | undefined, x: number, y: number): boolean {
+  // No terrain data on record for this room (shouldn't happen — drainRoomTerrain covers `draining` and
+  // every drainRoute room — but Drain must never brick a squad on a snapshot gap) reads as walkable, the
+  // same fail-open convention pickStagingRoom uses for an unscouted room's hostile flag.
+  if (!terrain) return true;
+  if (x < 0 || x > 49 || y < 0 || y > 49) return false;
+  return terrain[x * 50 + y] === 1;
+}
+
+/** Whether the leader-at-`pos` + followerOffsets(pos, direction) block is entirely walkable — the actual
+ * 2x2 formation Drain is about to commit the squad to, not just the leader's own tile. `terrain` is
+ * `colony.drainRoomTerrain[pos.room]`, absent only for a room the snapshot boundary didn't cover (see
+ * walkable's fail-open doc). */
+function blockIsWalkable(pos: XY, direction: DirectionConstant, terrain: Uint8Array | undefined): boolean {
+  if (!walkable(terrain, pos.x, pos.y)) return false;
+  return followerOffsets(pos, direction).every(o => walkable(terrain, o.x, o.y));
+}
+
+/** The best orientation for a 2x2 block anchored at `pos`: the natural direction of travel (`preferred`)
+ * if its block is fully walkable, else whichever of the other 3 fixed orientations (see ORIENTATIONS) is
+ * — deterministic order, so two ticks with identical inputs always agree. Undefined when EVERY
+ * orientation at this tile hits a wall (a leader tile boxed in on at least 3 of its 4 quadrants), the
+ * signal to hold rather than commit to a block that can never be fully occupied. Confirmed live on
+ * shard0 (2026-08-05): a follower's assigned formation slot landed on a solid wall tile it could never
+ * physically reach, holding the whole squad frozen forever — the inFormation gate correctly waited for a
+ * straggler that in fact could never arrive, because nothing had checked the slot was reachable before
+ * assigning it. */
+function walkableOrientation(pos: XY, preferred: DirectionConstant, terrain: Uint8Array | undefined): DirectionConstant | undefined {
+  if (blockIsWalkable(pos, preferred, terrain)) return preferred;
+  return ORIENTATIONS.find(d => d !== preferred && blockIsWalkable(pos, d, terrain));
+}
+
 export class Drain extends Operation {
   public readonly kind = "drain";
 
@@ -113,23 +149,48 @@ export class Drain extends Operation {
 
     // ADR 0006's assembly gate governs the squad's FIRST push out of the staging room: below full
     // strength, hold everyone there. At full strength but not yet all physically together in the staging
-    // room, also hold — moveToRoom (via attackTargetRoom, reused rather than a parallel mechanism)
-    // carries each member there across borders. Once every member has been seen together in the staging
-    // room at least once, the leader alone (see below) drives advance/retreat from then on; this initial
-    // "all four together" check is deliberately based on current position each tick, not persisted state
-    // (out of scope for this slice — see ADR 0006's deferred loss/reassembly), so it re-observes true the
-    // moment a fully assembled squad is actually standing there, which is the only case that needs to.
+    // room, also hold. Once every member has been seen together in the staging room at least once, the
+    // leader alone (see below) drives advance/retreat from then on; this initial "all four together"
+    // check is deliberately based on current position each tick, not persisted state (out of scope for
+    // this slice — see ADR 0006's deferred loss/reassembly), so it re-observes true the moment a fully
+    // assembled squad is actually standing there, which is the only case that needs to.
     const readyForFirstPush = assembled && squad.every(c => c.room === staging);
     const leader = assembled ? leaderOf(attacker, healers) : undefined;
     const alreadyUnderway = leader !== undefined && leader.room !== staging;
+
+    // Every squad member's squadTargetPos is set fresh EVERY tick this operation runs, whichever branch
+    // below computes it — the sole source of truth for where a drain creep should be, chased by the
+    // role's one moveToPos step (see drainHealer.ts/drainAttacker.ts). No moveToRoom + moveToPos two-step
+    // handoff: that split let a straggler's step cursor latch onto moveToPos while chasing a stale
+    // position from an earlier tick, with nothing to ever send it back to a room-crossing step — a real
+    // stuck state confirmed live on shard0 (2026-08-05), a healer that spawned before this operation's
+    // per-tick pass ever reached it sat motionless in its home room for hundreds of ticks even after
+    // everything else recovered. A single always-fresh target can't go stale the same way: whatever
+    // squadTargetPos says this tick is simply where the creep walks, full stop.
     if (!readyForFirstPush && !alreadyUnderway) {
-      return squad
-        .filter(c => c.room !== staging)
-        .map(c => ({ kind: "setAttackTargetRoom", creep: c.id, room: staging }));
+      // Rally point: every member (including any straggler still at home) heads for the staging room's
+      // centre. No formation discipline needed yet — that only matters once advancing into contested
+      // territory (below); a loose rally is enough to get everyone physically together.
+      const rally = { x: 25, y: 25, room: staging };
+      return [...squad.map(c => ({ kind: "setSquadTargetPos" as const, creep: c.id, pos: rally })), ...this.drainSample(colony)];
     }
     // Guaranteed defined: both readyForFirstPush and alreadyUnderway require assembled === true.
     const definiteLeader = leader!;
     const leaderPos: XY & { room: string } = { x: definiteLeader.x, y: definiteLeader.y, room: definiteLeader.room };
+    const followers = squad.filter(c => c.id !== definiteLeader.id);
+
+    // The leader may only take its next step once the squad is ALREADY a tight 2x2 block — same room,
+    // every follower within range 1 (Chebyshev) of the leader's CURRENT tile. A block that size has max
+    // internal range 1 between any two members, so "every follower within range 1 of the leader" alone
+    // guarantees mutual range-1 for the whole squad, not just leader-to-follower. Without this gate the
+    // leader advanced/retreated every tick regardless of whether followers had caught up — confirmed live
+    // on shard0 (2026-08-05): a wounded healer left several tiles behind a still-advancing leader, well
+    // outside heal-assist range, taking tower fire it should have been retreating out of instead. Holding
+    // the leader in place (its own current tile, not a new candidate) lets stragglers close the gap; once
+    // formed up, the very next tick's re-check immediately resumes the real advance/retreat decision — no
+    // separate "regrouping" state, just this same check re-evaluated fresh.
+    const inFormation = followers.every(f => f.room === leaderPos.room && range(f, leaderPos) <= 1);
+
     // "Deeper into the target room" and "back toward the staging room" are both just travelTo aim points
     // (moveToPos's travelTo handles the actual multi-tile path, including crossing the room border) —
     // each tick re-evaluates the aim point fresh from the leader's current position, which is what makes
@@ -140,23 +201,51 @@ export class Drain extends Operation {
 
     const towers = colony.hostileRoomTowers[colony.draining] ?? [];
     const healSources: HealSource[] = healers.map(h => ({ x: h.x, y: h.y, healParts: healPartsOf(h) }));
-    // The candidate tile actually checked is one step toward the advance aim (not the aim point itself) —
-    // "the NEXT candidate position", per ADR 0006, so a room's center far away doesn't get pre-emptively
-    // rejected by towers near the border it hasn't reached yet.
-    const nextStepCandidate = stepToward(leaderPos, advanceAim);
-    const safe = advanceIsSafe(nextStepCandidate, towers, healSources);
-    const aim = safe ? advanceAim : retreatAim;
-    const nextPos = safe ? nextStepCandidate : stepToward(leaderPos, retreatAim);
+    // advanceIsSafe only projects ONE tile ahead (would this next step's incoming tower damage exceed
+    // what the squad can heal through THIS tick) — it has no memory of damage already sustained, so on
+    // its own it will happily walk an already-wounded squad straight back into fire the instant a single
+    // tile looks individually survivable. fullyHealed gates advancing (never retreating/holding — a hurt
+    // squad must always be free to disengage) on every member being at full HP, so a retreat actually
+    // means "fall back and let heal top everyone up" rather than "reverse for one tile and immediately
+    // push again." Confirmed live on shard0 (2026-08-05): a healer took real tower damage and died mid
+    // engagement because the per-tile check alone kept re-approving advance while the squad was still hurt.
+    const fullyHealed = squad.every(c => c.hits >= c.hitsMax);
 
-    const direction = directionOf(leaderPos, aim);
-    const offsets = followerOffsets(leaderPos, direction);
-    const followers = squad.filter(c => c.id !== definiteLeader.id);
+    let nextPos: XY & { room: string };
+    let aim: XY & { room: string };
+    if (!inFormation) {
+      // Hold the leader exactly where it stands — a real, current tile, not a moving target — so
+      // followerOffsets below computes slots the stragglers can actually converge on this tick.
+      nextPos = leaderPos;
+      aim = leaderPos;
+    } else {
+      // The candidate tile actually checked is one step toward the advance aim (not the aim point
+      // itself) — "the NEXT candidate position", per ADR 0006, so a room's center far away doesn't get
+      // pre-emptively rejected by towers near the border it hasn't reached yet.
+      const nextStepCandidate = stepToward(leaderPos, advanceAim);
+      const safe = fullyHealed && advanceIsSafe(nextStepCandidate, towers, healSources);
+      aim = safe ? advanceAim : retreatAim;
+      nextPos = safe ? nextStepCandidate : stepToward(leaderPos, retreatAim);
+    }
 
-    const out: Intent[] = [{ kind: "setSquadTargetPos", creep: definiteLeader.id, pos: nextPos }];
+    // The block anchored at nextPos must be entirely walkable in SOME orientation, or the whole move is
+    // rejected — a follower assigned a wall tile can never physically reach it, which would otherwise
+    // freeze the squad forever waiting on the inFormation gate above for a straggler that can't arrive
+    // (confirmed live on shard0, 2026-08-05 — see walkableOrientation's doc). Falls back to holding at
+    // leaderPos (the CURRENT tile, already proven reachable since the squad is standing on it) rather
+    // than committing to nextPos at all when no orientation there works.
+    const terrain = colony.drainRoomTerrain[nextPos.room];
+    const preferredDirection = directionOf(leaderPos, aim);
+    const orientation = walkableOrientation(nextPos, preferredDirection, terrain);
+    const finalPos = orientation ? nextPos : leaderPos;
+    const finalDirection = orientation ?? walkableOrientation(leaderPos, preferredDirection, colony.drainRoomTerrain[leaderPos.room]) ?? preferredDirection;
+    const offsets = followerOffsets(finalPos, finalDirection);
+
+    const out: Intent[] = [{ kind: "setSquadTargetPos", creep: definiteLeader.id, pos: finalPos }];
     followers.forEach((follower, i) => {
       const offset = offsets[i];
       if (!offset) return;
-      out.push({ kind: "setSquadTargetPos", creep: follower.id, pos: { x: offset.x, y: offset.y, room: leaderPos.room } });
+      out.push({ kind: "setSquadTargetPos", creep: follower.id, pos: { x: offset.x, y: offset.y, room: finalPos.room } });
     });
     out.push(...this.drainSample(colony));
     return out;

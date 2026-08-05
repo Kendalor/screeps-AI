@@ -20,12 +20,17 @@ function drainAttackerBody(energy: number): BodyPartConstant[] {
 
 // The Drain Energy operation's (issue #34/ADR 0006) melee squad member: sits at the front of the
 // formation and prioritizes towers (the source of the operation's namesake energy drain) over any
-// hostile creep, falling back to the most threatening hostile once no tower remains in range.
-// moveToRoom { to: "attackTargetRoom" } (issue #37's op stamps this to the staging room while
-// assembling/retreating, the target room while advancing) carries the squad across room borders;
-// moveToPos closes the last stretch onto the operation's per-tick formation/advance-retreat tile (see
-// operations/drain.ts's intents(), which is what actually decides where that tile is each tick — this
-// role is only the primitive step list + body, no operation wiring here, out of scope for issue #35).
+// hostile creep, falling back to the most threatening hostile once no tower remains in range. moveToPos
+// alone carries it everywhere — see drainHealer.ts's header for why the old moveToRoom+moveToPos split
+// was a real stuck-state bug (a healer confirmed frozen at home for hundreds of ticks live on shard0,
+// 2026-08-05) and why a single always-fresh squadTargetPos (set every tick by operations/drain.ts's
+// intents(), for every squad member unconditionally) replaces it instead of patching around it.
+// Both attack steps carry standStill:true for the same reason drainHealer's heal step does (see its
+// header): this creep is the squad LEADER (drain.ts's leaderOf prefers the attacker whenever alive) —
+// everyone else's formation offset is computed relative to ITS position, so if attack's own travelTo
+// were ever allowed to grab primary-step status and drag the leader off toward a hostile/tower instead
+// of its assigned squadTargetPos, the whole formation reference point would drift out from under every
+// follower at once. standStill keeps attack action-only (fires in range, never moves) in every context.
 export class DrainAttacker extends Role {
   static override readonly priority = 110; // same table as Attacker/Defender — an ordered squad op is as urgent as either
   static override readonly mover = true;
@@ -33,9 +38,8 @@ export class DrainAttacker extends Role {
     return drainAttackerBody(energy);
   }
   static override readonly steps: Step[] = [
-    { do: "moveToRoom", to: "attackTargetRoom" },
     { do: "moveToPos", to: "squadTargetPos" },
-    { do: "attack", from: { find: "structure", type: [STRUCTURE_TOWER] } },
-    { do: "attack", from: { find: "hostile", prefer: "mostThreatening" } }
+    { do: "attack", from: { find: "structure", type: [STRUCTURE_TOWER] }, standStill: true },
+    { do: "attack", from: { find: "hostile", prefer: "mostThreatening" }, standStill: true }
   ];
 }

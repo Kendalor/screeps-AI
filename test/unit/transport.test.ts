@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runTransport } from "../../src/behaviors/transport";
+import { clearTiles, stubTile } from "../constants";
 import { stubGame } from "../helpers";
 
 function transportCreep(over: {
@@ -37,7 +38,10 @@ function transportCreep(over: {
       findInRange: (type: number, range: number) =>
         (over.nearby?.[type] ?? []).filter(
           o => Math.max(Math.abs((over.pos?.x ?? 25) - o.pos.x), Math.abs((over.pos?.y ?? 25) - o.pos.y)) <= range
-        )
+        ),
+      // parkNearBunker's stepOffRoad call only needs "not standing on a road" here — no test in this
+      // file exercises the actual road-eviction path (that's roadAvoidance.test.ts's job).
+      lookFor: () => []
     },
     room: { name: over.memory.home, find: () => [] },
     withdraw: () => {
@@ -465,6 +469,33 @@ describe("runTransport", () => {
     runTransport(creep);
 
     expect(travelTargets).toHaveLength(0);
+  });
+
+  it("steps off the anchor tile when parked on a road another mover needs (confirmed live deadlock: a parked supply creep squatting on the sole tile adjacent to an extension permanently blocked a sibling's delivery there)", () => {
+    stubGame({ rooms: { W1N1: { getTerrain: () => ({ get: () => 0 }) } } });
+    (Memory as unknown as { colonies: Record<string, { anchor: { x: number; y: number } }> }).colonies = {
+      W1N1: { anchor: { x: 20, y: 20 } }
+    };
+    clearTiles();
+    stubTile("W1N1", 20, 20, { structure: [{ structureType: STRUCTURE_ROAD }] });
+    stubTile("W1N1", 21, 20, { creep: [{ id: "other", memory: { role: "hauler" } }] }); // wants through
+
+    const travelTo = vi.fn();
+    const creep = {
+      id: "transport1",
+      name: "transport1",
+      memory: { role: "transport", home: "W1N1" },
+      store: { getFreeCapacity: () => 50, getUsedCapacity: () => 0 },
+      pos: new RoomPosition(20, 20, "W1N1"), // sitting right on the anchor road tile
+      room: { name: "W1N1", find: () => [] },
+      travelTo
+    } as unknown as Creep;
+
+    runTransport(creep);
+
+    expect(travelTo).toHaveBeenCalledTimes(1);
+    const dest = (travelTo.mock.calls[0] as [RoomPosition])[0];
+    expect(dest.isEqualTo(new RoomPosition(20, 20, "W1N1"))).toBe(false);
   });
 
   it("does nothing (no crash) when idle and no anchor is known yet", () => {

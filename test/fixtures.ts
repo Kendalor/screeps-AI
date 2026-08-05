@@ -154,6 +154,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     drainRoute: [],
     hostileRoomTowers: {},
     hostileRoomStorageEnergy: {},
+    drainRoomTerrain: {},
     ...over
   };
 }
@@ -261,6 +262,8 @@ export function snapCreep(
     room: home, // defaults to home; a scout out on the frontier overrides it
     x: 25, // defaults onto the fixture controller (25,25) so an upgrader reads as "near controller"; override to place elsewhere
     y: 25,
+    hits: 100,
+    hitsMax: 100,
     storeEnergy: 0,
     storeCapacity: 50,
     ...rest,

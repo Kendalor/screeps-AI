@@ -1,7 +1,9 @@
 // Flag-triggered drain entry point: reads Game.flags for a "drain"/"drain:<room>" flag, resolves the
 // target room, picks a sponsor colony via pickDrainSponsor, and hands the target off durably
-// (setDrainTarget) rather than spawning anything directly. Mirrors attackFlags.test.ts exactly, except
-// the "already handed off" dedup check reads a scalar (ColonyMemory.draining === target) instead of
+// (setDrainTarget) rather than spawning anything directly. Unlike attackFlags.test.ts, the flag is NOT a
+// one-shot trigger here: it stays in place after a successful handoff (it IS the drain's on/off switch),
+// and any colony whose draining target no longer has a matching live flag gets cleared the same tick.
+// The "already handed off" dedup check reads a scalar (ColonyMemory.draining === target) instead of
 // checking list membership, since ADR 0006 fixes exactly one drain target per colony.
 
 import { describe, expect, it, vi } from "vitest";
@@ -37,7 +39,7 @@ describe("runDrainFlags", () => {
     expect(() => runDrainFlags(world)).not.toThrow();
   });
 
-  it("hands the target off to the sponsor colony and removes the flag on success", () => {
+  it("hands the target off to the sponsor colony and leaves the flag in place as the live switch", () => {
     const remove = vi.fn();
     setUp({ f1: flag("drain", "W5N5", remove) });
     // Bare "drain" name resolves via the flag's own room — needs vision there, no controller required.
@@ -48,7 +50,30 @@ describe("runDrainFlags", () => {
     runDrainFlags(world);
 
     expect(drainingOf(Memory, "W1N1")).toBe("W5N5");
-    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("clears a colony's drain the tick its flag is removed", () => {
+    setUp({}); // no flags at all this tick
+
+    const world = testEmpire(colonySnap({ name: "W1N1", energyCapacity: SQUAD_MIN_COST, draining: "W5N5" }));
+
+    runDrainFlags(world);
+
+    expect(drainingOf(Memory, "W1N1")).toBeUndefined();
+  });
+
+  it("keeps draining while its flag is still present", () => {
+    setUp({ f1: flag("drain", "W5N5") });
+    (globalThis as { Game: { rooms: Record<string, unknown> } }).Game.rooms.W5N5 = {};
+
+    const world = testEmpire(colonySnap({ name: "W1N1", energyCapacity: SQUAD_MIN_COST, draining: "W5N5" }));
+
+    runDrainFlags(world);
+
+    // Memory wasn't touched by the handoff pass (dedup short-circuits), and the clear pass finds a live
+    // flag for W5N5 — so draining should still read back as whatever the snapshot said, i.e. untouched.
+    expect(drainingOf(Memory, "W1N1")).toBeUndefined();
   });
 
   it("parses the target room from a drain:<room> name when the flag's own room has no vision", () => {
@@ -113,7 +138,9 @@ describe("runDrainFlags", () => {
     setUp({ f1: flag("drain", "W6N6", remove) });
     (globalThis as { Game: { rooms: Record<string, unknown> } }).Game.rooms.W6N6 = {};
 
-    // Only colony in the empire is already draining W5N5 — it must not be reassigned to W6N6.
+    // Only colony in the empire is already draining W5N5 — it must not be reassigned to W6N6. (It does
+    // get cleared by the same pass, since W5N5 has no live flag of its own this tick — that's the
+    // separate auto-clear behaviour covered above, not a reassignment.)
     const world = testEmpire(colonySnap({ name: "W1N1", energyCapacity: SQUAD_MIN_COST, draining: "W5N5" }));
 
     runDrainFlags(world);
