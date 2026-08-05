@@ -1,49 +1,70 @@
-// Pure formation-position math for a fixed 4-creep squad (1 leader + 3 followers) — see ADR 0006's
-// "Leader-relative offsets for formation, built as a swappable unit" for why this is hand-rolled and
-// isolated behind its own module rather than inline in the Drain operation: heal output requires every
-// squad member at range 1 of every other (a strict 2x2 block), not the range-3 HEAL normally allows, so
-// loose proximity-following isn't tight enough. No Game object, no creep stubs, no Drain dependency —
-// positions and a direction in, target positions out. Recomputed fresh every tick by the caller.
+// Formation-as-data (ADR 0007): a Formation is a list of slots, each an (dx, dy) offset from a designated
+// anchor slot at a canonical facing (TOP), plus the role that fills it. slotTiles rotates those offsets
+// to any of the 8 compass facings and places them at a concrete anchor tile — a pure geometric transform,
+// no Game object, no creep stubs. Replaces the old hardcoded 2x2 QUADRANT/followerOffsets table: the same
+// machinery now serves Drain's 2x2 and any future squad's different size/composition. A formation's own
+// facing-selection (e.g. a strict 2x2's collapse of the 8 travel directions to its 4 distinct
+// orientations, for mutual range-1) belongs in that formation's own definition, NOT baked in here.
 
 import { type XY } from "./geometry";
 
-// A strict 2x2 block is necessarily grid-axis-aligned (offsets of exactly +-1 on each axis) — Screeps'
-// 8-direction compass has diagonals (TOP_RIGHT etc.) whose own unit step is already (+-1, +-1), so
-// composing two such steps to build a block corner would land 2 tiles away, breaking mutual range-1.
-// The fix isn't to rotate through all 8 compass directions; it's to recognize a 2x2 block only has 4
-// distinct orientations in the first place (which corner the leader occupies), and snap the 8 directions
-// of travel down to the nearest of those 4 — adjacent compass directions (e.g. TOP and TOP_RIGHT) share
-// an orientation, which is correct: there's no finer rotation a strict 2x2 can express.
-//
-// Each entry is the sign of the offset from the leader to the follower that shares its row/column —
-// i.e. the block extends from the leader toward (signX, 0) and (0, signY), with the diagonal follower at
-// (signX, signY). Chosen so the block trails behind the leader's direction of travel (e.g. moving TOP,
-// the leader is the block's topmost corner and followers sit below/beside it).
-const QUADRANT: Record<DirectionConstant, { signX: number; signY: number }> = {
-  [TOP]: { signX: 1, signY: 1 },
-  [TOP_RIGHT]: { signX: 1, signY: 1 },
-  [RIGHT]: { signX: -1, signY: 1 },
-  [BOTTOM_RIGHT]: { signX: -1, signY: 1 },
-  [BOTTOM]: { signX: -1, signY: -1 },
-  [BOTTOM_LEFT]: { signX: -1, signY: -1 },
-  [LEFT]: { signX: 1, signY: -1 },
-  [TOP_LEFT]: { signX: 1, signY: -1 }
+export interface FormationSlot {
+  dx: number; // offset from the anchor slot, measured at the canonical TOP facing
+  dy: number;
+  role: string; // matched against a creep's role/memory when assigning members to slots
+}
+
+export type Formation = FormationSlot[];
+
+// A slot tile carries its role so a caller can match a creep to the slot it belongs in.
+export interface SlotTile extends XY {
+  room: string;
+  role: string;
+}
+
+// The canonical facing every formation's offsets are defined at. Rotating to any other facing is a pure
+// rotation of each (dx, dy) about the anchor by the angle from TOP.
+export const CANONICAL_FACING: DirectionConstant = TOP;
+
+// Screeps' 8-direction compass, clockwise from TOP. The index is the number of 45-degree steps clockwise
+// from the canonical TOP facing — TOP is 0 steps, RIGHT is 2 steps (90 degrees), etc.
+const CW_STEPS: Record<DirectionConstant, number> = {
+  [TOP]: 0,
+  [TOP_RIGHT]: 1,
+  [RIGHT]: 2,
+  [BOTTOM_RIGHT]: 3,
+  [BOTTOM]: 4,
+  [BOTTOM_LEFT]: 5,
+  [LEFT]: 6,
+  [TOP_LEFT]: 7
 };
 
-/**
- * Computes the 3 follower target positions for a strict 2x2 leader-relative formation block, given the
- * leader's position and its current direction of travel. Returns positions for [beside, behind,
- * behind+beside] the leader (order fixed but otherwise interchangeable — callers assign followers to
- * slots, this module doesn't care which follower goes where) such that leader + all 3 followers form a
- * mutual-range-1 (Chebyshev) block, oriented so the leader is the block's leading corner for the given
- * direction of travel.
- */
-export function followerOffsets(leaderPos: XY, direction: DirectionConstant): XY[] {
-  const { signX, signY } = QUADRANT[direction];
+/** Rotates an offset vector clockwise by the angle between the canonical TOP facing and `facing`. In
+ * screeps' screen space y grows downward, so a clockwise screen rotation by theta is
+ * (dx', dy') = (dx*cos - dy*(-sin), ...) — worked out here as the standard rotation with sin's sign set
+ * for the y-down axis. Axis-aligned facings (TOP/RIGHT/BOTTOM/LEFT) produce exact integer results; the
+ * diagonal facings rotate by 45 degrees and are rounded to the nearest tile (a formation that needs its
+ * slots to stay on exact tiles at diagonal facings should restrict itself to axis-aligned facings in its
+ * own facing-selection — see the module header). */
+export function rotateOffset(offset: { dx: number; dy: number }, facing: DirectionConstant): { dx: number; dy: number } {
+  const theta = (CW_STEPS[facing] * Math.PI) / 4;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  // Clockwise rotation in a y-down coordinate system: x' = x*cos - y*sin, y' = x*sin + y*cos.
+  const dx = offset.dx * cos - offset.dy * sin;
+  const dy = offset.dx * sin + offset.dy * cos;
+  // Round away tiny floating error at axis-aligned facings, and snap 45-degree diagonals to the grid.
+  // `+ 0` normalizes a rounded -0 back to 0 so equality checks don't distinguish the two.
+  return { dx: Math.round(dx) + 0, dy: Math.round(dy) + 0 };
+}
 
-  const besidePos: XY = { x: leaderPos.x + signX, y: leaderPos.y };
-  const behindPos: XY = { x: leaderPos.x, y: leaderPos.y + signY };
-  const behindBesidePos: XY = { x: leaderPos.x + signX, y: leaderPos.y + signY };
-
-  return [besidePos, behindPos, behindBesidePos];
+/** The concrete tiles a formation occupies with its anchor slot at `anchor`, facing `facing`. Each
+ * returned tile carries its slot's role. Pure — no Game access, no bounds/terrain check (that's the
+ * pather's job, see squadPath.ts). Tiles are returned in formation-definition order, anchor first when
+ * the anchor slot is at index 0 (the convention Drain's formation uses). */
+export function slotTiles(anchor: XY & { room: string }, facing: DirectionConstant, formation: Formation): SlotTile[] {
+  return formation.map(slot => {
+    const r = rotateOffset(slot, facing);
+    return { x: anchor.x + r.dx, y: anchor.y + r.dy, room: anchor.room, role: slot.role };
+  });
 }

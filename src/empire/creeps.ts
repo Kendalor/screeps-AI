@@ -14,15 +14,73 @@ import {
 import { roleDef } from "../behaviors/roles";
 import { runSteward } from "../behaviors/steward";
 import { sweepEnRoute } from "../behaviors/sweep";
-import { runTransport } from "../behaviors/transport";
+import { parkNearBunker, runTransport } from "../behaviors/transport";
 import type { Step } from "../behaviors/types";
+import type { Colony } from "../colony";
+import { planSquadActions, planSquadMove, type ActionIntent, type SquadState } from "../lib/squad";
+import type { TerrainSource } from "../lib/squadPath";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
+import type { ColonySnapshot } from "../snapshot/types";
 
-export const runCreepBehaviors = wrapFn(function runCreepBehaviors(): void {
+// A squad-bearing operation (ADR 0007): supplies the generic Squad machinery with its formation state,
+// travel goal, terrain source, and action content. Duck-typed — runSquads finds any operation exposing
+// squadState() and treats it as a squad. squadState returns undefined while assembling (members run their
+// own step tables) or when there's no squad to move.
+interface SquadBearingOperation {
+  squadState(colony: ColonySnapshot): SquadState | undefined;
+  squadGoal(colony: ColonySnapshot): { x: number; y: number; room: string } | undefined;
+  terrain(colony: ColonySnapshot): TerrainSource;
+  actionPlanner: (state: SquadState, colony: ColonySnapshot) => Map<Id<Creep>, ActionIntent>;
+}
+
+function isSquadBearing(op: unknown): op is SquadBearingOperation {
+  return typeof (op as { squadState?: unknown })?.squadState === "function";
+}
+
+// One squad ready to run this tick: its resolved state, the goal it's heading toward, its terrain source,
+// and its action content — everything runSquads needs, computed ONCE so the membership set (below) and the
+// squad pass agree on exactly the same members (ADR 0007's single-source-of-truth rule).
+interface ResolvedSquad {
+  state: SquadState;
+  goal: { x: number; y: number; room: string };
+  terrain: TerrainSource;
+  colony: ColonySnapshot;
+  actionPlanner: (state: SquadState, colony: ColonySnapshot) => Map<Id<Creep>, ActionIntent>;
+}
+
+// Resolve every colony's squad-bearing operations into ready-to-run squads, and collect every squad
+// member's creep id into one shared set. The main creep loop skips any id in this set; runSquads iterates
+// these same resolved squads — so no creep is ever handled by both passes or neither.
+function resolveSquads(colonies: readonly Colony[]): { squads: ResolvedSquad[]; members: Set<Id<Creep>> } {
+  const squads: ResolvedSquad[] = [];
+  const members = new Set<Id<Creep>>();
+  for (const colony of colonies) {
+    for (const op of colony.operations) {
+      if (!isSquadBearing(op)) continue;
+      const state = op.squadState(colony.snapshot);
+      if (!state || state.members.length === 0) continue;
+      const goal = op.squadGoal(colony.snapshot);
+      if (!goal) continue;
+      squads.push({ state, goal, terrain: op.terrain(colony.snapshot), colony: colony.snapshot, actionPlanner: op.actionPlanner });
+      for (const m of state.members) members.add(m.id);
+    }
+  }
+  return { squads, members };
+}
+
+export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: readonly Colony[] = []): void {
+  // Compute squad membership once, up front — the single source of truth shared between the per-creep
+  // skip below and the runSquads pass, so a squadded creep is never run by both or neither (ADR 0007).
+  const { squads, members: squadMembers } = resolveSquads(colonies);
+
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
     if (creep.spawning) continue;
+    // Squadded this tick: handled by runSquads (below), not the ordinary step table. Membership is
+    // per-tick runtime state — the same creep runs its own step table on a tick it isn't squadded (before
+    // joining, after dissolution, or while a spawned replacement is still walking in — see Drain.squadState).
+    if (squadMembers.has(creep.id)) continue;
     // Diverted before the step-table dispatch: "transport" and "supply"'s ROLES entries deliberately
     // have empty steps (assignment comes from planLogistics via memory.logistics, not a static step
     // table — supply is planned through its own restricted provider/consumer view, see
@@ -44,7 +102,55 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(): void {
     }
     runOne(creep);
   }
+
+  runSquads(squads);
 }, "creeps:runCreepBehaviors");
+
+// The squad pass (ADR 0007): iterate SQUADS (not creeps), compute each squad's shared plan once, and
+// dispatch every current member. Movement (planSquadMove) and action (planSquadActions) are computed
+// independently; runSquadMember issues both intents unconditionally — no gating, no primary/co-fired
+// distinction, no shared per-tick resource to contend over (the whole reason the step table's standStill
+// referee is gone). Thin and Game-coupled by design (left untested directly — ADR 0007): it only
+// translates already-computed assignments into real move/heal/attack calls.
+function runSquads(squads: readonly ResolvedSquad[]): void {
+  for (const squad of squads) {
+    const moves = planSquadMove(squad.state, squad.goal, squad.terrain);
+    const actions = planSquadActions(squad.state, squad.colony, squad.actionPlanner);
+    for (const move of moves) {
+      const creep = Game.getObjectById(move.creep);
+      if (!creep) continue;
+      runSquadMember(creep, move.to, actions.get(move.creep));
+    }
+  }
+}
+
+// Dispatch one squad member: move toward its assigned tile (unless already there) AND fire its assigned
+// action (attack/heal), both in the same tick — Screeps permits a creep to move and act independently, and
+// nothing here serializes them (see interpreter.ts's kiting for the same "both fire" prior art).
+function runSquadMember(creep: Creep, to: { x: number; y: number; room: string }, action: ActionIntent | undefined): void {
+  if (creep.pos.roomName !== to.room || !creep.pos.isEqualTo(to.x, to.y)) {
+    creep.travelTo(new RoomPosition(to.x, to.y, to.room));
+  }
+  if (action) {
+    const target = Game.getObjectById(action.target);
+    if (target) {
+      switch (action.do) {
+        case "attack":
+          creep.attack(target as Creep | Structure);
+          break;
+        case "rangedAttack":
+          creep.rangedAttack(target as Creep | Structure);
+          break;
+        case "heal":
+          creep.heal(target as Creep);
+          break;
+        case "dismantle":
+          creep.dismantle(target as Structure);
+          break;
+      }
+    }
+  }
+}
 
 function storeOf(creep: Creep): { free: number; used: number } {
   return { free: creep.store.getFreeCapacity(), used: creep.store.getUsedCapacity() };
@@ -56,33 +162,6 @@ function atLockedTarget(creep: Creep, locked: Id<_HasId> | undefined): boolean {
   if (!locked) return false;
   const obj = Game.getObjectById(locked) as { pos?: RoomPosition } | null;
   return !!obj?.pos && creep.pos.inRangeTo(obj.pos, 1);
-}
-
-// True when memory.squadTargetPos is set and the creep isn't exactly there yet — mirrors moveToPos's own
-// "arrived" check (interpreter.ts's runStep, case "moveToPos") so this and the real step agree on what
-// counts as away. No target at all reads as NOT away (nothing to preempt toward).
-function creepAwayFromSquadTargetPos(creep: Creep): boolean {
-  const target = creep.memory.squadTargetPos;
-  if (!target) return false;
-  return creep.pos.roomName !== target.room || !creep.pos.isEqualTo(target.x, target.y);
-}
-
-// Forces moveToPos (at `posStep`) to run as this tick's primary step, bypassing the normal
-// firstRunnableStep scan — see runOne's call site doc for why standStill actions can otherwise hold
-// primary-step status forever once task.step lands on them. Mirrors runOne's own primary-step bookkeeping
-// (task.step/task.target update, debug log, co-fired bonus step) so this reads as "the same dispatch,
-// just aimed at a specific step" rather than a parallel code path.
-function runMoveToPos(creep: Creep, steps: Step[], posStep: number, task: { step: number; target?: Id<_HasId> }): void {
-  const result = runStep(creep, steps[posStep], undefined, true);
-  const state: CreepState = { step: posStep, ...storeOf(creep), targetGone: false, didAct: result.didAct };
-  const next = nextStep(steps, state);
-  log.debugCreep(
-    creep.name,
-    `role=${creep.memory.role} step=${posStep}(moveToPos) acted(preempt) didAct=${result.didAct} target=${result.target ?? "-"} nextStep=${next}`
-  );
-  task.step = next;
-  task.target = result.target;
-  coFireBonusStep(creep, steps, posStep);
 }
 
 const runOne = wrapFn(function runOne(creep: Creep): void {
@@ -103,23 +182,6 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us
 
-  // moveToPos always wins over a standStill step (heal/attack — see Step.standStill's doc) once the
-  // creep has drifted from its assigned position: a squadMate/hostile target that resolves to something
-  // ALREADY in range (trivially true for heal — "squadMate" includes the acting creep itself, so an
-  // undamaged healer can always self-heal a no-op) reports acted:true every tick regardless of position,
-  // which would otherwise let it hold primary-step status forever once task.step lands there — the
-  // ordinary forward-scanning dispatch below has no reason to ever prefer moveToPos again, since
-  // firstRunnableStep only looks forward from task.step and a "move"-kind step never self-completes (see
-  // interpreter.ts's isComplete). Confirmed live on shard0 (2026-08-05): two drain healers sat exactly
-  // one tile from their assigned formation slot, self-healing every tick, never covering that last tile.
-  // Checked ahead of the normal dispatch specifically because standStill exists to stop heal/attack from
-  // ever DRIVING travel — it must not also let them silently outrank the step whose entire job is travel.
-  const posStep = def.steps.findIndex(s => s.do === "moveToPos");
-  if (posStep !== -1 && creepAwayFromSquadTargetPos(creep)) {
-    runMoveToPos(creep, def.steps, posStep, task);
-    return;
-  }
-
   // Skip straight to a step with something to do, rather than wasting a tick on one already complete on arrival.
   let step = firstRunnableStep(def.steps, task.step, storeOf(creep));
   if (step !== task.step) task.target = undefined; // lock belonged to the skipped step
@@ -134,7 +196,7 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
 
   // A dead target costs no API call, so retry the next step immediately; bounded to one full pass.
   for (let i = 0; i < def.steps.length; i++) {
-    const result = runStep(creep, def.steps[step], task.target, !def.steps[step].standStill, { doNotBlockRoads: def.doNotBlockRoads });
+    const result = runStep(creep, def.steps[step], task.target, true, { doNotBlockRoads: def.doNotBlockRoads });
 
     if (result.acted) {
       const state: CreepState = { step, ...storeOf(creep), targetGone: false, didAct: result.didAct };
@@ -154,8 +216,12 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
     task.target = undefined;
   }
 
-  // Every step in the loop came back with nothing to resolve — truly idle this tick.
+  // Every step in the loop came back with nothing to resolve — truly idle this tick. A mover stuck like
+  // this in its home room (e.g. a scout with no scoutTarget — see Scouting.strandedScout's doc) would
+  // otherwise freeze wherever it happened to be, which can be a spawn's sole exit tile; loiter near the
+  // bunker instead, same as an unassigned transport creep (advanceOrPark/runTransport above).
   log.debugCreep(creep.name, `role=${creep.memory.role} idle — every step had nothing to resolve`);
+  if (def.mover && creep.room.name === creep.memory.home) parkNearBunker(creep);
   task.step = step;
 }, "creeps:runOne");
 

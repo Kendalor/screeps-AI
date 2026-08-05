@@ -62,7 +62,7 @@ function nameHash(name: string): number {
 // Idle with nothing to carry and nowhere to deliver: loiter near the bunker anchor (a spread-out spot,
 // not exactly on it) so a parked transport creep isn't sitting on a source/road blocking traffic, and
 // is central for whichever consumer appears next. No-op until building has recorded an anchor.
-function parkNearBunker(creep: Creep): void {
+export function parkNearBunker(creep: Creep): void {
   const anchor = typeof Memory !== "undefined" ? Memory.colonies?.[creep.memory.home]?.anchor : undefined;
   if (!anchor) return;
 

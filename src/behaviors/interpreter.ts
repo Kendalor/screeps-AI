@@ -29,7 +29,6 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   renew: "move", // store-less — see renewStep: falls through via acted:false whenever renewal isn't needed/possible
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
   sit: "move",
-  moveToPos: "move",
   attack: "move", // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
   heal: "move" // store-less healer — never self-completes; ends only via targetGone (target gone)
 };
@@ -172,14 +171,6 @@ export const runStep = wrapFn(function runStep(
       if (!allowTravel) return { acted: false, didAct: false };
       creep.travelTo(new RoomPosition(step.pos.x, step.pos.y, creep.room.name));
       return { acted: true, didAct: false };
-    case "moveToPos": {
-      const target = creep.memory.squadTargetPos;
-      if (!target) return { acted: false, didAct: false }; // nothing to move toward — step is a no-op, advance past it
-      if (!allowTravel) return { acted: false, didAct: false };
-      if (creep.pos.roomName === target.room && creep.pos.isEqualTo(target.x, target.y)) return { acted: false, didAct: false };
-      creep.travelTo(new RoomPosition(target.x, target.y, target.room));
-      return { acted: true, didAct: false };
-    }
   }
 },
 "interpreter:runStep");

@@ -1,5 +1,10 @@
 # Handoff: Drain squad movement needs a redesign
 
+**Redesign decided:** see [ADR 0007](adr/0007-squad-movement.md) (design discussion in
+[squad-movement-design.md](squad-movement-design.md)) — a general `Squad` entity
+computing one route/plan for the whole formation, replacing the per-creep independent
+Traveler convergence this handoff diagnosed below. Not yet implemented.
+
 ## Current live state (pserver, tick ~122714)
 
 `clearDrainTarget("W5N3")` was run in-console — `Memory.colonies["W5N3"].draining` is

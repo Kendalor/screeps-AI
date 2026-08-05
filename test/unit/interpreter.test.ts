@@ -740,36 +740,6 @@ describe("moveToRoom to a creep's targetRoom", () => {
   });
 });
 
-// moveToPos { to: "squadTargetPos" } — Drain's per-tick formation/advance-retreat position, read off
-// creep memory rather than a literal in the role's step list (unlike "sit"), since the position is
-// recomputed fresh every tick by the operation, not fixed at role-definition time. See operations/drain.ts.
-describe("moveToPos to a creep's squadTargetPos", () => {
-  function positioned(pos?: { x: number; y: number; room: string }) {
-    const traveled: { x: number; y: number; room: string }[] = [];
-    const creep = {
-      pos: { x: 10, y: 10, roomName: "W1N1", isEqualTo: (p: { x: number; y: number }) => p.x === 10 && p.y === 10 },
-      room: { name: "W1N1" },
-      memory: { squadTargetPos: pos },
-      travelTo: (p: { x: number; y: number; roomName: string }) => traveled.push({ x: p.x, y: p.y, room: p.roomName })
-    };
-    return { creep: creep as unknown as Creep, traveled };
-  }
-
-  it("travels toward the stored position", () => {
-    const { creep, traveled } = positioned({ x: 20, y: 30, room: "W1N1" });
-    const result = runStep(creep, { do: "moveToPos", to: "squadTargetPos" });
-    expect(result.acted).toBe(true);
-    expect(traveled).toEqual([{ x: 20, y: 30, room: "W1N1" }]);
-  });
-
-  it("no-ops when no position is stored", () => {
-    const { creep, traveled } = positioned(undefined);
-    const result = runStep(creep, { do: "moveToPos", to: "squadTargetPos" });
-    expect(result).toEqual({ acted: false, didAct: false });
-    expect(traveled).toEqual([]);
-  });
-});
-
 // Regression: Traveler's own useFindRoute heuristic (roomDistance>2) is recomputed fresh from the
 // creep's CURRENT position on every travelTo call, so a long avoidDanger trip can silently fall into a
 // blind PathFinder.search (no routeCallback, no danger-routing at all) partway through, once the

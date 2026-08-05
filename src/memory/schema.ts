@@ -70,11 +70,6 @@ declare global {
     // next open target once its current one clears, so a surviving attacker carries over between rooms
     // instead of a fresh one spawning per target.
     attackTargetRoom?: string;
-    // The Drain operation's per-tick formation/advance-retreat destination for this squad member — the
-    // leader's next advance/retreat tile, or a follower's leader-relative offset (see lib/formation.ts's
-    // followerOffsets), recomputed fresh every tick by operations/drain.ts's intents() and consumed by the
-    // "moveToPos" step (behaviors/types.ts). Unset while the squad isn't assembled/active.
-    squadTargetPos?: { x: number; y: number; room: string };
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
     // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's

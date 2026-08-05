@@ -166,28 +166,114 @@ Assembly (rally to staging room) is unchanged: independent movement, no formatio
 discipline, exactly as `drain.ts` does today. The new machinery only engages once
 assembled and formation-keeping actually matters.
 
-### Execution seam: full role diversion
+**`Squad` is generic infrastructure; behavior is supplied by the caller.** Decided:
+`Squad`/`runSquads()` itself knows nothing about towers, healing, or attackers — only
+slots, members, anchors, facings, and formation geometry, the same split `RoleDef`/`Step`
+already draw between the generic step-table engine and each role's own step content. A
+squad "type" (Drain's, and whatever comes later) is defined entirely by what's plugged
+in: a `Formation` (slots + roles + anchor), and a `planSquadActions` function (below) —
+`Squad` calls out to both without interpreting them.
 
-Decided (over a hybrid "squad claims movement, step table still runs actions" option):
-squad member roles get a full diversion in `runCreepBehaviors`, the same pattern
-`transport`/`supply`/`steward` already use:
+### Movement and action are independent, both fire every tick
+
+Decided: unlike the old step table's single "primary step per tick" model, a squadded
+creep's movement and action are two unrelated intents, both issued unconditionally every
+tick — not "act if in range, else move" (the old `standStill` gating). This isn't a new
+engine capability to design around: Screeps already allows a creep to call e.g.
+`rangedAttack()` and `move()` in the same tick (see `attackStep`/`fleeThreat`'s existing
+kiting behavior in `interpreter.ts`) — it was only the step table's shared "one step wins
+primary status" bookkeeping that serialized them for Drain specifically. Removing
+squadded movement from the step table removes that constraint by construction; this
+section just makes explicit that both must actually be *called*, not merely that doing so
+is now legal.
+
+**Action assignment is squad-level knowledge, not per-creep target resolution.**
+`SquadState.members` already holds every member's position/HP/role for `planSquadMove` —
+the same state answers "who's most damaged" or "is a tower in range of the attacker's
+slot" directly, without each creep independently re-deriving it the way
+`TargetSpec`'s `find: "squadMate", prefer: "mostDamaged"` does today. So instead of a
+per-creep target-selection function, the squad computes one assignment map per tick,
+supplied by the formation's own plugged-in planner (Drain's rule — attacker targets
+tower-then-hostile, healer targets most-damaged — is Drain-specific content, not generic
+squad logic; a future squad type supplies its own):
 
 ```ts
-if (creep.memory.role === "drainAttacker" || creep.memory.role === "drainHealer") {
-  runSquadMember(creep); // movement AND action (heal/attack), no step table at all
-  continue;
-}
+function planSquadActions(state: SquadState, colony: ColonySnapshot): Map<CreepId, ActionIntent>;
+// e.g. { drainAttacker_id: {do:"attack", target: towerId}, drainHealer_id: {do:"heal", target: mostDamagedId}, ... }
 ```
+
+`runSquads()` per tick, per squad: `planSquadMove(state, goal)` and
+`planSquadActions(state, colony)` are computed independently, both maps handed to
+`runSquadMember(creep, moveAssignment, actionAssignment)`, which issues both intents
+unconditionally — no gating, no primary/co-fired distinction, no shared per-tick resource
+to contend over the way the step table had. This is simpler than the mechanism it
+replaces, not more complex.
+
+### Execution seam: membership-based diversion, squads iterated separately
+
+Revised from an earlier draft that diverted by *role* (`drainAttacker`/`drainHealer`
+always skip the step table). Diverting by role can't support requirement 5 (squad mode
+dissolves, creeps fall back to individual behavior) — a role-level fork has no way back
+to the step table once a creep's role says "squad member," permanently.
+
+Decided instead: squad-ness is a **per-tick runtime state**, checked by membership, not
+baked into the role. The same creep, same role, same body can be squadded this tick and
+not the next; when it's not squadded, it runs the ordinary step table exactly like any
+other creep of that role would. This also means `drainAttacker`/`drainHealer` keep real
+step tables (used whenever NOT currently squadded — e.g. before the squad has formed, or
+after it dissolves) rather than losing them entirely.
+
+`runCreepBehaviors`'s per-creep loop gets a membership check ahead of its existing
+diversions, and squads are iterated as their own top-level pass afterward — not folded
+into the per-creep loop:
+
+```ts
+for (const name in Game.creeps) {
+  const creep = Game.creeps[name];
+  if (creep.spawning) continue;
+  if (isSquadMember(creep)) continue; // handled by runSquads() instead, below
+  if (creep.memory.role === "transport" || creep.memory.role === "supply") { ... }
+  if (creep.memory.role === "steward") { ... }
+  runOne(creep); // ordinary step table — now includes drainAttacker/drainHealer when NOT squadded
+}
+
+runSquads(); // separate pass, iterates squads (not creeps) — computes the squad-wide plan once,
+             // then dispatches each current member into runSquadMember(creep, assignment)
+```
+
+**Membership is derived, not stored** — no separate squad flag, no `squadId`. A creep is
+"in a squad" exactly when `Operation.owned()` (keyed by `memory.op`, ADR 0006's existing
+pattern) resolves a live squad-bearing operation that claims it. Computed once per tick
+into a shared `Set<Id<Creep>>`, checked by the main loop above and reused by `runSquads()`
+itself, so there's exactly one source of truth — no risk of a creep falling into neither
+pass (frozen) or both (double move intent) from two membership computations disagreeing.
+
+**One squad per `op`, by construction — not a limitation.** Because membership is
+`op`-derived with no `squadId` (ADR 0006's existing pattern, now generalized to every
+squad-based operation, not just Drain), every creep sharing an `op` value is treated as
+one squad. This isn't a scope cut to revisit later: an operation that wanted a second
+simultaneous target (e.g. draining two rooms at once) was never going to be one operation
+instance's problem regardless of the movement system, since `colony.draining` is already
+a single scalar target and "exactly one drain target per colony" is load-bearing for
+Drain's own design (ADR 0006). A second concurrent drain is a second operation instance
+with its own `op` stamp — already naturally isolated, no new mechanism required. Any
+future squad operation that legitimately needs multiple concurrent squads under one
+operation identity (as opposed to just running two instances) would need a real
+`squadId` — but nothing here is designed assuming that's coming.
 
 This removes the move-vs-action race the current step table has to referee with
 `Step.standStill` and the `creepAwayFromSquadTargetPos`/`runMoveToPos` preemption hack in
 `empire/creeps.ts` — those exist purely because `heal`/`attack` and `moveToPos` were
-competing for "primary step" status inside one shared step-table dispatch. Full diversion
-removes the race by construction: movement is dictated externally by the squad, action
-selection (attack tower vs. hostile; heal most-damaged) becomes a small direct function
-per role, not a step-table entry contending for the same slot. `Step.standStill`,
-`creepAwayFromSquadTargetPos`, and `runMoveToPos` should all be deleted as part of this
-work, not kept around — they have no purpose once movement isn't step-table-driven.
+competing for "primary step" status inside one shared step-table dispatch. While
+squadded, movement is dictated externally by the squad and action selection (attack tower
+vs. hostile; heal most-damaged) becomes a small direct function called from
+`runSquadMember`, not a step-table entry contending for the same slot — so the race can't
+occur for a squadded creep. `Step.standStill`, `creepAwayFromSquadTargetPos`, and
+`runMoveToPos` should all be deleted: their entire purpose was refereeing that race inside
+the step table, which no longer applies now that squadded movement never touches the step
+table at all. The role's own step table (used only while unsquadded) goes back to a plain
+`moveToRoom`/`heal`/`attack` shape with no `standStill` needed, since there's no
+externally-dictated movement to race against in that state.
 
 ### Dissolution and degraded formations
 
@@ -202,28 +288,47 @@ a slot vacant (Drain's healers can keep draining a tower with the attacker slot 
 so the squad must stay path-able and reform-able with any subset of slots occupied,
 including the anchor slot itself having nobody in it.
 
-## Open questions (not yet resolved)
+## Resolved in the follow-up grilling session
 
-- **Vacant-slot walkability/footprint-fit.** Does an unoccupied slot's tile still need to
-  be walkable for the footprint-fit check, or can the route search relax the constraint
-  for slots nobody currently occupies (e.g. squad missing its attacker could thread a
-  gap the full formation couldn't)? Leaning toward "always check the full formation's
-  footprint regardless of current occupancy" for stability (a spawned replacement must be
-  able to catch up to wherever the squad already is), but not decided.
-- **Action target selection replacing the step table.** `drainAttacker`/`drainHealer`'s
-  current steps (`attack` tower-then-hostile, `heal` most-damaged squadmate) need a
-  direct-function equivalent under full role diversion. Likely straightforward — same
-  target-selection logic, just called directly from `runSquadMember` instead of resolved
-  via `TargetSpec`/step dispatch — but not designed yet.
-- **Replacement spawn re-entry.** When a new creep spawns to fill a long-vacant slot, how
-  does it join a squad that's already mid-route/mid-formation? Does it path independently
-  to the squad's current anchor (like today's rally-to-staging) and get folded in once
-  adjacent, or does the squad have to pause/hold for it the way full assembly is gated
-  today?
-- **Cross-room transitions (requirement 6).** Footprint-aware pathing across a room
-  border needs the destination room's cost matrix/terrain cached before the squad
-  commits to crossing, similar to how `drainRoomTerrain` is already snapshotted
-  vision-independently for Drain. Not yet worked through for the general squad case.
-- **Squad-vs-squad or squad-vs-non-squad-creep collision.** Two squads (or a squad and an
-  unrelated creep) contending for the same tile isn't addressed — today's single-squad
-  Drain case never faced this.
+- **Vacant-slot walkability/footprint-fit: always check the full formation shape**,
+  regardless of current occupancy. Rejected: shrinking the fit-check to only occupied
+  slots — the squad could then occupy a position the full formation can't fit into, and a
+  later replacement (which must independently catch up, never gets a hold — see below)
+  would have no reachable path to a slot that's geometrically invalid wherever the squad
+  currently stands. Full-shape-always guarantees "wherever the squad is, a full-strength
+  formation could stand there," which replacement re-entry depends on.
+- **Replacement spawn re-entry: independent approach, no holding, gated by same-room
+  proximity.** A freshly-spawned replacement already carries the right `op` stamp (same
+  as any squad member, `fillSquadRole` in `drain.ts`), but `op`-membership alone is
+  necessary, not sufficient — otherwise a creep still sitting at the home spawn would be
+  yanked into `planSquadMove`/`planSquadActions` immediately. The gate is **same room as
+  the squad's current anchor**: below that, the creep is treated as not-yet-squadded and
+  runs its own ordinary step table (`moveToRoom` toward the target room) to get there —
+  the step table can only ever chase a room, never a moving formation slot, so this is
+  the natural (and only) point control can hand off. Once same-room, it's a full member;
+  `runSquads()`'s per-member assignment (the same nearest-available greedy logic reform
+  already uses) naturally slots it into whatever's vacant. The squad never pauses for a
+  replacement — per the degraded-formation decision above, holding for one would defeat
+  the entire point of staying functional with a slot empty.
+- **Action assignment**: see "Movement and action are independent" above —
+  `planSquadActions` is squad-level, supplied per formation type, not a per-creep
+  `TargetSpec` port.
+
+- **Cross-room transitions (requirement 6): same mechanism as in-room, no special case.**
+  `findSquadPath`'s `(x, y, room, facing)` state space already generalizes across room
+  borders the same way single-creep Traveler already does — a footprint-fit check just
+  needs terrain/cost-matrix data for whichever room the candidate tile is in. The one real
+  requirement is that data must be available *before* the squad commits to a crossing, not
+  discovered on arrival (consistent with "precompute the whole route up front," decided
+  above) — vision-independent, mirroring `drainRoomTerrain`'s existing pattern of caching
+  `Game.map.getRoomTerrain` per room regardless of current visibility. So the room cost
+  matrix cache (keyed by formation shape) needs a vision-independent terrain source per
+  room on the route, same as Drain already builds for its own target/route rooms today,
+  generalized to whatever rooms a given squad's route crosses. No new mechanism — this
+  was already implied by the existing cache design, just not spelled out.
+- **Squad-vs-squad or squad-vs-non-squad-creep collision: deferred, confirmed with the
+  user.** Two squads (or a squad and an unrelated creep) contending for the same tile
+  isn't addressed — today's single-squad Drain case never faced this, and no operation
+  built on this system yet runs two squads that could meet. Screeps' native
+  move-conflict resolution is the fallback for a stray non-squad creep in a squad's path.
+  Revisit if/when a second concurrent squad-capable operation is built.

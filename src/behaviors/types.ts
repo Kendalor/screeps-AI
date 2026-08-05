@@ -83,20 +83,6 @@ export type When = "empty";
 export type Step = ({
   when?: When;
   oneShot?: boolean; // complete on first act instead of waiting for store to empty; needed for creep sinks, which never "fill"
-  // Never travelTo toward this step's target, even as the primary step (only allowTravel:false's usual
-  // co-fired-bonus-step case does that by default) — act in range, otherwise no-op. For a role with its
-  // own dedicated moveToPos/moveToRoom step, a later move-kind step (heal/attack) that's ALSO allowed to
-  // travel can silently steal primary-step status: heal/attack always resolve a target and are "move"
-  // kind (never self-complete except via targetGone — see interpreter.ts's isComplete), so the one tick
-  // the dedicated move step's own target happens to already be reached, the loop falls through same-tick
-  // into heal/attack, which travels toward ITS OWN (differently-computed) target and latches there
-  // permanently — nothing ever routes the step cursor back. Confirmed live on shard0 (2026-08-05): two
-  // drain healers froze mid-formation, latched onto `heal`'s own travelTo toward a "mostDamaged"
-  // squadmate instead of their assigned 2x2 formation slot, because moveToPos's exact-tile-equality
-  // "arrived" check let heal grab the primary slot for good the first tick a fresh squadTargetPos
-  // happened to already be satisfied. standStill on heal/attack means formation position is ALWAYS
-  // moveToPos's job — these steps only ever act, never move, whether primary or bonus.
-  standStill?: boolean;
 }) &
   (
     | { do: "harvest"; from: TargetSpec }
@@ -139,12 +125,6 @@ export type Step = ({
         avoidDanger?: boolean;
       } // static room, or a memory field name, to read the destination + memory.route from creep memory
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
-    // Travels toward a position read off creep memory rather than a literal (unlike "sit"): Drain's
-    // squad formation/advance-retreat target is recomputed fresh every tick by the operation (see
-    // operations/drain.ts), so — unlike "sit"'s fixed anchor spot — it can't be a constant in the role's
-    // step list. No-ops (falls through) while memory.squadTargetPos is unset, same "static field, memory
-    // field name" split moveToRoom's `to` already has. Room-crossing via travelTo, same as "sit".
-    | { do: "moveToPos"; to: "squadTargetPos" }
   );
 
 export interface TaskState {

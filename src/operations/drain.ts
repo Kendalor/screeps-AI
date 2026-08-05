@@ -1,15 +1,24 @@
-// Drain Energy (issue #34/ADR 0006): one fixed 4-creep squad (1 drainAttacker + 3 drainHealer) sent at a
-// single target room (ColonyMemory.draining, snapshot.draining — a scalar, unlike Attack's `attacking`
-// list, because exactly one drain target per colony is load-bearing for squad membership being derived
-// from `op` alone, no squadId — see ADR 0006). Squad membership is every creep sharing this operation's
-// `op` stamp (Operation.owned()), same pattern Attack/Defense already use.
+// Drain Energy (issue #34/ADR 0006, movement redesigned per issue #41/ADR 0007): one fixed 4-creep squad
+// (1 drainAttacker + 3 drainHealer) sent at a single target room (ColonyMemory.draining, snapshot.draining
+// — a scalar, unlike Attack's `attacking` list, because exactly one drain target per colony is load-bearing
+// for squad membership being derived from `op` alone, no squadId — see ADR 0006). Squad membership is every
+// creep sharing this operation's `op` stamp (Operation.owned()), same pattern Attack/Defense use.
+//
+// Movement is NO LONGER hand-rolled here as per-creep squadTargetPos + independent Traveler convergence
+// (that drifted apart over distance — see docs/drain-squad-handoff.md). Drain now defines its Formation and
+// action content and hands a SquadState to the generic Squad entity (src/lib/squad.ts), which computes ONE
+// route for the whole footprint and one lockstep move per member (empire/creeps.ts's runSquads). Drain's
+// own tactical decisions — staging-room pick, advance/retreat safety projection, tower-damage sampling —
+// are UNCHANGED (ADR 0007's out-of-scope): only the movement EXECUTION mechanism they drive is replaced.
 
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import { incomingHeal, towerDamageAt, type HealSource } from "../lib/combat";
-import { followerOffsets } from "../lib/formation";
+import type { Formation } from "../lib/formation";
 import { range, type XY } from "../lib/geometry";
 import { log } from "../lib/log";
+import type { ActionIntent, SquadActionPlanner, SquadState } from "../lib/squad";
+import type { TerrainSource } from "../lib/squadPath";
 import type { ColonySnapshot, SnapCreep, SnapTower } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import type { CreepRequest } from "../spawn/request";
@@ -17,6 +26,18 @@ import { Operation } from "./operation";
 
 const DRAIN_HEALER_COUNT = 3;
 const DRAIN_SQUAD_SIZE = 1 + DRAIN_HEALER_COUNT;
+
+// Drain's formation as data (ADR 0007): the attacker is the anchor slot at (0,0), the three healers fill
+// the other three tiles of a strict 2x2 block trailing right/down of the anchor at the canonical TOP
+// facing. A strict 2x2 requires mutual range-1 (heal-assist reach), which only holds at the 4 axis-aligned
+// facings — Drain's own facing-selection (drainFacing below) collapses the 8 travel directions onto those
+// 4, keeping that constraint in Drain's content rather than in the generic rotation math.
+export const DRAIN_FORMATION: Formation = [
+  { dx: 0, dy: 0, role: "drainAttacker" },
+  { dx: 1, dy: 0, role: "drainHealer" },
+  { dx: 0, dy: 1, role: "drainHealer" },
+  { dx: 1, dy: 1, role: "drainHealer" }
+];
 
 /** The first room along `route` (home -> target, see ColonySnapshot.drainRoute) where ScoutInfo.hostile
  * is false — an unscouted room defaults to `hostile: false` at the snapshot boundary already, so this
@@ -27,79 +48,33 @@ export function pickStagingRoom(route: readonly { room: string; hostile: boolean
   return route.find(r => !r.hostile)?.room;
 }
 
-/** A step directly toward `to` from `from` — one of the 8 compass tiles, whichever best reduces the
- * distance, clamped to a single tile. Pure XY math, no Game access. Tile-level stepping only makes sense
- * within one room's 0-49 grid; when `from` and `to` sit in different rooms, `to` is returned unchanged —
- * moveToPos's travelTo already paths (and crosses room borders) toward any RoomPosition on its own, one
- * tile per tick for a 1:1 MOVE-ratio squad body, so handing it the aim point directly still yields the
- * same "one step at a time" behaviour this function computes explicitly for the same-room case. */
-function stepToward(from: XY & { room: string }, to: XY & { room: string }): XY & { room: string } {
-  if (from.room !== to.room) return to;
-  return { x: from.x + Math.sign(to.x - from.x), y: from.y + Math.sign(to.y - from.y), room: to.room };
+/** The axis-aligned facing (TOP/RIGHT/BOTTOM/LEFT) nearest the travel direction from `from` toward `to`.
+ * A strict 2x2 only has these 4 valid orientations (its diagonals splay the block past range 1 — see
+ * DRAIN_FORMATION), so Drain collapses the compass onto them here rather than the generic slotTiles doing
+ * so. Ties (a perfect diagonal) resolve toward the dominant-or-vertical axis, deterministically. */
+function drainFacing(from: XY, to: XY): DirectionConstant {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? RIGHT : LEFT;
+  if (Math.abs(dy) > 0) return dy > 0 ? BOTTOM : TOP;
+  return TOP; // no movement — hold the canonical facing
 }
 
-/** DirectionConstant for a single-tile step — mirrors Screeps' own getDirection, hand-rolled since this
- * runs in the pure-planner boundary (no RoomPosition available). */
-function directionOf(from: XY, to: XY): DirectionConstant {
-  const dx = Math.sign(to.x - from.x);
-  const dy = Math.sign(to.y - from.y);
-  if (dx === 0 && dy < 0) return TOP;
-  if (dx > 0 && dy < 0) return TOP_RIGHT;
-  if (dx > 0 && dy === 0) return RIGHT;
-  if (dx > 0 && dy > 0) return BOTTOM_RIGHT;
-  if (dx === 0 && dy > 0) return BOTTOM;
-  if (dx < 0 && dy > 0) return BOTTOM_LEFT;
-  if (dx < 0 && dy === 0) return LEFT;
-  return TOP_LEFT; // dx < 0 && dy <= 0 (including dx===0&&dy===0, an arbitrary but harmless default)
-}
-
-/** Projected tower damage against the squad's current heal output, at candidate leader position
- * `nextPos` — the ADR 0006 continuous advance/retreat rule: every tower currently visible in the target
- * room (colony.hostileRoomTowers), summed at its own distance from `nextPos`, versus what the squad can
- * heal through (incomingHeal, fed every alive healer as a HealSource — approximated at the LEADER's next
- * position for all of them, since the formation is a rigid range-1 block that moves together, so every
- * healer is within heal-assist range of the leader's tile either way). Advance is safe exactly when heal
- * output at least matches projected damage. No towers visible at all reads as safe (nothing to project). */
+/** Projected tower damage against the squad's current heal output, at candidate anchor position `nextPos`
+ * — the ADR 0006 continuous advance/retreat rule: every tower currently visible in the target room summed
+ * at its own distance, versus what the squad can heal through (incomingHeal, fed every alive healer as a
+ * HealSource — approximated at the anchor's next tile, since the block is a rigid range-1 body). Advance is
+ * safe exactly when heal output at least matches projected damage; no towers visible reads as safe. */
 function advanceIsSafe(nextPos: XY, towers: readonly SnapTower[], healers: readonly HealSource[]): boolean {
   if (towers.length === 0) return true;
   const projectedDamage = towers.reduce((sum, t) => sum + towerDamageAt(range(t, nextPos)), 0);
   return projectedDamage <= incomingHeal(nextPos, healers);
 }
 
-// One representative DirectionConstant per each of the 4 distinct 2x2-block orientations formation.ts's
-// QUADRANT collapses 8 compass directions down to — see followerOffsets' own doc for why only 4 exist.
-const ORIENTATIONS: DirectionConstant[] = [TOP, RIGHT, BOTTOM, LEFT];
-
-function walkable(terrain: Uint8Array | undefined, x: number, y: number): boolean {
-  // No terrain data on record for this room (shouldn't happen — drainRoomTerrain covers `draining` and
-  // every drainRoute room — but Drain must never brick a squad on a snapshot gap) reads as walkable, the
-  // same fail-open convention pickStagingRoom uses for an unscouted room's hostile flag.
-  if (!terrain) return true;
-  if (x < 0 || x > 49 || y < 0 || y > 49) return false;
-  return terrain[x * 50 + y] === 1;
-}
-
-/** Whether the leader-at-`pos` + followerOffsets(pos, direction) block is entirely walkable — the actual
- * 2x2 formation Drain is about to commit the squad to, not just the leader's own tile. `terrain` is
- * `colony.drainRoomTerrain[pos.room]`, absent only for a room the snapshot boundary didn't cover (see
- * walkable's fail-open doc). */
-function blockIsWalkable(pos: XY, direction: DirectionConstant, terrain: Uint8Array | undefined): boolean {
-  if (!walkable(terrain, pos.x, pos.y)) return false;
-  return followerOffsets(pos, direction).every(o => walkable(terrain, o.x, o.y));
-}
-
-/** The best orientation for a 2x2 block anchored at `pos`: the natural direction of travel (`preferred`)
- * if its block is fully walkable, else whichever of the other 3 fixed orientations (see ORIENTATIONS) is
- * — deterministic order, so two ticks with identical inputs always agree. Undefined when EVERY
- * orientation at this tile hits a wall (a leader tile boxed in on at least 3 of its 4 quadrants), the
- * signal to hold rather than commit to a block that can never be fully occupied. Confirmed live on
- * shard0 (2026-08-05): a follower's assigned formation slot landed on a solid wall tile it could never
- * physically reach, holding the whole squad frozen forever — the inFormation gate correctly waited for a
- * straggler that in fact could never arrive, because nothing had checked the slot was reachable before
- * assigning it. */
-function walkableOrientation(pos: XY, preferred: DirectionConstant, terrain: Uint8Array | undefined): DirectionConstant | undefined {
-  if (blockIsWalkable(pos, preferred, terrain)) return preferred;
-  return ORIENTATIONS.find(d => d !== preferred && blockIsWalkable(pos, d, terrain));
+// A healer's live HEAL part count (unboosted — SnapCreep carries no per-part boost data; a gap worth
+// revisiting if boost support is added to SnapCreep).
+function healPartsOf(creep: SnapCreep): number {
+  return creep.body.filter(p => p === HEAL).length;
 }
 
 export class Drain extends Operation {
@@ -113,10 +88,7 @@ export class Drain extends Operation {
     ];
   }
 
-  /** One role's deficit toward the fixed composition — same shape as Operation.fillRole, but Drain's
-   * targetRoom/spawnRoom are pinned to the HOME colony (colony.name), not `fillTo`'s default (also
-   * colony.name via memory.home, but spelled out here since a drain squad's spawn location is never in
-   * question the way a per-target requester's might be — see spawn/request.ts's fillTo doc). */
+  /** One role's deficit toward the fixed composition, pinned to the HOME colony (see fillRole). */
   private fillSquadRole(colony: ColonySnapshot, role: "drainAttacker" | "drainHealer", wanted: number): CreepRequest[] {
     const owned = this.owned(colony, role).length;
     const missing = wanted - owned;
@@ -132,132 +104,150 @@ export class Drain extends Operation {
     }));
   }
 
-  /** Every live squad member, attacker first when present (leader-first ordering — see leaderOf). */
+  /** Every live squad member, attacker first when present. */
   private squad(colony: ColonySnapshot): SnapCreep[] {
     return [...this.owned(colony, "drainAttacker"), ...this.owned(colony, "drainHealer")];
   }
 
+  /** The squad's terrain source — drainRoomTerrain covers `draining` and every drainRoute room, cached
+   * vision-independently at the snapshot boundary. A room with no entry reads as fully walkable (the same
+   * fail-open convention Drain has always used for a snapshot gap). */
+  public terrain(colony: ColonySnapshot): TerrainSource {
+    return room => colony.drainRoomTerrain[room];
+  }
+
+  /** Where the squad is heading this tick, for the generic Squad's route search — the same advance/retreat
+   * aim goalTile computes, resolved against the current live squad. Undefined while there's no squad to
+   * move (assembling, or no target). */
+  public squadGoal(colony: ColonySnapshot): (XY & { room: string }) | undefined {
+    if (!colony.draining) return undefined;
+    const staging = pickStagingRoom(colony.drainRoute);
+    if (!staging) return undefined;
+    const squad = this.squad(colony);
+    if (squad.length === 0) return undefined;
+    return this.goalTile(colony, squad, staging);
+  }
+
+  /** The anchor slot's tile this tick, derived fresh from the live squad (no persisted state, matching
+   * ADR 0006's recompute-every-tick rule). The attacker IS the anchor slot, so its tile is the anchor when
+   * it's alive. With the attacker dead (a degraded formation retreating as-is, ADR 0007), the anchor slot
+   * is vacant but still the formation's reference point — inferred from a surviving healer minus its slot
+   * offset so the block keeps a consistent anchor to reform/move around. Deterministic (first healer by
+   * name) so two ticks with identical input agree. */
+  private anchorTile(attacker: SnapCreep | undefined, healers: readonly SnapCreep[], facing: DirectionConstant, room: string): XY & { room: string } {
+    if (attacker) return { x: attacker.x, y: attacker.y, room };
+    // Attacker slot vacant: place the anchor so the first healer (deterministic) sits on its own slot tile.
+    // Healer slots at the canonical facing are (1,0),(0,1),(1,1); the anchor is that healer's tile minus
+    // its rotated offset. We use the first healer and the first healer slot for a stable reference.
+    const healer = [...healers].sort((a, b) => a.name.localeCompare(b.name))[0];
+    if (!healer) return { x: 25, y: 25, room }; // no squad at all — a harmless default (never used)
+    // The first healer slot offset (1,0) rotated to the current facing.
+    const off = rotatedHealerOffset(facing);
+    return { x: healer.x - off.dx, y: healer.y - off.dy, room };
+  }
+
+  /** The SquadState the generic Squad entity runs on this tick, or undefined while the squad is still
+   * ASSEMBLING (rallying to staging via independent movement — that behaviour is unchanged, ADR 0007
+   * requirement 2, and handled by the members' own step tables, NOT the squad machinery). Once assembled
+   * and underway, returns a state whose members are only those SAME-ROOM as the current anchor — the
+   * replacement re-entry gate (a freshly-spawned member still walking in runs its own step table until it
+   * reaches the anchor's room, then joins; the squad never holds for it). */
+  public squadState(colony: ColonySnapshot): SquadState | undefined {
+    if (!colony.draining) return undefined;
+    const staging = pickStagingRoom(colony.drainRoute);
+    if (!staging) return undefined;
+
+    const attacker = this.owned(colony, "drainAttacker")[0];
+    const healers = this.owned(colony, "drainHealer");
+    const squad = [...(attacker ? [attacker] : []), ...healers];
+    if (squad.length === 0) return undefined;
+
+    const assembled = attacker !== undefined && healers.length >= DRAIN_HEALER_COUNT && squad.length >= DRAIN_SQUAD_SIZE;
+    // Ready for the first push: fully assembled AND every member physically together in the staging room.
+    const readyForFirstPush = assembled && squad.every(c => c.room === staging);
+    // Already committed to the field: some member stands in a room BEYOND the staging room on the route
+    // toward the target (staging's successors, including the target room itself). This keeps a degraded
+    // squad in squad-movement mode after losses (3 healers in the target room are still "underway") while
+    // excluding both a squad still trickling out from home and one still en route TO staging (a room before
+    // staging on the route — e.g. a transit room — is not yet underway).
+    const beyondStaging = roomsBeyondStaging(colony.drainRoute, staging);
+    const underway = squad.some(c => beyondStaging.has(c.room));
+
+    // Still assembling — not a full squad physically together in staging, and not yet committed past it.
+    // No squad machinery: members rally independently via their own step tables (ADR 0007 requirement 2).
+    if (!readyForFirstPush && !underway) return undefined;
+
+    // The formation's anchor room: whichever room the squad's members are actually standing in (the mode
+    // room). Before the first push, that's the staging room.
+    const anchorRoom = readyForFirstPush ? staging : mostCommonRoom(squad);
+    const goal = this.goalTile(colony, squad, staging);
+    const facing = drainFacing(anchorReference(squad, anchorRoom), goal);
+    const anchor = this.anchorTile(attacker, healers, facing, anchorRoom);
+    // Replacement re-entry gate: only members in the anchor's room are squadded; a member elsewhere (a
+    // spawned replacement still walking in) is left to its own step table this tick.
+    const members = squad.filter(c => c.room === anchor.room);
+    if (members.length === 0) return undefined;
+    return { members, formation: DRAIN_FORMATION, anchor, facing };
+  }
+
+  /** Where the squad is heading this tick — deeper into the target room when advancing is safe (and the
+   * squad is fully healed), else back toward the staging room. Same continuous advance/retreat rule as
+   * ADR 0006, only the execution changed: the aim is a room-center that findSquadPath paths the whole
+   * footprint toward, rather than a per-creep travelTo target. */
+  public goalTile(colony: ColonySnapshot, squad: readonly SnapCreep[], staging: string): XY & { room: string } {
+    const attacker = squad.find(c => c.role === "drainAttacker");
+    const healers = squad.filter(c => c.role === "drainHealer");
+    const anchorPos = attacker ?? squad[0];
+    const towers = colony.draining ? (colony.hostileRoomTowers[colony.draining] ?? []) : [];
+    const healSources: HealSource[] = healers.map(h => ({ x: h.x, y: h.y, healParts: healPartsOf(h) }));
+    // Advance only when every member is at full HP (a hurt squad falls back to heal up — never gated on
+    // retreat) AND the next tile's projected tower damage is survivable.
+    const fullyHealed = squad.every(c => c.hits >= c.hitsMax);
+    const target = colony.draining ?? staging;
+    const advanceAim: XY & { room: string } = { x: 25, y: 25, room: target };
+    const retreatAim: XY & { room: string } = { x: 25, y: 25, room: staging };
+    // Project one tile toward the advance aim from the anchor's current tile (see ADR 0006 — a far room
+    // center must not be pre-emptively rejected by towers near a border the squad hasn't reached).
+    const nextStep: XY = anchorPos
+      ? { x: anchorPos.x + Math.sign(advanceAim.x - anchorPos.x), y: anchorPos.y + Math.sign(advanceAim.y - anchorPos.y) }
+      : { x: 25, y: 25 };
+    const safe = fullyHealed && advanceIsSafe(nextStep, towers, healSources);
+    return safe ? advanceAim : retreatAim;
+  }
+
+  /** Drain's own action content, plugged into the generic Squad (which knows nothing of towers/healing):
+   * the attacker targets a tower first then the most threatening hostile; each healer targets the most
+   * damaged squad-mate. Squad-level, computed once per tick from the shared state (ADR 0007) — not each
+   * creep re-resolving its own target. */
+  public readonly actionPlanner: SquadActionPlanner = (state, colony) => planDrainActions(state, colony);
+
   public override intents(colony: ColonySnapshot): Intent[] {
     if (!colony.draining) return [];
     const staging = pickStagingRoom(colony.drainRoute);
-    if (!staging) return []; // no safe room anywhere on the route — nothing safe to do yet
+    if (!staging) return [];
 
     const squad = this.squad(colony);
-    const attacker = this.owned(colony, "drainAttacker")[0];
-    const healers = this.owned(colony, "drainHealer");
-    const assembled = attacker !== undefined && healers.length >= DRAIN_HEALER_COUNT && squad.length >= DRAIN_SQUAD_SIZE;
+    const state = this.squadState(colony);
+    const out: Intent[] = [];
 
-    // ADR 0006's assembly gate governs the squad's FIRST push out of the staging room: below full
-    // strength, hold everyone there. At full strength but not yet all physically together in the staging
-    // room, also hold. Once every member has been seen together in the staging room at least once, the
-    // leader alone (see below) drives advance/retreat from then on; this initial "all four together"
-    // check is deliberately based on current position each tick, not persisted state (out of scope for
-    // this slice — see ADR 0006's deferred loss/reassembly), so it re-observes true the moment a fully
-    // assembled squad is actually standing there, which is the only case that needs to.
-    const readyForFirstPush = assembled && squad.every(c => c.room === staging);
-    const leader = assembled ? leaderOf(attacker, healers) : undefined;
-    const alreadyUnderway = leader !== undefined && leader.room !== staging;
-
-    // Every squad member's squadTargetPos is set fresh EVERY tick this operation runs, whichever branch
-    // below computes it — the sole source of truth for where a drain creep should be, chased by the
-    // role's one moveToPos step (see drainHealer.ts/drainAttacker.ts). No moveToRoom + moveToPos two-step
-    // handoff: that split let a straggler's step cursor latch onto moveToPos while chasing a stale
-    // position from an earlier tick, with nothing to ever send it back to a room-crossing step — a real
-    // stuck state confirmed live on shard0 (2026-08-05), a healer that spawned before this operation's
-    // per-tick pass ever reached it sat motionless in its home room for hundreds of ticks even after
-    // everything else recovered. A single always-fresh target can't go stale the same way: whatever
-    // squadTargetPos says this tick is simply where the creep walks, full stop.
-    if (!readyForFirstPush && !alreadyUnderway) {
-      // Rally point: every member (including any straggler still at home) heads for the staging room's
-      // centre. No formation discipline needed yet — that only matters once advancing into contested
-      // territory (below); a loose rally is enough to get everyone physically together.
-      const rally = { x: 25, y: 25, room: staging };
-      return [...squad.map(c => ({ kind: "setSquadTargetPos" as const, creep: c.id, pos: rally })), ...this.drainSample(colony)];
-    }
-    // Guaranteed defined: both readyForFirstPush and alreadyUnderway require assembled === true.
-    const definiteLeader = leader!;
-    const leaderPos: XY & { room: string } = { x: definiteLeader.x, y: definiteLeader.y, room: definiteLeader.room };
-    const followers = squad.filter(c => c.id !== definiteLeader.id);
-
-    // The leader may only take its next step once the squad is ALREADY a tight 2x2 block — same room,
-    // every follower within range 1 (Chebyshev) of the leader's CURRENT tile. A block that size has max
-    // internal range 1 between any two members, so "every follower within range 1 of the leader" alone
-    // guarantees mutual range-1 for the whole squad, not just leader-to-follower. Without this gate the
-    // leader advanced/retreated every tick regardless of whether followers had caught up — confirmed live
-    // on shard0 (2026-08-05): a wounded healer left several tiles behind a still-advancing leader, well
-    // outside heal-assist range, taking tower fire it should have been retreating out of instead. Holding
-    // the leader in place (its own current tile, not a new candidate) lets stragglers close the gap; once
-    // formed up, the very next tick's re-check immediately resumes the real advance/retreat decision — no
-    // separate "regrouping" state, just this same check re-evaluated fresh.
-    const inFormation = followers.every(f => f.room === leaderPos.room && range(f, leaderPos) <= 1);
-
-    // "Deeper into the target room" and "back toward the staging room" are both just travelTo aim points
-    // (moveToPos's travelTo handles the actual multi-tile path, including crossing the room border) —
-    // each tick re-evaluates the aim point fresh from the leader's current position, which is what makes
-    // "one step at a time" and "re-open advance the instant it's safe again" the same mechanism (ADR
-    // 0006's one continuous rule, not a separate attrition/breach state).
-    const advanceAim: XY & { room: string } = { x: 25, y: 25, room: colony.draining };
-    const retreatAim: XY & { room: string } = { x: 25, y: 25, room: staging };
-
-    const towers = colony.hostileRoomTowers[colony.draining] ?? [];
-    const healSources: HealSource[] = healers.map(h => ({ x: h.x, y: h.y, healParts: healPartsOf(h) }));
-    // advanceIsSafe only projects ONE tile ahead (would this next step's incoming tower damage exceed
-    // what the squad can heal through THIS tick) — it has no memory of damage already sustained, so on
-    // its own it will happily walk an already-wounded squad straight back into fire the instant a single
-    // tile looks individually survivable. fullyHealed gates advancing (never retreating/holding — a hurt
-    // squad must always be free to disengage) on every member being at full HP, so a retreat actually
-    // means "fall back and let heal top everyone up" rather than "reverse for one tile and immediately
-    // push again." Confirmed live on shard0 (2026-08-05): a healer took real tower damage and died mid
-    // engagement because the per-tile check alone kept re-approving advance while the squad was still hurt.
-    const fullyHealed = squad.every(c => c.hits >= c.hitsMax);
-
-    let nextPos: XY & { room: string };
-    let aim: XY & { room: string };
-    if (!inFormation) {
-      // Hold the leader exactly where it stands — a real, current tile, not a moving target — so
-      // followerOffsets below computes slots the stragglers can actually converge on this tick.
-      nextPos = leaderPos;
-      aim = leaderPos;
-    } else {
-      // The candidate tile actually checked is one step toward the advance aim (not the aim point
-      // itself) — "the NEXT candidate position", per ADR 0006, so a room's center far away doesn't get
-      // pre-emptively rejected by towers near the border it hasn't reached yet.
-      const nextStepCandidate = stepToward(leaderPos, advanceAim);
-      const safe = fullyHealed && advanceIsSafe(nextStepCandidate, towers, healSources);
-      aim = safe ? advanceAim : retreatAim;
-      nextPos = safe ? nextStepCandidate : stepToward(leaderPos, retreatAim);
+    // Steer every UNSQUADDED member (not in the current squad state's member set — assembling, or a
+    // replacement still walking in) toward the room it should head to: the anchor's room when a squad is
+    // underway (a replacement closing distance), else the staging room (assembly rally). Squadded members
+    // are driven by runSquads, not the step table, so they ignore this. Reuses attackTargetRoom + the
+    // roles' moveToRoom step — no bespoke squadTargetPos field.
+    const squaddedIds = new Set(state?.members.map(m => m.id));
+    const rallyRoom = state?.anchor.room ?? staging;
+    for (const c of squad) {
+      if (squaddedIds.has(c.id)) continue;
+      if (c.memory.attackTargetRoom !== rallyRoom) out.push({ kind: "setAttackTargetRoom", creep: c.id, room: rallyRoom });
     }
 
-    // The block anchored at nextPos must be entirely walkable in SOME orientation, or the whole move is
-    // rejected — a follower assigned a wall tile can never physically reach it, which would otherwise
-    // freeze the squad forever waiting on the inFormation gate above for a straggler that can't arrive
-    // (confirmed live on shard0, 2026-08-05 — see walkableOrientation's doc). Falls back to holding at
-    // leaderPos (the CURRENT tile, already proven reachable since the squad is standing on it) rather
-    // than committing to nextPos at all when no orientation there works.
-    const terrain = colony.drainRoomTerrain[nextPos.room];
-    const preferredDirection = directionOf(leaderPos, aim);
-    const orientation = walkableOrientation(nextPos, preferredDirection, terrain);
-    const finalPos = orientation ? nextPos : leaderPos;
-    const finalDirection = orientation ?? walkableOrientation(leaderPos, preferredDirection, colony.drainRoomTerrain[leaderPos.room]) ?? preferredDirection;
-    const offsets = followerOffsets(finalPos, finalDirection);
-
-    const out: Intent[] = [{ kind: "setSquadTargetPos", creep: definiteLeader.id, pos: finalPos }];
-    followers.forEach((follower, i) => {
-      const offset = offsets[i];
-      if (!offset) return;
-      out.push({ kind: "setSquadTargetPos", creep: follower.id, pos: { x: offset.x, y: offset.y, room: finalPos.room } });
-    });
     out.push(...this.drainSample(colony));
     return out;
   }
 
-  /** #40/ADR 0006's operation-owned observation history: a `{tick, towerEnergy, storageEnergy}` sample
-   * whenever the target room has vision this tick — visibleRooms is the authoritative vision signal (not
-   * hostileRoomTowers' presence, which is also empty for a genuinely visible-but-towerless room and would
-   * wrongly read as "no vision"). towerEnergy/storageEnergy each default to 0 when their own map has no
-   * entry for the target (towerless room / no storage structure, respectively) — vision is what gates
-   * whether a sample is taken at all, not whether either quantity happens to be present. No sample, no
-   * intent, when the target room isn't visible this tick — a gap in the history, not a zero-filled entry. */
+  /** #40/ADR 0006's operation-owned observation history — a {tick, towerEnergy, storageEnergy} sample
+   * whenever the target room has vision this tick (visibleRooms is the authoritative vision signal). */
   private drainSample(colony: ColonySnapshot): Intent[] {
     const target = colony.draining;
     if (!target) return [];
@@ -269,19 +259,103 @@ export class Drain extends Operation {
   }
 }
 
-/** The attacker when alive and present in the squad; otherwise a deterministic pick (alphabetically-first
- * by name) among alive healers — ADR 0006's leader-selection rule. `attacker` is undefined only when
- * intents() has already confirmed the squad is fully assembled, so a healer fallback here always has at
- * least DRAIN_HEALER_COUNT candidates. */
-export function leaderOf(attacker: SnapCreep | undefined, healers: readonly SnapCreep[]): SnapCreep {
-  if (attacker) return attacker;
-  return [...healers].sort((a, b) => a.name.localeCompare(b.name))[0];
+// The first healer slot offset (1,0 at the canonical TOP facing) rotated to the current facing — used to
+// back out the anchor tile from a surviving healer when the attacker (anchor slot) is dead.
+function rotatedHealerOffset(facing: DirectionConstant): { dx: number; dy: number } {
+  // (1,0) rotated: RIGHT -> (0,1), BOTTOM -> (-1,0), LEFT -> (0,-1), TOP -> (1,0).
+  switch (facing) {
+    case RIGHT:
+      return { dx: 0, dy: 1 };
+    case BOTTOM:
+      return { dx: -1, dy: 0 };
+    case LEFT:
+      return { dx: 0, dy: -1 };
+    default:
+      return { dx: 1, dy: 0 };
+  }
 }
 
-/** A healer's live HEAL part count. Unboosted — unlike SnapUnit.healParts (built for hostiles/wounded
- * friendlies, where boost-weighting matters for realistic combat math), SnapCreep carries no per-part
- * boost data at all today, so this is the best available signal; a boosted drain healer would undercount
- * here, a gap worth revisiting if/when boost support is added to SnapCreep generally. */
-function healPartsOf(creep: SnapCreep): number {
-  return creep.body.filter(p => p === HEAL).length;
+// The set of rooms on the route that lie BEYOND the staging room toward the target (staging's successors,
+// target included) — "underway" territory. A room before staging (a transit room the squad is still
+// walking through to reach staging) is not in this set.
+function roomsBeyondStaging(route: readonly { room: string }[], staging: string): Set<string> {
+  const idx = route.findIndex(r => r.room === staging);
+  if (idx < 0) return new Set();
+  return new Set(route.slice(idx + 1).map(r => r.room));
+}
+
+// The tile the facing is measured FROM — the attacker's tile when present, else the first squad member's.
+function anchorReference(squad: readonly SnapCreep[], room: string): XY {
+  const attacker = squad.find(c => c.role === "drainAttacker" && c.room === room);
+  const ref = attacker ?? squad.find(c => c.room === room) ?? squad[0];
+  return { x: ref?.x ?? 25, y: ref?.y ?? 25 };
+}
+
+// The room most of the squad's members currently stand in — the formation's anchor room while underway.
+function mostCommonRoom(squad: readonly SnapCreep[]): string {
+  const counts = new Map<string, number>();
+  for (const c of squad) counts.set(c.room, (counts.get(c.room) ?? 0) + 1);
+  let best = squad[0]?.room ?? "";
+  let bestN = -1;
+  for (const [room, n] of counts) if (n > bestN) [best, bestN] = [room, n];
+  return best;
+}
+
+/** Drain's plugged-in action planner (ADR 0007): attacker targets a tower first (the namesake energy
+ * drain), falling back to the most threatening hostile; each healer targets the most damaged squad-mate
+ * (including itself). Pure — reads only the shared state and the colony snapshot, no Game. Only emits an
+ * action for a member that actually has a target this tick (no target -> no entry). */
+export function planDrainActions(state: SquadState, colony: ColonySnapshot): Map<Id<Creep>, ActionIntent> {
+  const out = new Map<Id<Creep>, ActionIntent>();
+  const anchorRoom = state.anchor.room;
+  const towers = colony.draining === anchorRoom ? (colony.hostileRoomTowers[anchorRoom] ?? []) : [];
+  // Snapshot carries only the home room's hostile creeps (colony.hostiles); the target room's are not
+  // generally available, so the attacker's hostile fallback is best-effort — its primary target, the
+  // tower (the operation's namesake energy drain), always comes from hostileRoomTowers above.
+  const hostiles = colony.hostiles;
+
+  for (const member of state.members) {
+    if (member.role === "drainAttacker") {
+      const tower = towers[0];
+      if (tower) {
+        out.set(member.id, { do: "attack", target: tower.id });
+        continue;
+      }
+      const hostile = mostThreatening(hostiles);
+      if (hostile) out.set(member.id, { do: "attack", target: hostile.id });
+    } else {
+      // Healer: most damaged squad-mate (lowest hits fraction), including self.
+      const patient = mostDamaged(state.members);
+      if (patient) out.set(member.id, { do: "heal", target: patient.id });
+    }
+  }
+  return out;
+}
+
+// Lowest hits/hitsMax fraction — the heal target. Ties resolve to the first encountered (deterministic
+// given a stable member order).
+function mostDamaged(members: readonly SnapCreep[]): SnapCreep | undefined {
+  let best: SnapCreep | undefined;
+  let bestFrac = Infinity;
+  for (const m of members) {
+    const frac = m.hitsMax > 0 ? m.hits / m.hitsMax : 1;
+    if (frac < bestFrac) {
+      best = m;
+      bestFrac = frac;
+    }
+  }
+  return best;
+}
+
+// The most threatening hostile by body composition (attacker > healer > unarmed), nearest as tiebreaker —
+// mirrors the "mostThreatening" prefer used by the old step table's hostile fallback.
+function mostThreatening(hostiles: readonly { id: Id<Creep>; attackParts: number; rangedAttackParts: number; healParts: number }[]):
+  | { id: Id<Creep> }
+  | undefined {
+  let best: { id: Id<Creep>; score: number } | undefined;
+  for (const h of hostiles) {
+    const score = (h.attackParts + h.rangedAttackParts) * 2 + h.healParts;
+    if (!best || score > best.score) best = { id: h.id, score };
+  }
+  return best;
 }

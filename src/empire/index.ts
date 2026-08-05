@@ -19,9 +19,10 @@ export class Empire {
     return planSpawning(this.colonies, roomDistance);
   }
 
-  /** Drives every live creep's behaviour. Acts directly; returns no intents. */
+  /** Drives every live creep's behaviour. Acts directly; returns no intents. Passes the colonies so the
+   * squad pass (ADR 0007) can read each squad-bearing operation's formation state and snapshot. */
   public creeps(): void {
-    runCreepBehaviors();
+    runCreepBehaviors(this.colonies);
   }
 }
 
