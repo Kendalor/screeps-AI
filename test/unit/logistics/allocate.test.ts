@@ -284,11 +284,13 @@ describe("allocate", () => {
   it("visits same-priority sinks nearest-first, not in array order", () => {
     // Creep starts at (0,0). Consumers are listed far-then-near-then-mid on purpose — array order alone
     // would visit them in that scrambled order; route order should walk near -> mid -> far instead.
+    // Kept within MAX_CHAIN_HOP of each other (unlike a real bunker's cross-room leftovers) so this
+    // stays a pure ordering test, not a chain-capping one — see the dedicated hop-cap tests below.
     const creep = idleHauler({ storeEnergy: 150, storeCapacity: 200, x: 0, y: 0 });
     const sinks = [
-      consumer("far", 50, 100, { x: 20, y: 0 }),
+      consumer("far", 50, 100, { x: 6, y: 0 }),
       consumer("near", 50, 100, { x: 2, y: 0 }),
-      consumer("mid", 50, 100, { x: 10, y: 0 })
+      consumer("mid", 50, 100, { x: 4, y: 0 })
     ];
     const costMatrix = buildCostMatrix({ terrain: openTerrain(), structures: [] });
     const result = allocate([provider("src", 1000)], sinks, [creep], emptyReserved(), null, costMatrix);
@@ -297,6 +299,35 @@ describe("allocate", () => {
     const ids: string[] = [];
     for (let leg = task; leg; leg = leg.next) if (leg.kind === "deliver") ids.push((leg.to as { id: string }).id);
     expect(ids).toEqual(["near", "mid", "far"]);
+  });
+
+  it("stops chaining once the next sink is a long hop from the last one visited, leaving it for a later plan", () => {
+    // "near" sits right next to the creep; "isolated" is real bunker-scale far (matches the W8N3 live
+    // capture: a scattered leftover extension 5-7 tiles from the nearest claimed cluster) — beyond
+    // MAX_CHAIN_HOP. The chain should take "near" and then stop, not leap to "isolated" in the same trip.
+    const creep = idleHauler({ storeEnergy: 150, storeCapacity: 200, x: 0, y: 0 });
+    const sinks = [consumer("near", 50, 100, { x: 1, y: 0 }), consumer("isolated", 50, 100, { x: 10, y: 0 })];
+    const costMatrix = buildCostMatrix({ terrain: openTerrain(), structures: [] });
+    const result = allocate([provider("src", 1000)], sinks, [creep], emptyReserved(), null, costMatrix);
+
+    const task = result[creep.id];
+    const ids: string[] = [];
+    for (let leg = task; leg; leg = leg.next) if (leg.kind === "deliver") ids.push((leg.to as { id: string }).id);
+    expect(ids).toEqual(["near"]);
+  });
+
+  it("still reaches a single far consumer as the FIRST stop — the cap only limits hops between chained stops", () => {
+    // No nearby sink at all: the sole consumer is bunker-scale far from the creep's own position. That
+    // first hop must never be capped, or a creep with only one distant sink to serve would get nothing.
+    const creep = idleHauler({ storeEnergy: 150, storeCapacity: 200, x: 0, y: 0 });
+    const sinks = [consumer("isolated", 50, 100, { x: 10, y: 0 })];
+    const costMatrix = buildCostMatrix({ terrain: openTerrain(), structures: [] });
+    const result = allocate([provider("src", 1000)], sinks, [creep], emptyReserved(), null, costMatrix);
+
+    const task = result[creep.id];
+    const ids: string[] = [];
+    for (let leg = task; leg; leg = leg.next) if (leg.kind === "deliver") ids.push((leg.to as { id: string }).id);
+    expect(ids).toEqual(["isolated"]);
   });
 
   it("reserves each sink in a deliver chain so a second creep isn't sent to the same extensions", () => {

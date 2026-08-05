@@ -34,7 +34,11 @@ function isFreeForCreep(pos: RoomPosition, creep: Creep): boolean {
 
 function isWalkable(pos: RoomPosition): boolean {
   const terrain = Game.rooms[pos.roomName]?.getTerrain();
-  return !terrain || terrain.get(pos.x, pos.y) !== TERRAIN_MASK_WALL;
+  if (terrain && terrain.get(pos.x, pos.y) === TERRAIN_MASK_WALL) return false;
+  // Terrain alone isn't enough — a plain tile can still hold an impassable building (storage, spawn,
+  // extension, wall, ...). Confirmed live: a builder's stepOffRoad candidate landed on a storage tile,
+  // travelTo could never actually arrive, and the builder sat on the road blocking traffic forever.
+  return !pos.lookFor(LOOK_STRUCTURES).some(s => (OBSTACLE_OBJECT_TYPES as readonly string[]).includes(s.structureType));
 }
 
 // Every in-room tile within `range` of workPos (a square, not just the boundary ring), nearest first —

@@ -7,7 +7,7 @@ import GOAL_JSON from "../../../src/layouts/Base_2.json";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { Upgrading } from "../../../src/operations/upgrading";
-import { colonySnap, containerAt, dropAt, linkAt, snapCreeps } from "../../fixtures";
+import { colonySnap, containerAt, dropAt, linkAt, snapCreeps, structureAt } from "../../fixtures";
 
 const upgrading = new Upgrading("W1N1");
 const upgraderRequests = (over: Parameters<typeof colonySnap>[0]) => upgrading.desiredCreeps(colonySnap(over));
@@ -249,6 +249,28 @@ describe("Upgrading.structures — link swap at RCL5", () => {
 
     const roads = upgrading.structures(gated()).filter(s => s.type === "road");
     expect(roads.some(r => chebyshev(r, linkClaim) === 1)).toBe(true);
+  });
+
+  // A live bug: once the link is actually built, it's a real obstacle (unlike a container, links aren't
+  // in roads.ts's WALKABLE_STRUCTURES) — so re-running the same A* on a later tick can no longer land
+  // back on its own tile and instead terminates on a *different* tile adjacent to the controller. Nothing
+  // is built there yet, so building.ts sites it too: a second link goes up next to the first. structures()
+  // must keep re-deriving the same spot the recorded link already sits at.
+  it("keeps claiming the same spot once its own link is built and recorded, not a second one nearby", () => {
+    const natural = upgrading.structures(gated()).find(s => s.type === "link")!;
+    const builtLink = linkAt(natural.x, natural.y, 0);
+
+    const claimed = upgrading.structures(
+      gated({
+        structures: [structureAt(natural.x, natural.y, "link", { id: builtLink.id })],
+        links: [builtLink],
+        linkNetwork: { controller: builtLink.id }
+      })
+    );
+
+    const links = claimed.filter(s => s.type === "link");
+    expect(links).toHaveLength(1);
+    expect({ x: links[0].x, y: links[0].y }).toEqual({ x: natural.x, y: natural.y });
   });
 });
 

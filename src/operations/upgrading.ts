@@ -191,9 +191,18 @@ export class Upgrading extends Operation {
 
     // Path from the storage tile out to range 2 of the controller against the layout plus siblings'
     // claims, so a shared road is reused rather than duplicated (same reason Mining threads `planned`).
+    // The already-built controller link is excluded from the obstacle list (unlike every other link,
+    // which correctly blocks pathing): a link isn't in roads.ts's WALKABLE_STRUCTURES because it truly
+    // isn't walkable, but leaving it as an obstacle here means the instant it's built, this search can no
+    // longer land back on its own tile and instead finds a different tile adjacent to the controller —
+    // claiming a second link next to the first, since nothing's built at the new spot yet. Once recorded
+    // (colony.linkNetwork.controller), treat that one tile as passable so the route keeps re-deriving the
+    // same endpoint it already built, the same way a container (genuinely walkable) always has.
+    const controllerLinkId = colony.linkNetwork.controller;
+    const structures = colony.structures.filter(s => s.id !== controllerLinkId);
     const costMatrix = buildCostMatrix({
       terrain: colony.terrain,
-      structures: [...colony.structures, ...planned]
+      structures: [...structures, ...planned]
     });
 
     const taken = new Set(planned.map(p => `${p.x},${p.y}`));

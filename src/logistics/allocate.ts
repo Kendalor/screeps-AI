@@ -19,6 +19,20 @@ import type { LogisticsTask, NodeRef } from "./types";
 // same range a real trip needs, so the path-distance query below matches what the creep will actually walk.
 const PICKUP_RANGE = 1;
 
+// The farthest hop buildDeliverChain will take BETWEEN two consumers already in the same chain, once it
+// has at least one stop. A dense bunker's extensions sit 0-1 tiles apart; a real cross-room-scale jump
+// (5+ tiles) only happens once the nearby cluster the creep is standing in has been drained and the
+// only "nearest remaining" consumer left is a scattered leftover clear across the room — visited only
+// because every closer one already got claimed by the graph (full, or reserved). Chaining onto it
+// anyway produces exactly the zig-zag confirmed live on W8N3: fill a local cluster, jump 5-7 tiles to an
+// isolated extension, then jump right back the way it came for another isolated one on the far side of
+// the first cluster. Stopping the chain at the cluster boundary instead leaves the far leftovers for a
+// fresh plan next tick — cheap, since idle-replanning already happens every tick a creep goes idle — and
+// lets whichever creep (this one or a sibling) is actually closest by then pick them up instead. Does
+// NOT cap the first hop from the creep's own position: reaching the one open consumer in the room, no
+// matter how far, is a legitimate single trip, not a zig-zag.
+const MAX_CHAIN_HOP = 3;
+
 export interface ReservedAmounts {
   providers: Partial<Record<string, number>>; // keyed by NodeRef identity string, amount already claimed
   consumers: Partial<Record<string, number>>;
@@ -296,9 +310,18 @@ function buildDeliverChain(
     if (left <= 0) break;
     const pool = tiers.get(priority) ?? [];
     const remainingInTier = new Set(pool);
+    let hasStop = out.length > 0; // a higher-priority tier may have already placed a stop this call
     while (remainingInTier.size > 0 && left > 0) {
       const next = cursor && costMatrix ? nearestConsumer(remainingInTier, cursor, costMatrix) : remainingInTier.values().next().value;
       if (!next) break;
+      // Once the chain has a stop, don't let it leap clear across the room for the next one — see
+      // MAX_CHAIN_HOP's doc. The very first stop overall is never capped (from the creep's own
+      // position, on the very first tier processed), since reaching the sole open consumer, however
+      // far, is a real trip rather than a hop within an already-claimed cluster.
+      if (hasStop && cursor && costMatrix && next.pos) {
+        const hop = pathDistance(cursor, next.pos, PICKUP_RANGE, costMatrix);
+        if (hop > MAX_CHAIN_HOP) break;
+      }
       remainingInTier.delete(next);
       const key = refKey(next.ref);
       const want = remaining.get(key) ?? 0;
@@ -307,6 +330,7 @@ function buildDeliverChain(
       remaining.set(key, want - give);
       out.push({ ref: next.ref, amount: give });
       left -= give;
+      hasStop = true;
       if (next.pos) cursor = next.pos;
     }
   }
