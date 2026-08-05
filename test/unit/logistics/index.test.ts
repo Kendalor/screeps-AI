@@ -233,4 +233,32 @@ describe("planLogistics — supply", () => {
       expect(deliver?.to).not.toEqual({ kind: "structure", id: "spawn1" });
     }
   });
+
+  it("leaves a spawn deficit supply can't reach this tick for transport to skip too, while a supply creep is alive", () => {
+    // The one supply creep is already mid-trip elsewhere (busy, not idle), so it reserves nothing this
+    // tick and spawn1's full deficit is left uncovered. Transport must still leave spawn1 alone — supply
+    // owns spawn/extensions outright whenever it's alive, not just whatever it happened to reserve.
+    const container = containerAt(10, 10, 300);
+    const busySupply = snapCreep("supply", {
+      memory: { logistics: { current: { kind: "pickup", from: { kind: "structure", id: "storage1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 } } }
+    });
+    const idleTransport = snapCreep("transport", { storeEnergy: 0, storeCapacity: 100 });
+    const plan = planLogistics(
+      colonySnap({
+        creeps: [busySupply, idleTransport],
+        containers: [container],
+        controller: { x: 25, y: 25 },
+        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")],
+        energyAvailable: 200,
+        energyCapacity: 300
+      })
+    );
+
+    const transportTask = plan.assignments[idleTransport.id];
+    if (transportTask) {
+      let deliver = transportTask.kind === "deliver" ? transportTask : transportTask.next;
+      while (deliver && deliver.kind !== "deliver") deliver = deliver.next;
+      expect(deliver?.to).not.toEqual({ kind: "structure", id: "spawn1" });
+    }
+  });
 });

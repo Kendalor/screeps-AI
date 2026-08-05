@@ -36,11 +36,13 @@ export { Attack } from "./attack";
 
 /** Every colony gets every operation kind unconditionally; each decides for itself whether to act.
  * Order matters for structures(): Mining paths first so later operations converge onto its routes. It
- * also matters for desiredCreeps() at the one priority Supply and Logistics/transport tie on (100):
- * planSpawning's sort is stable, so Logistics listed ahead of Supply means transport wins that tie —
- * the right call the moment both become newly affordable at once (RCL3/550 capacity), since transport
- * alone already covers filling spawn/extensions pre-storage (see logistics/graph.ts's consumers()
- * ranking spawnSystem top), making Supply's dedicated topper redundant with it in that exact window.
+ * used to also matter for desiredCreeps() spawn-priority ties between Supply and Logistics/transport,
+ * both then at 100 — planSpawning's stable sort let array order (Logistics listed ahead of Supply)
+ * decide the tie, meant to let transport win only the moment both first become affordable at once
+ * (RCL3/550 capacity). In practice the ordering wasn't scoped to that window: transport won the tie on
+ * every tick it also wanted a creep, indefinitely starving Supply on a live single-spawn colony (0
+ * supply creeps ever spawned while transport's fleet grew unopposed). Fixed by giving Supply its own
+ * higher priority (101, see behaviors/roles/supply.ts) so it no longer depends on this array's order.
  *
  * `siblingRemoteSourceIds`: sources already claimed by any OTHER colony's Memory.remotes this tick —
  * see Mining's constructor doc. Defaults to empty so existing single-colony callers are unaffected. */

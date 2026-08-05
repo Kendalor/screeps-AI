@@ -119,6 +119,46 @@ describe("scoutCandidatesAround", () => {
     expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2", "W1N3", "W2N1"]);
   });
 
+  it("stops expanding past a room recently proven lethal, but still includes the room itself", () => {
+    // W1N2 killed a scout recently (lethalAt within the backoff window); the room still fulfills the
+    // scouting order as its own destination (needsScouting excludes it separately), but W1N3 beyond it
+    // must not appear — nothing reachable proves a scout can walk past a room it dies entering.
+    stubGame();
+    stubMap({ W1N1: { "3": "W1N2" }, W1N2: { "7": "W1N1", "3": "W1N3" }, W1N3: { "7": "W1N2" } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 1, type: "normal", sources: [], hostile: true, lethalAt: Game.time } } }
+    };
+
+    const out = scoutCandidatesAround("W1N1", 2, "W1N1");
+
+    expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2"]);
+  });
+
+  it("does not apply the lethalAt cut when no home is passed (non-scouting callers)", () => {
+    stubGame();
+    stubMap({ W1N1: { "3": "W1N2" }, W1N2: { "7": "W1N1", "3": "W1N3" }, W1N3: { "7": "W1N2" } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 1, type: "normal", sources: [], hostile: true, lethalAt: Game.time } } }
+    };
+
+    const out = scoutCandidatesAround("W1N1", 2);
+
+    expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2", "W1N3"]);
+  });
+
+  it("resumes expanding past a lethal room once its lethalAt entry has aged out the retry window", () => {
+    stubGame();
+    stubMap({ W1N1: { "3": "W1N2" }, W1N2: { "7": "W1N1", "3": "W1N3" }, W1N3: { "7": "W1N2" } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 1, type: "normal", sources: [], hostile: true, lethalAt: 0 } } }
+    };
+    Game.time = 999999;
+
+    const out = scoutCandidatesAround("W1N1", 2, "W1N1");
+
+    expect(out.map(c => c.room).sort()).toEqual(["W1N1", "W1N2", "W1N3"]);
+  });
+
   it("does not apply the noPathFrom cut when no home is passed (non-scouting callers)", () => {
     stubGame();
     stubMap({ W1N1: { "3": "W1N2" }, W1N2: { "7": "W1N1", "3": "W1N3" }, W1N3: { "7": "W1N2" } });

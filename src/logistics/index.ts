@@ -106,8 +106,19 @@ export const planLogistics = wrapFn(function planLogistics(colony: ColonySnapsho
   const idle = transportCreeps.filter(isIdle);
   if (idle.length === 0) return supplyPlan;
 
+  // A live supply creep owns spawnSystem/tower outright — see consumers()'s skipSupplyTiers doc —
+  // so transport falls straight through to controller-container/builder/upgrader/storage instead of
+  // only working around whatever supply's reservations happened to cover this particular tick.
+  const hasSupply = colony.creeps.some(c => c.role === "supply");
   const reserved = mergeReserved(foldReserved(transportCreeps), supplyReserved);
-  const assignments = allocate(providers(colony), consumers(colony), idle, reserved, storageOverflow(colony), costMatrix);
+  const assignments = allocate(
+    providers(colony),
+    consumers(colony, hasSupply),
+    idle,
+    reserved,
+    storageOverflow(colony),
+    costMatrix
+  );
   return { assignments: { ...supplyPlan.assignments, ...assignments } };
 }, "planning:planLogistics");
 

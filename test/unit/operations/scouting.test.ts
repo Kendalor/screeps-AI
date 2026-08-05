@@ -82,6 +82,32 @@ describe("Scouting demand", () => {
     expect(scouting.desiredCreeps(colonySnap({ scoutTargets: [] }))).toEqual([]);
   });
 
+  // If a whole frontier is boxed in behind a hostile-owned transit room recently proven lethal
+  // (dangerRouteCost in execute.ts prices it Infinity), every candidate is unreachable and the existing
+  // scout ends up parked in the home room with no target and no lastRoom — see strandedScout's doc.
+  // Requesting a second scout in that state would just idle it too: the frontier hasn't changed.
+  it("withholds new requests once an existing scout is stranded with nowhere reachable to go", () => {
+    const stranded = snapCreep("scout", { room: "W1N1", memory: { op: "scouting:W1N1" } });
+    const snap = colonySnap({
+      name: "W1N1",
+      creeps: [stranded],
+      scoutTargets: [scoutTarget("W1N2"), scoutTarget("W1N3")]
+    });
+    expect(scouting.desiredCreeps(snap)).toEqual([]);
+  });
+
+  // A scout standing in the home room while still travelling TO somewhere (lastRoom set from a prior
+  // assignment) is not stranded — it's between legitimate hops — so demand keeps flowing normally.
+  it("still requests scouts when the existing scout is merely between assignments, not stranded", () => {
+    const travelling = snapCreep("scout", {
+      room: "W1N1",
+      memory: { op: "scouting:W1N1", lastRoom: "W1N2" }
+    });
+    const targets = Array.from({ length: 25 }, (_, i) => scoutTarget(`W1N${i + 4}`));
+    const snap = colonySnap({ name: "W1N1", creeps: [travelling], scoutTargets: targets });
+    expect(scoutRequests(snap)).toHaveLength(2); // ceil(25/10) wanted=3, 1 owned
+  });
+
   // The home room is a distance-0 scoutTargets entry (for passive recording), not real frontier work —
   // it must never inflate fleet demand on its own.
   it("does not count the home room toward scout demand", () => {

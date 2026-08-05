@@ -32,6 +32,10 @@ export interface Consumer {
   resource: ResourceConstant;
   wanted: number; // free capacity, capped by fillTo-equivalent floors
   priority: number; // spawn/extension > tower > controller-container-floor
+  // Where to range-check a creep against, for allocate.ts's route-ordering of a same-priority deliver
+  // chain (e.g. which extension to visit next). Null for a consumer with no fixed position (a creep
+  // sink) — those fall back to array order, same as before this field existed.
+  pos: XY | null;
 }
 
 // Deliberately NOT hauler.ts's step order: hauler ranks controller-container above tower, which is
@@ -217,37 +221,51 @@ export function supplyConsumers(colony: ColonySnapshot): Consumer[] {
   return consumers(colony).filter(c => c.priority === PRIORITY.spawnSystem || c.priority === PRIORITY.tower);
 }
 
-/** Spawn/extensions as one aggregate node, plus the controller container while below its fill floor. */
-export function consumers(colony: ColonySnapshot): Consumer[] {
+/**
+ * Spawn/extensions as one aggregate node, plus the controller container while below its fill floor.
+ *
+ * `skipSupplyTiers`: while a live supply creep exists, transport must leave spawnSystem/tower to it
+ * entirely rather than only working around whatever supply's own allocate() pass reserved this tick —
+ * supply is a short-hop topper that's typically idle/mid-trip on any given tick, so without this a
+ * multi-extension room's uncovered remainder kept falling to transport, which then treated a routine
+ * top-off as equal-or-higher priority than controller-container/storage and dragged transport off its
+ * own longer-haul work every time supply couldn't reach every sink in one pass. Supply's own view
+ * (supplyConsumers, below) is unaffected — it never looks at this flag.
+ */
+export function consumers(colony: ColonySnapshot, skipSupplyTiers = false): Consumer[] {
   const out: Consumer[] = [];
 
-  // One consumer per spawn/extension with free capacity, all at the spawn-system priority. Emitting
-  // them individually (rather than a single "spawnSystem" aggregate) lets the allocator reserve each
-  // extension for one creep's multi-dropoff trip — a full creep claims N extensions up front, removing
-  // them from every other creep's options, instead of one being sent per extension per tick. The
-  // aggregate energyAvailable/energyCapacity still drives fleet sizing and spawn gating elsewhere.
-  for (const sink of colony.spawnSinks) {
-    const wanted = sink.storeCapacity - sink.storeEnergy;
-    if (wanted <= 0) continue;
-    out.push({
-      ref: { kind: "structure", id: sink.id as Id<AnyStoreStructure> },
-      resource: RESOURCE_ENERGY,
-      wanted,
-      priority: PRIORITY.spawnSystem
-    });
-  }
+  if (!skipSupplyTiers) {
+    // One consumer per spawn/extension with free capacity, all at the spawn-system priority. Emitting
+    // them individually (rather than a single "spawnSystem" aggregate) lets the allocator reserve each
+    // extension for one creep's multi-dropoff trip — a full creep claims N extensions up front, removing
+    // them from every other creep's options, instead of one being sent per extension per tick. The
+    // aggregate energyAvailable/energyCapacity still drives fleet sizing and spawn gating elsewhere.
+    for (const sink of colony.spawnSinks) {
+      const wanted = sink.storeCapacity - sink.storeEnergy;
+      if (wanted <= 0) continue;
+      out.push({
+        ref: { kind: "structure", id: sink.id as Id<AnyStoreStructure> },
+        resource: RESOURCE_ENERGY,
+        wanted,
+        priority: PRIORITY.spawnSystem,
+        pos: { x: sink.x, y: sink.y }
+      });
+    }
 
-  // Ranked above the controller container: an empty tower during an attack outranks the
-  // controller container's 0.7 floor top-off.
-  for (const t of colony.towers) {
-    const wanted = t.storeCapacity - t.storeEnergy;
-    if (wanted <= 0) continue;
-    out.push({
-      ref: { kind: "structure", id: t.id as unknown as Id<AnyStoreStructure> },
-      resource: RESOURCE_ENERGY,
-      wanted,
-      priority: PRIORITY.tower
-    });
+    // Ranked above the controller container: an empty tower during an attack outranks the
+    // controller container's 0.7 floor top-off.
+    for (const t of colony.towers) {
+      const wanted = t.storeCapacity - t.storeEnergy;
+      if (wanted <= 0) continue;
+      out.push({
+        ref: { kind: "structure", id: t.id as unknown as Id<AnyStoreStructure> },
+        resource: RESOURCE_ENERGY,
+        wanted,
+        priority: PRIORITY.tower,
+        pos: { x: t.x, y: t.y }
+      });
+    }
   }
 
   for (const c of colony.containers) {
@@ -259,7 +277,8 @@ export function consumers(colony: ColonySnapshot): Consumer[] {
       ref: { kind: "structure", id: c.id as Id<AnyStoreStructure> },
       resource: RESOURCE_ENERGY,
       wanted,
-      priority: PRIORITY.controllerContainer
+      priority: PRIORITY.controllerContainer,
+      pos: { x: c.x, y: c.y }
     });
   }
 
@@ -288,11 +307,13 @@ export function consumers(colony: ColonySnapshot): Consumer[] {
   if (colony.storageId && spawnSystemDeficit(colony) === 0) {
     const wanted = colony.storageCapacity - colony.storageEnergy;
     if (wanted > 0) {
+      const storageStruct = colony.structures.find(s => s.type === "storage");
       out.push({
         ref: { kind: "structure", id: colony.storageId as Id<AnyStoreStructure> },
         resource: RESOURCE_ENERGY,
         wanted,
-        priority: PRIORITY.storage
+        priority: PRIORITY.storage,
+        pos: storageStruct ? { x: storageStruct.x, y: storageStruct.y } : null
       });
     }
   }
@@ -328,5 +349,5 @@ function isNearControllerPos(colony: ColonySnapshot, c: SnapCreep): boolean {
 function pushCreepConsumer(out: Consumer[], c: SnapCreep, priority: number): void {
   const wanted = c.storeCapacity - c.storeEnergy;
   if (wanted <= 0) return;
-  out.push({ ref: { kind: "creep", id: c.id }, resource: RESOURCE_ENERGY, wanted, priority });
+  out.push({ ref: { kind: "creep", id: c.id }, resource: RESOURCE_ENERGY, wanted, priority, pos: { x: c.x, y: c.y } });
 }

@@ -22,15 +22,35 @@ const config = {
 export class Scouting extends Operation {
   public readonly kind = "scouting";
 
-  /** Scout demand: one per ~roomsPerScout rooms of stale frontier, capped at maxScouts; zero when everything is fresh. */
+  /** Scout demand: one per ~roomsPerScout rooms of stale frontier, capped at maxScouts; zero when everything is
+   * fresh OR when the existing fleet is already proven stuck (see strandedScout's doc) — spawning a fresh scout
+   * on top of one that already found nowhere reachable to go would just idle it too, forever, until whatever
+   * boxed the first one in (see execute.ts's dangerRouteCost) clears. */
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
     // The home room (distance 0) is never dispatch-worthy — it's covered by passive recording, not a scout trip.
     const todo = colony.scoutTargets.filter(t => t.room !== colony.name && needsScouting(t, colony.tick));
     if (todo.length === 0) return [];
 
+    const scouts = this.owned(colony, "scout");
+    if (scouts.some(s => this.strandedScout(colony, s))) {
+      log.debugRoom(colony.name, "scouting: fleet already has a stranded scout — withholding new requests");
+      return [];
+    }
+
     const wanted = Math.min(config.maxScouts, Math.ceil(todo.length / config.roomsPerScout));
-    log.debugRoom(colony.name, `scouting: stale frontier=${todo.length} (${todo.map(t => t.room).join(", ")}) wanted=${wanted} owned=${this.owned(colony, "scout").length}`);
+    log.debugRoom(colony.name, `scouting: stale frontier=${todo.length} (${todo.map(t => t.room).join(", ")}) wanted=${wanted} owned=${scouts.length}`);
     return this.fillRole(colony, "scout", wanted, roleDef("scout")!.priority);
+  }
+
+  // A scout sitting in its home room with no assignment and nowhere it just came from has already been through
+  // a setScoutTargets round this life and found every candidate unreachable (execute.ts's assignScoutTargets
+  // logs this as "no reachable candidate won the assignment round" — see debug-main's investigation). Requesting
+  // another scout in that state only grows a second idle creep: the frontier hasn't changed, so it would hit the
+  // identical "nothing reachable" verdict every tick too. `lastRoom` is only ever set once a scout is actually
+  // assigned somewhere (see execute.ts's setScoutTargets), so its absence here reliably distinguishes "never
+  // found anywhere to go" from "en route/returned between legitimate assignments."
+  private strandedScout(colony: ColonySnapshot, scout: SnapCreep): boolean {
+    return scout.room === colony.name && scout.memory.scoutTarget === undefined && scout.memory.lastRoom === undefined;
   }
 
   /** Per scout: emit recordScout if standing in a room that needs surveying, and/or setScoutTarget if it needs a new destination.

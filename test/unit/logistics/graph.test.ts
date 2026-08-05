@@ -167,8 +167,8 @@ describe("consumers", () => {
     );
 
     // ext1 wants 30 (50 cap - 20 held), ext2 wants 50 — each its own consumer at spawn-system priority.
-    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 100 });
-    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext2" }, resource: RESOURCE_ENERGY, wanted: 50, priority: 100 });
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 100, pos: { x: 10, y: 10 } });
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext2" }, resource: RESOURCE_ENERGY, wanted: 50, priority: 100, pos: { x: 11, y: 10 } });
     // No single-node aggregate is emitted anymore.
     expect(result.some(c => c.ref.kind === "spawnSystem")).toBe(false);
   });
@@ -187,7 +187,8 @@ describe("consumers", () => {
       ref: { kind: "structure", id: container.id },
       resource: RESOURCE_ENERGY,
       wanted: 1100,
-      priority: 80
+      priority: 80,
+      pos: { x: 25, y: 26 }
     });
   });
 
@@ -211,7 +212,8 @@ describe("consumers", () => {
       ref: { kind: "structure", id: tower.id },
       resource: RESOURCE_ENERGY,
       wanted: 600,
-      priority: 90
+      priority: 90,
+      pos: { x: 5, y: 5 }
     });
     // spawn/extension (100) > tower (90) > controller-container (80) — deliberately NOT hauler.ts's
     // order, which ranks controller-container above tower.
@@ -235,8 +237,8 @@ describe("consumers", () => {
     const builderConsumer = result.find(c => c.ref.kind === "creep" && c.ref.id === builder.id);
     const upgraderConsumer = result.find(c => c.ref.kind === "creep" && c.ref.id === upgrader.id);
 
-    expect(builderConsumer).toEqual({ ref: { kind: "creep", id: builder.id }, resource: RESOURCE_ENERGY, wanted: 80, priority: 40 });
-    expect(upgraderConsumer).toEqual({ ref: { kind: "creep", id: upgrader.id }, resource: RESOURCE_ENERGY, wanted: 80, priority: 30 });
+    expect(builderConsumer).toEqual({ ref: { kind: "creep", id: builder.id }, resource: RESOURCE_ENERGY, wanted: 80, priority: 40, pos: { x: 25, y: 25 } });
+    expect(upgraderConsumer).toEqual({ ref: { kind: "creep", id: upgrader.id }, resource: RESOURCE_ENERGY, wanted: 80, priority: 30, pos: { x: 25, y: 25 } });
     expect(builderConsumer!.priority).toBeGreaterThan(upgraderConsumer!.priority);
 
     const containerConsumer = consumers(colonySnap({ containers: [containerAt(25, 26, 300)], controller: { x: 25, y: 25 } }))[0];
@@ -272,7 +274,7 @@ describe("consumers", () => {
       colonySnap({ storageId, storageEnergy: 4000, storageCapacity: 10000, energyAvailable: 50, energyCapacity: 50 })
     );
     const storageConsumer = result.find(c => c.ref.kind === "structure" && c.ref.id === storageId);
-    expect(storageConsumer).toEqual({ ref: { kind: "structure", id: storageId }, resource: RESOURCE_ENERGY, wanted: 6000, priority: 70 });
+    expect(storageConsumer).toEqual({ ref: { kind: "structure", id: storageId }, resource: RESOURCE_ENERGY, wanted: 6000, priority: 70, pos: null });
 
     const upgrader = snapCreep("upgrader", { storeEnergy: 20, storeCapacity: 100, x: 25, y: 25 });
     const upgraderConsumer = consumers(colonySnap({ creeps: [upgrader], controller: { x: 25, y: 25 } })).find(
@@ -367,13 +369,13 @@ describe("supplyProviders", () => {
 describe("supplyConsumers", () => {
   it("includes a spawn/extension sink", () => {
     const result = supplyConsumers(colonySnap({ spawnSinks: [sinkAt(10, 10, 20, 50, "ext1")] }));
-    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 100 });
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 100, pos: { x: 10, y: 10 } });
   });
 
   it("includes a tower sink", () => {
     const tower = towerAt(5, 5, "tower_5_5", 400);
     const result = supplyConsumers(colonySnap({ towers: [tower] }));
-    expect(result).toContainEqual({ ref: { kind: "structure", id: tower.id }, resource: RESOURCE_ENERGY, wanted: 600, priority: 90 });
+    expect(result).toContainEqual({ ref: { kind: "structure", id: tower.id }, resource: RESOURCE_ENERGY, wanted: 600, priority: 90, pos: { x: 5, y: 5 } });
   });
 
   it("excludes the controller container even below its fill floor", () => {

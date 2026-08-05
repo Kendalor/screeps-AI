@@ -28,11 +28,12 @@ const drop = (id: string, available: number, pos: { x: number; y: number } | nul
   pos
 });
 
-const consumer = (id: string, wanted: number, priority = 50): Consumer => ({
+const consumer = (id: string, wanted: number, priority = 50, pos: { x: number; y: number } | null = null): Consumer => ({
   ref: { kind: "structure", id: id as Id<AnyStoreStructure> },
   resource: RESOURCE_ENERGY,
   wanted,
-  priority
+  priority,
+  pos
 });
 
 const remoteProvider = (id: string, available: number): Provider => ({
@@ -278,6 +279,24 @@ describe("allocate", () => {
     for (let leg = task; leg; leg = leg.next) legs.push(leg as never);
     expect(legs).toHaveLength(3);
     expect(legs.every(l => l.kind === "deliver" && l.amount === 50)).toBe(true);
+  });
+
+  it("visits same-priority sinks nearest-first, not in array order", () => {
+    // Creep starts at (0,0). Consumers are listed far-then-near-then-mid on purpose — array order alone
+    // would visit them in that scrambled order; route order should walk near -> mid -> far instead.
+    const creep = idleHauler({ storeEnergy: 150, storeCapacity: 200, x: 0, y: 0 });
+    const sinks = [
+      consumer("far", 50, 100, { x: 20, y: 0 }),
+      consumer("near", 50, 100, { x: 2, y: 0 }),
+      consumer("mid", 50, 100, { x: 10, y: 0 })
+    ];
+    const costMatrix = buildCostMatrix({ terrain: openTerrain(), structures: [] });
+    const result = allocate([provider("src", 1000)], sinks, [creep], emptyReserved(), null, costMatrix);
+
+    const task = result[creep.id];
+    const ids: string[] = [];
+    for (let leg = task; leg; leg = leg.next) if (leg.kind === "deliver") ids.push((leg.to as { id: string }).id);
+    expect(ids).toEqual(["near", "mid", "far"]);
   });
 
   it("reserves each sink in a deliver chain so a second creep isn't sent to the same extensions", () => {

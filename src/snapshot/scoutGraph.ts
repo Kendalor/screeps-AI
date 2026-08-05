@@ -53,6 +53,14 @@ export function scoutCandidatesAround(origin: string, radius: number, home?: str
       // A sealed border is only known once the room itself has already been reached (see doc above), so
       // it's checked here — before expanding ITS exits — rather than when the room was first added.
       if (home !== undefined && isSealedFrom(name, home)) continue;
+      // A room proven lethal (schema.ts's ScoutInfo.lethalAt doc) already excludes itself as a scout
+      // DESTINATION via needsScouting, but without this the BFS still walks past it to keep offering
+      // everything behind it as "frontier" candidates — rooms no scout can actually reach without first
+      // dying in the one that's in the way. Unlike noPathFrom's sealed-border case (a scout can still
+      // stand at the sealed room's own exit tile, just not go further), a lethal room can't even be
+      // entered safely, so nothing past it is reachable either — same backoff window as isSealedFrom,
+      // since a tower can be destroyed or the room can change hands later.
+      if (home !== undefined && isLethal(name)) continue;
       const exits = Game.map.describeExits(name);
       if (!exits) continue;
       const fromStatus = statusOf.get(name)!;
@@ -81,6 +89,13 @@ export function scoutCandidatesAround(origin: string, radius: number, home?: str
 function isSealedFrom(room: string, home: string): boolean {
   const noPathAt = Memory.rooms?.[room]?.scouted?.noPathFrom?.[home];
   return noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER;
+}
+
+// Whether `room` killed one of our creeps recently enough that walking through it is still off-limits
+// (mirrors execute.ts's dangerRouteCost, which prices such a room Infinity as a transit hop).
+function isLethal(room: string): boolean {
+  const lethalAt = Memory.rooms?.[room]?.scouted?.lethalAt;
+  return lethalAt !== undefined && Game.time - lethalAt < NO_PATH_RETRY_AFTER;
 }
 
 /** Whether consecutive rooms in a Game.map.findRoute-style hop list cross a respawn/novice zone boundary

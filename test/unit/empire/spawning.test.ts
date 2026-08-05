@@ -140,7 +140,9 @@ describe("spawn arbiter — single colony", () => {
   it("stops on an unaffordable request instead of skipping to a cheaper one", () => {
     expect(
       arbitrate({
-        creeps: [...snapCreeps("bootstrap", 1), ...snapCreeps("miner", 1)],
+        // A live supply creep so supply's own (now top-priority, 101) request doesn't leapfrog the
+        // miner this test is actually targeting — see the supply-vs-transport priority fix below.
+        creeps: [...snapCreeps("bootstrap", 1), ...snapCreeps("miner", 1), ...snapCreeps("supply", 1)],
         spawns: [spawn()],
         energyAvailable: 200,
         energyCapacity: 800,
@@ -224,7 +226,9 @@ describe("spawn arbiter — single colony", () => {
       energyCapacity: 550,
       controllerLevel: 3,
       sources: [sourceAt(20, 10, "s0", 3), sourceAt(20, 12, "s1", 3)],
-      creeps: [miner, upgrader],
+      // A live supply creep so supply's own (top-priority, 101) request doesn't take the one slot
+      // ahead of transport — this test targets transport-vs-miner/upgrader, not supply-vs-transport.
+      creeps: [miner, upgrader, ...snapCreeps("supply", 1)],
       drops: [dropAt(33, 21, 500), dropAt(33, 20, 400)],
       containers: [containerAt(21, 10, 300)],
       anchor: { x: 25, y: 15 }
@@ -233,6 +237,33 @@ describe("spawn arbiter — single colony", () => {
     expect(intents).toHaveLength(1);
     const spawned = intents[0] as Extract<Intent, { kind: "spawn" }>;
     expect(spawned.memory.role).toBe("transport");
+  });
+
+  // The bug this guards: supply and transport both requesting a creep the same tick, no live supply
+  // creep yet, one idle spawn. Supply and transport used to tie at priority 100, broken only by
+  // operations/index.ts's array order (Logistics ahead of Supply) — transport won every such tick,
+  // not just the brief RCL3 crossover the tie was meant for, so a live colony spawned transport after
+  // transport after transport and never once spawned supply. Supply is now strictly higher priority
+  // (101) so it wins outright regardless of array order.
+  it("spawns supply ahead of a competing transport deficit when neither has a live creep yet", () => {
+    const miner = snapCreep("miner", { body: [WORK, WORK, MOVE, MOVE], memory: { sourceId: "s0" as Id<Source> } });
+
+    const intents = arbitrate({
+      name: "W8N3",
+      spawns: [spawn()],
+      energyAvailable: 550,
+      energyCapacity: 550,
+      controllerLevel: 3,
+      sources: [sourceAt(20, 10, "s0", 3)],
+      creeps: [miner],
+      drops: [dropAt(33, 21, 500)],
+      containers: [containerAt(21, 10, 300)],
+      anchor: { x: 25, y: 15 }
+    });
+
+    expect(intents).toHaveLength(1);
+    const spawned = intents[0] as Extract<Intent, { kind: "spawn" }>;
+    expect(spawned.memory.role).toBe("supply");
   });
 
   // The counterpart: when transport can't yet afford its body, the arbiter must stop the colony
