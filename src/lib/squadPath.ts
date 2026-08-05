@@ -100,6 +100,45 @@ function footprintFits(wx: number, wy: number, facing: DirectionConstant, format
   return true;
 }
 
+// A cap on how far out nearestFittingAnchor searches (Chebyshev radius in tiles) before giving up. A squad
+// that fits nowhere within this radius is treated the same as "no route" elsewhere in this module — a
+// bounded search, not an unbounded spiral, since a genuinely fit-nowhere pocket is a wall-off, not a gap
+// that widens if searched further.
+const NEAREST_FIT_RADIUS = 15;
+
+/** The nearest anchor tile (by Chebyshev ring, ties broken by search order) and facing where the WHOLE
+ * formation footprint fits, searching outward from `from`. Exists for the case a squad's live position no
+ * longer fits its own formation at ANY facing — not a bug, an always-possible state (a straggler drifted
+ * off under independent movement before joining, a member died and the degraded shape's anchor inference
+ * lands somewhere odd, enemy action shoved a member) — the squad must be able to notice "nowhere near me
+ * fits either" and walk toward a place that does, rather than reforming forever onto slot tiles that can
+ * never all be simultaneously occupied. Returns undefined if nothing within NEAREST_FIT_RADIUS fits (as
+ * unreachable as findSquadPath's own "no route" case). Checks `from` itself first (ring 0) so an
+ * already-fitting position is returned immediately, same cost as the old direct check it replaces. */
+export function nearestFittingAnchor(
+  from: SquadAnchor,
+  formation: Formation,
+  terrain: TerrainSource
+): { anchor: SquadAnchor; facing: DirectionConstant } | undefined {
+  const s = worldOf(from.x, from.y, from.room);
+  for (let radius = 0; radius <= NEAREST_FIT_RADIUS; radius++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        // Only the current ring's perimeter — smaller radii were already tried on earlier iterations.
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const wx = s.wx + dx;
+        const wy = s.wy + dy;
+        for (const facing of ALL_FACINGS) {
+          if (!footprintFits(wx, wy, facing, formation, terrain)) continue;
+          const { room, x, y } = roomAndLocal(wx, wy);
+          return { anchor: { x, y, room }, facing };
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 interface Node {
   wx: number;
   wy: number;

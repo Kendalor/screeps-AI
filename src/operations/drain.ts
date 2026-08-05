@@ -186,6 +186,12 @@ export class Drain extends Operation {
     // Replacement re-entry gate: only members in the anchor's room are squadded; a member elsewhere (a
     // spawned replacement still walking in) is left to its own step table this tick.
     const members = squad.filter(c => c.room === anchor.room);
+    log.debugRoom(
+      colony.name,
+      `drain squadState: readyForFirstPush=${readyForFirstPush} underway=${underway} anchorRoom=${anchorRoom} ` +
+        `anchor=(${anchor.x},${anchor.y},${anchor.room}) facing=${facing} goal=(${goal.x},${goal.y},${goal.room}) ` +
+        `squad=[${squad.map(c => `${c.name}@${c.room}(${c.x},${c.y})`).join(",")}] members=[${members.map(c => c.name).join(",")}]`
+    );
     if (members.length === 0) return undefined;
     return { members, formation: DRAIN_FORMATION, anchor, facing };
   }
@@ -212,6 +218,11 @@ export class Drain extends Operation {
       ? { x: anchorPos.x + Math.sign(advanceAim.x - anchorPos.x), y: anchorPos.y + Math.sign(advanceAim.y - anchorPos.y) }
       : { x: 25, y: 25 };
     const safe = fullyHealed && advanceIsSafe(nextStep, towers, healSources);
+    log.debugRoom(
+      colony.name,
+      `drain goalTile: fullyHealed=${fullyHealed} safe=${safe} nextStep=(${nextStep.x},${nextStep.y}) ` +
+        `towers=${towers.length} aim=${safe ? "advance" : "retreat"}(${(safe ? advanceAim : retreatAim).room})`
+    );
     return safe ? advanceAim : retreatAim;
   }
 

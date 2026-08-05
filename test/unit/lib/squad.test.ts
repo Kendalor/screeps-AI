@@ -204,6 +204,49 @@ describe("planSquadMove", () => {
       expect(wallTerrain[i.to.x * 50 + i.to.y]).not.toBe(0);
     }
   });
+
+  it("retargets the reform onto the nearest fitting anchor when the CURRENT anchor/facing fits nowhere", () => {
+    // A diagonal one-tile-wide staircase corridor — no 2x2 block fits anywhere along it at any facing
+    // (each step only opens 2 diagonally-adjacent tiles, never a full square). The squad's live anchor sits
+    // mid-staircase (not tight — members scattered by prior independent movement, mirroring the live bug:
+    // a squad reaching this position via step-table pathing before ever coming under squad control). A
+    // 3x3 open pocket a few tiles away DOES fit a 2x2 at some facing. Without the escape hatch, reforming
+    // onto the (unfittable) current-anchor slots would hold every member here forever; with it, the plan
+    // must send members toward the pocket instead.
+    const staircase = new Uint8Array(2500).fill(0);
+    const open = (x: number, y: number) => {
+      staircase[x * 50 + y] = 1;
+    };
+    for (let i = 0; i < 10; i++) {
+      open(10 + i, 10 + i);
+      open(11 + i, 10 + i);
+    }
+    // A 3x3 pocket well clear of the staircase — fits a 2x2 at the canonical TOP facing.
+    for (let x = 30; x <= 32; x++) for (let y = 30; y <= 32; y++) open(x, y);
+    const src = (room: string) => (room === "W2N1" ? staircase : undefined);
+
+    const state = drainSquad({
+      positions: [
+        { x: 15, y: 15 }, // anchor, mid-staircase
+        { x: 16, y: 15 },
+        { x: 15, y: 16 },
+        { x: 16, y: 16 } // this tile is NOT open in the staircase — the block was never actually tight
+      ]
+    });
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src);
+    expect(intents).toHaveLength(4);
+    // Every member is steered toward the fitting pocket, not held at the unfittable staircase position —
+    // each intent should move at least one member closer to the pocket (30-32,30-32) than its current tile.
+    const movedTowardPocket = intents.some(i => {
+      const member = state.members.find(m => m.id === i.creep)!;
+      const distBefore = Math.max(Math.abs(member.x - 31), Math.abs(member.y - 31));
+      const distAfter = Math.max(Math.abs(i.to.x - 31), Math.abs(i.to.y - 31));
+      return distAfter < distBefore;
+    });
+    expect(movedTowardPocket).toBe(true);
+    // No intent targets a walled tile — the reform destination itself must be real, walkable ground.
+    for (const i of intents) expect(staircase[i.to.x * 50 + i.to.y]).toBe(1);
+  });
 });
 
 describe("planSquadActions (generic signature)", () => {

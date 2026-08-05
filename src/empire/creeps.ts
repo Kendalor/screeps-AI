@@ -17,8 +17,9 @@ import { sweepEnRoute } from "../behaviors/sweep";
 import { parkNearBunker, runTransport } from "../behaviors/transport";
 import type { Step } from "../behaviors/types";
 import type { Colony } from "../colony";
-import { planSquadActions, planSquadMove, type ActionIntent, type SquadState } from "../lib/squad";
-import type { TerrainSource } from "../lib/squadPath";
+import { slotTiles } from "../lib/formation";
+import { inFormation, planSquadActions, planSquadMove, type ActionIntent, type SquadState } from "../lib/squad";
+import { nearestFittingAnchor, type TerrainSource } from "../lib/squadPath";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import type { ColonySnapshot } from "../snapshot/types";
@@ -116,12 +117,46 @@ function runSquads(squads: readonly ResolvedSquad[]): void {
   for (const squad of squads) {
     const moves = planSquadMove(squad.state, squad.goal, squad.terrain);
     const actions = planSquadActions(squad.state, squad.colony, squad.actionPlanner);
+    logSquadDecision(squad, moves);
     for (const move of moves) {
       const creep = Game.getObjectById(move.creep);
       if (!creep) continue;
       runSquadMember(creep, move.to, actions.get(move.creep));
     }
   }
+}
+
+// Traces planSquadMove's branch (tight-advance vs. reform, and WHERE it's reforming to) plus the actual
+// per-member move intents dispatched this tick — everything needed to see why a squad is or isn't
+// converging without re-deriving planSquadMove's own logic by hand off a raw position dump. Re-runs the
+// same cheap predicates planSquadMove itself used (inFormation, nearestFittingAnchor) purely for the log
+// line; never influences the plan, which was already computed above.
+function logSquadDecision(squad: ResolvedSquad, moves: readonly { creep: Id<Creep>; to: { x: number; y: number; room: string } }[]): void {
+  const currentSlots = slotTiles(squad.state.anchor, squad.state.facing, squad.state.formation);
+  const tight = inFormation(squad.state.members, currentSlots);
+  let branch: string;
+  if (!tight) {
+    const fit = nearestFittingAnchor(squad.state.anchor, squad.state.formation, squad.terrain);
+    const currentFits = fit && fit.anchor.x === squad.state.anchor.x && fit.anchor.y === squad.state.anchor.y && fit.facing === squad.state.facing;
+    branch = currentFits
+      ? "reform@current"
+      : fit
+        ? `reform@nearestFit(${fit.anchor.x},${fit.anchor.y},${fit.anchor.room},facing=${fit.facing})`
+        : "reform@current(NO-FIT-FOUND-within-radius)";
+  } else {
+    branch = "tight-advance-or-hold";
+  }
+  log.debugRoom(
+    squad.colony.name,
+    `runSquads: anchor=(${squad.state.anchor.x},${squad.state.anchor.y},${squad.state.anchor.room}) ` +
+      `facing=${squad.state.facing} goal=(${squad.goal.x},${squad.goal.y},${squad.goal.room}) tight=${tight} branch=${branch} ` +
+      `moves=[${moves
+        .map(m => {
+          const creep = Game.getObjectById(m.creep);
+          return `${creep?.name ?? m.creep}->(${m.to.x},${m.to.y},${m.to.room})`;
+        })
+        .join(",")}]`
+  );
 }
 
 // Dispatch one squad member: move toward its assigned tile (unless already there) AND fire its assigned

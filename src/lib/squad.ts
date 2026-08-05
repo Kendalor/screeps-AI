@@ -8,7 +8,7 @@
 
 import { slotTiles, type Formation, type SlotTile } from "./formation";
 import { range, type XY } from "./geometry";
-import { findSquadPath, type TerrainSource } from "./squadPath";
+import { findSquadPath, nearestFittingAnchor, type TerrainSource } from "./squadPath";
 import type { SnapCreep } from "../snapshot/types";
 
 // The squad's shared state for a tick — every member's position/HP/role, the formation shape, the anchor
@@ -77,8 +77,10 @@ export function reformAssignment(
 }
 
 // Whether every member currently stands exactly on one of the given slot tiles (a tight formation). Uses
-// a one-to-one match: a member counts as "in place" only if it occupies a distinct slot tile.
-function inFormation(members: readonly SnapCreep[], slots: readonly SlotTile[]): boolean {
+// a one-to-one match: a member counts as "in place" only if it occupies a distinct slot tile. Exported
+// (rather than kept module-private) solely so callers can log which planSquadMove branch fired without
+// duplicating this predicate — planSquadMove itself is the only thing that should ever branch on it.
+export function inFormation(members: readonly SnapCreep[], slots: readonly SlotTile[]): boolean {
   const occupied = new Set(members.map(m => `${m.room}:${m.x},${m.y}`));
   // A member is in place iff its tile is one of the slot tiles. With members <= slots and slots distinct,
   // "every member on some slot tile" is enough for a tight block (each member on a distinct slot follows
@@ -92,7 +94,12 @@ function inFormation(members: readonly SnapCreep[], slots: readonly SlotTile[]):
  *
  * - When the block is NOT tight (a member off its slot, a straggler catching up, a replacement just
  *   joined), the anchor HOLDS and every member is assigned onto the current-facing slot tiles (greedy
- *   nearest) so the block reforms — never advances while broken.
+ *   nearest) so the block reforms — never advances while broken. UNLESS the squad's own current
+ *   anchor/facing can no longer fit the whole formation anywhere (some member shoved off, a degraded
+ *   formation's inferred anchor landing in a pocket too narrow for the full shape, independent movement
+ *   before joining walking it into a dead end) — reforming onto an unfittable target would hold forever, so
+ *   the squad instead retargets the reform onto the NEAREST anchor/facing that does fit
+ *   (nearestFittingAnchor), still never advancing toward `goal` until tight again.
  * - When the block IS tight, the anchor advances one step along a footprint-fit route toward `goal`
  *   (findSquadPath, which checks the FULL formation shape regardless of occupancy), and every member is
  *   reassigned onto the NEXT step's slot tiles — so the whole formation moves exactly one tile in
@@ -104,9 +111,14 @@ function inFormation(members: readonly SnapCreep[], slots: readonly SlotTile[]):
 export function planSquadMove(state: SquadState, goal: XY & { room: string }, terrain: TerrainSource): SquadMoveIntent[] {
   const currentSlots = slotTiles(state.anchor, state.facing, state.formation);
 
-  // Not a tight block: hold and reform onto the current slots (greedy nearest — stragglers close the gap).
+  // Not a tight block: hold and reform — but only onto a target the full formation can actually occupy.
   if (!inFormation(state.members, currentSlots)) {
-    return reformOnto(state.members, currentSlots);
+    const fit = nearestFittingAnchor(state.anchor, state.formation, terrain);
+    const reformSlots =
+      fit && (fit.anchor.x !== state.anchor.x || fit.anchor.y !== state.anchor.y || fit.facing !== state.facing)
+        ? slotTiles(fit.anchor, fit.facing, state.formation)
+        : currentSlots;
+    return reformOnto(state.members, reformSlots);
   }
 
   // Tight block: try to advance/reform one footprint-fit step toward the goal.
