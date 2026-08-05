@@ -343,7 +343,7 @@ describe("supply role", () => {
   });
 
   it("is always a valid, affordable body with CARRY — it is the hauler job in reverse", () => {
-    const body = (energy: number) => ROLES.supply.body(energy);
+    const body = (energy: number) => ROLES.supply.body(energy, { hasContainer: false, hasLink: false, controllerLevel: 4 });
     for (const e of ENERGY_LEVELS) {
       const b = body(e);
       expectValidBody(b);
@@ -352,8 +352,24 @@ describe("supply role", () => {
     }
   });
 
-  it("shares the hauler carry-parts body", () => {
-    expect(bodyCost(ROLES.supply.body(450))).toBe(bodyCost(ROLES.hauler.body(450)));
+  it("shares the hauler carry-parts body below RCL6", () => {
+    const ctx = { hasContainer: false, hasLink: false, controllerLevel: 5 };
+    expect(bodyCost(ROLES.supply.body(450, ctx))).toBe(bodyCost(ROLES.hauler.body(450)));
+  });
+
+  it("splits into a smaller 2:1 CARRY:MOVE body from RCL6", () => {
+    const ctx = { hasContainer: false, hasLink: false, controllerLevel: 6 };
+    const body = (energy: number) => ROLES.supply.body(energy, ctx);
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expectAffordable(body, e);
+      const carry = b.filter(p => p === CARRY).length;
+      const move = b.filter(p => p === MOVE).length;
+      expect(carry).toBe(move * 2);
+    }
+    // Roughly half the CARRY of the equivalent full hauler body at the same energy.
+    expect(bodyCost(body(450))).toBeLessThan(bodyCost(ROLES.hauler.body(450)));
   });
 });
 

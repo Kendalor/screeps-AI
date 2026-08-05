@@ -15,7 +15,8 @@ export function bodyContext(colony: ColonySnapshot, roads = false, sourceId?: Id
     hasContainer: hasSourceContainer(colony, sourceId),
     hasLink: colony.structures.some(s => s.type === STRUCTURE_LINK),
     hasContainerSite: hasSourceContainerSite(colony, sourceId),
-    roads
+    roads,
+    controllerLevel: colony.controllerLevel
   };
 }
 

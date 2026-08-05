@@ -1,5 +1,31 @@
+import { affordableSets } from "../../spawn/body";
+import type { BodyContext } from "../types";
 import { haulerBody } from "./hauler";
 import { Role } from "./role";
+
+// From RCL6, two supply creeps split the topping-off work instead of one — a bigger bunker means
+// longer round trips, and two smaller haulers keep sinks fed while one is still travelling. Each is
+// built from 2:1 CARRY:MOVE sets (rather than hauler's 1:1) since a supply creep's hops are short and
+// it doesn't need full off-road speed the way a hauler crossing to a remote does, and is capped to
+// half of what a single full-size hauler body would carry at the same energy.
+export const config = {
+  twoSupplyRcl: 6
+} as const;
+
+const SUPPLY_SET: BodyPartConstant[] = [CARRY, CARRY, MOVE];
+const MAX_HAULER_SETS = 25; // matches hauler.ts's cap — 25 sets = 50 parts, the hard body cap
+
+export function supplyBody(energy: number, controllerLevel: number): BodyPartConstant[] {
+  if (controllerLevel < config.twoSupplyRcl) return haulerBody(energy);
+
+  const fullSets = affordableSets(energy, SUPPLY_SET, 1, MAX_HAULER_SETS);
+  const halfSets = Math.max(1, Math.floor(fullSets / 2));
+  let body: BodyPartConstant[] = [];
+  for (let i = 0; i < halfSets; i++) {
+    body = body.concat(SUPPLY_SET);
+  }
+  return body;
+}
 
 // A Logistics-owned mover, same as Transport: assignment comes from planLogistics via memory.logistics
 // (restricted to spawn/extension/tower sinks and non-remote sources — see logistics/graph.ts's
@@ -14,7 +40,7 @@ export class Supply extends Role {
   // transport claim the only idle slot every time. See git history for the incident.
   static override readonly priority = 101;
   static override readonly mover = true;
-  static override body(energy: number): BodyPartConstant[] {
-    return haulerBody(energy);
+  static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
+    return supplyBody(energy, ctx.controllerLevel ?? 0);
   }
 }

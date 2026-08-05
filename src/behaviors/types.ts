@@ -154,6 +154,9 @@ export interface BodyContext {
   // regen at the same 10/tick rate as home sources (worth the full WORK target); unreserved ones regen at
   // half that, so staffing to the full target would only buy idle WORK parts.
   reserved?: boolean;
+  // The home room's RCL — only a few body calculators (e.g. supply, splitting into two smaller creeps
+  // from RCL6) need this; most infer everything from energy/hasContainer/hasLink instead.
+  controllerLevel?: number;
 }
 
 export interface RoleDef {

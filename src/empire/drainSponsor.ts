@@ -11,10 +11,13 @@ import { DRAIN_ATTACKER_MIN_COST } from "../behaviors/roles/drainAttacker";
 import { DRAIN_HEALER_MIN_COST } from "../behaviors/roles/drainHealer";
 import type { RoomDistance } from "./spawning";
 
-// ADR 0006's fixed composition: 1 melee attacker + 3 healers. A colony that can't afford the whole
-// squad's floor can't sponsor a drain at all — spawning a partial squad (e.g. attacker with no healers)
-// would just die to the first tower volley, defeating the operation's entire point.
-const DRAIN_SQUAD_MIN_COST = DRAIN_ATTACKER_MIN_COST + 3 * DRAIN_HEALER_MIN_COST;
+// ADR 0006's fixed composition: 1 melee attacker + 3 healers. The spawn arbiter (empire/spawning.ts)
+// fills CreepRequests one at a time against a colony's *current* energyAvailable, not a lump sum against
+// energyCapacity — so the affordability floor here is the single most expensive body in the squad (a
+// colony that can eventually afford one healer can afford all three, one spawn cycle at a time), not the
+// summed cost of every squad member at once. A colony below this floor can never spawn even the first
+// squad member, whichever role it is.
+const DRAIN_SQUAD_MIN_COST = Math.max(DRAIN_ATTACKER_MIN_COST, DRAIN_HEALER_MIN_COST);
 
 export interface DrainSponsorResult {
   colony?: Colony;

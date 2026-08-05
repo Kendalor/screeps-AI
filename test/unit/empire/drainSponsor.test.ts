@@ -2,7 +2,9 @@
 // roomDistance is injected (see fixtures' name-parsed Chebyshev stub), no Game involved, and unlike
 // pickColonizeSponsor there is no GCL room-budget gate (draining claims nothing). Mirrors
 // attackSponsor.test.ts's structure exactly; the only behavioral difference is the affordability floor,
-// which prices a full drain squad (1 attacker + 3 healers, ADR 0006) instead of a single attacker body.
+// which prices the priciest single body in a drain squad (1 attacker + 3 healers, ADR 0006) rather than
+// a lone attacker — the spawn arbiter fills squad members one at a time against energyAvailable (see
+// empire/spawning.ts's planSpawning), so the floor is per-creep, not the squad's summed cost.
 
 import { describe, expect, it } from "vitest";
 import { pickDrainSponsor } from "../../../src/empire/drainSponsor";
@@ -10,7 +12,7 @@ import { DRAIN_ATTACKER_MIN_COST } from "../../../src/behaviors/roles/drainAttac
 import { DRAIN_HEALER_MIN_COST } from "../../../src/behaviors/roles/drainHealer";
 import { testColony, roomDistance } from "../../fixtures";
 
-const SQUAD_MIN_COST = DRAIN_ATTACKER_MIN_COST + 3 * DRAIN_HEALER_MIN_COST;
+const SQUAD_MIN_COST = Math.max(DRAIN_ATTACKER_MIN_COST, DRAIN_HEALER_MIN_COST);
 
 const pick = (colonies: Parameters<typeof pickDrainSponsor>[0], target: string, dist = roomDistance) =>
   pickDrainSponsor(colonies, target, dist);
@@ -33,14 +35,14 @@ describe("pickDrainSponsor", () => {
     expect(result.colony?.name).toBe("W3N3");
   });
 
-  it("skips a colony that can't afford a full drain squad", () => {
+  it("skips a colony that can't afford the squad's priciest body", () => {
     const poor = testColony({ name: "W1N1", energyCapacity: SQUAD_MIN_COST - 1 });
     const rich = testColony({ name: "W9N9", energyCapacity: SQUAD_MIN_COST });
     const result = pick([poor, rich], "W1N1");
     expect(result.colony?.name).toBe("W9N9");
   });
 
-  it("reports 'unaffordable' when no colony can afford a full squad", () => {
+  it("reports 'unaffordable' when no colony can afford the squad's priciest body", () => {
     const poor = testColony({ name: "W1N1", energyCapacity: SQUAD_MIN_COST - 1 });
     expect(pick([poor], "W1N2")).toEqual({ reason: "unaffordable" });
   });

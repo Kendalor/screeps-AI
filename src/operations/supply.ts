@@ -7,16 +7,15 @@
 import { orderBody } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
 import { roleDef } from "../behaviors/roles";
+import { config as supplyBodyConfig } from "../behaviors/roles/supply";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
-const config = {
-  rclForSecondSupply: 7 // one round trip starts falling behind once extensions spread out this far
-} as const;
-
+// Same RCL gate as the body split (behaviors/roles/supply.ts): two smaller creeps replace the one
+// full-size one at the point their bodies actually shrink, not before.
 function wantedSupply(colony: ColonySnapshot): number {
-  return colony.controllerLevel >= config.rclForSecondSupply ? 2 : 1;
+  return colony.controllerLevel >= supplyBodyConfig.twoSupplyRcl ? 2 : 1;
 }
 
 // Whether the sole survivor is close enough to death that its replacement must be spawning

@@ -21,7 +21,7 @@ describe("Supply.desiredCreeps", () => {
   });
 
   it("scales to two supply creeps at the high-RCL threshold", () => {
-    expect(supplyRequests({ energyCapacity: 550, controllerLevel: 7 })).toHaveLength(2);
+    expect(supplyRequests({ energyCapacity: 550, controllerLevel: 6 })).toHaveLength(2);
     expect(supplyRequests({ energyCapacity: 550, controllerLevel: 8 })).toHaveLength(2);
   });
 
@@ -33,7 +33,7 @@ describe("Supply.desiredCreeps", () => {
 
   it("asks only for the shortfall when short of quota", () => {
     expect(
-      supplyRequests({ energyCapacity: 550, controllerLevel: 7, creeps: snapCreeps("supply", 1) })
+      supplyRequests({ energyCapacity: 550, controllerLevel: 6, creeps: snapCreeps("supply", 1) })
     ).toHaveLength(1);
   });
 
@@ -56,7 +56,7 @@ describe("Supply.desiredCreeps", () => {
 
     it("sizes off energyCapacity once a supply creep is alive", () => {
       const [request] = supplyRequests({
-        controllerLevel: 7, // quota 2, one alive — the shortfall path, not a cold start
+        controllerLevel: 6, // quota 2, one alive — the shortfall path, not a cold start
         energyAvailable: 300,
         energyCapacity: 1800,
         creeps: snapCreeps("supply", 1)
@@ -100,15 +100,39 @@ describe("Supply.desiredCreeps", () => {
     });
 
     it("does not apply the one-in-one-out handoff check when at quota with more than one alive", () => {
-      // RCL7 quota is 2; both alive and both about to die — no per-source ticksToLive branch fires,
+      // RCL6 quota is 2; both alive and both about to die — no per-source ticksToLive branch fires,
       // so nothing is requested until one actually dies and the count drops to one.
       expect(
         supplyRequests({
           energyCapacity: 550,
-          controllerLevel: 7,
+          controllerLevel: 6,
           creeps: snapCreeps("supply", 2, { ticksToLive: 1 })
         })
       ).toEqual([]);
+    });
+  });
+
+  describe("body from RCL6 — two half-size 2:1 CARRY:MOVE creeps", () => {
+    it("builds each supply creep from 2 CARRY : 1 MOVE sets, not the hauler's 1:1 ratio", () => {
+      const [request] = supplyRequests({ energyCapacity: 3900, controllerLevel: 6 });
+      const carry = request.body.filter(p => p === CARRY).length;
+      const move = request.body.filter(p => p === MOVE).length;
+      expect(carry).toBe(move * 2);
+    });
+
+    it("caps each creep to roughly half of a full hauler body's CARRY at the same energy", () => {
+      const fullHaulerCarry = Math.floor(3900 / 100 / 2); // haulerBody: 1 CARRY+1 MOVE per 100 energy
+      const [request] = supplyRequests({ energyCapacity: 3900, controllerLevel: 6 });
+      const carry = request.body.filter(p => p === CARRY).length;
+      expect(carry).toBeLessThanOrEqual(Math.ceil(fullHaulerCarry / 2) + 1);
+      expect(carry).toBeGreaterThan(0);
+    });
+
+    it("still uses the full 1:1 hauler body below RCL6", () => {
+      const [request] = supplyRequests({ energyCapacity: 3900, controllerLevel: 5 });
+      const carry = request.body.filter(p => p === CARRY).length;
+      const move = request.body.filter(p => p === MOVE).length;
+      expect(carry).toBe(move);
     });
   });
 });
