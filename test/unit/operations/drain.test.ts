@@ -121,7 +121,10 @@ describe("Drain.squadState assembly gate (ADR 0007 requirement 2: rally is indep
     expect(drain.squadState(snap)).toBeUndefined();
   });
 
-  it("steers every unsquadded member toward the staging room via attackTargetRoom (the rally)", () => {
+  it("steers every unsquadded member toward the staging room's center via drainRallyPos (the rally)", () => {
+    // A concrete TILE, not a room name (moveToPos + drainRallyPos, not moveToRoom + attackTargetRoom) — a
+    // room-membership-only destination let two stragglers each converging on "whichever room the OTHER one
+    // currently stands in" chase each other back and forth across a border forever (confirmed live).
     const snap = colonySnap({
       draining: "W2N1",
       drainRoute: STAGING_ROUTE,
@@ -132,9 +135,9 @@ describe("Drain.squadState assembly gate (ADR 0007 requirement 2: rally is indep
       ]
     });
     const intents = drain.intents(snap);
-    const rallyIntents = intents.filter(i => i.kind === "setAttackTargetRoom");
+    const rallyIntents = intents.filter(i => i.kind === "setDrainRallyPos");
     expect(rallyIntents).toHaveLength(2);
-    for (const i of rallyIntents) expect((i as { room: string }).room).toBe("W1N5");
+    for (const i of rallyIntents) expect((i as { pos: { x: number; y: number; room: string } }).pos).toEqual({ x: 25, y: 25, room: "W1N5" });
   });
 
   it("reports no squad while a fully-alive squad is still gathering in staging (not yet physically together)", () => {
@@ -199,6 +202,25 @@ describe("Drain.squadState + squadGoal advance/retreat", () => {
     const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
     const goal = drain.squadGoal(snap);
     expect(goal!.room).toBe("W1N5"); // retreat to heal up
+  });
+
+  it("reports the squad's REAL current facing, not the goal-directed one, when the two disagree", () => {
+    // The squad's LIVE positions form a tight TOP-facing 2x2 at anchor (27,26) — attacker(27,26),
+    // healers(28,26)/(27,27)/(28,27) — but the goal (25,25 in the SAME room) lies to the upper-LEFT of
+    // that anchor, so drainFacing's travel-direction heuristic alone would say LEFT. Before the fix,
+    // squadState stamped facing=LEFT unconditionally, so inFormation (checked against slotTiles at LEFT,
+    // which do NOT match these live positions) reported the squad "not tight" forever — a squad that is
+    // genuinely welded, frozen "reforming" onto tiles it already occupies, tick after tick (confirmed live
+    // on the pserver). The fix: detect that the live positions already fit TOP and report that.
+    const members = squad({
+      room: "W2N1",
+      attacker: { x: 27, y: 26 },
+      healers: [{ x: 28, y: 26 }, { x: 27, y: 27 }, { x: 28, y: 27 }]
+    });
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const state = drain.squadState(snap);
+    expect(state).toBeDefined();
+    expect(state!.facing).toBe(TOP);
   });
 });
 

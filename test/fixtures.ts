@@ -264,6 +264,7 @@ export function snapCreep(
     y: 25,
     hits: 100,
     hitsMax: 100,
+    fatigue: 0,
     storeEnergy: 0,
     storeCapacity: 50,
     ...rest,

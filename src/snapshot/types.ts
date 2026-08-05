@@ -67,6 +67,12 @@ export interface SnapCreep {
   hits: number; // current hit points — lets a planner tell a wounded creep from a healthy one (e.g. Drain's advance-only-when-healed gate)
   hitsMax: number;
 
+  fatigue: number; // creep.fatigue — 0 unless standing on swamp/overweight; a fatigued creep's move() silently
+  // no-ops this tick (no error, no signal beyond this field), so a squad's lockstep advance must gate on
+  // every member reading 0 here, or a fatigued member falls behind while its squadmates still slide
+  // forward — reintroducing per-member drift under a different mechanism than the independent-Traveler
+  // convergence ADR 0007 replaced.
+
   storeEnergy: number; // current carried energy — lets a planner tell a loaded creep from an empty one
   storeCapacity: number; // total store capacity across all resource types
 

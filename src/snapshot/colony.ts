@@ -88,6 +88,7 @@ function snapCreep(c: Creep): SnapCreep {
     y: c.pos.y,
     hits: c.hits,
     hitsMax: c.hitsMax,
+    fatigue: c.fatigue,
     storeEnergy: c.store.getUsedCapacity(RESOURCE_ENERGY),
     storeCapacity: c.store.getCapacity(),
     memory: c.memory

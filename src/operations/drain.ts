@@ -14,10 +14,10 @@
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import { incomingHeal, towerDamageAt, type HealSource } from "../lib/combat";
-import type { Formation } from "../lib/formation";
+import { slotTiles, type Formation } from "../lib/formation";
 import { range, type XY } from "../lib/geometry";
 import { log } from "../lib/log";
-import type { ActionIntent, SquadActionPlanner, SquadState } from "../lib/squad";
+import { inFormation, type ActionIntent, type SquadActionPlanner, type SquadState } from "../lib/squad";
 import type { TerrainSource } from "../lib/squadPath";
 import type { ColonySnapshot, SnapCreep, SnapTower } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
@@ -58,6 +58,29 @@ function drainFacing(from: XY, to: XY): DirectionConstant {
   if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? RIGHT : LEFT;
   if (Math.abs(dy) > 0) return dy > 0 ? BOTTOM : TOP;
   return TOP; // no movement — hold the canonical facing
+}
+
+const AXIS_FACINGS: DirectionConstant[] = [TOP, RIGHT, BOTTOM, LEFT];
+
+/** The facing the squad's LIVE positions already sit tight at, if any — checked BEFORE trusting the
+ * goal-directed drainFacing. Without this, squadState() recomputed facing fresh every tick purely from
+ * travel direction, with no regard for what facing the squad's actual current shape corresponds to: a
+ * squad that settled into a tight TOP-facing block (e.g. after a reform driven by whatever positions
+ * stragglers happened to converge from) but whose goal now lies roughly west would be stamped facing=LEFT
+ * every tick regardless — inFormation() (checked against that STATED facing) then reports "not tight"
+ * forever, since the block's real shape is TOP's, not LEFT's, even though it never moves and IS tight.
+ * Confirmed live: a squad stuck reporting reform@nearestFit onto its own already-occupied tiles, tick after
+ * tick, because the stated facing didn't match reality. Trying the 4 axis-aligned facings (the only ones
+ * DRAIN_FORMATION's strict 2x2 needs — see drainFacing) against the LIVE anchor is enough: if one fits, the
+ * squad reports that as `facing` so inFormation can actually recognize it, and findSquadPath's own
+ * reform-edge search is what plans the (stationary) turn toward the goal-directed facing afterward — that
+ * mechanism already exists, it just never got a chance to run while squadState kept overwriting "current"
+ * with "desired" outright. */
+function currentFacing(anchor: XY & { room: string }, members: readonly SnapCreep[], formation: Formation): DirectionConstant | undefined {
+  for (const facing of AXIS_FACINGS) {
+    if (inFormation(members, slotTiles(anchor, facing, formation))) return facing;
+  }
+  return undefined;
 }
 
 /** Projected tower damage against the squad's current heal output, at candidate anchor position `nextPos`
@@ -181,15 +204,24 @@ export class Drain extends Operation {
     // room). Before the first push, that's the staging room.
     const anchorRoom = readyForFirstPush ? staging : mostCommonRoom(squad);
     const goal = this.goalTile(colony, squad, staging);
-    const facing = drainFacing(anchorReference(squad, anchorRoom), goal);
-    const anchor = this.anchorTile(attacker, healers, facing, anchorRoom);
+    const desiredFacing = drainFacing(anchorReference(squad, anchorRoom), goal);
+    const anchor = this.anchorTile(attacker, healers, desiredFacing, anchorRoom);
     // Replacement re-entry gate: only members in the anchor's room are squadded; a member elsewhere (a
     // spawned replacement still walking in) is left to its own step table this tick.
     const members = squad.filter(c => c.room === anchor.room);
+    // Report whichever facing the squad's LIVE positions already sit tight at, if any — NOT unconditionally
+    // the goal-directed one. A tight block whose real shape doesn't match desiredFacing (settled from
+    // wherever stragglers converged, not necessarily facing the goal) would otherwise be stamped a facing
+    // it never actually holds, so inFormation() (checked against the STATED facing) reports "not tight"
+    // forever even though the squad is genuinely welded — confirmed live (a squad frozen "reforming" onto
+    // tiles it already occupied, every tick, because the reported facing didn't match its real shape).
+    // findSquadPath's own reform-edge search handles turning toward desiredFacing once this reports the
+    // squad's true current facing — that mechanism only needed a correct starting point to run at all.
+    const facing = currentFacing(anchor, members, DRAIN_FORMATION) ?? desiredFacing;
     log.debugRoom(
       colony.name,
       `drain squadState: readyForFirstPush=${readyForFirstPush} underway=${underway} anchorRoom=${anchorRoom} ` +
-        `anchor=(${anchor.x},${anchor.y},${anchor.room}) facing=${facing} goal=(${goal.x},${goal.y},${goal.room}) ` +
+        `anchor=(${anchor.x},${anchor.y},${anchor.room}) facing=${facing} desiredFacing=${desiredFacing} goal=(${goal.x},${goal.y},${goal.room}) ` +
         `squad=[${squad.map(c => `${c.name}@${c.room}(${c.x},${c.y})`).join(",")}] members=[${members.map(c => c.name).join(",")}]`
     );
     if (members.length === 0) return undefined;
@@ -242,15 +274,21 @@ export class Drain extends Operation {
     const out: Intent[] = [];
 
     // Steer every UNSQUADDED member (not in the current squad state's member set — assembling, or a
-    // replacement still walking in) toward the room it should head to: the anchor's room when a squad is
-    // underway (a replacement closing distance), else the staging room (assembly rally). Squadded members
-    // are driven by runSquads, not the step table, so they ignore this. Reuses attackTargetRoom + the
-    // roles' moveToRoom step — no bespoke squadTargetPos field.
+    // replacement still walking in) toward a concrete TILE, not just a room: the squad's live anchor once
+    // one exists (a replacement/straggler closing distance onto the actual moving formation), else the
+    // staging room's center pre-assembly. Squadded members are driven by runSquads, not the step table, so
+    // they ignore this. A room-name-only destination (the old attackTargetRoom + moveToRoom pairing) let
+    // two stragglers each converging on "whichever room the OTHER one currently stands in" chase each other
+    // back and forth across a border forever, since each one's destination flipped the instant its target
+    // crossed — confirmed live. drainRallyPos + moveToPos target a real point instead.
     const squaddedIds = new Set(state?.members.map(m => m.id));
-    const rallyRoom = state?.anchor.room ?? staging;
+    const rallyPos: XY & { room: string } = state ? state.anchor : { x: 25, y: 25, room: staging };
     for (const c of squad) {
       if (squaddedIds.has(c.id)) continue;
-      if (c.memory.attackTargetRoom !== rallyRoom) out.push({ kind: "setAttackTargetRoom", creep: c.id, room: rallyRoom });
+      const current = c.memory.drainRallyPos;
+      if (!current || current.x !== rallyPos.x || current.y !== rallyPos.y || current.room !== rallyPos.room) {
+        out.push({ kind: "setDrainRallyPos", creep: c.id, pos: rallyPos });
+      }
     }
 
     out.push(...this.drainSample(colony));

@@ -707,10 +707,16 @@ describe("upgrade step: doNotBlockRoads", () => {
 // A remote miner is spawned at home with memory.targetRoom set to its source's room and a stored route.
 // moveToRoom { to: "targetRoom" } walks it there; only once it has arrived do the harvest steps engage.
 describe("moveToRoom to a creep's targetRoom", () => {
-  function roamer(room: string, targetRoom: string, route?: { dest: string; rooms: string[]; index: number }) {
+  function roamer(
+    room: string,
+    targetRoom: string,
+    route?: { dest: string; rooms: string[]; index: number },
+    pos: { x: number; y: number } = { x: 25, y: 25 } // interior by default — see the border-specific test below
+  ) {
     const traveled: { x: number; y: number; room: string }[] = [];
     const creep = {
       room: { name: room },
+      pos,
       memory: { targetRoom, route },
       travelTo: (p: { x: number; y: number; roomName: string }) => traveled.push({ x: p.x, y: p.y, room: p.roomName })
     };
@@ -731,12 +737,53 @@ describe("moveToRoom to a creep's targetRoom", () => {
     expect(traveled).toEqual([]);
   });
 
+  it("keeps traveling if standing in the target room but still on its border tile", () => {
+    // room.name already equals targetRoom, but the creep is still sitting exactly on the edge (x=0) — not
+    // genuinely arrived. Reporting complete here (and never calling travelTo again) is what let a squad
+    // member oscillate across a room border forever: the engine nudges a creep that doesn't explicitly
+    // move off an edge tile back into the room it came from, so it re-enters next tick and repeats.
+    const { creep, traveled } = roamer("W2N1", "W2N1", undefined, { x: 0, y: 25 });
+    const result = runStep(creep, { do: "moveToRoom", to: "targetRoom" });
+    expect(result.acted).toBe(true);
+    expect(traveled).toEqual([{ x: 25, y: 25, room: "W2N1" }]);
+  });
+
   it("follows the stored route's next room rather than jumping to the destination", () => {
     // Two rooms out: the next hop is W2N1, not the final W3N1.
     const route = { dest: "W3N1", rooms: ["W2N1", "W3N1"], index: 0 };
     const { creep, traveled } = roamer("W1N1", "W3N1", route);
     runStep(creep, { do: "moveToRoom", to: "targetRoom" });
     expect(traveled).toEqual([{ x: 25, y: 25, room: "W2N1" }]);
+  });
+});
+
+// moveToPos (drain's rally step, ADR 0007 follow-up): moves toward a concrete TILE read from memory,
+// refreshed every tick by the owning operation — replaces moveToRoom+attackTargetRoom for drain squad
+// members specifically, because a room-name destination let two stragglers each converging on "whichever
+// room the OTHER one currently stands in" chase each other back and forth across a border forever
+// (confirmed live: two drain healers swapping W5N3<->W6N3 every tick, one-tick out of phase).
+describe("moveToPos", () => {
+  function positioned(pos?: { x: number; y: number; room: string }) {
+    const traveled: { x: number; y: number; room: string }[] = [];
+    const creep = {
+      memory: { drainRallyPos: pos },
+      travelTo: (p: RoomPosition) => traveled.push({ x: p.x, y: p.y, room: p.roomName })
+    };
+    return { creep: creep as unknown as Creep, traveled };
+  }
+
+  it("travels toward the memory-stored tile", () => {
+    const { creep, traveled } = positioned({ x: 30, y: 12, room: "W2N1" });
+    const result = runStep(creep, { do: "moveToPos", to: "drainRallyPos" });
+    expect(result.acted).toBe(true);
+    expect(traveled).toEqual([{ x: 30, y: 12, room: "W2N1" }]);
+  });
+
+  it("is a no-op when the field is unset — nothing to rally toward yet", () => {
+    const { creep, traveled } = positioned(undefined);
+    const result = runStep(creep, { do: "moveToPos", to: "drainRallyPos" });
+    expect(result).toEqual({ acted: false, didAct: false });
+    expect(traveled).toEqual([]);
   });
 });
 
@@ -1368,7 +1415,13 @@ describe("heal step", () => {
     return { creep: creep as unknown as Creep, healed, rangedHealed, traveled };
   }
 
-  it("melee-heals the most damaged squad-mate at range 1", () => {
+  it("melee-heals the most damaged squad-mate at range 1, and still travels toward it", () => {
+    // heal is a move-kind step (STEP_KIND) that only completes via targetGone, never on its own — and
+    // find:"squadMate" always resolves to SOMETHING (self included). Without a travelTo call even in the
+    // in-range case, a healer whose target never moves away is permanently parked here the instant it
+    // lands on this step, unable to ever fall back to a preceding moveToRoom step's own destination.
+    // Confirmed live: a drain healer wedged healing an at-full-HP squad-mate forever, never resuming
+    // travel toward its actual rally room.
     const mate = {
       id: "mate1",
       pos: { x: 21, y: 20 },
@@ -1380,11 +1433,11 @@ describe("heal step", () => {
     const result = runStep(creep, { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } });
     expect(healed).toEqual(["mate1"]);
     expect(rangedHealed).toEqual([]);
-    expect(traveled).toEqual([]);
+    expect(traveled).toEqual([{ x: 21, y: 20 }]);
     expect(result).toEqual({ acted: true, didAct: true, target: "mate1" });
   });
 
-  it("ranged-heals a squad-mate at range 2-3", () => {
+  it("ranged-heals a squad-mate at range 2-3, and still travels toward it", () => {
     const mate = {
       id: "mate1",
       pos: { x: 23, y: 20 },
@@ -1396,7 +1449,7 @@ describe("heal step", () => {
     const result = runStep(creep, { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } });
     expect(rangedHealed).toEqual(["mate1"]);
     expect(healed).toEqual([]);
-    expect(traveled).toEqual([]);
+    expect(traveled).toEqual([{ x: 23, y: 20 }]);
     expect(result).toEqual({ acted: true, didAct: true, target: "mate1" });
   });
 

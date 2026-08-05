@@ -2,6 +2,7 @@
 
 import type { RoleName, RemoteMemory } from "../memory/schema";
 import type { LogisticsTask } from "../logistics/types";
+import type { XY } from "../lib/geometry";
 
 export type Intent =
   | { kind: "towerAttack"; tower: Id<StructureTower>; target: Id<Creep> }
@@ -37,6 +38,11 @@ export type Intent =
   // The attacker equivalent, picked by operations/attack.ts off whichever room in ColonyMemory.attacking
   // the creep isn't already assigned to. See CreepMemory.attackTargetRoom.
   | { kind: "setAttackTargetRoom"; creep: Id<Creep>; room: string }
+  // A drain squad member's rally destination TILE (not a room — see CreepMemory.drainRallyPos and
+  // behaviors/types.ts's moveToPos step), picked by operations/drain.ts off the squad's live anchor tile
+  // (or the staging room center pre-assembly). Room-membership rallying let two stragglers converging on
+  // each other's CURRENT room chase each other across a border forever; a real tile fixes that.
+  | { kind: "setDrainRallyPos"; creep: Id<Creep>; pos: XY & { room: string } }
   // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
   // execute.ts owns the memory write" split as setCreepRole above).
   | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }

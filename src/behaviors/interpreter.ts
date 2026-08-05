@@ -28,6 +28,7 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   claim: "move", // store-less colonizer — never self-completes on store state, only via targetGone (see below)
   renew: "move", // store-less — see renewStep: falls through via acted:false whenever renewal isn't needed/possible
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
+  moveToPos: "move", // same as moveToRoom — completes only via targetGone (never set; see moveToPos's own doc)
   sit: "move",
   attack: "move", // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
   heal: "move" // store-less healer — never self-completes; ends only via targetGone (target gone)
@@ -167,6 +168,8 @@ export const runStep = wrapFn(function runStep(
       return healStep(creep, step.at, locked, allowTravel);
     case "moveToRoom":
       return allowTravel ? moveToRoom(creep, step) : { acted: false, didAct: false };
+    case "moveToPos":
+      return allowTravel ? moveToPos(creep, step) : { acted: false, didAct: false };
     case "sit":
       if (!allowTravel) return { acted: false, didAct: false };
       creep.travelTo(new RoomPosition(step.pos.x, step.pos.y, creep.room.name));
@@ -267,7 +270,16 @@ function moveToRoom(
                 : step.room;
   if (!dest) return { acted: false, didAct: false }; // nothing to move toward — step is a no-op, advance past it
 
-  if (creep.room.name === dest) {
+  // Arrived means standing IN dest and clear of its border tiles (x/y 0 or 49) — not merely having crossed
+  // into it. A creep sitting exactly on an edge tile that doesn't explicitly move this tick gets nudged
+  // back into the room it came from by the engine itself; reporting "arrived" there (and so never calling
+  // travelTo again) left the creep bounce across the border forever, one room in, one room back, every
+  // tick (confirmed live: a drain squad member oscillating W6N3(49,26)->W5N3(0,26)->W6N3(49,26)...). Still
+  // walking travelTo toward the room centre while on the edge (the branch below) draws it in one more step,
+  // same as any other not-yet-arrived tile. Checked only once room.name===dest is already known, so a
+  // creep still elsewhere never needs a real pos.x/y (some callers stub a bare {room, memory, travelTo}).
+  const arrived = creep.room.name === dest && creep.pos.x !== 0 && creep.pos.x !== 49 && creep.pos.y !== 0 && creep.pos.y !== 49;
+  if (arrived) {
     // Arrived. Clear a consumed scout target and its route so the next assignment starts clean. A
     // targetRoom (a remote miner's permanent destination), buildTargetRoom (reassigned by Building,
     // not self-clearing), and repairTargetRoom (reassigned by Repairing, same rule) are NOT cleared —
@@ -318,6 +330,21 @@ function moveToRoom(
     const info = (roomMem.scouted ??= { type: roomType(nextRoom), sources: [], hostile: false });
     (info.noPathFrom ??= {})[creep.memory.home] = Game.time;
   }
+  return { acted: true, didAct: false };
+}
+
+// Moves toward a concrete TILE read from a memory field (currently only drainRallyPos — see the Step
+// union's doc), refreshed every tick by the owning operation. Unlike moveToRoom, "arrived" is never
+// declared here at all: the destination is a live point that can itself be moving (a squad's anchor
+// tracking its own advance), so there is nothing to latch as "reached" the way a static room name has.
+// The step simply keeps calling travelTo every tick it runs; the NEXT step (attack/heal) takes over once
+// the creep is within ITS OWN range of ITS OWN target, exactly like moveToRoom's relationship to the step
+// that follows it today. A no-op (falls through) when the field is unset, mirroring moveToRoom's
+// no-destination case — a role between assembly and dissolution simply has nothing to rally toward.
+function moveToPos(creep: Creep, step: { to: "drainRallyPos" }): StepResult {
+  const dest = creep.memory[step.to];
+  if (!dest) return { acted: false, didAct: false };
+  creep.travelTo(new RoomPosition(dest.x, dest.y, dest.room), { range: 1 });
   return { acted: true, didAct: false };
 }
 
@@ -653,12 +680,22 @@ function healStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefined
   if (!target) return { acted: false, didAct: false };
   const patient = target as Creep;
 
+  // Always keep moving toward the patient, even when already in heal range — heal (a move-kind step, see
+  // STEP_KIND) never self-completes except via targetGone, and find:"squadMate" always resolves to
+  // SOMETHING (itself included), so a healer that never travels here is permanently parked the instant it
+  // lands on this step: it "heals" whatever's nearest (often itself, at full HP) forever and never advances
+  // toward wherever it actually needs to be (e.g. still rallying via a PRECEDING moveToRoom step's
+  // destination). Screeps permits move + heal the same tick (this mirrors attackStep's own kiting, which
+  // already moves and acts together), so travelling here costs nothing when the patient is in range and
+  // fixes the freeze when it isn't the healer's own final destination.
   if (creep.pos.inRangeTo(patient.pos, 1)) {
     creep.heal(patient);
+    if (allowTravel) creep.travelTo(patient.pos);
     return { acted: true, didAct: true, target: patient.id };
   }
   if (creep.pos.inRangeTo(patient.pos, HEAL_ASSIST_RANGE)) {
     creep.rangedHeal(patient);
+    if (allowTravel) creep.travelTo(patient.pos);
     return { acted: true, didAct: true, target: patient.id };
   }
   if (!allowTravel) return { acted: false, didAct: false };

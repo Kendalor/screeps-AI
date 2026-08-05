@@ -124,6 +124,15 @@ export type Step = ({
         // walking toward hostiles on purpose must never set this, or it'd path away from its own target.
         avoidDanger?: boolean;
       } // static room, or a memory field name, to read the destination + memory.route from creep memory
+    // Moves toward a concrete tile read from a memory field, refreshed every tick by the owning operation
+    // — for rallying onto a MOVING point (a live squad anchor), not a room. moveToRoom's room-membership
+    // arrival check is the wrong primitive there: a straggler converging on another creep's position needs
+    // a real destination tile, or two stragglers each converging on "whichever room the other is in this
+    // tick" chase each other back and forth across a border forever (confirmed live — see drainRallyPos).
+    // No-ops (falls through, same as moveToRoom with no dest) while the field is unset. Never self-completes
+    // on arrival by itself; the NEXT step (e.g. heal/attack) takes over once in its own range, same
+    // structure as moveToRoom+attack/heal today.
+    | { do: "moveToPos"; to: "drainRallyPos" }
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
   );
 

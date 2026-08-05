@@ -38,8 +38,11 @@ function drainHealerBody(energy: number): BodyPartConstant[] {
 // runSquads calls planSquadMove/planSquadActions), never this step table. That removes the old
 // moveToPos/heal race entirely — heal can no longer steal primary-step status from movement, because
 // squadded movement doesn't go through the step table at all — so Step.standStill (which existed purely to
-// referee that race) is gone. moveToRoom heads for attackTargetRoom (the room Drain tells this creep to
-// rally to); heal acts on the most damaged squad-mate in range en route.
+// referee that race) is gone. moveToPos heads for drainRallyPos, a concrete TILE Drain recomputes every
+// tick (the squad's live anchor once one exists, else the staging room center) — NOT moveToRoom/
+// attackTargetRoom: healers converging on each other's ROOM (not a real destination) chased each other back
+// and forth across a border forever once each landed on heal (confirmed live). heal (now always travelling
+// toward its own resolved target too — see interpreter.ts's healStep) acts on the most damaged squad-mate.
 export class DrainHealer extends Role {
   static override readonly priority = 110; // same table as DrainAttacker — a squad's healers are exactly as urgent as its striker
   static override readonly mover = true;
@@ -47,7 +50,7 @@ export class DrainHealer extends Role {
     return drainHealerBody(energy);
   }
   static override readonly steps: Step[] = [
-    { do: "moveToRoom", to: "attackTargetRoom" },
+    { do: "moveToPos", to: "drainRallyPos" },
     { do: "heal", at: { find: "squadMate", prefer: "mostDamaged" } }
   ];
 }

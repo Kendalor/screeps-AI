@@ -100,9 +100,15 @@ export function inFormation(members: readonly SnapCreep[], slots: readonly SlotT
  *   before joining walking it into a dead end) — reforming onto an unfittable target would hold forever, so
  *   the squad instead retargets the reform onto the NEAREST anchor/facing that does fit
  *   (nearestFittingAnchor), still never advancing toward `goal` until tight again.
- * - When the block IS tight, the anchor advances one step along a footprint-fit route toward `goal`
- *   (findSquadPath, which checks the FULL formation shape regardless of occupancy), and every member is
- *   reassigned onto the NEXT step's slot tiles — so the whole formation moves exactly one tile in
+ * - When the block IS tight but a member is FATIGUED (creep.fatigue > 0 — swamp, an overweight body), the
+ *   squad holds at its current slots rather than advancing: a fatigued creep's move() silently no-ops this
+ *   tick, so committing the whole formation to slide forward would leave that one member behind while its
+ *   squadmates still moved — reintroducing per-member drift under a different mechanism than the
+ *   independent-Traveler convergence ADR 0007 replaced. Waits for every member's fatigue to clear before
+ *   resuming the advance.
+ * - When the block IS tight and unfatigued, the anchor advances one step along a footprint-fit route toward
+ *   `goal` (findSquadPath, which checks the FULL formation shape regardless of occupancy), and every member
+ *   is reassigned onto the NEXT step's slot tiles — so the whole formation moves exactly one tile in
  *   lockstep. A route step that is a reform (same anchor tile, changed facing) is handled by the same
  *   reassignment. When no route exists (walled in) or the squad is already at the goal, it holds.
  *
@@ -119,6 +125,11 @@ export function planSquadMove(state: SquadState, goal: XY & { room: string }, te
         ? slotTiles(fit.anchor, fit.facing, state.formation)
         : currentSlots;
     return reformOnto(state.members, reformSlots);
+  }
+
+  // Tight but a member can't actually move this tick — hold rather than advance without it.
+  if (state.members.some(m => m.fatigue > 0)) {
+    return reformOnto(state.members, currentSlots);
   }
 
   // Tight block: try to advance/reform one footprint-fit step toward the goal.

@@ -70,6 +70,13 @@ declare global {
     // next open target once its current one clears, so a surviving attacker carries over between rooms
     // instead of a fresh one spawning per target.
     attackTargetRoom?: string;
+    // A drain squad member's rally destination TILE (not just a room — see moveToPos), owned by
+    // operations/drain.ts, recomputed every tick for every unsquadded member (assembling, or a replacement
+    // still catching up). Points at the squad's live anchor tile once one exists, else the staging room's
+    // center pre-assembly. Room-membership-only rallying (moveToRoom) let two stragglers each converging on
+    // "whichever room the other currently stands in" chase each other back and forth across a border
+    // forever, since each one's destination flipped sides the instant its target crossed — confirmed live.
+    drainRallyPos?: XY & { room: string };
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
     // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's

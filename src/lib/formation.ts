@@ -6,7 +6,7 @@
 // facing-selection (e.g. a strict 2x2's collapse of the 8 travel directions to its 4 distinct
 // orientations, for mutual range-1) belongs in that formation's own definition, NOT baked in here.
 
-import { type XY } from "./geometry";
+import { roomAndLocal, worldOf, type XY } from "./geometry";
 
 export interface FormationSlot {
   dx: number; // offset from the anchor slot, measured at the canonical TOP facing
@@ -61,10 +61,20 @@ export function rotateOffset(offset: { dx: number; dy: number }, facing: Directi
 /** The concrete tiles a formation occupies with its anchor slot at `anchor`, facing `facing`. Each
  * returned tile carries its slot's role. Pure — no Game access, no bounds/terrain check (that's the
  * pather's job, see squadPath.ts). Tiles are returned in formation-definition order, anchor first when
- * the anchor slot is at index 0 (the convention Drain's formation uses). */
+ * the anchor slot is at index 0 (the convention Drain's formation uses).
+ *
+ * Resolved via the shared world-coordinate lattice (geometry.ts's worldOf/roomAndLocal), NOT plain
+ * anchor.x+dx in the anchor's own local space: an anchor sitting near a room's edge (x/y 0 or 49) can have
+ * a slot offset push past that edge into the NEIGHBORING room. Local-only arithmetic would produce an
+ * out-of-range local x/y (e.g. x=50) for that slot instead — RoomPosition's constructor throws on that,
+ * which crashed the whole tick's creep loop when a live squad's anchor sat at the border (confirmed live).
+ * The world lattice guarantees every slot always resolves to a real, valid tile in whichever room it
+ * actually falls in, exactly like findSquadPath's own footprint checks already do. */
 export function slotTiles(anchor: XY & { room: string }, facing: DirectionConstant, formation: Formation): SlotTile[] {
+  const a = worldOf(anchor.x, anchor.y, anchor.room);
   return formation.map(slot => {
     const r = rotateOffset(slot, facing);
-    return { x: anchor.x + r.dx, y: anchor.y + r.dy, room: anchor.room, role: slot.role };
+    const { room, x, y } = roomAndLocal(a.wx + r.dx, a.wy + r.dy);
+    return { x, y, room, role: slot.role };
   });
 }

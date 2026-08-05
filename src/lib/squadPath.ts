@@ -9,7 +9,7 @@
 // XY/terrain in, path steps out, no Game access.
 
 import { rotateOffset, type Formation } from "./formation";
-import type { XY } from "./geometry";
+import { roomAndLocal, worldOf, type XY } from "./geometry";
 
 // Vision-independent terrain for a room: 1=walkable, 0=wall, [x*50+y]-indexed (the engine's own layout).
 // Undefined for a room with no data on record — treated as fully walkable (fail-open), the same
@@ -52,35 +52,6 @@ const REFORM_COST = 3;
 // A cap so a pathological search (e.g. a huge open room with the goal walled off in a way the footprint
 // check only discovers deep in) can't spin forever. Generous — real squad routes are short.
 const MAX_EXPANSIONS = 20000;
-
-// --- world coordinates (cross-room) ----------------------------------------------------------------
-// A single global lattice so anchor advances and footprint checks work seamlessly across room borders.
-// W/E and N/S mirror around the origin the same way roomLinearDistance's axis math encodes at room
-// granularity — here at tile granularity. `E0` starts at world x 0..49, `W0` at -50..-1, and so on.
-
-const ROOM_NAME = /^([WE])(\d+)([NS])(\d+)$/;
-
-function worldOf(x: number, y: number, room: string): { wx: number; wy: number } {
-  const m = ROOM_NAME.exec(room);
-  if (!m) throw new Error(`not a room name: ${room}`);
-  const ew = m[1];
-  const rx = Number(m[2]);
-  const ns = m[3];
-  const ry = Number(m[4]);
-  const wx = ew === "E" ? rx * 50 + x : -(rx + 1) * 50 + x;
-  const wy = ns === "S" ? ry * 50 + y : -(ry + 1) * 50 + y;
-  return { wx, wy };
-}
-
-function roomAndLocal(wx: number, wy: number): { room: string; x: number; y: number } {
-  const rx = Math.floor(wx / 50);
-  const ry = Math.floor(wy / 50);
-  const x = wx - rx * 50;
-  const y = wy - ry * 50;
-  const ew = rx >= 0 ? `E${rx}` : `W${-rx - 1}`;
-  const ns = ry >= 0 ? `S${ry}` : `N${-ry - 1}`;
-  return { room: `${ew}${ns}`, x, y };
-}
 
 function walkableWorld(wx: number, wy: number, terrain: TerrainSource): boolean {
   const { room, x, y } = roomAndLocal(wx, wy);

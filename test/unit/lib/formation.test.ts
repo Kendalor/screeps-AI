@@ -127,4 +127,28 @@ describe("slotTiles", () => {
     const tiles = slotTiles({ x: 10, y: 10, room: "W2N2" }, RIGHT, BLOCK_2X2);
     expect(tiles.map(t => t.role).sort()).toEqual(["anchor", "b", "c", "d"]);
   });
+
+  it("resolves a slot that crosses a room border into the NEIGHBORING room's local coords, never x/y outside 0..49", () => {
+    // Anchor sits at x=49 (the room's east edge); the "b"/"d" slots' +1 x-offset pushes past it. Plain
+    // anchor.x+dx arithmetic (local-only) would produce x=50 — an invalid RoomPosition (constructor throws
+    // on out-of-range x/y) that crashed the whole tick's creep loop when a live squad's anchor sat at a
+    // border (confirmed live: RoomPosition(50, 9, "W6N3") threw inside runSquadMember). The world-coordinate
+    // lattice (geometry.ts's worldOf/roomAndLocal) must instead land those slots in the room one hop EAST.
+    const tiles = slotTiles({ x: 49, y: 25, room: "W5N5" }, TOP, BLOCK_2X2);
+    for (const t of tiles) {
+      expect(t.x).toBeGreaterThanOrEqual(0);
+      expect(t.x).toBeLessThanOrEqual(49);
+      expect(t.y).toBeGreaterThanOrEqual(0);
+      expect(t.y).toBeLessThanOrEqual(49);
+    }
+    // The anchor and the "c" slot (dy-only offset) stay in the anchor's own room; "b" and "d" (dx:+1) cross
+    // into the room immediately east.
+    const byRole = Object.fromEntries(tiles.map(t => [t.role, t]));
+    expect(byRole.anchor.room).toBe("W5N5");
+    expect(byRole.c.room).toBe("W5N5");
+    expect(byRole.b.room).not.toBe("W5N5");
+    expect(byRole.d.room).not.toBe("W5N5");
+    expect(byRole.b.x).toBe(0); // wrapped to the neighboring room's west edge, not x=50
+    expect(byRole.b.room).toBe(byRole.d.room); // both crossing slots land in the SAME neighboring room
+  });
 });

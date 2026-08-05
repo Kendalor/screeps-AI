@@ -28,6 +28,7 @@ function drainSquad(over: {
   positions?: { x: number; y: number }[];
   room?: string;
   members?: number;
+  fatigue?: number[]; // per-member fatigue override, indexed same as positions; default 0
 } = {}): SquadState {
   const room = over.room ?? "W2N1";
   const facing = over.facing ?? TOP;
@@ -41,7 +42,7 @@ function drainSquad(over: {
   ];
   const members = Array.from({ length: n }, (_, i) => {
     const p = over.positions?.[i] ?? defaults[i];
-    return snapCreep(roles[i], { room, x: p.x, y: p.y, memory: { op: "drain:W1N1" } });
+    return snapCreep(roles[i], { room, x: p.x, y: p.y, fatigue: over.fatigue?.[i] ?? 0, memory: { op: "drain:W1N1" } });
   });
   return { members, formation: BLOCK_2X2, anchor: { x: 25, y: 25, room }, facing };
 }
@@ -127,6 +128,32 @@ describe("planSquadMove", () => {
       expect(range({ x: member.x, y: member.y }, intent!.to)).toBeLessThanOrEqual(1);
       expect(intent!.to.room).toBe("W2N1");
     }
+  });
+
+  it("holds at current slots (never advances) when the block is tight but a member is fatigued", () => {
+    // A fatigued creep's move() silently no-ops this tick — advancing anyway would leave that member
+    // behind while unfatigued squadmates still slid forward, reintroducing per-member drift under a
+    // different mechanism than the independent-Traveler convergence ADR 0007 replaced.
+    const state = drainSquad({ fatigue: [0, 0, 3, 0] });
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain);
+    expect(intents).toHaveLength(4);
+    for (const member of state.members) {
+      const intent = intents.find(i => i.creep === member.id);
+      // Held at the SAME tile it already occupies (the current slot) — no advance toward the goal.
+      expect(intent!.to).toEqual({ x: member.x, y: member.y, room: "W2N1" });
+    }
+  });
+
+  it("advances normally once every member's fatigue clears", () => {
+    const state = drainSquad({ fatigue: [0, 0, 0, 0] });
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain);
+    // At least one member actually moves toward the goal (y decreases) — confirms fatigue:0 doesn't
+    // spuriously hold the squad the way the fatigued case above does.
+    const advanced = intents.some(i => {
+      const member = state.members.find(m => m.id === i.creep)!;
+      return i.to.y < member.y;
+    });
+    expect(advanced).toBe(true);
   });
 
   it("keeps the destination tiles a valid mutual-range-1 block (the whole squad stays welded)", () => {

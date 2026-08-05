@@ -27,8 +27,11 @@ function drainAttackerBody(energy: number): BodyPartConstant[] {
 // dissolves. Once squadded, movement AND action are dictated by the Squad entity (empire/creeps.ts's
 // runSquads calls planSquadMove/planSquadActions), never this step table — so there's no moveToPos/action
 // race to referee here, and no standStill needed (both were removed with the step-table movement they
-// guarded). moveToRoom heads for attackTargetRoom, which Drain sets to the room the creep should rally to
-// (staging while assembling, the squad's anchor room while catching up); attack acts in range en route.
+// guarded). moveToPos heads for drainRallyPos, a concrete TILE Drain recomputes every tick (the squad's
+// live anchor once one exists, else the staging room center) — NOT moveToRoom/attackTargetRoom: a
+// room-membership destination let two stragglers each converging on "whichever room the OTHER one
+// currently stands in" chase each other back and forth across a border forever, since each one's
+// destination flipped the instant its target crossed (confirmed live). attack acts in range en route.
 export class DrainAttacker extends Role {
   static override readonly priority = 110; // same table as Attacker/Defender — an ordered squad op is as urgent as either
   static override readonly mover = true;
@@ -36,7 +39,7 @@ export class DrainAttacker extends Role {
     return drainAttackerBody(energy);
   }
   static override readonly steps: Step[] = [
-    { do: "moveToRoom", to: "attackTargetRoom" },
+    { do: "moveToPos", to: "drainRallyPos" },
     { do: "attack", from: { find: "structure", type: [STRUCTURE_TOWER] } },
     { do: "attack", from: { find: "hostile", prefer: "mostThreatening" } }
   ];
