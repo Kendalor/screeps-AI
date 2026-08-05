@@ -25,6 +25,14 @@ export interface Provider {
   // (which `pos: null` rules out for a cross-room target), so a remote pile can now win a nearest-fill
   // decision instead of only ever being reached via the largest-first fallback.
   remoteDistance?: number;
+  // Storage's own drain-for-spawn-need entry (see providers(), below): supply's job, never transport's.
+  // Storage sits at/near the bunker anchor and usually holds the most energy, so with no priority field
+  // on Provider at all (unlike Consumer), it would otherwise win pickNearestFillingProvider/
+  // pickLargestProvider outright — round-tripping transport creeps into a pointless storage->storage
+  // loop once storage is also open as a consumer (its overflow-sink entry, gated separately). transport's
+  // own view filters this flag out entirely; supplyProviders keeps it, since draining storage to cover a
+  // spawn deficit is exactly supply's reason to exist.
+  storageBuffer?: boolean;
 }
 
 export interface Consumer {
@@ -194,7 +202,8 @@ export function providers(colony: ColonySnapshot): Provider[] {
       resource: RESOURCE_ENERGY,
       available: colony.storageEnergy,
       urgency: 0,
-      pos: storageStruct ? { x: storageStruct.x, y: storageStruct.y } : null
+      pos: storageStruct ? { x: storageStruct.x, y: storageStruct.y } : null,
+      storageBuffer: true
     });
   }
 
@@ -212,6 +221,17 @@ function isWorthwhileDrop(d: SnapDrop): boolean {
 // list (rather than a separate scan) keeps this in lockstep with providers()'s own worthwhile floors.
 export function supplyProviders(colony: ColonySnapshot): Provider[] {
   return providers(colony).filter(p => !p.remote);
+}
+
+// Transport's own view of providers(): everything EXCEPT storage's drain-for-spawn-need entry — that
+// buffer-out direction is supply's job (see supplyProviders/storageBuffer's doc on Provider). Without
+// this, storage — usually nearest to the bunker and holding the most energy, with no priority field on
+// Provider to rank it below other sources — wins transport's own pickup selection outright, and once
+// storage is also open as a consumer (its overflow-sink entry), that produces a pointless
+// storage-to-storage round trip instead of transport ever touching the source container it should be
+// draining.
+export function transportProviders(colony: ColonySnapshot): Provider[] {
+  return providers(colony).filter(p => !p.storageBuffer);
 }
 
 // Supply's own view of consumers(): spawn/extensions and towers only — never the controller container
@@ -301,10 +321,16 @@ export function consumers(colony: ColonySnapshot, skipSupplyTiers = false): Cons
 
   // Storage as the overflow buffer, once it exists builder/upgrader are no longer emitted as
   // consumers at all (see the storageId gate above) — this is the sole sink transport falls to below
-  // spawn/tower/controller-container. Gated on the spawn system being full — the exact inverse of the
-  // source-side gate, so storage is a sink or a source but never both in the same tick (it can't feed
-  // itself). When spawn is short, storage is a source (see providers) and skipped here.
-  if (colony.storageId && spawnSystemDeficit(colony) === 0) {
+  // spawn/tower/controller-container. NOT gated on the spawn system being full: that gate used to block
+  // storage as a consumer any tick energyAvailable dipped below energyCapacity by even 1 point — which is
+  // most ticks in an actively-spawning colony — starving transport of anywhere to route a full source
+  // container's energy (spawn/tower/controller-container all satisfied, storage the only remaining sink,
+  // but disabled anyway). Storage-as-source (providers(), below) keeps its own deficit gate — the two
+  // aren't mutually exclusive: a creep can legitimately drain storage for spawn need on one trip while
+  // another delivers surplus container energy into it, and even a single creep picking up from and
+  // delivering back to storage in the same chain is just a wasted round-trip, not a feedback loop (this
+  // is a plan-once-per-tick allocator, not a re-entrant one).
+  if (colony.storageId) {
     const wanted = colony.storageCapacity - colony.storageEnergy;
     if (wanted > 0) {
       const storageStruct = colony.structures.find(s => s.type === "storage");

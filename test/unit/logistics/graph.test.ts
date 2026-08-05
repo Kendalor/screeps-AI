@@ -1,7 +1,7 @@
 // Pure fixture tests, no Game mocking — a hand-built ColonySnapshot in, Provider[]/Consumer[] out.
 
 import { describe, expect, it } from "vitest";
-import { consumers, providers, storageOverflow, supplyConsumers, supplyProviders } from "../../../src/logistics/graph";
+import { consumers, providers, storageOverflow, supplyConsumers, supplyProviders, transportProviders } from "../../../src/logistics/graph";
 import { colonySnap, containerAt, dropAt, remoteEnergyAt, remoteSourceAt, sinkAt, snapCreep, structureAt, tombstoneAt, towerAt } from "../../fixtures";
 
 describe("providers", () => {
@@ -125,7 +125,8 @@ describe("providers", () => {
       resource: RESOURCE_ENERGY,
       available: 5000,
       urgency: 0,
-      pos: null
+      pos: null,
+      storageBuffer: true
     });
   });
 
@@ -283,12 +284,15 @@ describe("consumers", () => {
     expect(storageConsumer!.priority).toBeGreaterThan(upgraderConsumer!.priority);
   });
 
-  it("does not treat storage as a sink while the spawn system still wants energy", () => {
-    // Spawn deficit present: storage is a source this tick, never a sink — the mutual-exclusion invariant.
+  it("still treats storage as a sink while the spawn system wants energy", () => {
+    // Spawn deficit present: storage remains an overflow consumer regardless — only storage-as-source
+    // (providers()) gates on the deficit. A spawn short by even 1 energy must not disable storage as the
+    // only remaining sink for a full source container once spawn/tower/controller-container are covered.
     const result = consumers(
       colonySnap({ storageId, storageEnergy: 4000, storageCapacity: 10000, energyAvailable: 30, energyCapacity: 50 })
     );
-    expect(result.some(c => c.ref.kind === "structure" && c.ref.id === storageId)).toBe(false);
+    const storageConsumer = result.find(c => c.ref.kind === "structure" && c.ref.id === storageId);
+    expect(storageConsumer).toEqual({ ref: { kind: "structure", id: storageId }, resource: RESOURCE_ENERGY, wanted: 6000, priority: 70, pos: null });
   });
 
   it("does not treat full storage as a sink", () => {
@@ -363,6 +367,24 @@ describe("supplyProviders", () => {
     const result = supplyProviders(colonySnap({ remoteEnergy: [remote] }));
     expect(result.some(p => p.remote)).toBe(false);
     expect(result).toEqual([]);
+  });
+});
+
+// Transport's restricted view: everything the general list offers EXCEPT storage's drain-for-spawn-need
+// entry — that direction is supply's job alone (supplyProviders, above), never transport's.
+describe("transportProviders", () => {
+  it("includes a local source container, same as the general provider list", () => {
+    const container = containerAt(10, 10, 300);
+    const result = transportProviders(colonySnap({ containers: [container], controller: { x: 25, y: 25 } }));
+    expect(result).toContainEqual(expect.objectContaining({ ref: { kind: "structure", id: container.id }, available: 300 }));
+  });
+
+  it("excludes storage's buffer-out entry even while the spawn system is short", () => {
+    const storageId = "storage1" as Id<StructureStorage>;
+    const result = transportProviders(
+      colonySnap({ storageId, storageEnergy: 5000, storageCapacity: 10000, energyAvailable: 30, energyCapacity: 50 })
+    );
+    expect(result.some(p => p.ref.kind === "structure" && p.ref.id === storageId)).toBe(false);
   });
 });
 

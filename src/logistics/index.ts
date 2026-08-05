@@ -9,7 +9,7 @@ import { buildCostMatrix, type RoadCostMatrix } from "../layouts/roads";
 import { wrapFn } from "../lib/profiler";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { allocate, emptyReserved, refKey, type ReservedAmounts } from "./allocate";
-import { consumers, providers, storageOverflow, supplyConsumers, supplyProviders } from "./graph";
+import { consumers, storageOverflow, supplyConsumers, supplyProviders, transportProviders } from "./graph";
 import type { LogisticsTask } from "./types";
 
 export interface LogisticsPlan {
@@ -112,7 +112,7 @@ export const planLogistics = wrapFn(function planLogistics(colony: ColonySnapsho
   const hasSupply = colony.creeps.some(c => c.role === "supply");
   const reserved = mergeReserved(foldReserved(transportCreeps), supplyReserved);
   const assignments = allocate(
-    providers(colony),
+    transportProviders(colony),
     consumers(colony, hasSupply),
     idle,
     reserved,

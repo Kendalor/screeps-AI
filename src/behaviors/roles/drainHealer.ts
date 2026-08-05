@@ -1,24 +1,32 @@
-import { affordableSets, bodyCost } from "../../spawn/body";
+import { bodyCost, parts } from "../../spawn/body";
 import type { Step } from "../types";
 import { Role } from "./role";
 
-// HEAL:MOVE 1:1 — HEAL_POWER is 12/part at range 1 (lib/combat.ts's healRateAt); the drain squad's
-// heal-output floor (ADR 0006/issue #35) is 200+ effective, so the minimum viable set count is
-// ceil(200/12) = 17 (17 * 12 = 204). 1 MOVE per HEAL keeps it at full speed on plain terrain (screeps'
-// road-free speed-1 ratio) even fully loaded, same ratio DrainAttacker/Attacker use. Capped at 25 sets —
-// comfortably above the 200 floor while leaving spawn-affordability headroom (25 sets = 7500 energy,
-// under an RCL8 room's 12900 extension cap) rather than maxing out every set the 50-body-part ceiling allows.
-const DRAIN_HEALER_SET: BodyPartConstant[] = [HEAL, MOVE];
-const MIN_DRAIN_HEALER_SETS = 17; // 17 * HEAL_POWER(12) = 204 >= the 200 effective-heal floor
-const MAX_DRAIN_HEALER_SETS = 25;
+// ADR 0006's 200+ effective-heal floor is a SQUAD total (3 healers together, see drain.ts's
+// advanceIsSafe/incomingHeal, which sums every healer's output), not a per-healer minimum. 6 HEAL parts
+// (72 effective, HEAL_POWER=12/part) times 3 healers = 216, clearing the floor with headroom — this is
+// the fixed, non-scaling floor of every drain healer's body, 6 HEAL + 6 MOVE (1:1, full speed loaded).
+// On top of that floor, TOUGH is added in fixed TOUGH:MOVE pairs (not scaled by energy) for a flat HP
+// buffer: 4 pairs = 400 HP absorbed before a healer's own hits start dropping, sized to survive
+// incidental splash/tower damage while in the range-1 formation, without diverting energy away from the
+// fixed heal-output floor above. Both energy tiers are exact costs, not affordableSets-style scaling —
+// there's nothing in between "can't afford the heal floor" and "can afford the floor plus full buffer".
+const HEAL_FLOOR_SETS = 6; // 6 * HEAL_POWER(12) = 72/healer; x3 healers = 216 >= the 200 squad floor
+const TOUGH_MOVE_PAIRS = 4; // 4 * TOUGH hits(100) = 400 HP buffer per healer
 
-export const DRAIN_HEALER_MIN_COST = bodyCost(DRAIN_HEALER_SET) * MIN_DRAIN_HEALER_SETS;
+const DRAIN_HEALER_MIN_BODY: BodyPartConstant[] = [...parts(HEAL, HEAL_FLOOR_SETS), ...parts(MOVE, HEAL_FLOOR_SETS)];
+const DRAIN_HEALER_MAX_BODY: BodyPartConstant[] = [
+  ...parts(TOUGH, TOUGH_MOVE_PAIRS),
+  ...DRAIN_HEALER_MIN_BODY,
+  ...parts(MOVE, TOUGH_MOVE_PAIRS)
+];
+
+export const DRAIN_HEALER_MIN_COST = bodyCost(DRAIN_HEALER_MIN_BODY);
+const DRAIN_HEALER_MAX_COST = bodyCost(DRAIN_HEALER_MAX_BODY);
 
 function drainHealerBody(energy: number): BodyPartConstant[] {
-  const sets = affordableSets(energy, DRAIN_HEALER_SET, MIN_DRAIN_HEALER_SETS, MAX_DRAIN_HEALER_SETS);
-  const body: BodyPartConstant[] = [];
-  for (let i = 0; i < sets; i++) body.push(...DRAIN_HEALER_SET);
-  return body;
+  if (energy < DRAIN_HEALER_MIN_COST) return [];
+  return energy >= DRAIN_HEALER_MAX_COST ? DRAIN_HEALER_MAX_BODY : DRAIN_HEALER_MIN_BODY;
 }
 
 // The Drain Energy operation's (issue #34/ADR 0006) squad healer: keeps the squad's melee attacker (and

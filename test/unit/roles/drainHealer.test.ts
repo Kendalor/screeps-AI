@@ -1,5 +1,7 @@
 // DrainHealer's step list: heal squad-mates (find:"squadMate", prefer:"mostDamaged" — the new heal
-// verb and target find-variant from issue #35), and its body clears 200+ effective heal output at range 1.
+// verb and target find-variant from issue #35). ADR 0006's 200+ effective heal floor is a SQUAD total
+// (3 healers together, see drain.ts's advanceIsSafe/incomingHeal) — each healer's body clears a third of
+// that on its own (6 HEAL = 72 effective, x3 healers = 216), not 200+ individually.
 
 import { describe, expect, it } from "vitest";
 import { runStep } from "../../../src/behaviors/interpreter";
@@ -8,16 +10,24 @@ import { clearTiles } from "../../constants";
 import { stubGame } from "../../helpers";
 
 describe("DrainHealer body", () => {
-  it("clears 200+ effective heal output (HEAL_POWER=12/part) at the max affordable size", () => {
+  it("3 healers together clear 200+ effective heal output (HEAL_POWER=12/part)", () => {
     const HEAL_POWER = 12;
+    const HEALERS_IN_SQUAD = 3;
     const body = DrainHealer.body(10000, { hasContainer: false, hasLink: false });
     const healParts = body.filter(p => p === HEAL).length;
-    expect(healParts * HEAL_POWER).toBeGreaterThanOrEqual(200);
+    expect(healParts * HEAL_POWER * HEALERS_IN_SQUAD).toBeGreaterThanOrEqual(200);
   });
 
-  it("body is only HEAL and MOVE parts", () => {
+  it("body is only TOUGH, HEAL and MOVE parts", () => {
     const body = DrainHealer.body(10000, { hasContainer: false, hasLink: false });
-    expect(body.every(p => p === HEAL || p === MOVE)).toBe(true);
+    expect(body.every(p => p === TOUGH || p === HEAL || p === MOVE)).toBe(true);
+  });
+
+  it("adds a fixed TOUGH buffer at max affordable size, none at the minimum floor", () => {
+    const minBody = DrainHealer.body(1800, { hasContainer: false, hasLink: false });
+    const maxBody = DrainHealer.body(10000, { hasContainer: false, hasLink: false });
+    expect(minBody.filter(p => p === TOUGH).length).toBe(0);
+    expect(maxBody.filter(p => p === TOUGH).length).toBe(4);
   });
 });
 
