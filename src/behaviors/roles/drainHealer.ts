@@ -44,7 +44,7 @@ function drainHealerBody(energy: number): BodyPartConstant[] {
 // and forth across a border forever once each landed on heal (confirmed live). heal (now always travelling
 // toward its own resolved target too — see interpreter.ts's healStep) acts on the most damaged squad-mate.
 export class DrainHealer extends Role {
-  static override readonly priority = 110; // same table as DrainAttacker — a squad's healers are exactly as urgent as its striker
+  static override readonly priority = 94; // same table as DrainAttacker — below supply(101)/transport(100)/miner(95): colony economy comes first, an offensive squad is expendable
   static override readonly mover = true;
   static override body(energy: number): BodyPartConstant[] {
     return drainHealerBody(energy);

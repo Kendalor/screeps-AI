@@ -33,7 +33,7 @@ function drainAttackerBody(energy: number): BodyPartConstant[] {
 // currently stands in" chase each other back and forth across a border forever, since each one's
 // destination flipped the instant its target crossed (confirmed live). attack acts in range en route.
 export class DrainAttacker extends Role {
-  static override readonly priority = 110; // same table as Attacker/Defender — an ordered squad op is as urgent as either
+  static override readonly priority = 94; // same table as DrainHealer — below supply(101)/transport(100)/miner(95): colony economy comes first, an offensive squad is expendable
   static override readonly mover = true;
   static override body(energy: number): BodyPartConstant[] {
     return drainAttackerBody(energy);
