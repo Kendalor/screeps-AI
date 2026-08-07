@@ -15,9 +15,9 @@ import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import { incomingHeal, towerDamageAt, type HealSource } from "../lib/combat";
 import { slotTiles, type Formation } from "../lib/formation";
-import { range, type XY } from "../lib/geometry";
+import { range, worldOf, type XY } from "../lib/geometry";
 import { log } from "../lib/log";
-import { inFormation, type ActionIntent, type SquadActionPlanner, type SquadState } from "../lib/squad";
+import { inFormation, mostUrgentThreat, type ActionIntent, type SquadActionPlanner, type SquadState, type Threat } from "../lib/squad";
 import type { OccupancySource, TerrainSource } from "../lib/squadPath";
 import type { ColonySnapshot, SnapCreep, SnapTower } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
@@ -61,6 +61,27 @@ function drainFacing(from: XY, to: XY): DirectionConstant {
 }
 
 const AXIS_FACINGS: DirectionConstant[] = [TOP, RIGHT, BOTTOM, LEFT];
+
+// A melee hostile's engage range (adjacent) vs. a ranged one's (RANGED_ATTACK's max range) — a mixed body
+// (both part types) is classified melee since that's the tighter, more urgent range: it can still land a
+// melee hit the instant it's adjacent regardless of also carrying RANGED_ATTACK parts.
+const MELEE_ENGAGE_RANGE = 1;
+const RANGED_ENGAGE_RANGE = 3;
+
+/** The visible hostile creeps and towers in `room` as generic Threat entries for threatFacing/
+ * mostUrgentThreat (lib/squad.ts) — the target-room composition data ColonySnapshot.hostileRoomUnits
+ * closes the gap for (see its doc: `hostiles` alone is home-room-only, useless for a squad fighting away
+ * from home). An unarmed hostile (no ATTACK/RANGED_ATTACK parts — e.g. a harmless scout) is excluded: it's
+ * not a threat the formation needs to orient toward. */
+function threatsIn(colony: ColonySnapshot, room: string): Threat[] {
+  const units = colony.hostileRoomUnits[room] ?? [];
+  const towers = colony.hostileRoomTowers[room] ?? [];
+  const unitThreats: Threat[] = units
+    .filter(u => u.attackParts > 0 || u.rangedAttackParts > 0)
+    .map(u => ({ x: u.x, y: u.y, engageRange: u.attackParts > 0 ? MELEE_ENGAGE_RANGE : RANGED_ENGAGE_RANGE }));
+  const towerThreats: Threat[] = towers.map(t => ({ x: t.x, y: t.y, engageRange: Infinity }));
+  return [...unitThreats, ...towerThreats];
+}
 
 /** The facing the squad's LIVE positions already sit tight at, if any — checked BEFORE trusting the
  * goal-directed drainFacing. Without this, squadState() recomputed facing fresh every tick purely from
@@ -193,9 +214,9 @@ export class Drain extends Operation {
   /** The SquadState the generic Squad entity runs on this tick, or undefined while the squad is still
    * ASSEMBLING (rallying to staging via independent movement — that behaviour is unchanged, ADR 0007
    * requirement 2, and handled by the members' own step tables, NOT the squad machinery). Once assembled
-   * and underway, returns a state whose members are only those SAME-ROOM as the current anchor — the
-   * replacement re-entry gate (a freshly-spawned member still walking in runs its own step table until it
-   * reaches the anchor's room, then joins; the squad never holds for it). */
+   * and underway, returns a state whose members are exactly the STATEFULLY joined set (CreepMemory.
+   * squadJoined) — bootstrapped or grown by the join/re-entry logic below, and persisted via
+   * `joinIntents()`'s setSquadJoined writes so the same decision holds on every subsequent tick. */
   public squadState(colony: ColonySnapshot): SquadState | undefined {
     if (!colony.draining) return undefined;
     const staging = pickStagingRoom(colony.drainRoute);
@@ -221,15 +242,66 @@ export class Drain extends Operation {
     // No squad machinery: members rally independently via their own step tables (ADR 0007 requirement 2).
     if (!readyForFirstPush && !underway) return undefined;
 
-    // The formation's anchor room: whichever room the squad's members are actually standing in (the mode
-    // room). Before the first push, that's the staging room.
-    const anchorRoom = readyForFirstPush ? staging : mostCommonRoom(squad);
+    // Squad membership is now STATEFUL (CreepMemory.squadJoined), not re-derived from live position every
+    // tick. A creep joins once (see `joinIntents` below, called from `intents()`) and stays a member until
+    // explicitly cleared — never silently dropped out of the plan just because its position momentarily
+    // reads ambiguously (the border-straddle flicker this replaces: a formation legitimately straddles two
+    // rooms for a tile or two mid-crossing, and any purely-positional per-tick membership test — room
+    // equality, then world-coordinate range — can (and, confirmed live, did) flip a straddling member in
+    // and out of the plan tick to tick even though nothing about whether it belongs actually changed).
+    let joined = squad.filter(c => c.memory.squadJoined === true);
+    if (joined.length === 0) {
+      // Bootstrap: NOBODY has joined yet (fresh assembly going underway for the first time, OR a squad
+      // handed to squadState already fully underway with no prior squadJoined state at all — e.g. this
+      // operation restarting mid-drain) — the whole assembled squad becomes members together immediately
+      // rather than waiting a tick for intents() to catch up (intents()'s joinIntents grants the identical
+      // set this same tick — see its doc). A squad freshly arrived in staging rallied independently to the
+      // room's center and isn't necessarily welded into a tight formation shape yet, so this is
+      // unconditional, not range-gated.
+      joined = squad;
+    } else {
+      // Re-entry: at least one member is already governed by squad machinery — a not-yet-joined squadmate
+      // (a replacement that spawned after the squad had already pushed off) is added to THIS tick's members
+      // once it's within the formation's own footprint radius (world-coordinate, cross-room) of the
+      // already-joined block's own anchor reference — guarding against a still-distant straggler being
+      // swept into the plan (and thus skipping its own step table via runSquads' membership set) before
+      // it's actually close enough to matter. Computed against the JOINED set's own anchor room (not yet
+      // this function's own `anchor`, defined below from `joined` — a straggler catching up while the block
+      // is mid-crossing must be tested against where the ALREADY-joined block actually is).
+      const refRoom = mostCommonRoom(joined);
+      const refPos = anchorReference(joined, refRoom);
+      const refWorld = worldOf(refPos.x, refPos.y, refRoom);
+      const joinRadius = Math.max(...DRAIN_FORMATION.map(s => Math.max(Math.abs(s.dx), Math.abs(s.dy))), 0);
+      const rejoining = squad.filter(c => {
+        if (c.memory.squadJoined === true) return false;
+        const w = worldOf(c.x, c.y, c.room);
+        return Math.max(Math.abs(w.wx - refWorld.wx), Math.abs(w.wy - refWorld.wy)) <= joinRadius;
+      });
+      if (rejoining.length > 0) joined = [...joined, ...rejoining];
+    }
+
+    // The formation's anchor room: whichever room the squad's JOINED members are actually standing in (the
+    // mode room) — using the joined set, not the raw squad, keeps this stable across a border straddle
+    // (mostCommonRoom's tie-break on a raw-squad 2-2 split could still differ tick to tick by array order
+    // alone; the joined set changes by explicit join/leave events instead, not by recomputation). Before
+    // the first push, that's the staging room.
+    const anchorRoom = readyForFirstPush ? staging : mostCommonRoom(joined);
     const goal = this.goalTile(colony, squad, staging);
-    const desiredFacing = drainFacing(anchorReference(squad, anchorRoom), goal);
-    const anchor = this.anchorTile(attacker, healers, desiredFacing, anchorRoom);
-    // Replacement re-entry gate: only members in the anchor's room are squadded; a member elsewhere (a
-    // spawned replacement still walking in) is left to its own step table this tick.
-    const members = squad.filter(c => c.room === anchor.room);
+    const anchorRef = anchorReference(joined, anchorRoom);
+    // Face the nearest THREAT, not the travel goal, whenever one is actually present in the anchor room —
+    // a squad mid-fight needs to keep its attacker (the anchor slot, always the formation's "front" at any
+    // axis facing) oriented toward whatever's hitting it, not toward wherever it happens to be walking.
+    // Falls back to the ordinary goal-directed drainFacing when the room is clear (nothing to react to) or
+    // has no vision this tick (threatsIn reads empty, same fail-open convention as hostileRoomTowers).
+    const threat = mostUrgentThreat(anchorRef, threatsIn(colony, anchorRoom));
+    const desiredFacing = threat ? drainFacing(anchorRef, threat) : drainFacing(anchorRef, goal);
+    const anchor = this.anchorTile(
+      joined.find(c => c.role === "drainAttacker"),
+      joined.filter(c => c.role === "drainHealer"),
+      desiredFacing,
+      anchorRoom
+    );
+    const members = joined;
     // Report whichever facing the squad's LIVE positions already sit tight at, if any — NOT unconditionally
     // the goal-directed one. A tight block whose real shape doesn't match desiredFacing (settled from
     // wherever stragglers converged, not necessarily facing the goal) would otherwise be stamped a facing
@@ -286,13 +358,21 @@ export class Drain extends Operation {
   public readonly actionPlanner: SquadActionPlanner = (state, colony) => planDrainActions(state, colony);
 
   public override intents(colony: ColonySnapshot): Intent[] {
-    if (!colony.draining) return [];
-    const staging = pickStagingRoom(colony.drainRoute);
-    if (!staging) return [];
-
     const squad = this.squad(colony);
-    const state = this.squadState(colony);
     const out: Intent[] = [];
+
+    // Squad dissolved (draining cleared): clear squadJoined off every still-alive former member so a
+    // leftover creep from a stopped operation doesn't carry stale membership state into whatever it does
+    // next (see CreepMemory.squadJoined's doc — membership must never survive the thing that granted it).
+    if (!colony.draining) {
+      for (const c of squad) if (c.memory.squadJoined === true) out.push({ kind: "clearSquadJoined", creep: c.id });
+      return out;
+    }
+    const staging = pickStagingRoom(colony.drainRoute);
+    if (!staging) return out;
+
+    const state = this.squadState(colony);
+    out.push(...this.joinIntents(squad, state));
 
     // Steer every UNSQUADDED member (not in the current squad state's member set — assembling, or a
     // replacement still walking in) toward a concrete TILE, not just a room: the squad's live anchor once
@@ -314,6 +394,26 @@ export class Drain extends Operation {
 
     out.push(...this.drainSample(colony));
     return out;
+  }
+
+  /** Emits `setSquadJoined` for every squad member that has newly earned membership this tick — the write
+   * side of CreepMemory.squadJoined (squadState only READS the flag; this is the sole place it's granted).
+   * Simply mirrors squadState's OWN membership decision for `state` (already computed this tick, reused
+   * here so the write side can never disagree with the read side): every member squadState resolved into
+   * `state.members` that doesn't already carry the flag gets it now. That decision is itself either the
+   * all-or-nothing bootstrap (nobody's joined yet — the whole assembled squad becomes members together,
+   * since a squad freshly arrived in staging rallied independently to the room's center and isn't
+   * necessarily welded into a tight formation shape yet) or, once at least one member is already joined,
+   * the range-gated re-entry test (a replacement joins only once it's within the formation's own footprint
+   * of the live anchor) — see squadState's own doc for exactly which. This fires ONCE per creep (a state
+   * transition), not re-evaluated as ground truth every tick — the border-straddle flicker this whole
+   * mechanism replaces came from re-deriving "is this creep part of the squad right now" from live position
+   * fresh every tick, which could (and, confirmed live, did) flip a genuinely unchanged membership fact tick
+   * to tick. */
+  private joinIntents(squad: readonly SnapCreep[], state: SquadState | undefined): Intent[] {
+    if (!state) return [];
+    const memberIds = new Set(state.members.map(m => m.id));
+    return squad.filter(c => memberIds.has(c.id) && c.memory.squadJoined !== true).map(c => ({ kind: "setSquadJoined", creep: c.id }));
   }
 
   /** #40/ADR 0006's operation-owned observation history — a {tick, towerEnergy, storageEnergy} sample

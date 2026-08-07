@@ -4,7 +4,7 @@
 // here with a trivial planner; Drain's real content is tested in the drain suite.
 
 import { describe, expect, it } from "vitest";
-import { planSquadActions, planSquadMove, reformAssignment, type SquadState } from "../../../src/lib/squad";
+import { planSquadActions, planSquadMove, reformAssignment, threatFacing, type SquadState, type Threat } from "../../../src/lib/squad";
 import type { Formation } from "../../../src/lib/formation";
 import { range } from "../../../src/lib/geometry";
 import { colonySnap, snapCreep } from "../../fixtures";
@@ -111,6 +111,58 @@ describe("reformAssignment", () => {
     expect(new Set(used.map(t => `${t.x},${t.y}`)).size).toBe(2); // still one-to-one
     expect(assign.get("a" as Id<Creep>)).toEqual({ x: 20, y: 20 }); // a is already on the shared tile
     expect(assign.get("b" as Id<Creep>)).toEqual({ x: 21, y: 20 }); // b takes the only other dest
+  });
+});
+
+describe("threatFacing", () => {
+  const from = { x: 25, y: 25 };
+
+  it("returns undefined with no threats", () => {
+    expect(threatFacing(from, [])).toBeUndefined();
+  });
+
+  it("faces the 4 cardinal directions correctly", () => {
+    expect(threatFacing(from, [{ x: 25, y: 20, engageRange: 1 }])).toBe(TOP);
+    expect(threatFacing(from, [{ x: 30, y: 25, engageRange: 1 }])).toBe(RIGHT);
+    expect(threatFacing(from, [{ x: 25, y: 30, engageRange: 1 }])).toBe(BOTTOM);
+    expect(threatFacing(from, [{ x: 20, y: 25, engageRange: 1 }])).toBe(LEFT);
+  });
+
+  it("faces the 4 diagonal directions correctly", () => {
+    expect(threatFacing(from, [{ x: 30, y: 20, engageRange: 1 }])).toBe(TOP_RIGHT);
+    expect(threatFacing(from, [{ x: 30, y: 30, engageRange: 1 }])).toBe(BOTTOM_RIGHT);
+    expect(threatFacing(from, [{ x: 20, y: 30, engageRange: 1 }])).toBe(BOTTOM_LEFT);
+    expect(threatFacing(from, [{ x: 20, y: 20, engageRange: 1 }])).toBe(TOP_LEFT);
+  });
+
+  it("prefers whichever threat is closer to ITS OWN engage range, not raw distance", () => {
+    // A melee creep (engageRange 1) at range 4 to the north: urgency 4-1=3, not yet hitting.
+    // A ranged creep (engageRange 3) at range 3 to the east: urgency 3-3=0, already hitting.
+    // Despite the melee creep being nearer in raw tiles, the ranged creep is more urgent (already engaged).
+    const melee: Threat = { x: 25, y: 21, engageRange: 1 };
+    const ranged: Threat = { x: 28, y: 25, engageRange: 3 };
+    expect(threatFacing(from, [melee, ranged])).toBe(RIGHT);
+  });
+
+  it("flips facing when the more urgent threat repositions to the other side", () => {
+    const melee: Threat = { x: 25, y: 21, engageRange: 1 }; // north, urgency 3
+    const rangedEast: Threat = { x: 28, y: 25, engageRange: 3 }; // east, urgency 0 (most urgent)
+    expect(threatFacing(from, [melee, rangedEast])).toBe(RIGHT);
+    // Once the ranged attacker also closes past its engage range, the melee attacker (now equally close to
+    // ITS engage range, having also advanced) can retake priority once it's the more urgent of the two.
+    const meleeAdjacent: Threat = { x: 25, y: 24, engageRange: 1 }; // north, urgency 1-1=0
+    const rangedFar: Threat = { x: 29, y: 25, engageRange: 3 }; // east, urgency 4-3=1
+    expect(threatFacing(from, [meleeAdjacent, rangedFar])).toBe(TOP);
+  });
+
+  it("a tower is always the most urgent threat present (Infinity engageRange)", () => {
+    const meleeAdjacent: Threat = { x: 25, y: 24, engageRange: 1 }; // urgency 1-1=0
+    const tower: Threat = { x: 25, y: 15, engageRange: Infinity }; // urgency -Infinity, far away in tiles
+    expect(threatFacing(from, [meleeAdjacent, tower])).toBe(TOP); // faces the distant tower, not the adjacent melee
+  });
+
+  it("holds the canonical TOP facing when the sole threat is co-located (no meaningful direction)", () => {
+    expect(threatFacing(from, [{ x: 25, y: 25, engageRange: 1 }])).toBe(TOP);
   });
 });
 

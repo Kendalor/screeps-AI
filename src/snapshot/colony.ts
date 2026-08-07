@@ -53,6 +53,15 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
       }));
     if (towers.length > 0) hostileRoomTowers[name] = towers;
   }
+  // Same empire-wide/vision-gated population as hostileRoomTowers above, but every hostile CREEP rather
+  // than tower — the target-room composition data a squad needs to face/react to threats it's actually
+  // fighting (ColonySnapshot.hostileRoomUnits' doc). Reuses snapUnit so a hostile's boosted parts read the
+  // same way an ally's do.
+  const hostileRoomUnits: Partial<Record<string, SnapUnit[]>> = {};
+  for (const name in Game.rooms) {
+    const units = Game.rooms[name].find(FIND_HOSTILE_CREEPS).map(snapUnit);
+    if (units.length > 0) hostileRoomUnits[name] = units;
+  }
   // Same empire-wide/vision-gated population as hostileRoomTowers above, but the room's storage contents
   // rather than its towers — Drain's snapshot history (#40) samples both. Only rooms with vision AND an
   // actual storage structure get an entry (undefined for either).
@@ -67,7 +76,7 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
     const room = Game.rooms[name];
     if (!room.controller?.my) continue;
     colonies.push(
-      buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms, hostileRoomTowers, hostileRoomStorageEnergy)
+      buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms, hostileRoomTowers, hostileRoomUnits, hostileRoomStorageEnergy)
     );
   }
   return { tick: Game.time, colonies };
@@ -101,6 +110,7 @@ function buildColonySnapshot(
   tick: number,
   visibleRooms: VisibleRoom[],
   hostileRoomTowers: Partial<Record<string, SnapTower[]>>,
+  hostileRoomUnits: Partial<Record<string, SnapUnit[]>>,
   hostileRoomStorageEnergy: Partial<Record<string, number>>
 ): ColonySnapshot {
   const controller = room.controller!;
@@ -235,6 +245,7 @@ function buildColonySnapshot(
     draining,
     drainRoute,
     hostileRoomTowers,
+    hostileRoomUnits,
     hostileRoomStorageEnergy,
     drainRoomTerrain: drainTerrainFor(draining, drainRoute),
     drainRoomOccupancy: drainOccupancyFor(draining, drainRoute)

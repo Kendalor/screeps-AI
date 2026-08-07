@@ -77,6 +77,20 @@ declare global {
     // "whichever room the other currently stands in" chase each other back and forth across a border
     // forever, since each one's destination flipped sides the instant its target crossed — confirmed live.
     drainRallyPos?: XY & { room: string };
+    // Whether this creep is a currently-joined member of its op's squad — owned by operations/drain.ts,
+    // written/cleared via the setSquadJoined/clearSquadJoined intents (execute.ts). Squad membership used
+    // to be recomputed from scratch every tick purely off live position (room equality, then world-
+    // coordinate range after that was found buggy), which meant a border-straddling formation's membership
+    // set could flicker between two different tick-to-tick readings of the SAME underlying event ("has this
+    // creep joined the squad") even though nothing about whether it belongs had actually changed — confirmed
+    // live: 2 members straddling a border vanished from the plan one tick, reappeared the next, forever.
+    // Membership is a STATE (a creep joins once, stays joined until it leaves/dies), not a per-tick
+    // recomputation, so it's now persisted here exactly like any other stateful assignment (compare
+    // logistics.current, buildTargetRoom): Drain.squadState() reads this flag directly instead of re-
+    // deriving "is this creep part of the squad right now" from position every tick. Cleared when the
+    // creep drops out of squad control (dissolved, or explicitly left) — never left stale on a creep that
+    // continues to exist under a different assignment.
+    squadJoined?: boolean;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
     // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's

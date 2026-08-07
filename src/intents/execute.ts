@@ -131,6 +131,18 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       creep.memory.drainRallyPos = intent.pos;
       return OK;
     }
+    case "setSquadJoined": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      creep.memory.squadJoined = true;
+      return OK;
+    }
+    case "clearSquadJoined": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      delete creep.memory.squadJoined;
+      return OK;
+    }
     case "assignLogisticsTask": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;

@@ -43,6 +43,15 @@ export type Intent =
   // (or the staging room center pre-assembly). Room-membership rallying let two stragglers converging on
   // each other's CURRENT room chase each other across a border forever; a real tile fixes that.
   | { kind: "setDrainRallyPos"; creep: Id<Creep>; pos: XY & { room: string } }
+  // Stateful squad membership (see CreepMemory.squadJoined): a creep joins a squad once — when it first
+  // comes within the formation's own footprint of the squad's anchor — and STAYS joined (skipping its own
+  // step table, driven by runSquads instead) until explicitly cleared, rather than membership being
+  // re-derived from live position fresh every tick. Fixes a border-crossing flicker: a formation legitimately
+  // straddles two rooms for a tile or two mid-crossing, and any purely-positional membership test can (and,
+  // confirmed live, did) flip a straddling member in and out of the plan tick to tick even though nothing
+  // about whether it belongs actually changed.
+  | { kind: "setSquadJoined"; creep: Id<Creep> }
+  | { kind: "clearSquadJoined"; creep: Id<Creep> }
   // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
   // execute.ts owns the memory write" split as setCreepRole above).
   | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }

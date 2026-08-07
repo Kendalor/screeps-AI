@@ -98,6 +98,15 @@ function footprintFits(wx: number, wy: number, facing: DirectionConstant, format
 // that widens if searched further.
 const NEAREST_FIT_RADIUS = 15;
 
+// ALL_FACINGS reordered so `preferred` (when given) is tried first, then the rest in their usual order —
+// used per search ring so a caller's desired facing wins any tie against nearestFittingAnchor's own
+// otherwise-arbitrary scan order, without changing which anchor tile/ring is preferred (radius still
+// dominates; this only affects the facing tiebreak AT a given candidate tile).
+function facingsPreferring(preferred: DirectionConstant | undefined): DirectionConstant[] {
+  if (preferred === undefined) return ALL_FACINGS;
+  return [preferred, ...ALL_FACINGS.filter(f => f !== preferred)];
+}
+
 /** The nearest anchor tile (by Chebyshev ring, ties broken by search order) and facing where the WHOLE
  * formation footprint fits, searching outward from `from`. Exists for the case a squad's live position no
  * longer fits its own formation at ANY facing — not a bug, an always-possible state (a straggler drifted
@@ -106,14 +115,26 @@ const NEAREST_FIT_RADIUS = 15;
  * fits either" and walk toward a place that does, rather than reforming forever onto slot tiles that can
  * never all be simultaneously occupied. Returns undefined if nothing within NEAREST_FIT_RADIUS fits (as
  * unreachable as findSquadPath's own "no route" case). Checks `from` itself first (ring 0) so an
- * already-fitting position is returned immediately, same cost as the old direct check it replaces. */
+ * already-fitting position is returned immediately, same cost as the old direct check it replaces.
+ *
+ * `preferredFacing` (optional) is tried FIRST at every candidate tile, before the fixed ALL_FACINGS scan
+ * order — without it, a squad reforming toward some desired facing (e.g. threatFacing, lib/squad.ts) on
+ * open terrain always got redirected to whichever facing ALL_FACINGS happens to list first (TOP) the
+ * instant its own current anchor also fit at that facing, even though the current anchor already fit at the
+ * CALLER's actually-desired facing too — confirmed live: a squad turning to face a threat could never
+ * complete the turn on open ground, since every not-yet-tight tick's reform target snapped back to TOP
+ * before the desired facing was ever reached. This only changes the facing TIEBREAK at a given tile/ring,
+ * never which tile/ring wins — a preferred facing that doesn't fit anywhere still falls through to whatever
+ * does, same as before. */
 export function nearestFittingAnchor(
   from: SquadAnchor,
   formation: Formation,
   terrain: TerrainSource,
-  occupancy: OccupancySource = NO_OCCUPANCY
+  occupancy: OccupancySource = NO_OCCUPANCY,
+  preferredFacing?: DirectionConstant
 ): { anchor: SquadAnchor; facing: DirectionConstant } | undefined {
   const s = worldOf(from.x, from.y, from.room);
+  const facings = facingsPreferring(preferredFacing);
   for (let radius = 0; radius <= NEAREST_FIT_RADIUS; radius++) {
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dy = -radius; dy <= radius; dy++) {
@@ -121,7 +142,7 @@ export function nearestFittingAnchor(
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
         const wx = s.wx + dx;
         const wy = s.wy + dy;
-        for (const facing of ALL_FACINGS) {
+        for (const facing of facings) {
           if (!footprintFits(wx, wy, facing, formation, terrain, occupancy)) continue;
           const { room, x, y } = roomAndLocal(wx, wy);
           return { anchor: { x, y, room }, facing };

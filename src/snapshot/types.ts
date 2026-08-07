@@ -314,6 +314,14 @@ export interface ColonySnapshot {
   // target. Absent/empty for a room with no vision this tick, same vision-gated convention every other
   // live-read field here follows. Drain's advance/retreat check reads this for its current target room.
   hostileRoomTowers: Partial<Record<string, SnapTower[]>>;
+  // Every hostile creep with vision this tick, keyed by room name — the target-room equivalent of the
+  // home-room-only `hostiles` field above, populated empire-wide/vision-gated exactly like
+  // hostileRoomTowers (any room with vision, not scoped to `draining`). `hostiles` alone cannot serve a
+  // squad fighting AWAY from home (e.g. Drain's target room), which is the gap this closes — a formation
+  // deciding which way to face needs the melee/ranged composition (SnapUnit.attackParts/rangedAttackParts)
+  // of whatever it's actually fighting, not of hostiles back in its own room. Absent/empty for a room with
+  // no vision this tick, same convention as hostileRoomTowers.
+  hostileRoomUnits: Partial<Record<string, SnapUnit[]>>;
   // A visible room's storage energy, keyed by room name — the storage-content equivalent of
   // hostileRoomTowers above, same empire-wide/vision-gated population (any room with vision this tick,
   // not scoped to this colony's own remotes). Absent for a room with no vision OR no storage structure —

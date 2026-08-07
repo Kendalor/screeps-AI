@@ -90,6 +90,66 @@ export function inFormation(members: readonly SnapCreep[], slots: readonly SlotT
   return true;
 }
 
+// A hostile (or hostile structure) the formation might need to orient toward — reduced to just what facing
+// selection needs: a position and how close it must get before it's actually hitting the squad. Melee
+// engages at range 1, ranged at range 3, a tower effectively always (it's already in range the instant it
+// has vision of the squad) — callers derive this from SnapUnit/SnapTower via their own attackParts/
+// rangedAttackParts/structureType, not this module's concern (GENERIC infrastructure, see module header).
+export interface Threat extends XY {
+  engageRange: number; // Infinity for an always-in-range threat (a tower)
+}
+
+// The 8 compass directions in CW_STEPS order (formation.ts) — TOP first, then clockwise. Facing selection
+// below picks among these the same way rotateOffset's canonical ordering does, so a caller collapsing to a
+// formation's own valid subset (e.g. Drain's 4 axis-aligned-only 2x2, see drainFacing in operations/
+// drain.ts) can post-process this result exactly like it already does for goal-directed facing.
+const COMPASS: DirectionConstant[] = [TOP, TOP_RIGHT, RIGHT, BOTTOM_RIGHT, BOTTOM, BOTTOM_LEFT, LEFT, TOP_LEFT];
+
+/** The single most urgent threat, or undefined when `threats` is empty. Urgency is `range(from, threat) -
+ * threat.engageRange` — how close the threat already is to actually landing a hit, NOT raw distance — so a
+ * ranged attacker already at range 3 (urgency 0, hitting right now) outranks a melee attacker at range 4
+ * (urgency 3, not yet hitting) even though the melee one is nearer in absolute tiles; a tower's Infinity
+ * engageRange makes its urgency -Infinity whenever it's a candidate at all (a visible tower is always the
+ * most urgent threat present). Ties keep the first-encountered threat (deterministic given a stable input
+ * order) — a caller that cares about a specific tiebreak should pre-sort. Exported separately from
+ * threatFacing (which calls this) so a caller collapsing to a formation-specific facing subset (e.g.
+ * Drain's 4 axis-aligned-only 2x2, drainFacing in operations/drain.ts) can run ITS OWN direction collapse
+ * against the same winning threat's position, rather than duplicating the urgency comparison. */
+export function mostUrgentThreat(from: XY, threats: readonly Threat[]): Threat | undefined {
+  let worst: Threat | undefined;
+  let worstUrgency = Infinity;
+  for (const t of threats) {
+    const urgency = range(from, t) - t.engageRange;
+    if (urgency < worstUrgency) {
+      worst = t;
+      worstUrgency = urgency;
+    }
+  }
+  return worst;
+}
+
+/** The facing that turns the formation's canonical-TOP-facing "front" (dy < 0 side) most directly toward
+ * the single most urgent threat (mostUrgentThreat), or undefined when there's nothing to face (no threats).
+ *
+ * `from` is the point urgency/direction are measured from (a squad's anchor, or whichever tile a caller
+ * treats as its reference) — this function has no notion of "which slot is the front"; a formation
+ * collapsing to axis-aligned-only facings (see COMPASS's doc) applies that constraint itself afterward,
+ * same as it already does for goal-directed facing. Pure: no Game access, no formation/slot knowledge. */
+export function threatFacing(from: XY, threats: readonly Threat[]): DirectionConstant | undefined {
+  const worst = mostUrgentThreat(from, threats);
+  if (!worst) return undefined;
+  const dx = worst.x - from.x;
+  const dy = worst.y - from.y;
+  if (dx === 0 && dy === 0) return TOP; // threat is co-located — no meaningful direction, hold canonical
+  // The compass direction nearest the (dx, dy) vector's angle — atan2's 0 is along +x (RIGHT), and screeps'
+  // y grows downward same as atan2's convention here, so no axis flip is needed before mapping onto the
+  // 8-way compass (COMPASS[0] = TOP = -90 degrees from +x, hence the +2 step offset below).
+  const angle = Math.atan2(dy, dx); // -PI..PI, 0 = RIGHT, PI/2 = BOTTOM (y-down)
+  const step = Math.round(angle / (Math.PI / 4)) + 2; // shift so index 0 lands on TOP
+  const idx = ((step % 8) + 8) % 8;
+  return COMPASS[idx];
+}
+
 /** The one shared movement plan for the whole formation this tick. Returns one move intent per member.
  *
  * - When the block is NOT tight (a member off its slot, a straggler catching up, a replacement just
@@ -128,7 +188,11 @@ export function planSquadMove(
 
   // Not a tight block: hold and reform — but only onto a target the full formation can actually occupy.
   if (!inFormation(state.members, currentSlots)) {
-    const fit = nearestFittingAnchor(state.anchor, state.formation, terrain, occupancy);
+    // Prefer the CALLER's stated facing (state.facing — e.g. threatFacing/drainFacing's output) when the
+    // current anchor also fits there, rather than nearestFittingAnchor's own facing-order tiebreak (see its
+    // doc) redirecting a reforming squad to an unrelated facing just because that happened to be scanned
+    // first on open terrain.
+    const fit = nearestFittingAnchor(state.anchor, state.formation, terrain, occupancy, state.facing);
     const reformSlots =
       fit && (fit.anchor.x !== state.anchor.x || fit.anchor.y !== state.anchor.y || fit.facing !== state.facing)
         ? slotTiles(fit.anchor, fit.facing, state.formation)

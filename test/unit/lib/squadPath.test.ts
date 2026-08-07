@@ -5,7 +5,7 @@
 // Plain XY/terrain in, path steps out — no Game, mirroring the old formation.test.ts directness.
 
 import { describe, expect, it } from "vitest";
-import { findSquadPath, type TerrainSource } from "../../../src/lib/squadPath";
+import { findSquadPath, nearestFittingAnchor, type TerrainSource } from "../../../src/lib/squadPath";
 import type { Formation } from "../../../src/lib/formation";
 
 // A 2x2 block trailing right/down of the anchor at the canonical TOP facing (Drain's shape).
@@ -162,5 +162,63 @@ describe("findSquadPath", () => {
     );
     expect(path).toBeDefined();
     expect(path![0].anchor).toEqual({ x: 25, y: 25, room: "W1N1" });
+  });
+});
+
+describe("nearestFittingAnchor", () => {
+  it("with no preferredFacing, picks whichever facing ALL_FACINGS scans first that fits (TOP, on open terrain)", () => {
+    const fit = nearestFittingAnchor({ x: 25, y: 25, room: "W1N1" }, BLOCK_2X2, terrainSource({ W1N1: openTerrain() }));
+    expect(fit?.facing).toBe(TOP);
+  });
+
+  // Regression test: a squad reforming toward some desired facing (e.g. threatFacing, lib/squad.ts) on open
+  // terrain used to always get redirected back to TOP the instant its current anchor ALSO fit there, even
+  // when the current anchor already fit at the CALLER's actually-desired facing too — confirmed via the
+  // Drain threat-facing integration test (drainThreatFacing.test.ts), where a squad turning toward a threat
+  // could never complete the turn on open ground for exactly this reason. preferredFacing fixes it: at a
+  // given candidate tile, the preferred facing is tried BEFORE the fixed ALL_FACINGS scan order.
+  it("with preferredFacing, prefers it over ALL_FACINGS' scan order when the current anchor fits at that facing", () => {
+    const fit = nearestFittingAnchor({ x: 25, y: 25, room: "W1N1" }, BLOCK_2X2, terrainSource({ W1N1: openTerrain() }), undefined, RIGHT);
+    expect(fit?.facing).toBe(RIGHT);
+    expect(fit?.anchor).toEqual({ x: 25, y: 25, room: "W1N1" }); // still the SAME tile — only the facing tiebreak changed
+  });
+
+  it("preferredFacing that doesn't fit anywhere at the winning tile/ring falls through to whatever does", () => {
+    // A 2-tile-long LINE formation (not the square BLOCK_2X2, which is orientation-invariant for a
+    // wall-fitting purpose like this — every facing occupies the identical 2x2 footprint, just a different
+    // corner as anchor). A 1-wide vertical corridor at x=25 (open y=0..49), walled everywhere else, only
+    // fits this line's footprint at TOP/BOTTOM (running along the corridor); RIGHT/LEFT would need a second
+    // tile at x=26, which is walled. preferredFacing=RIGHT can never be satisfied, so the search must still
+    // return SOME valid fit rather than nothing.
+    const LINE: Formation = [
+      { dx: 0, dy: 0, role: "a" },
+      { dx: 0, dy: 1, role: "b" }
+    ];
+    const t = new Uint8Array(2500).fill(0);
+    for (let y = 0; y < 50; y++) t[25 * 50 + y] = 1;
+    const fit = nearestFittingAnchor({ x: 25, y: 25, room: "W1N1" }, LINE, terrainSource({ W1N1: t }), undefined, RIGHT);
+    expect(fit).toBeDefined();
+    expect(fit?.facing === TOP || fit?.facing === BOTTOM, `expected TOP or BOTTOM (the only facings that fit the corridor), got ${fit?.facing}`).toBe(true);
+  });
+
+  it("preferredFacing never changes WHICH tile/ring wins over a nearer tile that only fits at a different facing", () => {
+    // The asymmetric LINE formation again (see the previous test's doc — a square block can't distinguish
+    // this: it fits identically at every facing everywhere). A NEAR 1-wide horizontal corridor at y=20
+    // (open x=0..49) only fits LINE at RIGHT/LEFT (running along the corridor); a FARTHER 1-wide vertical
+    // corridor at x=25 only fits LINE at TOP/BOTTOM. With preferredFacing=TOP, the search must still settle
+    // on the NEARER horizontal corridor first (at whatever facing actually fits there), rather than skipping
+    // past it to reach the farther corridor just because TOP fits there — preferredFacing only affects the
+    // facing tiebreak AT a given ring, never which ring is searched first.
+    const LINE: Formation = [
+      { dx: 0, dy: 0, role: "a" },
+      { dx: 0, dy: 1, role: "b" }
+    ];
+    const t = new Uint8Array(2500).fill(0);
+    for (let x = 0; x < 50; x++) t[x * 50 + 20] = 1; // near horizontal corridor
+    for (let y = 0; y < 50; y++) t[40 * 50 + y] = 1; // far vertical corridor, well clear of the horizontal one
+    const from = { x: 10, y: 20, room: "W1N1" }; // sits ON the near corridor, far from the vertical one
+    const fit = nearestFittingAnchor(from, LINE, terrainSource({ W1N1: t }), undefined, TOP);
+    expect(fit?.anchor).toEqual({ x: 10, y: 20, room: "W1N1" }); // the near corridor tile, not the far one
+    expect(fit?.facing === RIGHT || fit?.facing === LEFT, `expected RIGHT or LEFT (the near corridor's only fit), got ${fit?.facing}`).toBe(true);
   });
 });
