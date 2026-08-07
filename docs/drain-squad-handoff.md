@@ -126,26 +126,29 @@ Worth keeping permanently, not just for this session.
    `anchorRoom` from the attacker's own room when the attacker is alive (not a majority vote), or
    detect the mismatch and hold/reform rather than trusting a hybrid anchor.
 
-2. **Squad-vs-bystander-creep tile occupancy is still unhandled** (this is a *known*, ADR-0007-scoped
-   gap, not new — see the ADR's "Consequences" section, but re-confirmed live and worth flagging
-   again given how directly it bit this session). `nearestFittingAnchor`/`planSquadMove` only check
-   **terrain** — a fit that's terrain-valid but currently occupied by a non-squad creep is still
-   treated as reachable. Confirmed live: a `defender` (unrelated `Defense` operation) sat parked on
-   exactly the drain squad's 4th formation-slot tile — genuinely stuck itself, on the *same*
-   never-completes-on-heal/attack step-table bug class (#2 above), just for `Defender`'s `attack` step
-   this time (no hostile in the room, so `attack` never resolves a target, so it never advances past
-   step 1) — and the drain squad walked up to it and parked forever, since Screeps only swaps two
-   creeps' tiles when *both* explicitly `move()` this tick, and a permanently-frozen bystander never
-   does. **Two independent gaps here, deliberately scoped out of this session:**
-   - `Defender`'s step table has the exact same `attack`-never-completes-with-no-target defect
-     `DrainHealer` had (bug #2) — needs the same fix, or a more general fix in `interpreter.ts`'s
-     `isComplete` (a "no target resolved at all" completion case for move-kind steps), scoped to
-     **every** role sharing this step-table shape, not just Drain's.
-   - `planSquadMove`/`nearestFittingAnchor` have no occupancy awareness at all — a fix here needs to
-     decide whether "occupied by a live, non-squad creep" should exclude a tile from fit-checking, and
-     if so, whether that's cheap enough to check per-candidate during the BFS/A* searches without
-     real Game access (both are pure functions today — occupancy would need to come in via the
-     `TerrainSource`-shaped input, not a live `Game.rooms[...].lookForAt` call).
+2. **Squad-vs-bystander-creep tile occupancy — PATHING HALF FIXED in a later session** (originally a
+   *known*, ADR-0007-scoped gap — see the ADR's "Consequences" section). `nearestFittingAnchor`/
+   `planSquadMove` used to check **terrain only** — a fit that's terrain-valid but currently occupied by
+   a non-squad creep was treated as reachable. Confirmed live: a `defender` (unrelated `Defense`
+   operation) sat parked on exactly the drain squad's 4th formation-slot tile — genuinely stuck itself,
+   on the *same* never-completes-on-heal/attack step-table bug class (#2 above), just for `Defender`'s
+   `attack` step this time — and the drain squad walked up to it and parked forever. **Two independent
+   gaps here; only the second is fixed:**
+   - `Defender`'s step table still has the exact same `attack`-never-completes-with-no-target defect
+     `DrainHealer` had (bug #2) — **still open**, needs the same fix, or a more general fix in
+     `interpreter.ts`'s `isComplete` (a "no target resolved at all" completion case for move-kind steps),
+     scoped to **every** role sharing this step-table shape, not just Drain's.
+   - **FIXED**: `planSquadMove`/`nearestFittingAnchor`/`findSquadPath` now take an optional
+     `OccupancySource` (`src/lib/squadPath.ts`, same `(room)=>Uint8Array|undefined` shape/fail-open
+     convention as `TerrainSource`, defaults to nothing-occupied so every pre-existing caller kept
+     compiling unchanged) — a tile occupied by a live non-squad creep or an `OBSTACLE_OBJECT_TYPES`
+     structure is now excluded from fit-checking exactly like a wall. Real occupancy data flows in via
+     `ColonySnapshot.drainRoomOccupancy` (vision-gated, unlike `drainRoomTerrain` — a bystander's
+     position needs live vision, not static map data) and `Drain.occupancy()`, which clears the squad's
+     OWN member tiles from the grid before handing it to the planner (a squad must never read its own
+     current slot as "occupied by a non-squad creep"). Covered by
+     `test/unit/behaviors/creepBehavior/squadEvasion.test.ts` — a tight formation routing around a wall,
+     a bystander, and both together, staying welded throughout.
 
 3. **`moveToPos`/`drainRallyPos` was scoped to Drain only.** The user's stated intent — *"moveToRoom
    is soley usable by scouts, nothing else"* — is broader than what shipped: `Defender`, `Attacker`

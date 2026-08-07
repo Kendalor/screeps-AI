@@ -155,6 +155,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     hostileRoomTowers: {},
     hostileRoomStorageEnergy: {},
     drainRoomTerrain: {},
+    drainRoomOccupancy: {},
     ...over
   };
 }

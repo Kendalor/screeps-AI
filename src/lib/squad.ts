@@ -7,8 +7,8 @@
 // each role's content. Pure: plain SquadState in, plain intents out, no Game access.
 
 import { slotTiles, type Formation, type SlotTile } from "./formation";
-import { range, type XY } from "./geometry";
-import { findSquadPath, nearestFittingAnchor, type TerrainSource } from "./squadPath";
+import { range, roomAndLocal, worldOf, type XY } from "./geometry";
+import { findSquadPath, nearestFittingAnchor, NO_OCCUPANCY, type OccupancySource, type TerrainSource } from "./squadPath";
 import type { SnapCreep } from "../snapshot/types";
 
 // The squad's shared state for a tick — every member's position/HP/role, the formation shape, the anchor
@@ -113,13 +113,22 @@ export function inFormation(members: readonly SnapCreep[], slots: readonly SlotT
  *   reassignment. When no route exists (walled in) or the squad is already at the goal, it holds.
  *
  * Walkability is ALWAYS checked against the full formation shape (via findSquadPath), even with vacant
- * slots — a shrunk fit-check could strand a later replacement (ADR 0007). */
-export function planSquadMove(state: SquadState, goal: XY & { room: string }, terrain: TerrainSource): SquadMoveIntent[] {
+ * slots — a shrunk fit-check could strand a later replacement (ADR 0007). `occupancy` (optional, defaults
+ * to nothing occupied) is a sibling of `terrain` — see OccupancySource's doc in squadPath.ts — letting a
+ * squad route around a live bystander creep or hostile structure exactly as it would a wall; the caller is
+ * responsible for excluding the squad's OWN members' current tiles from it (this function has no notion of
+ * "which creep is asking"). */
+export function planSquadMove(
+  state: SquadState,
+  goal: XY & { room: string },
+  terrain: TerrainSource,
+  occupancy: OccupancySource = NO_OCCUPANCY
+): SquadMoveIntent[] {
   const currentSlots = slotTiles(state.anchor, state.facing, state.formation);
 
   // Not a tight block: hold and reform — but only onto a target the full formation can actually occupy.
   if (!inFormation(state.members, currentSlots)) {
-    const fit = nearestFittingAnchor(state.anchor, state.formation, terrain);
+    const fit = nearestFittingAnchor(state.anchor, state.formation, terrain, occupancy);
     const reformSlots =
       fit && (fit.anchor.x !== state.anchor.x || fit.anchor.y !== state.anchor.y || fit.facing !== state.facing)
         ? slotTiles(fit.anchor, fit.facing, state.formation)
@@ -133,7 +142,7 @@ export function planSquadMove(state: SquadState, goal: XY & { room: string }, te
   }
 
   // Tight block: try to advance/reform one footprint-fit step toward the goal.
-  const path = findSquadPath({ anchor: state.anchor, facing: state.facing }, goal, state.formation, terrain);
+  const path = findSquadPath({ anchor: state.anchor, facing: state.facing }, goal, state.formation, terrain, occupancy);
   const next = path && path.length > 1 ? path[1] : undefined;
   if (!next) {
     // Already at the goal, or no route the whole footprint can take — hold in place.
@@ -152,14 +161,29 @@ export function planSquadMove(state: SquadState, goal: XY & { room: string }, te
   // delta, so every member moves the SAME one tile and relative positions are preserved — NOT a nearest-
   // slot reassignment (which would make a back-row member leapfrog two tiles to a freed front tile). Each
   // member holds its slot INDEX; its new tile is that same slot at the advanced anchor.
-  const dx = next.anchor.x - state.anchor.x;
-  const dy = next.anchor.y - state.anchor.y;
-  const room = next.anchor.room;
+  //
+  // The delta is computed and applied in WORLD coordinates (worldOf/roomAndLocal, geometry.ts), never plain
+  // local x/y: state.anchor and next.anchor can straddle a room border (the anchor itself crossing between
+  // consecutive path steps), so a raw local subtraction is meaningless once the two anchors are in different
+  // rooms — and even before the ANCHOR crosses, an individual trailing SLOT can already be in a different
+  // room than the anchor (slotTiles resolves each slot through this same world lattice for exactly that
+  // reason). A single `room` stamped onto every member's result — the bug this replaces — silently produced
+  // an out-of-range local x/y (e.g. x=50) or mislabeled a genuinely-crossed member as still in the old room,
+  // the same crash/corruption class as the cross-border slot-placement bug fixed in slotTiles (see
+  // formation.ts's doc) recurring here via the advance path instead of the reform path.
+  const anchorDelta = (() => {
+    const a = worldOf(state.anchor.x, state.anchor.y, state.anchor.room);
+    const b = worldOf(next.anchor.x, next.anchor.y, next.anchor.room);
+    return { dwx: b.wx - a.wx, dwy: b.wy - a.wy };
+  })();
   const slotIndexByMember = assignMembersToSlotIndices(state.members, currentSlots);
   return state.members.map(m => {
     const idx = slotIndexByMember.get(m.id);
-    const slot = idx !== undefined ? currentSlots[idx] : { x: m.x, y: m.y };
-    return { creep: m.id, to: { x: slot.x + dx, y: slot.y + dy, room } };
+    const slot = idx !== undefined ? currentSlots[idx] : { x: m.x, y: m.y, room: m.room };
+    const slotRoom = idx !== undefined ? currentSlots[idx].room : m.room;
+    const w = worldOf(slot.x, slot.y, slotRoom);
+    const { room, x, y } = roomAndLocal(w.wx + anchorDelta.dwx, w.wy + anchorDelta.dwy);
+    return { creep: m.id, to: { x, y, room } };
   });
 }
 

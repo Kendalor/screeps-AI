@@ -236,7 +236,8 @@ function buildColonySnapshot(
     drainRoute,
     hostileRoomTowers,
     hostileRoomStorageEnergy,
-    drainRoomTerrain: drainTerrainFor(draining, drainRoute)
+    drainRoomTerrain: drainTerrainFor(draining, drainRoute),
+    drainRoomOccupancy: drainOccupancyFor(draining, drainRoute)
   };
 }
 
@@ -251,6 +252,32 @@ function drainTerrainFor(draining: string | undefined, drainRoute: readonly { ro
   const rooms = new Set([draining, ...drainRoute.map(r => r.room)]);
   const out: Partial<Record<string, Uint8Array>> = {};
   for (const room of rooms) out[room] = walkablePixelsForRoom(room);
+  return out;
+}
+
+// Live occupancy for every room Drain might place a squad member in — see ColonySnapshot.drainRoomOccupancy's
+// doc for why this is vision-gated (only rooms in Game.rooms this tick get an entry) unlike drainTerrainFor
+// above. Marks a tile 1 (occupied) if a live creep of ANY ownership (a hostile, or our own bystander — e.g.
+// an unrelated operation's frozen Defender, see docs/drain-squad-handoff.md's open issue #2) stands there,
+// or an OBSTACLE_OBJECT_TYPES structure (a wall, spawn, extension, storage, tower, ...) not already baked
+// into terrain — ramparts/roads/containers are deliberately excluded (walkable, same convention
+// roadAvoidance.ts's isWalkable already uses for this exact constant).
+function drainOccupancyFor(draining: string | undefined, drainRoute: readonly { room: string }[]): Partial<Record<string, Uint8Array>> {
+  if (!draining) return {};
+  const rooms = new Set([draining, ...drainRoute.map(r => r.room)]);
+  const out: Partial<Record<string, Uint8Array>> = {};
+  for (const roomName of rooms) {
+    const room = Game.rooms[roomName];
+    if (!room) continue; // no vision this tick — fails open via OccupancySource's own "no entry" convention
+    const grid = new Uint8Array(2500);
+    for (const creep of room.find(FIND_CREEPS)) grid[creep.pos.x * 50 + creep.pos.y] = 1;
+    for (const structure of room.find(FIND_STRUCTURES)) {
+      if ((OBSTACLE_OBJECT_TYPES as readonly string[]).includes(structure.structureType)) {
+        grid[structure.pos.x * 50 + structure.pos.y] = 1;
+      }
+    }
+    out[roomName] = grid;
+  }
   return out;
 }
 

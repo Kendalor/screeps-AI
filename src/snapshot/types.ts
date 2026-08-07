@@ -329,6 +329,18 @@ export interface ColonySnapshot {
   // physically reach it, holding the whole squad in place forever (the inFormation gate correctly held
   // the leader, but nothing had reason to expect the block itself to be unreachable in the first place).
   drainRoomTerrain: Partial<Record<string, Uint8Array>>;
+  // Live OCCUPANCY for `draining` and its route rooms — 1=a live creep (hostile OR our own bystander, e.g.
+  // a frozen Defender from an unrelated operation) or an obstructing structure currently stands on that
+  // tile, 0=clear, same [x*50+y] indexing as drainRoomTerrain. UNLIKE drainRoomTerrain this genuinely
+  // NEEDS vision — a bystander's position is a live fact, not static map data — so a room with no vision
+  // this tick has NO entry here at all (fails open to "nothing occupied," the same convention every other
+  // vision-gated field in this snapshot already follows, e.g. hostileRoomTowers). Recomputed fresh every
+  // tick, never persisted across a vision gap: an occupant that walked away between the last-seen tick and
+  // now must not still read as blocking, and squad pathing already fails open safely on missing data (see
+  // OccupancySource's doc, lib/squadPath.ts) so there is nothing to gain from staleness here. Feeds
+  // planSquadMove/nearestFittingAnchor so a squad routes around a bystander creep or structure exactly as
+  // it would a wall, closing the gap flagged in docs/drain-squad-handoff.md's open issue #2.
+  drainRoomOccupancy: Partial<Record<string, Uint8Array>>;
 }
 
 export interface EmpireSnapshot {

@@ -16,6 +16,21 @@ import { roomAndLocal, worldOf, type XY } from "./geometry";
 // convention Drain's own walkability check uses for a snapshot gap.
 export type TerrainSource = (room: string) => Uint8Array | undefined;
 
+// Live occupancy for a room, SAME shape/indexing/fail-open convention as TerrainSource but a sibling
+// concern: 1=occupied by a live, NON-SQUAD unit this tick (a bystander creep, a structure — anything a
+// footprint can't pass through even though the terrain itself is walkable), 0=clear. Undefined for a room
+// with no data on record fails open exactly like TerrainSource — a room the colony never got occupancy
+// data for (no vision, or the caller doesn't bother tracking it) is treated as though nothing's standing in
+// it, matching the terrain-only behaviour every existing caller already had before this was added. Kept as
+// a SEPARATE source rather than folded into TerrainSource because it changes shape independently: terrain is
+// static map data (valid forever, no vision needed — see snapshot/colony.ts's drainRoomTerrain), occupancy
+// is inherently a snapshot of "what's there THIS tick" and only exists where there's current vision.
+export type OccupancySource = (room: string) => Uint8Array | undefined;
+
+// A no-op OccupancySource — every room reads as clear. The default for any caller that hasn't wired up real
+// occupancy data yet (mirrors how a TerrainSource-less room already fails open to "fully walkable").
+export const NO_OCCUPANCY: OccupancySource = () => undefined;
+
 export interface SquadAnchor extends XY {
   room: string;
 }
@@ -53,20 +68,26 @@ const REFORM_COST = 3;
 // check only discovers deep in) can't spin forever. Generous — real squad routes are short.
 const MAX_EXPANSIONS = 20000;
 
-function walkableWorld(wx: number, wy: number, terrain: TerrainSource): boolean {
+function walkableWorld(wx: number, wy: number, terrain: TerrainSource, occupancy: OccupancySource): boolean {
   const { room, x, y } = roomAndLocal(wx, wy);
   const t = terrain(room);
-  if (!t) return true; // no data on record — fail-open, matching Drain's own convention
-  return t[x * 50 + y] === 1;
+  if (t && t[x * 50 + y] !== 1) return false;
+  const o = occupancy(room);
+  if (o && o[x * 50 + y] === 1) return false; // occupied by a live non-squad unit — same as a wall here
+  return true; // no data on record for either — fail-open, matching Drain's own convention
 }
 
-/** Whether the whole formation footprint fits (every slot on walkable terrain) with its anchor at world
- * (wx, wy) facing `facing`. Always checks the FULL formation regardless of current occupancy — a shrunk
- * fit-check could let the squad occupy ground a full-strength formation can't reach (ADR 0007). */
-function footprintFits(wx: number, wy: number, facing: DirectionConstant, formation: Formation, terrain: TerrainSource): boolean {
+/** Whether the whole formation footprint fits (every slot on walkable, UNOCCUPIED ground) with its anchor
+ * at world (wx, wy) facing `facing`. Always checks the FULL formation regardless of the squad's own current
+ * occupancy — a shrunk fit-check could let the squad occupy ground a full-strength formation can't reach
+ * (ADR 0007). `occupancy` is caller-built and must already EXCLUDE the squad's own members' tiles (this
+ * function has no notion of "which creep is asking" — a squad member standing on its own current slot must
+ * never be reported as blocking that same slot) — see OccupancySource's doc for why this is a sibling of
+ * TerrainSource rather than folded into it. */
+function footprintFits(wx: number, wy: number, facing: DirectionConstant, formation: Formation, terrain: TerrainSource, occupancy: OccupancySource): boolean {
   for (const slot of formation) {
     const r = rotateOffset(slot, facing);
-    if (!walkableWorld(wx + r.dx, wy + r.dy, terrain)) return false;
+    if (!walkableWorld(wx + r.dx, wy + r.dy, terrain, occupancy)) return false;
   }
   return true;
 }
@@ -89,7 +110,8 @@ const NEAREST_FIT_RADIUS = 15;
 export function nearestFittingAnchor(
   from: SquadAnchor,
   formation: Formation,
-  terrain: TerrainSource
+  terrain: TerrainSource,
+  occupancy: OccupancySource = NO_OCCUPANCY
 ): { anchor: SquadAnchor; facing: DirectionConstant } | undefined {
   const s = worldOf(from.x, from.y, from.room);
   for (let radius = 0; radius <= NEAREST_FIT_RADIUS; radius++) {
@@ -100,7 +122,7 @@ export function nearestFittingAnchor(
         const wx = s.wx + dx;
         const wy = s.wy + dy;
         for (const facing of ALL_FACINGS) {
-          if (!footprintFits(wx, wy, facing, formation, terrain)) continue;
+          if (!footprintFits(wx, wy, facing, formation, terrain, occupancy)) continue;
           const { room, x, y } = roomAndLocal(wx, wy);
           return { anchor: { x, y, room }, facing };
         }
@@ -132,7 +154,8 @@ export function findSquadPath(
   start: { anchor: SquadAnchor; facing: DirectionConstant },
   goal: SquadAnchor,
   formation: Formation,
-  terrain: TerrainSource
+  terrain: TerrainSource,
+  occupancy: OccupancySource = NO_OCCUPANCY
 ): SquadPathStep[] | undefined {
   const s = worldOf(start.anchor.x, start.anchor.y, start.anchor.room);
   const g = worldOf(goal.x, goal.y, goal.room);
@@ -142,9 +165,9 @@ export function findSquadPath(
   // The start must itself be a valid footprint fit in some facing — otherwise the squad is standing
   // somewhere its full formation can't occupy, and no advance edge from it is meaningful. Fall back to
   // the start facing regardless so a trivial already-at-goal call still returns a step.
-  const startFacing = footprintFits(s.wx, s.wy, start.facing, formation, terrain)
+  const startFacing = footprintFits(s.wx, s.wy, start.facing, formation, terrain, occupancy)
     ? start.facing
-    : (ALL_FACINGS.find(f => footprintFits(s.wx, s.wy, f, formation, terrain)) ?? start.facing);
+    : (ALL_FACINGS.find(f => footprintFits(s.wx, s.wy, f, formation, terrain, occupancy)) ?? start.facing);
 
   const startNode: Node = { wx: s.wx, wy: s.wy, facing: startFacing, g: 0, f: heuristic(s.wx, s.wy) };
 
@@ -169,14 +192,14 @@ export function findSquadPath(
     for (const step of STEP_DELTAS) {
       const nwx = cur.wx + step.dx;
       const nwy = cur.wy + step.dy;
-      if (!footprintFits(nwx, nwy, cur.facing, formation, terrain)) continue;
+      if (!footprintFits(nwx, nwy, cur.facing, formation, terrain, occupancy)) continue;
       relax(cur, nwx, nwy, cur.facing, cur.g + 1, open, best, heuristic);
     }
 
     // Reform edges: hold the anchor, change facing in place (only to a facing whose footprint also fits).
     for (const f of ALL_FACINGS) {
       if (f === cur.facing) continue;
-      if (!footprintFits(cur.wx, cur.wy, f, formation, terrain)) continue;
+      if (!footprintFits(cur.wx, cur.wy, f, formation, terrain, occupancy)) continue;
       relax(cur, cur.wx, cur.wy, f, cur.g + REFORM_COST, open, best, heuristic);
     }
   }

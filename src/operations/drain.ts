@@ -18,7 +18,7 @@ import { slotTiles, type Formation } from "../lib/formation";
 import { range, type XY } from "../lib/geometry";
 import { log } from "../lib/log";
 import { inFormation, type ActionIntent, type SquadActionPlanner, type SquadState } from "../lib/squad";
-import type { TerrainSource } from "../lib/squadPath";
+import type { OccupancySource, TerrainSource } from "../lib/squadPath";
 import type { ColonySnapshot, SnapCreep, SnapTower } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import type { CreepRequest } from "../spawn/request";
@@ -137,6 +137,27 @@ export class Drain extends Operation {
    * fail-open convention Drain has always used for a snapshot gap). */
   public terrain(colony: ColonySnapshot): TerrainSource {
     return room => colony.drainRoomTerrain[room];
+  }
+
+  /** The squad's occupancy source (closes docs/drain-squad-handoff.md's open issue #2's pathing half) —
+   * drainRoomOccupancy's raw grid marks EVERY live creep, including the squad's OWN members (it's built
+   * from a room-wide FIND_CREEPS with no notion of "which squad is asking" — see OccupancySource's doc,
+   * squadPath.ts). A squad's own current tiles must never read as blocking itself (planSquadMove's
+   * fit-checks would otherwise report the squad's own already-occupied slot tiles as unfit, holding it in
+   * place forever) — this wrapper clears those tiles from a cloned copy of the raw grid before returning
+   * it, cheap since a drain squad is at most a handful of creeps. Vision-gated same as the underlying
+   * field: a room with no entry (no vision this tick) fails open to "nothing occupied." */
+  public occupancy(colony: ColonySnapshot): OccupancySource {
+    const squad = this.squad(colony);
+    return room => {
+      const raw = colony.drainRoomOccupancy[room];
+      if (!raw) return undefined;
+      const mine = squad.filter(c => c.room === room);
+      if (mine.length === 0) return raw;
+      const grid = raw.slice();
+      for (const c of mine) grid[c.x * 50 + c.y] = 0;
+      return grid;
+    };
   }
 
   /** Where the squad is heading this tick, for the generic Squad's route search — the same advance/retreat

@@ -19,7 +19,7 @@ import type { Step } from "../behaviors/types";
 import type { Colony } from "../colony";
 import { slotTiles } from "../lib/formation";
 import { inFormation, planSquadActions, planSquadMove, type ActionIntent, type SquadState } from "../lib/squad";
-import { nearestFittingAnchor, type TerrainSource } from "../lib/squadPath";
+import { nearestFittingAnchor, NO_OCCUPANCY, type OccupancySource, type TerrainSource } from "../lib/squadPath";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import type { ColonySnapshot } from "../snapshot/types";
@@ -32,6 +32,10 @@ interface SquadBearingOperation {
   squadState(colony: ColonySnapshot): SquadState | undefined;
   squadGoal(colony: ColonySnapshot): { x: number; y: number; room: string } | undefined;
   terrain(colony: ColonySnapshot): TerrainSource;
+  // Optional: an operation that hasn't been given occupancy data yet (or doesn't need it) simply omits
+  // this — resolveSquads below falls back to NO_OCCUPANCY, the same "nothing occupied" fail-open every
+  // OccupancySource consumer already assumes for a room with no entry.
+  occupancy?(colony: ColonySnapshot): OccupancySource;
   actionPlanner: (state: SquadState, colony: ColonySnapshot) => Map<Id<Creep>, ActionIntent>;
 }
 
@@ -46,6 +50,7 @@ interface ResolvedSquad {
   state: SquadState;
   goal: { x: number; y: number; room: string };
   terrain: TerrainSource;
+  occupancy: OccupancySource;
   colony: ColonySnapshot;
   actionPlanner: (state: SquadState, colony: ColonySnapshot) => Map<Id<Creep>, ActionIntent>;
 }
@@ -63,7 +68,8 @@ function resolveSquads(colonies: readonly Colony[]): { squads: ResolvedSquad[]; 
       if (!state || state.members.length === 0) continue;
       const goal = op.squadGoal(colony.snapshot);
       if (!goal) continue;
-      squads.push({ state, goal, terrain: op.terrain(colony.snapshot), colony: colony.snapshot, actionPlanner: op.actionPlanner });
+      const occupancy = op.occupancy ? op.occupancy(colony.snapshot) : NO_OCCUPANCY;
+      squads.push({ state, goal, terrain: op.terrain(colony.snapshot), occupancy, colony: colony.snapshot, actionPlanner: op.actionPlanner });
       for (const m of state.members) members.add(m.id);
     }
   }
@@ -115,7 +121,7 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
 // translates already-computed assignments into real move/heal/attack calls.
 function runSquads(squads: readonly ResolvedSquad[]): void {
   for (const squad of squads) {
-    const moves = planSquadMove(squad.state, squad.goal, squad.terrain);
+    const moves = planSquadMove(squad.state, squad.goal, squad.terrain, squad.occupancy);
     const actions = planSquadActions(squad.state, squad.colony, squad.actionPlanner);
     logSquadDecision(squad, moves);
     for (const move of moves) {
@@ -136,7 +142,7 @@ function logSquadDecision(squad: ResolvedSquad, moves: readonly { creep: Id<Cree
   const tight = inFormation(squad.state.members, currentSlots);
   let branch: string;
   if (!tight) {
-    const fit = nearestFittingAnchor(squad.state.anchor, squad.state.formation, squad.terrain);
+    const fit = nearestFittingAnchor(squad.state.anchor, squad.state.formation, squad.terrain, squad.occupancy);
     const currentFits = fit && fit.anchor.x === squad.state.anchor.x && fit.anchor.y === squad.state.anchor.y && fit.facing === squad.state.facing;
     branch = currentFits
       ? "reform@current"
