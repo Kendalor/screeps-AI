@@ -274,6 +274,65 @@ describe("planSquadMove", () => {
     // No intent targets a walled tile — the reform destination itself must be real, walkable ground.
     for (const i of intents) expect(staircase[i.to.x * 50 + i.to.y]).toBe(1);
   });
+
+  // Pins the SHIFT (not swap) semantics of the doorway-blocker repair (see slotChainRepair, src/lib/
+  // squad.ts) against the exact live incident geometry (2026-08-07, colony W8N3): attacker + 2 healers
+  // already tight on 3 of the 4 BLOCK_2X2 slots, a 4th healer (the straggler) approaching from outside the
+  // formation whose naive nearest-slot assignment is the one vacant slot. In a 2x2, the vacant corner is
+  // adjacent to BOTH filled same-role neighbors, so either could be picked as "the blocker" (this test
+  // doesn't pin which one — slotChainRepair's own array-order tie-break is an implementation detail, not a
+  // contract) — what's pinned is the SHIFT invariant that must hold for whichever one is picked.
+  //
+  // A SWAP would send the blocking healer straight to the straggler's far vacant slot and the straggler to
+  // the blocker's old slot — correct positions eventually, but for one tick the blocker is stranded OUTSIDE
+  // the formation's own slot set, needing a second repair pass next tick to get back in. A SHIFT sends the
+  // blocker to the vacant slot (still inside the formation, one hop from where it started) and redirects the
+  // straggler onto the blocker's now-vacated slot (a slot immediately reachable from where the straggler
+  // currently stands, unlike the original far slot) — both members land on real formation slots in the SAME
+  // repair pass, nobody bounces outside the block, and the OTHER healer (never involved) doesn't move at all.
+  it("reform repair SHIFTS a doorway blocker into the vacant slot, not swaps it out to the straggler's far slot", () => {
+    const room = "W2N1";
+    const anchor = { x: 24, y: 26, room };
+    // With fully open terrain, nearestFittingAnchor's radius-0 search returns the CURRENT anchor at the
+    // first facing that fits (TOP, its search order's first entry) regardless of what facing the state
+    // itself claims — so the formation actually in effect is the TOP-facing slot set: attacker (24,26),
+    // healers (25,26)/(24,27)/(25,27) (verified directly against slotTiles(anchor, TOP, BLOCK_2X2), not
+    // hand-derived, since nearestFittingAnchor's facing choice is otherwise easy to get wrong by assumption
+    // — see squadReformDeadlock.test.ts's comment on the same gotcha).
+    const healerASlot = { x: 25, y: 26 };
+    const healerBSlot = { x: 24, y: 27 };
+    const vacantSlot = { x: 25, y: 27 };
+    const members = [
+      snapCreep("drainAttacker", { room, x: 24, y: 26, memory: { op: "drain:W1N1" } }),
+      snapCreep("drainHealer", { room, ...healerASlot, memory: { op: "drain:W1N1" } }),
+      snapCreep("drainHealer", { room, ...healerBSlot, memory: { op: "drain:W1N1" } }),
+      // The straggler: far outside the formation, so its naive nearest-slot assignment is the vacant
+      // slot — not directly adjacent to it, so a real single-tile walk must go through an occupied slot.
+      snapCreep("drainHealer", { room, x: 5, y: 5, memory: { op: "drain:W1N1" } })
+    ];
+    const [, healerA, healerB, straggler] = members;
+    const state: SquadState = { members, formation: BLOCK_2X2, anchor, facing: TOP };
+
+    const intents = planSquadMove(state, anchor, terrain); // goal === anchor: isolate reform from advance
+    const healerAIntent = intents.find(i => i.creep === healerA.id)!;
+    const healerBIntent = intents.find(i => i.creep === healerB.id)!;
+    const stragglerIntent = intents.find(i => i.creep === straggler.id)!;
+
+    // Exactly one of the two already-arrived healers is the blocker (moves into the vacant slot); the
+    // other, uninvolved in this repair, holds its own slot unchanged.
+    const blockerMovedToVacant = { x: healerAIntent.to.x, y: healerAIntent.to.y };
+    const blockerIsA = blockerMovedToVacant.x === vacantSlot.x && blockerMovedToVacant.y === vacantSlot.y;
+    const blockerOldSlot = blockerIsA ? healerASlot : healerBSlot;
+    const stationaryIntent = blockerIsA ? healerBIntent : healerAIntent;
+    const stationarySlot = blockerIsA ? healerBSlot : healerASlot;
+
+    expect({ x: (blockerIsA ? healerAIntent : healerBIntent).to.x, y: (blockerIsA ? healerAIntent : healerBIntent).to.y }).toEqual(vacantSlot);
+    expect({ x: stationaryIntent.to.x, y: stationaryIntent.to.y }).toEqual(stationarySlot);
+    // The straggler is redirected onto the BLOCKER'S old slot — the tile it can actually approach this
+    // tick — NOT the original far vacant slot, which a plain swap would have left it aimed at while the
+    // blocker was still standing there.
+    expect({ x: stragglerIntent.to.x, y: stragglerIntent.to.y }).toEqual(blockerOldSlot);
+  });
 });
 
 describe("planSquadActions (generic signature)", () => {

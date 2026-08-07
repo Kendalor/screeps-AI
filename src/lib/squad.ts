@@ -201,155 +201,157 @@ export function planSquadMove(
 // live (2026-08-07, colony W8N3's drain squad: a straggler healer permanently stalled one tile short of its
 // slot because the only doorway through a narrow corridor was occupied by an already-"arrived" healer
 // sitting on ITS OWN nearest slot, which never got reassigned since distance-0 self-matches always win the
-// greedy race first). Fixed by trying role-preserving swaps (only between two slots whose ROLE matches, so
-// a swap never puts a member somewhere its role couldn't fill in a still-fully-staffed formation) among the
-// initial assignment until every member has a terrain-reachable path to its slot (ignoring squadmates as
-// obstacles for this check — they are expected to also be moving this tick, so treating a squadmate's
-// CURRENT tile as permanently blocking would be overly conservative) or by giving up and returning the
-// naive assignment unchanged if no swap helps (never worse than the pre-fix behavior).
+// greedy race first). Fixed by finding a same-role PATH THROUGH THE FORMATION'S OWN SLOT GRAPH from the
+// blocker's slot to the stranded member's slot, then shifting every member along that path one slot toward
+// the stranded member — the blocker steps into the (now-nearer, directly reachable) stranded member's slot,
+// vacating its own, exactly like people filing forward through a doorway (see slotChainRepair's doc for the
+// full mechanism). Falls back to the naive assignment unchanged if no such chain exists (never worse than
+// the pre-fix behavior).
 function reformOnto(members: readonly SnapCreep[], slots: readonly SlotTile[], terrain?: TerrainSource): SquadMoveIntent[] {
   const room = slots[0]?.room ?? members[0]?.room ?? "";
   const memberRefs = members.map(m => ({ id: m.id, pos: { x: m.x, y: m.y } }));
   const assignment = reformAssignment(memberRefs, slots);
-  const repaired = terrain ? repairForReachability(members, slots, assignment, terrain) : assignment;
+  const repaired = terrain ? slotChainRepair(members, slots, assignment, terrain) : assignment;
   return members.map(m => {
     const dest = repaired.get(m.id) ?? { x: m.x, y: m.y };
     return { creep: m.id, to: { x: dest.x, y: dest.y, room } };
   });
 }
 
-// A hard cap on how many tiles a single reachable() BFS will visit before giving up and reporting
-// unreachable. CRITICAL: without this, a genuinely unreachable `to` (the exact case this function exists
-// to detect) makes the BFS exhaust the ENTIRE room — up to 2500 tiles — before concluding there's no path,
-// and repairForReachability calls this O(members^2) times per pass across up to `members.length` passes.
-// Confirmed live (2026-08-07, colony W8N3): this fanned out into a ~20x CPU spike (creeps system jumped
-// from ~9 CPU/tick to 282) that emptied the CPU bucket and terminated script execution most ticks. A
-// squad's reform distance is always short (ADR 0007 — squads are small, formations are a handful of tiles
-// across), so a real reachable slot is always found well within this budget; a search that exhausts the
-// budget without reaching `to` is exactly as informative as one that exhausts the whole room, at a tiny
-// fraction of the cost.
-export const REACHABLE_SEARCH_BUDGET = 200;
-
-// BFS reachability check over terrain AND a set of blocked tiles, capped at REACHABLE_SEARCH_BUDGET visited
-// tiles (see its doc for why the cap is load-bearing, not just an optimization) — used only to DETECT a
-// member stranded by the naive assignment, never to compute the actual move (that's still a single greedy
-// step toward the assigned tile, executed by the real per-creep travelTo in production / stepToward in the
-// test harness). `blocked` exists because terrain ALONE is insufficient to catch the bug this repairs — the
-// live deadlock (2026-08-07) was a fully-open corridor whose ONLY doorway tile was occupied by another squad
-// member's CURRENT position, not a wall (see reformOnto's doc); terrain-only reachability would report the
-// straggler as able to reach its slot and never trigger a repair swap.
-function reachable(from: XY & { room: string }, to: XY & { room: string }, terrain: TerrainSource, blocked: ReadonlySet<string>): boolean {
-  if (from.room !== to.room) return true; // cross-room reachability isn't this check's concern
-  const t = terrain(from.room);
-  const isWalkable = (x: number, y: number): boolean => {
-    if (x < 0 || x >= 50 || y < 0 || y >= 50) return false;
-    if (t && t[x * 50 + y] !== 1) return false;
-    if (blocked.has(`${x},${y}`) && !(x === to.x && y === to.y)) return false; // a blocked tile is passable only as the final destination
-    return true;
-  };
-  if (!isWalkable(to.x, to.y)) return false;
-  const seen = new Set<string>([`${from.x},${from.y}`]);
-  const queue: XY[] = [{ x: from.x, y: from.y }];
-  const DELTAS = [
-    [-1, -1], [0, -1], [1, -1],
-    [-1, 0], [1, 0],
-    [-1, 1], [0, 1], [1, 1]
-  ];
-  let visited = 0;
-  while (queue.length > 0) {
-    if (++visited > REACHABLE_SEARCH_BUDGET) return false;
-    const cur = queue.shift()!;
-    if (cur.x === to.x && cur.y === to.y) return true;
-    for (const [dx, dy] of DELTAS) {
-      const nx = cur.x + dx;
-      const ny = cur.y + dy;
-      const key = `${nx},${ny}`;
-      if (seen.has(key) || !isWalkable(nx, ny)) continue;
-      seen.add(key);
-      queue.push({ x: nx, y: ny });
-    }
-  }
-  return false;
+// Two slots are adjacent in the formation's own slot graph iff a creep on one could step directly onto the
+// other (Chebyshev range 1) — the formation is always a handful of tiles across (ADR 0007), so this graph
+// has at most a handful of nodes and is trivial to search in full, no budget/cap needed anywhere.
+function adjacentSlots(a: XY, b: XY): boolean {
+  return range(a, b) === 1;
 }
 
-// Tries every pairwise swap between two members who share both a role AND terrain-reachability of each
-// other's assigned slot, repeating until either every member can reach its slot or no swap improves things
-// (bounded — a squad this small converges in at most a few passes, and a pass that finds no improving swap
-// terminates immediately rather than looping). This is what lets an already-"arrived" member sitting on the
-// sole approach to another member's slot trade places instead of blocking it forever (see reformOnto's doc).
-function repairForReachability(
+// Whether `tile` is walkable per terrain alone (no occupancy — used only to keep a chain step off a literal
+// wall; squadmate occupancy is what the chain itself is resolving, not an obstacle to route around).
+function isTerrainWalkable(tile: XY, room: string, terrain: TerrainSource): boolean {
+  const t = terrain(room);
+  return !t || t[tile.x * 50 + tile.y] === 1;
+}
+
+// Finds the shortest path (as a sequence of slot indices) through `slots`, restricted to slots whose role
+// matches `role`, from `fromSlot` to `toSlot`, treating two slots as connected iff adjacentSlots. A plain
+// BFS over the slot graph — bounded by construction to the formation's own slot count (single digits, ADR
+// 0007), never room-scale, so no search budget is needed anywhere in this function. Returns undefined if no
+// such path exists (a role's slots aren't mutually connected in this formation shape, or fromSlot/toSlot
+// aren't both that role).
+function slotPath(slots: readonly SlotTile[], role: string, fromIdx: number, toIdx: number): number[] | undefined {
+  if (slots[fromIdx]?.role !== role || slots[toIdx]?.role !== role) return undefined;
+  if (fromIdx === toIdx) return [fromIdx];
+  const roleIdxs = slots.map((s, i) => (s.role === role ? i : -1)).filter(i => i >= 0);
+  const cameFrom = new Map<number, number>();
+  const seen = new Set<number>([fromIdx]);
+  const queue = [fromIdx];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (cur === toIdx) {
+      const path = [toIdx];
+      let n = toIdx;
+      while (n !== fromIdx) {
+        n = cameFrom.get(n)!;
+        path.push(n);
+      }
+      return path.reverse();
+    }
+    for (const next of roleIdxs) {
+      if (seen.has(next) || !adjacentSlots(slots[cur], slots[next])) continue;
+      seen.add(next);
+      cameFrom.set(next, cur);
+      queue.push(next);
+    }
+  }
+  return undefined;
+}
+
+// Repairs a naive nearest-slot assignment by shifting same-role members along a path through the
+// FORMATION'S OWN SLOT GRAPH (not a general terrain search) — the fix for a member being stranded because a
+// squadmate's CURRENT tile (typically its own already-assigned slot) sits between it and its assigned slot.
+//
+// For each member not currently standing adjacent-or-on its assigned slot, and whose direct approach is
+// blocked by another squadmate's current tile: walk the same-role slot graph from the BLOCKING member's slot
+// to the stranded member's slot (slotPath). Every member on that chain then shifts one slot toward the
+// stranded member — the member on the slot nearest the stranded one moves into the stranded member's slot
+// (freeing its own, which the stranded member can now approach directly), and so on down the chain. This is
+// the formation-order shift: no pairwise swap search, no reachability BFS against terrain — the chain is
+// read directly off the small, fixed slot graph the formation already defines, since a doorway jam only ever
+// happens BETWEEN a formation's own slots (ADR 0007 — a squad's footprint is a handful of tiles across).
+//
+// A single pass is sufficient: aftershifting, every member on the chain sits on a slot whose approach is
+// either the stranded member's old (now-unblocked) tile or another chain member's vacated slot — nothing
+// left blocking anything else in the chain by construction.
+function slotChainRepair(
   members: readonly SnapCreep[],
   slots: readonly SlotTile[],
   assignment: Map<Id<Creep>, XY>,
   terrain: TerrainSource
 ): Map<Id<Creep>, XY> {
-  const slotOf = (pos: XY): SlotTile | undefined => slots.find(s => s.x === pos.x && s.y === pos.y);
   const current = new Map(assignment);
-  // Every OTHER member's CURRENT tile blocks a given member's reachability check — this is what makes the
-  // check catch the real bug (a squadmate's body sealing the only doorway), not just walls. A member's own
-  // tile is never in its own blocked set (trivially — nothing needs to route around itself).
-  const blockedFor = (selfId: Id<Creep>): Set<string> =>
-    new Set(members.filter(mm => mm.id !== selfId).map(mm => `${mm.x},${mm.y}`));
+  const slotIdxOf = (pos: XY): number => slots.findIndex(s => s.x === pos.x && s.y === pos.y);
+  const memberAt = (tile: XY, room: string): SnapCreep | undefined =>
+    members.find(m => m.room === room && m.x === tile.x && m.y === tile.y);
 
-  const strandedIds = (): Id<Creep>[] =>
-    members
-      .filter(m => {
-        const dest = current.get(m.id);
-        if (!dest) return false;
-        return !reachable(
-          { x: m.x, y: m.y, room: m.room },
-          { x: dest.x, y: dest.y, room: slotOf(dest)?.room ?? m.room },
-          terrain,
-          blockedFor(m.id)
-        );
-      })
-      .map(m => m.id);
+  for (const member of members) {
+    const dest = current.get(member.id);
+    if (!dest) continue;
+    if (member.x === dest.x && member.y === dest.y) continue; // already there
+    if (adjacentSlots({ x: member.x, y: member.y }, dest)) continue; // directly approachable, nothing to repair
 
-  const MAX_PASSES = members.length; // enough passes for every member to have a chance to swap once
-  for (let pass = 0; pass < MAX_PASSES; pass++) {
-    const stranded = strandedIds();
-    if (stranded.length === 0) break;
-    let improved = false;
-    for (const strandedId of stranded) {
-      const strandedMember = members.find(m => m.id === strandedId)!;
-      const strandedDest = current.get(strandedId)!;
-      const strandedRole = slotOf(strandedDest)?.role;
-      for (const other of members) {
-        if (other.id === strandedId) continue;
-        const otherDest = current.get(other.id);
-        if (!otherDest) continue;
-        const otherSlot = slotOf(otherDest);
-        if (!otherSlot || otherSlot.role !== strandedRole) continue; // only swap within the same role
-        // Would swapping let the stranded member reach the OTHER member's slot, and the other member still
-        // reach (or newly reach) the stranded member's old slot? Blocking sets exclude both parties in the
-        // swap from each other's obstacle set (each is vacating/approaching, not permanently parked) but
-        // still include every OTHER bystanding squad member.
-        const others = members.filter(mm => mm.id !== strandedId && mm.id !== other.id).map(mm => `${mm.x},${mm.y}`);
-        const strandedCanReachOther = reachable(
-          { x: strandedMember.x, y: strandedMember.y, room: strandedMember.room },
-          { x: otherDest.x, y: otherDest.y, room: otherSlot.room },
-          terrain,
-          new Set(others)
-        );
-        const otherOldSlot = slotOf(strandedDest);
-        const otherCanReachStrandedOld =
-          !otherOldSlot ||
-          reachable(
-            { x: other.x, y: other.y, room: other.room },
-            { x: strandedDest.x, y: strandedDest.y, room: otherOldSlot.room },
-            terrain,
-            new Set(others)
-          );
-        if (strandedCanReachOther && otherCanReachStrandedOld) {
-          current.set(strandedId, otherDest);
-          current.set(other.id, strandedDest);
-          improved = true;
+    // Is the member's approach blocked by a squadmate standing between it and its slot? The member isn't
+    // adjacent to `dest` (checked above), so the ONLY way onto `dest` in a single formation-sized hop is via
+    // one of `dest`'s own slot-graph neighbors — if every such neighbor is occupied by a squadmate parked on
+    // ITS OWN slot (a fixed obstacle this tick, not one also mid-move), that neighbor is the blocker.
+    const destSlotIdx = slotIdxOf(dest);
+    if (destSlotIdx < 0) continue;
+    const role = slots[destSlotIdx].role;
+
+    const candidateBlockerSlots = slots
+      .map((s, i) => ({ s, i }))
+      .filter(({ s, i }) => s.role === role && i !== destSlotIdx && adjacentSlots(dest, s));
+
+    for (const { s: blockerSlot, i: blockerIdx } of candidateBlockerSlots) {
+      const blocker = memberAt(blockerSlot, blockerSlot.room);
+      if (!blocker || blocker.id === member.id) continue;
+      // The blocker must actually be sitting on ITS OWN assigned slot (not mid-repair itself, not a member
+      // whose own destination differs — that member is still moving this tick and isn't a fixed obstacle).
+      const blockerDest = current.get(blocker.id);
+      if (!blockerDest || blockerDest.x !== blockerSlot.x || blockerDest.y !== blockerSlot.y) continue;
+
+      // chain runs from the blocker's slot (chain[0]) to the stranded member's original destination
+      // (chain[end], the vacant slot). A SHIFT, not a swap: every member currently on chain[k] moves UP the
+      // chain to chain[k+1] (one step nearer the vacant end) — the blocker itself (chain[0]'s occupant)
+      // moves to chain[1], the occupant of chain[1] (if any) moves to chain[2], and so on, all the way to
+      // chain[end] which was vacant and receives whichever member sat on chain[end-1]. The member that was
+      // stranded is REDIRECTED onto chain[0] (the blocker's old slot), now vacated and directly approachable
+      // — NOT onto its original far destination chain[end], which is why this differs from a plain two-party
+      // swap (that would leave the blocker outside the formation, still needing its own repair next tick).
+      // Walk from the NEAR end of the chain outward so each write happens before the slot it reads is
+      // overwritten by an earlier iteration.
+      const chain = slotPath(slots, role, blockerIdx, destSlotIdx);
+      if (!chain || chain.length < 2) continue;
+
+      let ok = true;
+      for (let k = 0; k < chain.length; k++) {
+        const toSlot = slots[chain[k]];
+        if (!isTerrainWalkable(toSlot, toSlot.room, terrain)) {
+          ok = false;
           break;
         }
       }
-      if (improved) break;
+      if (!ok) continue;
+
+      for (let k = 0; k < chain.length - 1; k++) {
+        const occupantId = memberAt(slots[chain[k]], slots[chain[k]].room)?.id;
+        if (!occupantId) continue;
+        const targetSlot = slots[chain[k + 1]];
+        current.set(occupantId, { x: targetSlot.x, y: targetSlot.y });
+      }
+      const freedSlot = slots[chain[0]];
+      current.set(member.id, { x: freedSlot.x, y: freedSlot.y });
+      break; // one repair per member per call is enough — reformOnto is re-run every tick
     }
-    if (!improved) break; // no swap helped this pass — further passes won't either
   }
   return current;
 }

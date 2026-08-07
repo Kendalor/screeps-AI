@@ -13,7 +13,6 @@
 
 import { describe, expect, it } from "vitest";
 import type { Formation } from "../../../../src/lib/formation";
-import { REACHABLE_SEARCH_BUDGET } from "../../../../src/lib/squad";
 import { SquadWorld, type TerrainSource } from "./squadWorld";
 
 const BLOCK_2X2: Formation = [
@@ -93,28 +92,22 @@ describe("Squad reform deadlock (live pserver repro)", () => {
     ).toBeGreaterThan(3);
   });
 
-  // Performance regression guard for a real incident this fix introduced, found on the SAME live
-  // observation session (2026-08-07): the reachability BFS backing the repair pass above has no notion
-  // of "this destination is unreachable" other than exhausting its search — and a genuinely unreachable
-  // slot (the case the repair pass exists to detect) is exactly the input that makes an UNBOUNDED BFS
-  // walk the entire room (up to 2500 tiles), repeated O(members^2) times per repair pass across up to
-  // `members.length` passes. Deployed to the pserver, this fanned out into a ~20x CPU spike (creeps
-  // system jumped from ~9 CPU/tick to 282), emptying the CPU bucket and terminating script execution most
-  // ticks (confirmed via server/logs/engine_runner1.log's "Script execution has been terminated: CPU
-  // bucket is empty" / "Skip user execution" entries). Fixed with REACHABLE_SEARCH_BUDGET (src/lib/squad.ts)
-  // capping the BFS at a small constant instead of the room's full 2500 tiles. A wall-clock timing
-  // assertion turned out NOT to reliably distinguish bounded from unbounded at this test's scale (a single
-  // room split in half is only ~1250 tiles either side — fast in absolute terms even unbounded, unlike the
-  // real live colony's much larger aggregate cost across multiple squads/ticks) — so this asserts directly
-  // on the exported constant staying a small, fixed bound instead, which is what actually failed live.
-  it("the reachability BFS is bounded to a small constant, not the room's full 2500 tiles", () => {
-    expect(REACHABLE_SEARCH_BUDGET, "the BFS cap regressed to (or past) room-scale — this is what caused the live CPU bucket exhaustion").toBeLessThan(500);
-  });
-
-  // Behavioral companion to the above: a genuinely unreachable reform target (sealed behind a real wall,
-  // not just crowded) still lets the squad continue operating sanely — no crash, no hang past a generous
-  // tick budget — even though that member can never actually join. Also serves as a smoke test that the
-  // budget cap doesn't corrupt an otherwise-normal run's positions.
+  // Performance regression guard for a real incident an earlier version of this fix introduced, found on
+  // the SAME live observation session (2026-08-07): that version detected a stranded member with a
+  // terrain BFS with no notion of "this destination is unreachable" other than exhausting its search — a
+  // genuinely unreachable slot made it walk the entire room (up to 2500 tiles), repeated O(members^2)
+  // times per repair pass. Deployed to the pserver, this fanned out into a ~20x CPU spike (creeps system
+  // jumped from ~9 CPU/tick to 282), emptying the CPU bucket and terminating script execution most ticks
+  // (confirmed via server/logs/engine_runner1.log's "Script execution has been terminated: CPU bucket is
+  // empty" / "Skip user execution" entries). The current repair (slotChainRepair, src/lib/squad.ts) doesn't
+  // search terrain at all — it walks the formation's OWN slot graph (a handful of nodes fixed by the
+  // formation's size, e.g. 4 for a 2x2 block), which has no room-scale failure mode to regress toward: the
+  // class of bug is gone by construction, not bounded by a tunable constant. No assertion needed here
+  // beyond the behavioral case below, which confirms an unreachable target still doesn't hang.
+  //
+  // Behavioral: a genuinely unreachable reform target (sealed behind a real wall, not just crowded) still
+  // lets the squad continue operating sanely — no crash, no hang past a generous tick budget — even though
+  // that member can never actually join.
   it("an unreachable reform target does not hang or crash the squad", () => {
     // A large open room with a single unbroken wall splitting it in half at x=25 — the formation lives on
     // the west side (x<25); the straggler's own current tile sits east of the wall (x>25), so its assigned
