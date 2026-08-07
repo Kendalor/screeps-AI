@@ -133,12 +133,12 @@ export function planSquadMove(
       fit && (fit.anchor.x !== state.anchor.x || fit.anchor.y !== state.anchor.y || fit.facing !== state.facing)
         ? slotTiles(fit.anchor, fit.facing, state.formation)
         : currentSlots;
-    return reformOnto(state.members, reformSlots);
+    return reformOnto(state.members, reformSlots, terrain);
   }
 
   // Tight but a member can't actually move this tick — hold rather than advance without it.
   if (state.members.some(m => m.fatigue > 0)) {
-    return reformOnto(state.members, currentSlots);
+    return reformOnto(state.members, currentSlots, terrain);
   }
 
   // Tight block: try to advance/reform one footprint-fit step toward the goal.
@@ -146,7 +146,7 @@ export function planSquadMove(
   const next = path && path.length > 1 ? path[1] : undefined;
   if (!next) {
     // Already at the goal, or no route the whole footprint can take — hold in place.
-    return reformOnto(state.members, currentSlots);
+    return reformOnto(state.members, currentSlots, terrain);
   }
 
   const facingChanged = next.facing !== state.facing;
@@ -154,7 +154,7 @@ export function planSquadMove(
     // A reform step: the anchor holds, the facing changes. Greedy-reassign members to the new-facing slot
     // tiles — the multi-tick reshape / one-tick symmetric turn, same mechanism.
     const nextSlots = slotTiles(next.anchor, next.facing, state.formation);
-    return reformOnto(state.members, nextSlots);
+    return reformOnto(state.members, nextSlots, terrain);
   }
 
   // A straight advance (facing unchanged): the whole formation slides as a rigid body by the anchor's
@@ -189,15 +189,155 @@ export function planSquadMove(
 
 // Greedy-assign each member to its nearest available slot tile and emit a move intent per member. Used
 // for a reform (facing change) and for holding a broken block back together. Fewer members than slots (a
-// degraded formation) leaves some slot tiles unfilled — the vacant slot needs nobody.
-function reformOnto(members: readonly SnapCreep[], slots: readonly SlotTile[]): SquadMoveIntent[] {
+// degraded formation) leaves some slot tiles unfilled — the vacant slot needs nobody. The initial match is
+// role-BLIND, same as it always was (a healer standing on a dead attacker's vacant slot is harmless — the
+// formation only cares that every LIVE member sits on SOME slot, not which one — and role-restricting this
+// step regressed a degraded-formation test: forcing 3 survivors onto exactly their own 3 same-role slots
+// while leaving the attacker slot artificially vacant offset the block from nearestFittingAnchor's search
+// origin, making it drift indefinitely on open terrain instead of settling).
+//
+// When terrain is supplied, reachability-repairing: the plain nearest-distance match can still park a
+// member on the ONE tile that is the sole physical approach to another member's assigned slot — confirmed
+// live (2026-08-07, colony W8N3's drain squad: a straggler healer permanently stalled one tile short of its
+// slot because the only doorway through a narrow corridor was occupied by an already-"arrived" healer
+// sitting on ITS OWN nearest slot, which never got reassigned since distance-0 self-matches always win the
+// greedy race first). Fixed by trying role-preserving swaps (only between two slots whose ROLE matches, so
+// a swap never puts a member somewhere its role couldn't fill in a still-fully-staffed formation) among the
+// initial assignment until every member has a terrain-reachable path to its slot (ignoring squadmates as
+// obstacles for this check — they are expected to also be moving this tick, so treating a squadmate's
+// CURRENT tile as permanently blocking would be overly conservative) or by giving up and returning the
+// naive assignment unchanged if no swap helps (never worse than the pre-fix behavior).
+function reformOnto(members: readonly SnapCreep[], slots: readonly SlotTile[], terrain?: TerrainSource): SquadMoveIntent[] {
   const room = slots[0]?.room ?? members[0]?.room ?? "";
   const memberRefs = members.map(m => ({ id: m.id, pos: { x: m.x, y: m.y } }));
   const assignment = reformAssignment(memberRefs, slots);
+  const repaired = terrain ? repairForReachability(members, slots, assignment, terrain) : assignment;
   return members.map(m => {
-    const dest = assignment.get(m.id) ?? { x: m.x, y: m.y };
+    const dest = repaired.get(m.id) ?? { x: m.x, y: m.y };
     return { creep: m.id, to: { x: dest.x, y: dest.y, room } };
   });
+}
+
+// Cheap BFS reachability check over terrain AND a set of blocked tiles (bounded to the room's own 50x50
+// grid — a squad's reform distance is always short, ADR 0007) — used only to DETECT a member stranded by
+// the naive assignment, never to compute the actual move (that's still a single greedy step toward the
+// assigned tile, executed by the real per-creep travelTo in production / stepToward in the test harness).
+// `blocked` exists because terrain ALONE is insufficient to catch the bug this repairs — the live deadlock
+// (2026-08-07) was a fully-open corridor whose ONLY doorway tile was occupied by another squad member's
+// CURRENT position, not a wall (see reformOnto's doc); terrain-only reachability would report the straggler
+// as able to reach its slot and never trigger a repair swap.
+function reachable(from: XY & { room: string }, to: XY & { room: string }, terrain: TerrainSource, blocked: ReadonlySet<string>): boolean {
+  if (from.room !== to.room) return true; // cross-room reachability isn't this check's concern
+  const t = terrain(from.room);
+  const isWalkable = (x: number, y: number): boolean => {
+    if (x < 0 || x >= 50 || y < 0 || y >= 50) return false;
+    if (t && t[x * 50 + y] !== 1) return false;
+    if (blocked.has(`${x},${y}`) && !(x === to.x && y === to.y)) return false; // a blocked tile is passable only as the final destination
+    return true;
+  };
+  if (!isWalkable(to.x, to.y)) return false;
+  const seen = new Set<string>([`${from.x},${from.y}`]);
+  const queue: XY[] = [{ x: from.x, y: from.y }];
+  const DELTAS = [
+    [-1, -1], [0, -1], [1, -1],
+    [-1, 0], [1, 0],
+    [-1, 1], [0, 1], [1, 1]
+  ];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (cur.x === to.x && cur.y === to.y) return true;
+    for (const [dx, dy] of DELTAS) {
+      const nx = cur.x + dx;
+      const ny = cur.y + dy;
+      const key = `${nx},${ny}`;
+      if (seen.has(key) || !isWalkable(nx, ny)) continue;
+      seen.add(key);
+      queue.push({ x: nx, y: ny });
+    }
+  }
+  return false;
+}
+
+// Tries every pairwise swap between two members who share both a role AND terrain-reachability of each
+// other's assigned slot, repeating until either every member can reach its slot or no swap improves things
+// (bounded — a squad this small converges in at most a few passes, and a pass that finds no improving swap
+// terminates immediately rather than looping). This is what lets an already-"arrived" member sitting on the
+// sole approach to another member's slot trade places instead of blocking it forever (see reformOnto's doc).
+function repairForReachability(
+  members: readonly SnapCreep[],
+  slots: readonly SlotTile[],
+  assignment: Map<Id<Creep>, XY>,
+  terrain: TerrainSource
+): Map<Id<Creep>, XY> {
+  const slotOf = (pos: XY): SlotTile | undefined => slots.find(s => s.x === pos.x && s.y === pos.y);
+  const current = new Map(assignment);
+  // Every OTHER member's CURRENT tile blocks a given member's reachability check — this is what makes the
+  // check catch the real bug (a squadmate's body sealing the only doorway), not just walls. A member's own
+  // tile is never in its own blocked set (trivially — nothing needs to route around itself).
+  const blockedFor = (selfId: Id<Creep>): Set<string> =>
+    new Set(members.filter(mm => mm.id !== selfId).map(mm => `${mm.x},${mm.y}`));
+
+  const strandedIds = (): Id<Creep>[] =>
+    members
+      .filter(m => {
+        const dest = current.get(m.id);
+        if (!dest) return false;
+        return !reachable(
+          { x: m.x, y: m.y, room: m.room },
+          { x: dest.x, y: dest.y, room: slotOf(dest)?.room ?? m.room },
+          terrain,
+          blockedFor(m.id)
+        );
+      })
+      .map(m => m.id);
+
+  const MAX_PASSES = members.length; // enough passes for every member to have a chance to swap once
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    const stranded = strandedIds();
+    if (stranded.length === 0) break;
+    let improved = false;
+    for (const strandedId of stranded) {
+      const strandedMember = members.find(m => m.id === strandedId)!;
+      const strandedDest = current.get(strandedId)!;
+      const strandedRole = slotOf(strandedDest)?.role;
+      for (const other of members) {
+        if (other.id === strandedId) continue;
+        const otherDest = current.get(other.id);
+        if (!otherDest) continue;
+        const otherSlot = slotOf(otherDest);
+        if (!otherSlot || otherSlot.role !== strandedRole) continue; // only swap within the same role
+        // Would swapping let the stranded member reach the OTHER member's slot, and the other member still
+        // reach (or newly reach) the stranded member's old slot? Blocking sets exclude both parties in the
+        // swap from each other's obstacle set (each is vacating/approaching, not permanently parked) but
+        // still include every OTHER bystanding squad member.
+        const others = members.filter(mm => mm.id !== strandedId && mm.id !== other.id).map(mm => `${mm.x},${mm.y}`);
+        const strandedCanReachOther = reachable(
+          { x: strandedMember.x, y: strandedMember.y, room: strandedMember.room },
+          { x: otherDest.x, y: otherDest.y, room: otherSlot.room },
+          terrain,
+          new Set(others)
+        );
+        const otherOldSlot = slotOf(strandedDest);
+        const otherCanReachStrandedOld =
+          !otherOldSlot ||
+          reachable(
+            { x: other.x, y: other.y, room: other.room },
+            { x: strandedDest.x, y: strandedDest.y, room: otherOldSlot.room },
+            terrain,
+            new Set(others)
+          );
+        if (strandedCanReachOther && otherCanReachStrandedOld) {
+          current.set(strandedId, otherDest);
+          current.set(other.id, strandedDest);
+          improved = true;
+          break;
+        }
+      }
+      if (improved) break;
+    }
+    if (!improved) break; // no swap helped this pass — further passes won't either
+  }
+  return current;
 }
 
 // Which slot index each member currently holds — greedy-nearest over slot tiles, returning indices so a

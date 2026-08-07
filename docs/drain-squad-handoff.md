@@ -156,6 +156,37 @@ Worth keeping permanently, not just for this session.
    `moveToRoom`+`<x>TargetRoom`. Converting them to the same `moveToPos` pattern is a real follow-up,
    not done here (explicitly deferred — see the "Drain only, for now" scoping decision mid-session).
 
+4. **FIXED (2026-08-07): a stationary squadmate sealing the only doorway to another member's reform
+   slot could deadlock the squad forever.** Found live on the pserver observing `drain:W6N5` (colony
+   `W8N3`): a straggler `drainHealer` rallying into an assembling squad in `W7N3` never joined —
+   `debugColony("W8N3")` traces showed its position oscillating between 4 nearby tiles for 200+ ticks
+   while the other 3 members held still, `branch=reform@nearestFit` firing every tick with an unchanged
+   target. Terrain at the site (`Game.map.getRoomTerrain` dump) ruled out a wall: the area was a fully
+   open, narrow (1-tile-wide in places) corridor. Root cause: `reformOnto`'s greedy nearest-distance
+   match (`reformAssignment`, `src/lib/squad.ts`) always resolves a distance-0 self-match (a member
+   already standing on some slot) before any other pair, so an "arrived" healer sitting on the corridor's
+   one doorway tile never got reassigned even though the straggler's ONLY approach ran through that exact
+   tile — the squad had no mechanism for an already-placed member to yield/shuffle to a different
+   same-role slot to let another member in.
+   - **`test/unit/behaviors/creepBehavior/squadWorld.ts`** gained `stepReal`/`runReal` — occupancy-aware
+     single-tile stepping (mirrors production's real `travelTo`-driven execution) instead of the existing
+     `step`/`run`'s teleport-onto-destination shortcut. This was the actual test-suite gap: every prior
+     squad test used the teleport path, which cannot expose a target that's farther than one tile or
+     physically boxed in by squadmates, since it just jumps there regardless. Regression test:
+     `squadReformDeadlock.test.ts`, using the exact live terrain/positions dumped from the pserver.
+   - **Fix** (`src/lib/squad.ts`): `reformOnto` now optionally takes a `TerrainSource` and, when given
+     one, runs a `repairForReachability` pass after the initial (still role-blind, unchanged) greedy
+     match — a cheap BFS reachability check (terrain **and** every other squad member's current tile as
+     obstacles, which is what actually catches this: terrain-only reachability sees the corridor as fully
+     open and never flags anything) detects a member that can't reach its assigned slot, then tries
+     swapping it with another member whose slot shares the same formation `role` until everyone is
+     reachable or no swap helps. Role-restricted swaps only — the initial assignment stays role-blind on
+     purpose (an earlier attempt at role-restricting the *initial* match regressed the degraded-formation
+     advance test: forcing survivors strictly onto their own role's slots left the dead attacker's slot
+     artificially vacant, offsetting `nearestFittingAnchor`'s search origin enough to make it drift
+     indefinitely on open terrain instead of settling — a healer standing on a vacant attacker slot is
+     harmless and was always allowed before this fix).
+
 ## Proposed: an integration test suite for squad border-crossing
 
 The user's ask: build this out as an integration suite (not just the existing unit tests), covering

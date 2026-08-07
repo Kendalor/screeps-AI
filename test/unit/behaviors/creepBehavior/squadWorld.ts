@@ -231,6 +231,73 @@ export class SquadWorld {
       m.room = intent.to.room;
     }
     this.tick++;
+    return this.record(goal, intents, tight);
+  }
+
+  /** Runs ONE tick like `step`, but instead of teleporting each member straight onto its assigned `to`
+   * tile, walks it a SINGLE step toward that tile the way production's real execution does (runSquadMember
+   * in empire/creeps.ts calling creep.travelTo — a real, obstacle-aware path, re-planned fresh every tick
+   * off the same recomputed `to`). Existing tests all use the teleport-based `step`, which cannot expose a
+   * target that is farther than one tile away or physically boxed in by squadmates' own bodies — exactly
+   * the class of bug found live on the pserver (2026-08-07): a straggler's greedily-assigned reform slot
+   * was adjacent only to tiles already occupied by its own stationary squadmates, so the straggler
+   * oscillated indefinitely trying to approach it while the parked members never yielded. Squadmate tiles
+   * (not just bystanders) are treated as impassable obstacles here, mirroring Traveler's real move-blocking
+   * (a move onto an occupied tile silently fails in the actual engine) — NOT its ignoreCreeps-by-default
+   * PATHFINDING quirk, since this harness has no separate "plan a route, then discover it's blocked" phase;
+   * it greedily steps toward the target every tick, same as walkIndependently, and simply fails to progress
+   * (stalls in place) if every candidate step is blocked, which is the deadlock signature itself. */
+  stepReal(anchor: XY & { room: string }, facing: DirectionConstant, goal: XY & { room: string }): SquadTickLog {
+    const state = this.state(anchor, facing);
+    const tight = isTight(state, this.formation);
+    const intents = planSquadMove(state, goal, this.terrain, this.occupancy());
+    // Snapshot start-of-tick occupied tiles so members don't treat EACH OTHER's post-move tile as blocking
+    // (each member steps off its own current tile "simultaneously", same as the real engine's move
+    // resolution) but still can't step onto a squadmate that hasn't vacated yet.
+    const occupied = new Set(this.members.map(m => `${m.room}:${m.x},${m.y}`));
+    for (const intent of intents) {
+      const m = this.member(intent.creep);
+      const from = { x: m.x, y: m.y, room: m.room };
+      occupied.delete(`${from.room}:${from.x},${from.y}`);
+      const stepped = this.stepToward(m, intent.to, occupied);
+      occupied.add(`${m.room}:${m.x},${m.y}`);
+      void stepped;
+    }
+    this.tick++;
+    return this.record(goal, intents, tight);
+  }
+
+  // One Chebyshev-greedy tile step from `m` toward `dest`, refusing to land on any tile in `occupied`
+  // (tries the direct diagonal first, then the two axis-only fallbacks, same candidate order as
+  // walkIndependently) or off walkable terrain. Leaves `m` in place if every candidate is blocked —
+  // the harness has no notion of "wait" vs "stuck", it just doesn't move, matching a real blocked move().
+  private stepToward(m: { x: number; y: number; room: string }, dest: XY & { room: string }, occupied: Set<string>): boolean {
+    if (m.room === dest.room && m.x === dest.x && m.y === dest.y) return true;
+    const a = worldOf(m.x, m.y, m.room);
+    const b = worldOf(dest.x, dest.y, dest.room);
+    const sx = Math.sign(b.wx - a.wx);
+    const sy = Math.sign(b.wy - a.wy);
+    const candidates = [
+      { dwx: sx, dwy: sy },
+      { dwx: sx, dwy: 0 },
+      { dwx: 0, dwy: sy }
+    ].filter(c => c.dwx !== 0 || c.dwy !== 0);
+    for (const c of candidates) {
+      const nwx = a.wx + c.dwx;
+      const nwy = a.wy + c.dwy;
+      const { room, x, y } = roomAndLocal(nwx, nwy);
+      const t = this.terrain(room);
+      if (t && t[x * 50 + y] !== 1) continue; // wall
+      if (occupied.has(`${room}:${x},${y}`)) continue; // a squadmate hasn't vacated this tile
+      m.x = x;
+      m.y = y;
+      m.room = room;
+      return m.room === dest.room && m.x === dest.x && m.y === dest.y;
+    }
+    return false; // every candidate step is blocked — held in place this tick
+  }
+
+  private record(goal: XY & { room: string }, intents: SquadMoveIntent[], tight: boolean): SquadTickLog {
     const entry: SquadTickLog = {
       tick: this.tick,
       goal,
@@ -253,6 +320,19 @@ export class SquadWorld {
     for (let i = 0; i < ticks; i++) {
       const { anchor, facing, goal } = plan(this);
       out.push(this.step(anchor, facing, goal));
+    }
+    return out;
+  }
+
+  /** Same as `run`, but drives `stepReal` instead of the teleport-based `step` — see stepReal's doc. */
+  runReal(
+    ticks: number,
+    plan: (world: SquadWorld) => { anchor: XY & { room: string }; facing: DirectionConstant; goal: XY & { room: string } }
+  ): SquadTickLog[] {
+    const out: SquadTickLog[] = [];
+    for (let i = 0; i < ticks; i++) {
+      const { anchor, facing, goal } = plan(this);
+      out.push(this.stepReal(anchor, facing, goal));
     }
     return out;
   }
