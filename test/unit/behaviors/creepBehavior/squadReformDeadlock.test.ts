@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { Formation } from "../../../../src/lib/formation";
+import { REACHABLE_SEARCH_BUDGET } from "../../../../src/lib/squad";
 import { SquadWorld, type TerrainSource } from "./squadWorld";
 
 const BLOCK_2X2: Formation = [
@@ -90,5 +91,54 @@ describe("Squad reform deadlock (live pserver repro)", () => {
       uniqueTiles.size,
       `straggler visited only a tiny cluster of tiles over 300 ticks — looks like the live oscillation:\n${world.describeLog()}`
     ).toBeGreaterThan(3);
+  });
+
+  // Performance regression guard for a real incident this fix introduced, found on the SAME live
+  // observation session (2026-08-07): the reachability BFS backing the repair pass above has no notion
+  // of "this destination is unreachable" other than exhausting its search — and a genuinely unreachable
+  // slot (the case the repair pass exists to detect) is exactly the input that makes an UNBOUNDED BFS
+  // walk the entire room (up to 2500 tiles), repeated O(members^2) times per repair pass across up to
+  // `members.length` passes. Deployed to the pserver, this fanned out into a ~20x CPU spike (creeps
+  // system jumped from ~9 CPU/tick to 282), emptying the CPU bucket and terminating script execution most
+  // ticks (confirmed via server/logs/engine_runner1.log's "Script execution has been terminated: CPU
+  // bucket is empty" / "Skip user execution" entries). Fixed with REACHABLE_SEARCH_BUDGET (src/lib/squad.ts)
+  // capping the BFS at a small constant instead of the room's full 2500 tiles. A wall-clock timing
+  // assertion turned out NOT to reliably distinguish bounded from unbounded at this test's scale (a single
+  // room split in half is only ~1250 tiles either side — fast in absolute terms even unbounded, unlike the
+  // real live colony's much larger aggregate cost across multiple squads/ticks) — so this asserts directly
+  // on the exported constant staying a small, fixed bound instead, which is what actually failed live.
+  it("the reachability BFS is bounded to a small constant, not the room's full 2500 tiles", () => {
+    expect(REACHABLE_SEARCH_BUDGET, "the BFS cap regressed to (or past) room-scale — this is what caused the live CPU bucket exhaustion").toBeLessThan(500);
+  });
+
+  // Behavioral companion to the above: a genuinely unreachable reform target (sealed behind a real wall,
+  // not just crowded) still lets the squad continue operating sanely — no crash, no hang past a generous
+  // tick budget — even though that member can never actually join. Also serves as a smoke test that the
+  // budget cap doesn't corrupt an otherwise-normal run's positions.
+  it("an unreachable reform target does not hang or crash the squad", () => {
+    // A large open room with a single unbroken wall splitting it in half at x=25 — the formation lives on
+    // the west side (x<25); the straggler's own current tile sits east of the wall (x>25), so its assigned
+    // slot on the west side is PERMANENTLY unreachable to it.
+    const grid = new Uint8Array(2500).fill(1);
+    for (let y = 0; y < 50; y++) grid[25 * 50 + y] = 0; // wall column at x=25
+    const terrain: TerrainSource = room => (room === ROOM ? grid : undefined);
+
+    const world = new SquadWorld(BLOCK_2X2, terrain);
+    world.addMember({ role: "drainAttacker", x: 10, y: 25, room: ROOM });
+    world.addMember({ role: "drainHealer", x: 11, y: 25, room: ROOM });
+    world.addMember({ role: "drainHealer", x: 10, y: 26, room: ROOM });
+    world.addMember({ role: "drainHealer", x: 40, y: 25, room: ROOM }); // sealed on the far side
+
+    const anchor = { x: 10, y: 25, room: ROOM };
+    const goal = anchor;
+    const log = world.runReal(50, () => ({ anchor, facing: TOP, goal }));
+
+    expect(log).toHaveLength(50);
+    for (const entry of log) {
+      for (const p of entry.positions) {
+        expect(p.x, `position went out of range:\n${world.describeLog()}`).toBeGreaterThanOrEqual(0);
+        expect(p.x).toBeLessThan(50);
+      }
+    }
   });
 });

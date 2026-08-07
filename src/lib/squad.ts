@@ -218,14 +218,26 @@ function reformOnto(members: readonly SnapCreep[], slots: readonly SlotTile[], t
   });
 }
 
-// Cheap BFS reachability check over terrain AND a set of blocked tiles (bounded to the room's own 50x50
-// grid — a squad's reform distance is always short, ADR 0007) — used only to DETECT a member stranded by
-// the naive assignment, never to compute the actual move (that's still a single greedy step toward the
-// assigned tile, executed by the real per-creep travelTo in production / stepToward in the test harness).
-// `blocked` exists because terrain ALONE is insufficient to catch the bug this repairs — the live deadlock
-// (2026-08-07) was a fully-open corridor whose ONLY doorway tile was occupied by another squad member's
-// CURRENT position, not a wall (see reformOnto's doc); terrain-only reachability would report the straggler
-// as able to reach its slot and never trigger a repair swap.
+// A hard cap on how many tiles a single reachable() BFS will visit before giving up and reporting
+// unreachable. CRITICAL: without this, a genuinely unreachable `to` (the exact case this function exists
+// to detect) makes the BFS exhaust the ENTIRE room — up to 2500 tiles — before concluding there's no path,
+// and repairForReachability calls this O(members^2) times per pass across up to `members.length` passes.
+// Confirmed live (2026-08-07, colony W8N3): this fanned out into a ~20x CPU spike (creeps system jumped
+// from ~9 CPU/tick to 282) that emptied the CPU bucket and terminated script execution most ticks. A
+// squad's reform distance is always short (ADR 0007 — squads are small, formations are a handful of tiles
+// across), so a real reachable slot is always found well within this budget; a search that exhausts the
+// budget without reaching `to` is exactly as informative as one that exhausts the whole room, at a tiny
+// fraction of the cost.
+export const REACHABLE_SEARCH_BUDGET = 200;
+
+// BFS reachability check over terrain AND a set of blocked tiles, capped at REACHABLE_SEARCH_BUDGET visited
+// tiles (see its doc for why the cap is load-bearing, not just an optimization) — used only to DETECT a
+// member stranded by the naive assignment, never to compute the actual move (that's still a single greedy
+// step toward the assigned tile, executed by the real per-creep travelTo in production / stepToward in the
+// test harness). `blocked` exists because terrain ALONE is insufficient to catch the bug this repairs — the
+// live deadlock (2026-08-07) was a fully-open corridor whose ONLY doorway tile was occupied by another squad
+// member's CURRENT position, not a wall (see reformOnto's doc); terrain-only reachability would report the
+// straggler as able to reach its slot and never trigger a repair swap.
 function reachable(from: XY & { room: string }, to: XY & { room: string }, terrain: TerrainSource, blocked: ReadonlySet<string>): boolean {
   if (from.room !== to.room) return true; // cross-room reachability isn't this check's concern
   const t = terrain(from.room);
@@ -243,7 +255,9 @@ function reachable(from: XY & { room: string }, to: XY & { room: string }, terra
     [-1, 0], [1, 0],
     [-1, 1], [0, 1], [1, 1]
   ];
+  let visited = 0;
   while (queue.length > 0) {
+    if (++visited > REACHABLE_SEARCH_BUDGET) return false;
     const cur = queue.shift()!;
     if (cur.x === to.x && cur.y === to.y) return true;
     for (const [dx, dy] of DELTAS) {
