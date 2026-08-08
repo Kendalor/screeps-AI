@@ -11,8 +11,10 @@
 // treating squadmate tiles as impassable obstacles (mirroring the actual engine's move-blocking), which
 // exposes it.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Formation } from "../../../../src/lib/formation";
+import { clearSquadMatrixCache } from "../../../../src/lib/squadCostMatrix";
+import { clearTiles, stubPathFinderSingleRoom } from "../../../constants";
 import { SquadWorld, type TerrainSource } from "./squadWorld";
 
 const BLOCK_2X2: Formation = [
@@ -50,6 +52,12 @@ function liveLayoutTerrain(): TerrainSource {
   }
   return room => (room === ROOM ? grid : undefined);
 }
+
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
 
 describe("Squad reform deadlock (live pserver repro)", () => {
   it("a straggler rallying to a squad already parked tight-ish eventually joins under real single-tile stepping", () => {

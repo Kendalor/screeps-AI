@@ -6,10 +6,12 @@
 // creeps, and asserts the block stays a tight mutual-range-1 formation EVERY tick — not just that the
 // individual mechanisms work in isolation.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { planSquadMove, type SquadState } from "../../../src/lib/squad";
 import { slotTiles, type Formation } from "../../../src/lib/formation";
 import { range, type XY } from "../../../src/lib/geometry";
+import { clearSquadMatrixCache } from "../../../src/lib/squadCostMatrix";
+import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
 import { snapCreep } from "../../fixtures";
 import type { SnapCreep } from "../../../src/snapshot/types";
 
@@ -40,6 +42,12 @@ function mutualRangeOne(positions: readonly XY[]): boolean {
   return true;
 }
 
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
+
 describe("planSquadMove keeps the formation welded over real distance (regression)", () => {
   it("advances a 2x2 across ~20 tiles without the block ever splaying past mutual range 1", () => {
     const room = "W2N1";
@@ -59,7 +67,7 @@ describe("planSquadMove keeps the formation welded over real distance (regressio
 
     for (let tick = 0; tick < 80; tick++) {
       const state: SquadState = { members: creeps, formation: BLOCK_2X2, anchor: { ...anchor, room }, facing };
-      const intents = planSquadMove(state, goal, terrain);
+      const intents = planSquadMove(state, goal, terrain, tick);
 
       // Apply the plan: every member steps one tile toward its assigned destination.
       creeps = creeps.map(c => {
@@ -103,7 +111,7 @@ describe("planSquadMove keeps the formation welded over real distance (regressio
     let converged = false;
     for (let tick = 0; tick < 15; tick++) {
       const state: SquadState = { members: creeps, formation: BLOCK_2X2, anchor, facing: TOP };
-      const intents = planSquadMove(state, { x: 25, y: 15, room }, terrain);
+      const intents = planSquadMove(state, { x: 25, y: 15, room }, terrain, tick);
       creeps = creeps.map(c => {
         const intent = intents.find(i => i.creep === c.id)!;
         const p = step({ x: c.x, y: c.y }, intent.to);

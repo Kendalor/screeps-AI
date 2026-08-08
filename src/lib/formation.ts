@@ -58,6 +58,16 @@ export function rotateOffset(offset: { dx: number; dy: number }, facing: Directi
   return { dx: Math.round(dx) + 0, dy: Math.round(dy) + 0 };
 }
 
+/** Rotates every slot of `formation` to `facing`, returning a new Formation whose (dx, dy) offsets are
+ * already expressed at that facing (roles/slot count unchanged). Needed anywhere a facing-aware footprint
+ * shape is checked WITHOUT going through slotTiles' anchor placement — e.g. squadCostMatrix.ts's
+ * getSquadMatrix/applyMovingMaximum is deliberately facing-blind (see its own doc) and expects the caller to
+ * hand it a formation "already expressed at the facing they care about," not the raw canonical-TOP shape
+ * plus a separate facing parameter it would silently ignore. */
+export function rotateFormation(formation: Formation, facing: DirectionConstant): Formation {
+  return formation.map(slot => ({ ...rotateOffset(slot, facing), role: slot.role }));
+}
+
 /** The concrete tiles a formation occupies with its anchor slot at `anchor`, facing `facing`. Each
  * returned tile carries its slot's role. Pure — no Game access, no bounds/terrain check (that's the
  * pather's job, see squadPath.ts). Tiles are returned in formation-definition order, anchor first when

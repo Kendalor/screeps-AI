@@ -125,6 +125,17 @@ export function pathDistance(from: XY, to: XY, range: number, cm: RoadCostMatrix
   return path.length === 0 ? Infinity : path.length - 1;
 }
 
+// Same query as pathDistance, but also returns the actual tile the path stops on — the tile within
+// `range` of `to` that findPath's A* halted at, i.e. where a creep doing this walk would really be
+// standing, NOT `to` itself. At PICKUP_RANGE (1) a creep withdrawing/transferring/delivering never
+// stands on the structure it's acting on, so chaining a next leg from `to` instead of this stand tile
+// misjudges the following hop by up to `range` tiles. `null` when `to` is unreachable.
+export function pathDistanceAndStand(from: XY, to: XY, range: number, cm: RoadCostMatrix): { distance: number; stand: XY } | null {
+  const path = findPath(from, to, range, cm);
+  if (path.length === 0) return null;
+  return { distance: path.length - 1, stand: path[path.length - 1] };
+}
+
 function roadPathTo(anchor: XY, target: XY, range: number, costMatrix: RoadCostMatrix): RoadPathResult {
   const path = findPath(anchor, target, range, costMatrix);
   const structurePos = path[path.length - 1];

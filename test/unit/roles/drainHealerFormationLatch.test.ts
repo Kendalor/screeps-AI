@@ -11,10 +11,18 @@
 // holds inherently, and we assert it at the primary pure seam rather than through a Game-mocked step race:
 // no matter how damaged/close/far a heal target is, planSquadMove's per-member destination is unchanged.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { planSquadActions, planSquadMove, type SquadState } from "../../../src/lib/squad";
 import { planDrainActions, DRAIN_FORMATION } from "../../../src/operations/drain";
+import { clearSquadMatrixCache } from "../../../src/lib/squadCostMatrix";
+import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
 import { colonySnap, snapCreep } from "../../fixtures";
+
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
 
 function openTerrain(): Uint8Array {
   return new Uint8Array(2500).fill(1);
@@ -45,8 +53,8 @@ describe("DrainHealer formation latch regression (ADR 0007: movement is out of t
     const healthy = tightSquad([500, 500, 500]);
     const wounded = tightSquad([500, 10, 500]); // second healer nearly dead
 
-    const healthyMoves = planSquadMove(healthy, goal, terrain);
-    const woundedMoves = planSquadMove(wounded, goal, terrain);
+    const healthyMoves = planSquadMove(healthy, goal, terrain, 0);
+    const woundedMoves = planSquadMove(wounded, goal, terrain, 0);
 
     // Same member order and ids in both fixtures — compare each member's destination tile.
     for (let i = 0; i < healthy.members.length; i++) {
@@ -73,7 +81,7 @@ describe("DrainHealer formation latch regression (ADR 0007: movement is out of t
     // The squad is a tight block already at the goal; planSquadMove assigns each member its own current
     // slot tile (zero movement), regardless of any heal target. No member is ever pulled toward a patient.
     const state = tightSquad([500, 10, 500]);
-    const moves = planSquadMove(state, { x: 25, y: 25, room: "W2N1" }, terrain);
+    const moves = planSquadMove(state, { x: 25, y: 25, room: "W2N1" }, terrain, 0);
     for (const member of state.members) {
       const move = moves.find(m => m.creep === member.id)!;
       expect({ x: move.to.x, y: move.to.y }).toEqual({ x: member.x, y: member.y }); // stays on its own tile

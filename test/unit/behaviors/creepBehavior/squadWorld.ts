@@ -223,7 +223,7 @@ export class SquadWorld {
   step(anchor: XY & { room: string }, facing: DirectionConstant, goal: XY & { room: string }): SquadTickLog {
     const state = this.state(anchor, facing);
     const tight = isTight(state, this.formation);
-    const intents = planSquadMove(state, goal, this.terrain, this.occupancy());
+    const intents = planSquadMove(state, goal, this.terrain, this.tick, this.occupancy());
     for (const intent of intents) {
       const m = this.member(intent.creep);
       m.x = intent.to.x;
@@ -250,7 +250,7 @@ export class SquadWorld {
   stepReal(anchor: XY & { room: string }, facing: DirectionConstant, goal: XY & { room: string }): SquadTickLog {
     const state = this.state(anchor, facing);
     const tight = isTight(state, this.formation);
-    const intents = planSquadMove(state, goal, this.terrain, this.occupancy());
+    const intents = planSquadMove(state, goal, this.terrain, this.tick, this.occupancy());
     // Snapshot start-of-tick occupied tiles so members don't treat EACH OTHER's post-move tile as blocking
     // (each member steps off its own current tile "simultaneously", same as the real engine's move
     // resolution) but still can't step onto a squadmate that hasn't vacated yet.

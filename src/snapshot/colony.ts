@@ -270,10 +270,19 @@ function drainTerrainFor(draining: string | undefined, drainRoute: readonly { ro
 // doc for why this is vision-gated (only rooms in Game.rooms this tick get an entry) unlike drainTerrainFor
 // above. Marks a tile 1 (occupied) if a live creep of ANY ownership (a hostile, or our own bystander — e.g.
 // an unrelated operation's frozen Defender, see docs/drain-squad-handoff.md's open issue #2) stands there,
-// or an OBSTACLE_OBJECT_TYPES structure (a wall, spawn, extension, storage, tower, ...) not already baked
+// an OBSTACLE_OBJECT_TYPES structure (a wall, spawn, extension, storage, tower, ...) not already baked
 // into terrain — ramparts/roads/containers are deliberately excluded (walkable, same convention
-// roadAvoidance.ts's isWalkable already uses for this exact constant).
-function drainOccupancyFor(draining: string | undefined, drainRoute: readonly { room: string }[]): Partial<Record<string, Uint8Array>> {
+// roadAvoidance.ts's isWalkable already uses for this exact constant) — or a natural Source/Mineral.
+// Sources/minerals are genuinely impassable in the real engine (OBSTACLE_OBJECT_TYPES includes "source"
+// and "mineral") but are NOT structures — FIND_STRUCTURES/structure.structureType can never see them, so
+// they need their own explicit find, or the squad cost matrix reads a source tile as free ground and
+// routes a formation slot onto it; the real engine then silently rejects that one member's move intent
+// (checkObstacleAtXY, @screeps/engine's movement.js) while its squadmates' moves succeed, breaking
+// mutual-range-1 for exactly one tick — confirmed live via test/integration/drain-squad-border-crossing.test.ts
+// (a squad's own STAGING room source sat directly in the formation's advance path near the room's far edge).
+// Exported for direct unit testing (see test/unit/snapshot/colony.test.ts) — buildColonySnapshot itself
+// needs a much larger Game/room stub than this one function's own behavior warrants.
+export function drainOccupancyFor(draining: string | undefined, drainRoute: readonly { room: string }[]): Partial<Record<string, Uint8Array>> {
   if (!draining) return {};
   const rooms = new Set([draining, ...drainRoute.map(r => r.room)]);
   const out: Partial<Record<string, Uint8Array>> = {};
@@ -287,6 +296,8 @@ function drainOccupancyFor(draining: string | undefined, drainRoute: readonly { 
         grid[structure.pos.x * 50 + structure.pos.y] = 1;
       }
     }
+    for (const source of room.find(FIND_SOURCES)) grid[source.pos.x * 50 + source.pos.y] = 1;
+    for (const mineral of room.find(FIND_MINERALS)) grid[mineral.pos.x * 50 + mineral.pos.y] = 1;
     out[roomName] = grid;
   }
   return out;

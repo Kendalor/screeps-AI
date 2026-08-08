@@ -194,21 +194,35 @@ export class Drain extends Operation {
   }
 
   /** The anchor slot's tile this tick, derived fresh from the live squad (no persisted state, matching
-   * ADR 0006's recompute-every-tick rule). The attacker IS the anchor slot, so its tile is the anchor when
-   * it's alive. With the attacker dead (a degraded formation retreating as-is, ADR 0007), the anchor slot
-   * is vacant but still the formation's reference point — inferred from a surviving healer minus its slot
-   * offset so the block keeps a consistent anchor to reform/move around. Deterministic (first healer by
-   * name) so two ticks with identical input agree. */
-  private anchorTile(attacker: SnapCreep | undefined, healers: readonly SnapCreep[], facing: DirectionConstant, room: string): XY & { room: string } {
-    if (attacker) return { x: attacker.x, y: attacker.y, room };
+   * ADR 0006's recompute-every-tick rule). The attacker IS the anchor slot, so its tile (x, y, AND room —
+   * all three read off the SAME creep's SAME snapshot, so they can never internally disagree) is the anchor
+   * when it's alive. With the attacker dead (a degraded formation retreating as-is, ADR 0007), the anchor
+   * slot is vacant but still the formation's reference point — inferred from a surviving healer minus its
+   * slot offset, again reading x/y/room all off that SAME healer, so the block keeps a consistent anchor to
+   * reform/move around. Deterministic (first healer by name) so two ticks with identical input agree.
+   *
+   * Takes ONLY the attacker/healers — never a separately-computed `room` parameter. A caller that voted a
+   * room from the wider squad (or the joined set) and passed it in here could hand back an anchor whose
+   * x/y come from one member's position but whose room reflects a DIFFERENT member (or a stale vote) —
+   * exactly handoff open issue #1's bug: the attacker crossed a border alone, its x/y were already its new
+   * room's local coordinates, but a separately-voted `room` still reflected the room the rest of the squad
+   * held, producing a nonsensical hybrid anchor like `{x:0, y:8, room:"W6N3"}` where (0,8) was actually the
+   * attacker's position in W5N3. No default fallback is fabricated here either: an empty squad is the
+   * caller's problem to guard against (squadState already returns undefined before reaching this), not a
+   * harmless {25,25} default that could paper over a real bug elsewhere. */
+  private anchorTile(attacker: SnapCreep | undefined, healers: readonly SnapCreep[], facing: DirectionConstant): XY & { room: string } {
+    if (attacker) return { x: attacker.x, y: attacker.y, room: attacker.room };
     // Attacker slot vacant: place the anchor so the first healer (deterministic) sits on its own slot tile.
     // Healer slots at the canonical facing are (1,0),(0,1),(1,1); the anchor is that healer's tile minus
     // its rotated offset. We use the first healer and the first healer slot for a stable reference.
     const healer = [...healers].sort((a, b) => a.name.localeCompare(b.name))[0];
-    if (!healer) return { x: 25, y: 25, room }; // no squad at all — a harmless default (never used)
+    // No healer either: squadState never calls this on an empty squad (it returns undefined first), so this
+    // is unreachable in practice — asserted rather than defaulted, since a silent {25,25,""} anchor would
+    // mask whatever caller-side bug got here instead.
+    if (!healer) throw new Error("Drain.anchorTile: called with no attacker and no healers");
     // The first healer slot offset (1,0) rotated to the current facing.
     const off = rotatedHealerOffset(facing);
-    return { x: healer.x - off.dx, y: healer.y - off.dy, room };
+    return { x: healer.x - off.dx, y: healer.y - off.dy, room: healer.room };
   }
 
   /** The SquadState the generic Squad entity runs on this tick, or undefined while the squad is still
@@ -249,7 +263,7 @@ export class Drain extends Operation {
     // rooms for a tile or two mid-crossing, and any purely-positional per-tick membership test — room
     // equality, then world-coordinate range — can (and, confirmed live, did) flip a straddling member in
     // and out of the plan tick to tick even though nothing about whether it belongs actually changed).
-    let joined = squad.filter(c => c.memory.squadJoined === true);
+    let joined = squad.filter(c => c.memory.squadJoined === this.name);
     if (joined.length === 0) {
       // Bootstrap: NOBODY has joined yet (fresh assembly going underway for the first time, OR a squad
       // handed to squadState already fully underway with no prior squadJoined state at all — e.g. this
@@ -273,33 +287,37 @@ export class Drain extends Operation {
       const refWorld = worldOf(refPos.x, refPos.y, refRoom);
       const joinRadius = Math.max(...DRAIN_FORMATION.map(s => Math.max(Math.abs(s.dx), Math.abs(s.dy))), 0);
       const rejoining = squad.filter(c => {
-        if (c.memory.squadJoined === true) return false;
+        if (c.memory.squadJoined === this.name) return false;
         const w = worldOf(c.x, c.y, c.room);
         return Math.max(Math.abs(w.wx - refWorld.wx), Math.abs(w.wy - refWorld.wy)) <= joinRadius;
       });
       if (rejoining.length > 0) joined = [...joined, ...rejoining];
     }
 
-    // The formation's anchor room: whichever room the squad's JOINED members are actually standing in (the
-    // mode room) — using the joined set, not the raw squad, keeps this stable across a border straddle
-    // (mostCommonRoom's tie-break on a raw-squad 2-2 split could still differ tick to tick by array order
-    // alone; the joined set changes by explicit join/leave events instead, not by recomputation). Before
-    // the first push, that's the staging room.
-    const anchorRoom = readyForFirstPush ? staging : mostCommonRoom(joined);
+    // A PROVISIONAL room, used ONLY to pick which room's threats to look at before the real anchor exists
+    // below — never fed into the anchor itself (see anchorTile's doc for why: a vote here mixed with one
+    // member's x/y elsewhere is exactly handoff open issue #1's bug). Before the first push that's simply
+    // the staging room (the whole squad is physically there); once underway it's the joined set's mode room
+    // — a rough "where's most of the squad" read that's fine for threat-lookup purposes, since a wrong guess
+    // here only means checking the wrong room's (usually empty) threat list for one tick, not a corrupted
+    // anchor position.
+    const threatLookupRoom = readyForFirstPush ? staging : mostCommonRoom(joined);
     const goal = this.goalTile(colony, squad, staging);
-    const anchorRef = anchorReference(joined, anchorRoom);
+    const threatRef = anchorReference(joined, threatLookupRoom);
     // Face the nearest THREAT, not the travel goal, whenever one is actually present in the anchor room —
     // a squad mid-fight needs to keep its attacker (the anchor slot, always the formation's "front" at any
     // axis facing) oriented toward whatever's hitting it, not toward wherever it happens to be walking.
     // Falls back to the ordinary goal-directed drainFacing when the room is clear (nothing to react to) or
     // has no vision this tick (threatsIn reads empty, same fail-open convention as hostileRoomTowers).
-    const threat = mostUrgentThreat(anchorRef, threatsIn(colony, anchorRoom));
-    const desiredFacing = threat ? drainFacing(anchorRef, threat) : drainFacing(anchorRef, goal);
+    const threat = mostUrgentThreat(threatRef, threatsIn(colony, threatLookupRoom));
+    const desiredFacing = threat ? drainFacing(threatRef, threat) : drainFacing(threatRef, goal);
+    // THE anchor — every field (x, y, room) derived from ONE reference creep's own live snapshot via
+    // anchorTile (see its doc), never a separately-voted room. `desiredFacing` only affects the degraded
+    // (attacker-dead) case's healer-offset direction here; it does not influence anchor.room either way.
     const anchor = this.anchorTile(
       joined.find(c => c.role === "drainAttacker"),
       joined.filter(c => c.role === "drainHealer"),
-      desiredFacing,
-      anchorRoom
+      desiredFacing
     );
     const members = joined;
     // Report whichever facing the squad's LIVE positions already sit tight at, if any — NOT unconditionally
@@ -313,7 +331,7 @@ export class Drain extends Operation {
     const facing = currentFacing(anchor, members, DRAIN_FORMATION) ?? desiredFacing;
     log.debugRoom(
       colony.name,
-      `drain squadState: readyForFirstPush=${readyForFirstPush} underway=${underway} anchorRoom=${anchorRoom} ` +
+      `drain squadState: readyForFirstPush=${readyForFirstPush} underway=${underway} threatLookupRoom=${threatLookupRoom} ` +
         `anchor=(${anchor.x},${anchor.y},${anchor.room}) facing=${facing} desiredFacing=${desiredFacing} goal=(${goal.x},${goal.y},${goal.room}) ` +
         `squad=[${squad.map(c => `${c.name}@${c.room}(${c.x},${c.y})`).join(",")}] members=[${members.map(c => c.name).join(",")}]`
     );
@@ -364,8 +382,10 @@ export class Drain extends Operation {
     // Squad dissolved (draining cleared): clear squadJoined off every still-alive former member so a
     // leftover creep from a stopped operation doesn't carry stale membership state into whatever it does
     // next (see CreepMemory.squadJoined's doc — membership must never survive the thing that granted it).
+    // Only clears OUR OWN squad's membership (=== this.name) — never a different op's, in case a role were
+    // ever repurposed across squad-bearing operations.
     if (!colony.draining) {
-      for (const c of squad) if (c.memory.squadJoined === true) out.push({ kind: "clearSquadJoined", creep: c.id });
+      for (const c of squad) if (c.memory.squadJoined === this.name) out.push({ kind: "clearSquadJoined", creep: c.id });
       return out;
     }
     const staging = pickStagingRoom(colony.drainRoute);
@@ -413,7 +433,9 @@ export class Drain extends Operation {
   private joinIntents(squad: readonly SnapCreep[], state: SquadState | undefined): Intent[] {
     if (!state) return [];
     const memberIds = new Set(state.members.map(m => m.id));
-    return squad.filter(c => memberIds.has(c.id) && c.memory.squadJoined !== true).map(c => ({ kind: "setSquadJoined", creep: c.id }));
+    return squad
+      .filter(c => memberIds.has(c.id) && c.memory.squadJoined !== this.name)
+      .map(c => ({ kind: "setSquadJoined", creep: c.id, op: this.name }));
   }
 
   /** #40/ADR 0006's operation-owned observation history — a {tick, towerEnergy, storageEnergy} sample
@@ -461,7 +483,14 @@ function anchorReference(squad: readonly SnapCreep[], room: string): XY {
   return { x: ref?.x ?? 25, y: ref?.y ?? 25 };
 }
 
-// The room most of the squad's members currently stand in — the formation's anchor room while underway.
+// The room most of the squad's members currently stand in. NO LONGER used to derive the formation's
+// anchor room (see anchorTile's doc — that was handoff open issue #1's bug: a majority vote could disagree
+// with the SAME anchor's own x/y whenever the attacker itself was the outlier, e.g. having just crossed a
+// border alone). Its two remaining callers are both lower-stakes "roughly where's the squad" reads that
+// tolerate an occasionally-wrong guess without corrupting anything: which room's threat list to consult for
+// facing (a wrong guess just means checking an empty list for one tick) and the re-entry join-radius gate's
+// reference room (a wrong guess there only delays a straggler's join by a tick, never joins/excludes
+// incorrectly on its own — the actual range check still uses real world-coordinate distance).
 function mostCommonRoom(squad: readonly SnapCreep[]): string {
   const counts = new Map<string, number>();
   for (const c of squad) counts.set(c.room, (counts.get(c.room) ?? 0) + 1);

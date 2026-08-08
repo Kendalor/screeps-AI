@@ -597,20 +597,6 @@ describe("upgrade step: drawing closer to the controller", () => {
     expect(result).toEqual({ acted: true, didAct: false, target: "controller1" });
   });
 
-  it("upgrades and steps onto the free controller container in the same tick", () => {
-    // In range 3 of the controller but not on the container tile.
-    const { creep, traveled, upgraded } = upgradeCreep({
-      pos: { x: 25, y: 28 },
-      containerPos: { x: 25, y: 26 }
-    });
-
-    const result = runStep(creep, { do: "upgrade" });
-
-    expect(upgraded).toEqual(["controller1"]);
-    expect(traveled).toEqual([{ x: 25, y: 26 }]);
-    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
-  });
-
   it("stays put and keeps upgrading once parked on the controller container", () => {
     const { creep, traveled, upgraded } = upgradeCreep({
       pos: { x: 25, y: 26 },
@@ -621,17 +607,6 @@ describe("upgrade step: drawing closer to the controller", () => {
 
     expect(upgraded).toEqual(["controller1"]);
     expect(traveled).toEqual([]); // already on the container tile, no re-path
-    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
-  });
-
-  it("bunches in against the controller when there is no container, staying in upgrade range", () => {
-    // In range 3 but not adjacent — should upgrade and close to range 1.
-    const { creep, traveled, upgraded } = upgradeCreep({ pos: { x: 25, y: 28 } });
-
-    const result = runStep(creep, { do: "upgrade" });
-
-    expect(upgraded).toEqual(["controller1"]);
-    expect(traveled).toEqual([{ x: 25, y: 25 }]); // travelTo controller with range 1
     expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
   });
 

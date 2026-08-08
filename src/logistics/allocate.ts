@@ -10,7 +10,7 @@
 // hauler.ts's own `prefer: "largest"` default, to combine as few providers as possible.
 
 import type { XY } from "../lib/geometry";
-import { pathDistance, RoadCostMatrix } from "../layouts/roads";
+import { pathDistance, pathDistanceAndStand, RoadCostMatrix } from "../layouts/roads";
 import type { DeepReadonly, SnapCreep } from "../snapshot/types";
 import type { Consumer, Provider, StorageOverflow } from "./graph";
 import type { LogisticsTask, NodeRef } from "./types";
@@ -312,16 +312,14 @@ function buildDeliverChain(
     const remainingInTier = new Set(pool);
     let hasStop = out.length > 0; // a higher-priority tier may have already placed a stop this call
     while (remainingInTier.size > 0 && left > 0) {
-      const next = cursor && costMatrix ? nearestConsumer(remainingInTier, cursor, costMatrix) : remainingInTier.values().next().value;
+      const picked = cursor && costMatrix ? nearestConsumer(remainingInTier, cursor, costMatrix) : undefined;
+      const next = picked?.consumer ?? remainingInTier.values().next().value;
       if (!next) break;
       // Once the chain has a stop, don't let it leap clear across the room for the next one — see
       // MAX_CHAIN_HOP's doc. The very first stop overall is never capped (from the creep's own
       // position, on the very first tier processed), since reaching the sole open consumer, however
       // far, is a real trip rather than a hop within an already-claimed cluster.
-      if (hasStop && cursor && costMatrix && next.pos) {
-        const hop = pathDistance(cursor, next.pos, PICKUP_RANGE, costMatrix);
-        if (hop > MAX_CHAIN_HOP) break;
-      }
+      if (hasStop && picked && picked.distance > MAX_CHAIN_HOP) break;
       remainingInTier.delete(next);
       const key = refKey(next.ref);
       const want = remaining.get(key) ?? 0;
@@ -331,27 +329,31 @@ function buildDeliverChain(
       out.push({ ref: next.ref, amount: give });
       left -= give;
       hasStop = true;
-      if (next.pos) cursor = next.pos;
+      // Advance to the actual tile the creep stands on to act on `next` (PICKUP_RANGE away from it,
+      // not on top of it) — not `next.pos` itself, so the following leg's distance is judged from
+      // where the creep really ends up, not from the structure it's standing beside.
+      if (picked) cursor = picked.stand;
     }
   }
   return out;
 }
 
 // Nearest remaining consumer in this tier to `from`, by real walkable-tile path distance — same metric
-// pickNearestFillingProvider uses on the pickup side. A consumer with no position (a creep sink, or a
-// storage struct that hasn't been placed yet) sorts last, not first, so a positioned sink is always
-// preferred when one's available; ties keep iteration order.
-function nearestConsumer(pool: ReadonlySet<Consumer>, from: XY, costMatrix: RoadCostMatrix): Consumer | undefined {
-  let best: Consumer | undefined;
-  let bestDistance = Infinity;
+// pickNearestFillingProvider uses on the pickup side. Also returns the tile the creep would stand on to
+// reach it, so the caller can advance its route cursor to where the creep actually ends up rather than
+// the consumer's own position. A consumer with no position (a creep sink, or a storage struct that
+// hasn't been placed yet) sorts last, not first, so a positioned sink is always preferred when one's
+// available; ties keep iteration order.
+function nearestConsumer(pool: ReadonlySet<Consumer>, from: XY, costMatrix: RoadCostMatrix): { consumer: Consumer; distance: number; stand: XY } | undefined {
+  let best: { consumer: Consumer; distance: number; stand: XY } | undefined;
   for (const c of pool) {
-    const d = c.pos ? pathDistance(from, c.pos, PICKUP_RANGE, costMatrix) : Infinity;
-    if (d < bestDistance) {
-      best = c;
-      bestDistance = d;
+    if (!c.pos) continue;
+    const found = pathDistanceAndStand(from, c.pos, PICKUP_RANGE, costMatrix);
+    if (found && found.distance < (best?.distance ?? Infinity)) {
+      best = { consumer: c, distance: found.distance, stand: found.stand };
     }
   }
-  return best ?? pool.values().next().value;
+  return best;
 }
 
 // Link deliver legs into a `next`-chained task (deliver1 -> deliver2 -> ...); undefined if empty.

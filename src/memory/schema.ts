@@ -77,20 +77,29 @@ declare global {
     // "whichever room the other currently stands in" chase each other back and forth across a border
     // forever, since each one's destination flipped sides the instant its target crossed — confirmed live.
     drainRallyPos?: XY & { room: string };
-    // Whether this creep is a currently-joined member of its op's squad — owned by operations/drain.ts,
-    // written/cleared via the setSquadJoined/clearSquadJoined intents (execute.ts). Squad membership used
-    // to be recomputed from scratch every tick purely off live position (room equality, then world-
-    // coordinate range after that was found buggy), which meant a border-straddling formation's membership
-    // set could flicker between two different tick-to-tick readings of the SAME underlying event ("has this
-    // creep joined the squad") even though nothing about whether it belongs had actually changed — confirmed
-    // live: 2 members straddling a border vanished from the plan one tick, reappeared the next, forever.
-    // Membership is a STATE (a creep joins once, stays joined until it leaves/dies), not a per-tick
-    // recomputation, so it's now persisted here exactly like any other stateful assignment (compare
-    // logistics.current, buildTargetRoom): Drain.squadState() reads this flag directly instead of re-
-    // deriving "is this creep part of the squad right now" from position every tick. Cleared when the
-    // creep drops out of squad control (dissolved, or explicitly left) — never left stale on a creep that
-    // continues to exist under a different assignment.
-    squadJoined?: boolean;
+    // WHICH squad (by owning op name, e.g. "drain:W1N1" — the same opName stamp as `op` above) this creep
+    // is a currently-joined member of, or absent if none. A bare boolean here would be ambiguous the moment
+    // more than one squad-bearing operation exists (ADR 0007's Squad entity is generic infrastructure —
+    // Attack/Defense are explicit candidates to gain squad movement later, see docs/drain-squad-handoff.md's
+    // open issues): "joined" alone doesn't say joined to WHAT, and a stale `true` left over from one
+    // dissolved squad could be misread by a different operation checking the same field. Storing the op
+    // name makes a check self-scoping (`c.memory.squadJoined === this.name`) with no separate lookup, and a
+    // stale value from another op's squad simply never matches.
+    //
+    // Written/cleared via the setSquadJoined/clearSquadJoined intents (execute.ts), owned by whichever
+    // operation's squad the creep joins (currently only operations/drain.ts). Squad membership used to be
+    // recomputed from scratch every tick purely off live position (room equality, then world-coordinate
+    // range after that was found buggy), which meant a border-straddling formation's membership set could
+    // flicker between two different tick-to-tick readings of the SAME underlying event ("has this creep
+    // joined the squad") even though nothing about whether it belongs had actually changed — confirmed live:
+    // 2 members straddling a border vanished from the plan one tick, reappeared the next, forever. Membership
+    // is a STATE (a creep joins once, stays joined until it leaves/dies), not a per-tick recomputation, so
+    // it's now persisted here exactly like any other stateful assignment (compare logistics.current,
+    // buildTargetRoom): Drain.squadState() reads this field directly instead of re-deriving "is this creep
+    // part of the squad right now" from position every tick. Cleared when the creep drops out of squad
+    // control (dissolved, or explicitly left) — never left stale on a creep that continues to exist under a
+    // different assignment.
+    squadJoined?: string;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
     // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's

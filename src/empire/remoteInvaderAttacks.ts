@@ -1,13 +1,16 @@
 // Automatic counterpart to attackFlags.ts, scoped to any room near a colony instead of player-placed
 // flags. A STRUCTURE_INVADER_CORE reserves its room's controller under the NPC username "Invader" —
 // this stops Mining/Reservation from staffing that room if it's a selected remote (see
-// SnapRemoteSource.reservedBy), but does nothing to clear the core itself. Left alone, a core in an
-// UNMINED neighboring room keeps reseeding invaders into the colony's actual remotes even though nothing
-// ever selects that room for mining — so this sweeps every scouted room within PRUNE_RADIUS, not just
-// colony.remoteSources, and hands a live level-0 core off to the nearest affordable colony via the exact
-// same pickAttackSponsor/addAttackTarget pipeline the manual "attack" flag uses (see attackFlags.ts's
-// header for the full shape) — Attack (operations/attack.ts) already targets STRUCTURE_INVADER_CORE
-// first and already self-removes once the room is seen with zero hostile creeps/structures.
+// SnapRemoteSource.reservedBy), but does nothing to clear the core itself. Left alone, a core keeps
+// reseeding invaders into the colony's actual remotes — this happens whether or not the room is one of
+// colony.remoteSources: a core can spawn in an already-reserved remote too (the core's own reservation
+// and the colony's coexist; see SnapVisibleRoom.invaderCoreLevel's doc for why ScoutInfo.owner can't tell
+// the two cases apart), not just an unmined neighbor. So this sweeps every scouted room within
+// PRUNE_RADIUS regardless of mining status, and hands a live level-0 core off to the nearest affordable
+// colony via the exact same pickAttackSponsor/addAttackTarget pipeline the manual "attack" flag uses (see
+// attackFlags.ts's header for the full shape) — Attack (operations/attack.ts) already targets
+// STRUCTURE_INVADER_CORE first and already self-removes once the room is seen with zero hostile
+// creeps/structures.
 //
 // Deliberately excludes a Stronghold's fortified core (level 1-5, ramparted, deploys defenders) —
 // clearing one isn't feasible yet. Room type/name can't tell a Stronghold room apart from an ordinary
@@ -28,7 +31,6 @@
 import { pickAttackSponsor } from "./attackSponsor";
 import { execute } from "../intents/execute";
 import { log } from "../lib/log";
-import { INVADER_USERNAME } from "../mining/remoteSources";
 import { scoutCandidatesAround } from "../snapshot/scoutGraph";
 import type { Intent } from "../intents/types";
 import type { Empire } from "./index";
@@ -75,19 +77,26 @@ export function runRemoteInvaderAttacks(world: Empire): void {
   if (rescoutIntents.length > 0) execute(rescoutIntents);
 
   for (const colony of world.colonies) {
+    // owner === INVADER_USERNAME used to gate candidacy here, but ScoutInfo.owner is populated from
+    // controller.owner ?? controller.reservation (see intents/execute.ts's observeRoom) — so a room the
+    // colony is ALREADY reserving for its own remote mining reads as owner === our own username, not
+    // INVADER_USERNAME, even while a level-0 core is live in it right now (the reservation and the core
+    // coexist). That silently exempted exactly the rooms most worth clearing. ScoutInfo.hostile is the
+    // right predicate instead: it's already false for both "us" and the Invader NPC and true only for a
+    // genuine other player's claim (see observeRoom's own hostile computation) — so this keeps out of
+    // real players' territory while no longer skipping our own reserved-but-cored remotes. The live
+    // invaderCoreLevel check below is still needed on top — this tick's vision, since neither owner nor
+    // hostile proves a core is still standing (the reservation outlives the core that placed it) or that
+    // it isn't a Stronghold's fortified one.
     const targets = new Set(
       colony.snapshot.scoutTargets
-        .filter(t => t.distance <= PRUNE_RADIUS && t.info?.owner === INVADER_USERNAME)
+        .filter(t => t.distance <= PRUNE_RADIUS && !t.info?.hostile)
         .map(t => t.room)
     );
 
     for (const target of targets) {
       if (alreadyAttacking.has(target)) continue;
 
-      // ScoutInfo.owner alone doesn't prove a core is still standing (the reservation outlives the core
-      // that placed it) or that it isn't a Stronghold's fortified one — both require this tick's live
-      // vision. No vision this tick just means "don't decide yet," same non-decision the reservedBy gate
-      // already makes for a selected remote.
       const visible = colony.snapshot.visibleRooms.find(r => r.room === target);
       if (!visible || visible.invaderCoreLevel !== NON_FORTIFIED_CORE_LEVEL) continue;
 

@@ -20,9 +20,9 @@ function attackerBody(energy: number): BodyPartConstant[] {
 }
 
 export class Attacker extends Role {
-  // Same table as Defender (110): an offensive strike is exactly as urgent as a defensive one once the
-  // player has ordered it — neither should wait behind ordinary economy demand.
-  static override readonly priority = 110;
+  // Same as DrainAttacker (94): below supply/transport/miner — an offensive strike is expendable relative
+  // to colony economy, unlike Defender (110) which still guards it.
+  static override readonly priority = 94;
   static override readonly mover = true;
   static override body(energy: number): BodyPartConstant[] {
     return attackerBody(energy);

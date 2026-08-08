@@ -4,8 +4,10 @@
 // planSquadMove, not a single hand-built SquadState call like squad.test.ts. Every test can dump
 // `world.describeLog()` on failure for full tick-by-tick observability.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Formation } from "../../../../src/lib/formation";
+import { clearSquadMatrixCache } from "../../../../src/lib/squadCostMatrix";
+import { clearTiles, stubPathFinderSingleRoom } from "../../../constants";
 import { openRooms, SquadWorld } from "./squadWorld";
 
 // Drain's real 2x2 — reused here rather than inventing a new shape, since it's the formation this whole
@@ -18,6 +20,12 @@ const BLOCK_2X2: Formation = [
 ];
 
 const ROOM = "W2N1";
+
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
 
 describe("Squad formation and creation", () => {
   it("four creeps spawned scattered near a rally point converge into a tight 2x2 within a bounded number of ticks", () => {

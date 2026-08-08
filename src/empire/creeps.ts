@@ -17,7 +17,7 @@ import { sweepEnRoute } from "../behaviors/sweep";
 import { parkNearBunker, runTransport } from "../behaviors/transport";
 import type { Step } from "../behaviors/types";
 import type { Colony } from "../colony";
-import { slotTiles } from "../lib/formation";
+import { rotateFormation, slotTiles } from "../lib/formation";
 import { inFormation, planSquadActions, planSquadMove, type ActionIntent, type SquadState } from "../lib/squad";
 import { nearestFittingAnchor, NO_OCCUPANCY, type OccupancySource, type TerrainSource } from "../lib/squadPath";
 import { log } from "../lib/log";
@@ -121,7 +121,7 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
 // translates already-computed assignments into real move/heal/attack calls.
 function runSquads(squads: readonly ResolvedSquad[]): void {
   for (const squad of squads) {
-    const moves = planSquadMove(squad.state, squad.goal, squad.terrain, squad.occupancy);
+    const moves = planSquadMove(squad.state, squad.goal, squad.terrain, Game.time, squad.occupancy);
     const actions = planSquadActions(squad.state, squad.colony, squad.actionPlanner);
     logSquadDecision(squad, moves);
     for (const move of moves) {
@@ -142,12 +142,15 @@ function logSquadDecision(squad: ResolvedSquad, moves: readonly { creep: Id<Cree
   const tight = inFormation(squad.state.members, currentSlots);
   let branch: string;
   if (!tight) {
-    const fit = nearestFittingAnchor(squad.state.anchor, squad.state.formation, squad.terrain, squad.occupancy);
-    const currentFits = fit && fit.anchor.x === squad.state.anchor.x && fit.anchor.y === squad.state.anchor.y && fit.facing === squad.state.facing;
+    // Rotated to squad.state.facing before the fit-check — see squad.ts's planSquadMove for why the raw
+    // canonical-TOP formation would silently check the wrong footprint shape at any other facing.
+    const facingFormation = rotateFormation(squad.state.formation, squad.state.facing);
+    const fit = nearestFittingAnchor(squad.state.anchor, facingFormation, squad.terrain, squad.occupancy, Game.time);
+    const currentFits = fit && fit.x === squad.state.anchor.x && fit.y === squad.state.anchor.y && fit.room === squad.state.anchor.room;
     branch = currentFits
       ? "reform@current"
       : fit
-        ? `reform@nearestFit(${fit.anchor.x},${fit.anchor.y},${fit.anchor.room},facing=${fit.facing})`
+        ? `reform@nearestFit(${fit.x},${fit.y},${fit.room})`
         : "reform@current(NO-FIT-FOUND-within-radius)";
   } else {
     branch = "tight-advance-or-hold";

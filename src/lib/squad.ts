@@ -6,8 +6,8 @@
 // function (Drain supplies its own), the same split RoleDef/Step draw between the generic step engine and
 // each role's content. Pure: plain SquadState in, plain intents out, no Game access.
 
-import { slotTiles, type Formation, type SlotTile } from "./formation";
-import { range, roomAndLocal, worldOf, type XY } from "./geometry";
+import { rotateFormation, slotTiles, type Formation, type SlotTile } from "./formation";
+import { range, type XY } from "./geometry";
 import { findSquadPath, nearestFittingAnchor, NO_OCCUPANCY, type OccupancySource, type TerrainSource } from "./squadPath";
 import type { SnapCreep } from "../snapshot/types";
 
@@ -154,12 +154,13 @@ export function threatFacing(from: XY, threats: readonly Threat[]): DirectionCon
  *
  * - When the block is NOT tight (a member off its slot, a straggler catching up, a replacement just
  *   joined), the anchor HOLDS and every member is assigned onto the current-facing slot tiles (greedy
- *   nearest) so the block reforms — never advances while broken. UNLESS the squad's own current
- *   anchor/facing can no longer fit the whole formation anywhere (some member shoved off, a degraded
+ *   nearest) so the block reforms — never advances while broken. UNLESS the squad's own current anchor can
+ *   no longer fit the whole formation anywhere at its CURRENT facing (some member shoved off, a degraded
  *   formation's inferred anchor landing in a pocket too narrow for the full shape, independent movement
  *   before joining walking it into a dead end) — reforming onto an unfittable target would hold forever, so
- *   the squad instead retargets the reform onto the NEAREST anchor/facing that does fit
- *   (nearestFittingAnchor), still never advancing toward `goal` until tight again.
+ *   the squad instead retargets the reform onto the NEAREST anchor that fits (nearestFittingAnchor, at the
+ *   SAME facing — see its doc; orientation is never searched, only "where"), still never advancing toward
+ *   `goal` until tight again.
  * - When the block IS tight but a member is FATIGUED (creep.fatigue > 0 — swamp, an overweight body), the
  *   squad holds at its current slots rather than advancing: a fatigued creep's move() silently no-ops this
  *   tick, so committing the whole formation to slide forward would leave that one member behind while its
@@ -167,35 +168,55 @@ export function threatFacing(from: XY, threats: readonly Threat[]): DirectionCon
  *   independent-Traveler convergence ADR 0007 replaced. Waits for every member's fatigue to clear before
  *   resuming the advance.
  * - When the block IS tight and unfatigued, the anchor advances one step along a footprint-fit route toward
- *   `goal` (findSquadPath, which checks the FULL formation shape regardless of occupancy), and every member
- *   is reassigned onto the NEXT step's slot tiles — so the whole formation moves exactly one tile in
- *   lockstep. A route step that is a reform (same anchor tile, changed facing) is handled by the same
- *   reassignment. When no route exists (walled in) or the squad is already at the goal, it holds.
+ *   `goal` (findSquadPath, real PathFinder.search over a cached moving-maximum CostMatrix — see
+ *   squadPath.ts/squadCostMatrix.ts — which checks the FULL formation shape regardless of occupancy), and
+ *   every member is reassigned onto the NEXT step's slot tiles (slotTiles, re-derived fresh from the new
+ *   anchor) — so the whole formation moves exactly one tile in lockstep. When no route exists (walled in) or
+ *   the squad is already at the goal, it holds.
+ *
+ *   Each slot is placed FRESH via slotTiles(nextAnchor, facing, formation) — a single-shot per-slot
+ *   derivation from the new anchor, NOT a uniform world-coordinate delta applied independently across
+ *   members (this module's earlier design). A uniform delta assumes the world-coordinate lattice always
+ *   means "walkable neighbor," which the game does not guarantee at every room border (some rooms lack an
+ *   exit on a given side, sector boundaries break uniform adjacency) — re-deriving each slot from the SAME
+ *   single anchor, the way slotTiles already safely does for reform, closes that class of bug by construction
+ *   rather than by convention. Facing no longer changes mid-route (see squadPath.ts's module header — the
+ *   pather has one fixed orientation) — the facing used for placement here is always state.facing, whatever
+ *   the caller currently wants (e.g. threatFacing/drainFacing, operations/drain.ts), independent of travel
+ *   direction — the mechanism a later retreat-while-facing-forward feature needs.
  *
  * Walkability is ALWAYS checked against the full formation shape (via findSquadPath), even with vacant
  * slots — a shrunk fit-check could strand a later replacement (ADR 0007). `occupancy` (optional, defaults
  * to nothing occupied) is a sibling of `terrain` — see OccupancySource's doc in squadPath.ts — letting a
  * squad route around a live bystander creep or hostile structure exactly as it would a wall; the caller is
  * responsible for excluding the squad's OWN members' current tiles from it (this function has no notion of
- * "which creep is asking"). */
+ * "which creep is asking"). `now` is the caller's current tick, threaded through to the cached CostMatrix
+ * (squadCostMatrix.ts) — a plain parameter rather than a direct Game.time read, matching this module's
+ * existing no-Game-access convention. */
 export function planSquadMove(
   state: SquadState,
   goal: XY & { room: string },
   terrain: TerrainSource,
+  now: number,
   occupancy: OccupancySource = NO_OCCUPANCY
 ): SquadMoveIntent[] {
   const currentSlots = slotTiles(state.anchor, state.facing, state.formation);
+  // The footprint shape squadCostMatrix.ts's fit-check needs, ALREADY rotated to state.facing — that module
+  // is deliberately facing-blind (see its own doc) and expects a formation "already expressed at the facing
+  // [the caller] cares about," not the raw canonical-TOP state.formation plus a separate facing parameter it
+  // would silently ignore. Passing the unrotated formation here previously let nearestFittingAnchor report a
+  // tile as "fitting" using the WRONG (canonical-TOP) footprint shape whenever state.facing wasn't TOP,
+  // sending members onto tiles slotTiles' own (correctly rotated) placement never actually checked — confirmed
+  // live via squadReformDeadlock.test.ts's BOTTOM-facing repro, which stalled forever on a wall tile the
+  // canonical-shape fit-check couldn't see.
+  const facingFormation = rotateFormation(state.formation, state.facing);
 
   // Not a tight block: hold and reform — but only onto a target the full formation can actually occupy.
   if (!inFormation(state.members, currentSlots)) {
-    // Prefer the CALLER's stated facing (state.facing — e.g. threatFacing/drainFacing's output) when the
-    // current anchor also fits there, rather than nearestFittingAnchor's own facing-order tiebreak (see its
-    // doc) redirecting a reforming squad to an unrelated facing just because that happened to be scanned
-    // first on open terrain.
-    const fit = nearestFittingAnchor(state.anchor, state.formation, terrain, occupancy, state.facing);
+    const fit = nearestFittingAnchor(state.anchor, facingFormation, terrain, occupancy, now);
     const reformSlots =
-      fit && (fit.anchor.x !== state.anchor.x || fit.anchor.y !== state.anchor.y || fit.facing !== state.facing)
-        ? slotTiles(fit.anchor, fit.facing, state.formation)
+      fit && (fit.x !== state.anchor.x || fit.y !== state.anchor.y || fit.room !== state.anchor.room)
+        ? slotTiles(fit, state.facing, state.formation)
         : currentSlots;
     return reformOnto(state.members, reformSlots, terrain);
   }
@@ -205,49 +226,57 @@ export function planSquadMove(
     return reformOnto(state.members, currentSlots, terrain);
   }
 
-  // Tight block: try to advance/reform one footprint-fit step toward the goal.
-  const path = findSquadPath({ anchor: state.anchor, facing: state.facing }, goal, state.formation, terrain, occupancy);
+  // Tight block: try to advance one footprint-fit step toward the goal.
+  const path = findSquadPath({ anchor: state.anchor, facing: state.facing }, goal, facingFormation, terrain, occupancy, now);
   const next = path && path.length > 1 ? path[1] : undefined;
   if (!next) {
     // Already at the goal, or no route the whole footprint can take — hold in place.
     return reformOnto(state.members, currentSlots, terrain);
   }
 
-  const facingChanged = next.facing !== state.facing;
-  if (facingChanged) {
-    // A reform step: the anchor holds, the facing changes. Greedy-reassign members to the new-facing slot
-    // tiles — the multi-tick reshape / one-tick symmetric turn, same mechanism.
-    const nextSlots = slotTiles(next.anchor, next.facing, state.formation);
-    return reformOnto(state.members, nextSlots, terrain);
-  }
+  // A straight advance: every member is reassigned onto the next anchor's slot tiles, re-derived fresh from
+  // that anchor via slotTiles — see this function's own doc for why this replaced a uniform world-coordinate
+  // delta slide. Matched to `currentSlots` BY INDEX (currentSlots[i] and nextSlots[i] are the SAME formation
+  // slot, just shifted by the anchor's own movement), not via reformOnto's greedy nearest-distance search —
+  // a diagonal advance step (real PathFinder.search routes diagonally with no cost penalty, unlike the old
+  // bespoke A* this replaced) shifts the slot SET by one tile on BOTH axes, so a TRAILING member's old tile
+  // can coincide with a DIFFERENT (nearer, but wrong) new slot, which a nearest-distance match would then
+  // award it — e.g. a 2x2 advancing anchor (25,25)->(24,24): the attacker's own current tile (25,25) is
+  // *closer* to the new trailing-corner slot (25,25) than to its own new slot (24,24), so nearest-distance
+  // reform would leave the attacker in place and shuffle every OTHER member into a mirrored arrangement
+  // instead of actually advancing — confirmed live via squadEvasion.test.ts's wall/bystander detours, which
+  // route diagonally and never made progress under the old nearest-distance match. Since `inFormation` above
+  // already confirmed every member sits on some `currentSlots[i]`, the index correspondence is unambiguous.
+  const nextSlots = slotTiles(next.anchor, state.facing, state.formation);
+  return advanceOnto(state.members, currentSlots, nextSlots, terrain);
+}
 
-  // A straight advance (facing unchanged): the whole formation slides as a rigid body by the anchor's
-  // delta, so every member moves the SAME one tile and relative positions are preserved — NOT a nearest-
-  // slot reassignment (which would make a back-row member leapfrog two tiles to a freed front tile). Each
-  // member holds its slot INDEX; its new tile is that same slot at the advanced anchor.
-  //
-  // The delta is computed and applied in WORLD coordinates (worldOf/roomAndLocal, geometry.ts), never plain
-  // local x/y: state.anchor and next.anchor can straddle a room border (the anchor itself crossing between
-  // consecutive path steps), so a raw local subtraction is meaningless once the two anchors are in different
-  // rooms — and even before the ANCHOR crosses, an individual trailing SLOT can already be in a different
-  // room than the anchor (slotTiles resolves each slot through this same world lattice for exactly that
-  // reason). A single `room` stamped onto every member's result — the bug this replaces — silently produced
-  // an out-of-range local x/y (e.g. x=50) or mislabeled a genuinely-crossed member as still in the old room,
-  // the same crash/corruption class as the cross-border slot-placement bug fixed in slotTiles (see
-  // formation.ts's doc) recurring here via the advance path instead of the reform path.
-  const anchorDelta = (() => {
-    const a = worldOf(state.anchor.x, state.anchor.y, state.anchor.room);
-    const b = worldOf(next.anchor.x, next.anchor.y, next.anchor.room);
-    return { dwx: b.wx - a.wx, dwy: b.wy - a.wy };
-  })();
-  const slotIndexByMember = assignMembersToSlotIndices(state.members, currentSlots);
-  return state.members.map(m => {
-    const idx = slotIndexByMember.get(m.id);
-    const slot = idx !== undefined ? currentSlots[idx] : { x: m.x, y: m.y, room: m.room };
-    const slotRoom = idx !== undefined ? currentSlots[idx].room : m.room;
-    const w = worldOf(slot.x, slot.y, slotRoom);
-    const { room, x, y } = roomAndLocal(w.wx + anchorDelta.dwx, w.wy + anchorDelta.dwy);
-    return { creep: m.id, to: { x, y, room } };
+// Moves each member from its CURRENT slot to the slot at the SAME formation index in `nextSlots` — the
+// advance-specific counterpart to reformOnto's role-blind nearest-distance match (see planSquadMove's
+// advance-branch doc for why nearest-distance is wrong here specifically). Falls back to reformOnto's
+// nearest-distance match for any member NOT found on one of `currentSlots` (shouldn't happen once
+// `inFormation` has gated this branch, but keeps this function total rather than silently dropping a member).
+function advanceOnto(members: readonly SnapCreep[], currentSlots: readonly SlotTile[], nextSlots: readonly SlotTile[], terrain?: TerrainSource): SquadMoveIntent[] {
+  const room = nextSlots[0]?.room ?? members[0]?.room ?? "";
+  const slotIndexOf = (m: SnapCreep): number => currentSlots.findIndex(s => s.room === m.room && s.x === m.x && s.y === m.y);
+  const matched = new Map<Id<Creep>, XY>();
+  const unmatched: SnapCreep[] = [];
+  for (const m of members) {
+    const idx = slotIndexOf(m);
+    if (idx >= 0 && nextSlots[idx]) matched.set(m.id, { x: nextSlots[idx].x, y: nextSlots[idx].y });
+    else unmatched.push(m);
+  }
+  if (unmatched.length > 0) {
+    const takenIdxs = new Set(members.filter(m => matched.has(m.id)).map(m => slotIndexOf(m)));
+    const freeSlots = nextSlots.filter((_, i) => !takenIdxs.has(i));
+    const memberRefs = unmatched.map(m => ({ id: m.id, pos: { x: m.x, y: m.y } }));
+    const fallback = reformAssignment(memberRefs, freeSlots);
+    for (const [id, pos] of fallback) matched.set(id, pos);
+  }
+  const repaired = terrain ? slotChainRepair(members, nextSlots, matched, terrain) : matched;
+  return members.map(m => {
+    const dest = repaired.get(m.id) ?? { x: m.x, y: m.y };
+    return { creep: m.id, to: { x: dest.x, y: dest.y, room } };
   });
 }
 
@@ -418,23 +447,6 @@ function slotChainRepair(
     }
   }
   return current;
-}
-
-// Which slot index each member currently holds — greedy-nearest over slot tiles, returning indices so a
-// straight advance can slide each member's own slot forward rather than reassigning it to another.
-function assignMembersToSlotIndices(members: readonly SnapCreep[], slots: readonly SlotTile[]): Map<Id<Creep>, number> {
-  const indexed = slots.map((s, i) => ({ i, pos: { x: s.x, y: s.y } }));
-  const memberRefs = members.map(m => ({ id: m.id, pos: { x: m.x, y: m.y } }));
-  // Reuse the greedy matcher over the slot POSITIONS, then map the chosen position back to its index.
-  const assignment = reformAssignment(memberRefs, indexed.map(s => s.pos));
-  const byMember = new Map<Id<Creep>, number>();
-  for (const m of members) {
-    const pos = assignment.get(m.id);
-    if (!pos) continue;
-    const slot = indexed.find(s => s.pos.x === pos.x && s.pos.y === pos.y);
-    if (slot) byMember.set(m.id, slot.i);
-  }
-  return byMember;
 }
 
 /** Generic action dispatch: hand the shared state to a squad type's own planner and return its map

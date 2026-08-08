@@ -91,6 +91,103 @@ export function stubPathFinder(fn: (origin: unknown, goal: unknown, opts: unknow
   pathFinderSearch = fn;
 }
 
+// A real single-room Dijkstra over the CostMatrix a roomCallback returns — a genuine engine-behavior
+// shim (same spirit as this file's RoomPositionStub), not a production-logic stand-in: it walks
+// whatever cost matrix the code under test already builds, the same way the real PathFinder.search
+// would within one room, but never stitches across a room border itself (single-room callers only —
+// see squad-movement-cached-pathfinder-plan.md's hard constraint on hand-rolled cross-room arithmetic;
+// a caller needing real border-crossing must run against the real engine, see test/integration/).
+// Throws if origin/goal ever land in different rooms, so a test that accidentally needs cross-room
+// stitching fails loudly instead of silently getting a same-room-only answer.
+export function stubPathFinderSingleRoom(): void {
+  pathFinderSearch = (originArg, goalArg, optsArg) => {
+    const origin = originArg as { x: number; y: number; roomName: string };
+    const opts = optsArg as {
+      roomCallback: (roomName: string) => { get(x: number, y: number): number } | false;
+      plainCost?: number;
+      swampCost?: number;
+    };
+    const goals: { pos: { x: number; y: number; roomName: string }; range: number }[] =
+      "pos" in (goalArg as object)
+        ? [goalArg as { pos: { x: number; y: number; roomName: string }; range: number }]
+        : (goalArg as { pos: { x: number; y: number; roomName: string }; range: number }[]);
+    if (goals.some(g => g.pos.roomName !== origin.roomName)) {
+      throw new Error(
+        "stubPathFinderSingleRoom(): origin/goal in different rooms — this stub never stitches " +
+          "across a room border; use a real-engine integration test for cross-room routing"
+      );
+    }
+    const room = origin.roomName;
+    const matrix = opts.roomCallback(room);
+    const plainCost = opts.plainCost ?? 1;
+    const cost = (x: number, y: number): number => {
+      if (x < 0 || x > 49 || y < 0 || y > 49) return Infinity;
+      const c = matrix ? matrix.get(x, y) : 0;
+      if (c === 0xff) return Infinity;
+      return c > 0 ? c : plainCost;
+    };
+    const key = (x: number, y: number): number => x * 50 + y;
+    const dist = new Map<number, number>();
+    const prev = new Map<number, number>();
+    const startKey = key(origin.x, origin.y);
+    dist.set(startKey, 0);
+    // A tiny binary-heap-free Dijkstra (grid is only 2500 tiles) — a linear scan for the min each round
+    // is trivial at this scale and keeps this stub simple.
+    const visited = new Set<number>();
+    const goalReached = (x: number, y: number): boolean =>
+      goals.some(g => Math.max(Math.abs(x - g.pos.x), Math.abs(y - g.pos.y)) <= g.range);
+    let reachedKey: number | undefined = goalReached(origin.x, origin.y) ? startKey : undefined;
+    while (reachedKey === undefined) {
+      let bestKey = -1;
+      let bestDist = Infinity;
+      for (const [k, d] of dist) {
+        if (visited.has(k)) continue;
+        if (d < bestDist) {
+          bestDist = d;
+          bestKey = k;
+        }
+      }
+      if (bestKey === -1) break; // exhausted — no path
+      visited.add(bestKey);
+      const bx = Math.floor(bestKey / 50);
+      const by = bestKey % 50;
+      if (goalReached(bx, by)) {
+        reachedKey = bestKey;
+        break;
+      }
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = bx + dx;
+          const ny = by + dy;
+          if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
+          const stepCost = cost(nx, ny);
+          if (!Number.isFinite(stepCost)) continue;
+          const nk = key(nx, ny);
+          if (visited.has(nk)) continue;
+          const nd = bestDist + stepCost;
+          if (nd < (dist.get(nk) ?? Infinity)) {
+            dist.set(nk, nd);
+            prev.set(nk, bestKey);
+          }
+        }
+      }
+    }
+    if (reachedKey === undefined) return { path: [], incomplete: true, ops: visited.size, cost: 0 };
+    const pathKeys: number[] = [];
+    let cur = reachedKey;
+    while (cur !== startKey) {
+      pathKeys.push(cur);
+      const p = prev.get(cur);
+      if (p === undefined) break;
+      cur = p;
+    }
+    pathKeys.reverse();
+    const path = pathKeys.map(k => new RoomPositionStub(Math.floor(k / 50), k % 50, room));
+    return { path, incomplete: false, ops: visited.size, cost: dist.get(reachedKey) ?? 0 };
+  };
+}
+
 // Minimal stand-in for the engine's PathFinder.CostMatrix — just enough get/set/clone for a
 // roomCallback to seed costs onto and for a test to read back what code under test set.
 class CostMatrixStub {
@@ -193,6 +290,15 @@ Object.assign(globalThis, {
   STRUCTURE_CONTROLLER: "controller",
   STRUCTURE_TERMINAL: "terminal",
   STRUCTURE_INVADER_CORE: "invaderCore",
+
+  // Real engine's OBSTACLE_OBJECT_TYPES (@screeps/common constants) — structureType/type values a creep
+  // can never walk onto. Kept in sync by hand; snapshot/colony.ts's drainOccupancyFor is the one production
+  // consumer at unit-test level.
+  OBSTACLE_OBJECT_TYPES: [
+    "spawn", "creep", "powerCreep", "source", "mineral", "deposit", "controller", "constructedWall",
+    "extension", "link", "storage", "tower", "observer", "powerSpawn", "powerBank", "lab", "terminal",
+    "nuker", "factory", "invaderCore"
+  ],
 
   MAX_CONSTRUCTION_SITES: 100,
 

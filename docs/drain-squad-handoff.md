@@ -110,6 +110,78 @@ These were essential for diagnosing bugs #4–#7 above — a raw position dump a
 "holding because not tight" from "holding because the plan is stale" from "holding because fatigued."
 Worth keeping permanently, not just for this session.
 
+## Fixed later (2026-08-07): border-straddle member drop causing a permanent flicker
+
+Found from the user's live report of a specific repeating pattern: 2 creeps of the formation land on a
+room border, next tick they're gone (from the plan), the remaining 2 retreat away from the border, then
+the missing 2 reappear and the other pair advances back toward them — forever, never actually crossing.
+
+**Root cause:** `Drain.squadState()`'s "replacement re-entry gate" (`members = squad.filter(c => c.room
+=== anchor.room)`) was meant to exclude a freshly-spawned member still walking in from home (a genuinely
+distant room), but implemented as a strict room-string equality check. A tight formation legitimately
+straddles two rooms for a tile or two while crossing a border (2 members already in the new room, 2 not
+yet — the same real state `squadBorderCrossing.test.ts` already covers for the generic `lib/squad.ts`
+layer). The instant a live crossing produced an exact 2-2 room split, `mostCommonRoom(squad)` (a
+first-past-the-post tie-break over `Map` iteration = squad array order) picked one room as `anchorRoom`,
+and the same-room filter then silently dropped the OTHER 2 members from `members` entirely — not held,
+not reformed, just absent from that tick's plan, as if they hadn't rallied. The excluded pair's last
+applied move stood while the included pair replanned around only itself, so the two halves diverged onto
+different generations of the plan tick over tick, producing the reported flicker.
+
+**First fix attempt (superseded):** re-derive the re-entry gate from world-coordinate RANGE instead of room
+equality — a member within the formation's own max slot distance of the anchor counts as part of the live
+block regardless of which room string it currently reads. This worked (verified against the flicker
+reproduction), but it was still a PURELY POSITIONAL per-tick recompute — membership was re-derived as
+ground truth from live position every single tick, just with a better test. The user asked for something
+structurally different: **make squad membership stateful, persisted in `CreepMemory`, written/deleted by
+explicit join/leave events** — a creep either is or isn't a member as a matter of record, not a live
+position query re-evaluated from scratch every tick.
+
+**Actual fix (`src/operations/drain.ts` + `src/memory/schema.ts` + `src/intents/`):** new
+`CreepMemory.squadJoined?: string`, written via a new `setSquadJoined`/`clearSquadJoined` intent pair
+(`intents/types.ts`, `intents/execute.ts` — same "planner decides, execute.ts owns the memory write" split
+every other stateful assignment in this codebase already follows, e.g. `drainRallyPos`).
+
+The field holds the OWNING OP NAME (e.g. `"drain:W1N1"`, the same `opName` stamp `CreepMemory.op` already
+uses), not a bare boolean — a plain `true`/`false` would be ambiguous about WHICH squad a creep joined the
+instant more than one squad-bearing operation exists (ADR 0007's `Squad` entity is generic infrastructure;
+Attack/Defense are explicit candidates to gain squad movement later, see the open issues below), and a
+stale `true` left over from one dissolved squad could be misread by a different operation checking the
+same field. `c.memory.squadJoined === this.name` is self-scoping with no separate lookup.
+
+`Drain.squadState()` now reads `members = squad.filter(c => c.memory.squadJoined === this.name)` directly
+— no more re-deriving "is this creep in the squad right now" from room or position at all. Two ways a
+member earns the flag (both computed once, as a state transition, inside `squadState()` itself so
+`intents()`'s write and `squadState()`'s read can never disagree — `intents()`'s `joinIntents()` simply
+mirrors whatever `squadState()` already resolved into `state.members`):
+- **Bootstrap** (nobody has joined yet — fresh assembly going underway for the first time, or a squad
+  found already underway with no prior `squadJoined` state, e.g. after a restart): the whole assembled
+  squad joins together, unconditionally. Not range-gated — a squad that just rallied independently to the
+  staging room's center isn't necessarily welded into a tight formation shape yet, so gating this on
+  formation range would strand a merely-scattered-but-present squad and it would never go underway at all.
+- **Re-entry** (at least one member is already joined): a not-yet-joined squadmate (a replacement that
+  spawned after the squad had already pushed off) joins once it's within the formation's own footprint
+  radius (world-coordinate, cross-room — the same test the superseded range-only fix used) of the
+  already-joined block's own anchor reference.
+
+Once joined, a member stays a member — through a border straddle, through any ambiguous-looking live
+position — until explicitly cleared. The only clear path: `intents()` emits `clearSquadJoined` for every
+still-alive member whose `squadJoined === this.name` when the squad dissolves (`draining` unset), so stale
+membership never survives the thing that granted it and leaks into whatever the creep does next. A dead
+member's memory (and thus its flag) is swept automatically by the existing dead-creep memory cleanup — no
+separate clear needed there.
+
+Regression tests: `test/unit/operations/drain.test.ts`'s "Drain.squadState border-straddle stability"
+describe block — a bootstrap-path 2-2-split check (squad array order independence), a genuinely-stateful
+idempotency check (all 4 pre-flagged `squadJoined: "drain:W1N1"`, called repeatedly), a re-entry negative
+case (a straggler outside range is NOT joined), a re-entry positive case (a straggler within range IS
+joined, and `intents()` emits the write with the correct `op`), a dissolution test (`clearSquadJoined`
+fires for every joined member once `draining` unsets, and only those), and a full 30-tick simulation that
+applies `intents()`'s `setSquadJoined`/`clearSquadJoined` writes back onto each creep's memory every tick
+(not just `squadState`'s bootstrap fallback) while driving a real W2N1/W1N1 border crossing end to end —
+confirmed to fail at the exact straddle tick when the persisted-membership read is short-circuited back to
+a from-scratch recompute.
+
 ## Open issues (not yet fixed)
 
 1. **`anchorTile()` can combine mismatched room + local coordinates.** `Drain.anchorTile()`

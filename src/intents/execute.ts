@@ -134,7 +134,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
     case "setSquadJoined": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
-      creep.memory.squadJoined = true;
+      creep.memory.squadJoined = intent.op;
       return OK;
     }
     case "clearSquadJoined": {

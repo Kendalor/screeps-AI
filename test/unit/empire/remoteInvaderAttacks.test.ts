@@ -53,7 +53,27 @@ describe("runRemoteInvaderAttacks", () => {
       colonySnap({
         name: "W1N1",
         energyCapacity: ATTACKER_MIN_COST,
-        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader", hostile: true }))],
+        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader" }))],
+        visibleRooms: [visibleRoom(NEAR_ROOM, undefined, 1, 0)]
+      })
+    );
+
+    runRemoteInvaderAttacks(world);
+
+    expect(attackingOf(Memory, "W1N1")).toEqual([NEAR_ROOM]);
+  });
+
+  // Real bug: a core can spawn in a remote the colony is ALREADY reserving for its own mining — the
+  // core's reservation and the colony's coexist, so ScoutInfo.owner reads as the colony's own username,
+  // not "Invader" (see observeRoom in intents/execute.ts). hostile stays false either way (never true for
+  // our own reservation), so this must still fire.
+  it("attacks a room already reserved by this colony's own remote mining, with a live level-0 core", () => {
+    setUp();
+    const world = testEmpire(
+      colonySnap({
+        name: "W1N1",
+        energyCapacity: ATTACKER_MIN_COST,
+        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "W1N1" }))],
         visibleRooms: [visibleRoom(NEAR_ROOM, undefined, 1, 0)]
       })
     );
@@ -104,7 +124,7 @@ describe("runRemoteInvaderAttacks", () => {
       colonySnap({
         name: "W1N1",
         energyCapacity: ATTACKER_MIN_COST,
-        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader", hostile: true }))],
+        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader" }))],
         visibleRooms: [visibleRoom(NEAR_ROOM, undefined, 1, 3)]
       })
     );
@@ -120,7 +140,7 @@ describe("runRemoteInvaderAttacks", () => {
       colonySnap({
         name: "W1N1",
         energyCapacity: ATTACKER_MIN_COST,
-        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader", hostile: true }))],
+        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader" }))],
         visibleRooms: [] // never seen this tick
       })
     );
@@ -136,7 +156,7 @@ describe("runRemoteInvaderAttacks", () => {
       colonySnap({
         name: "W1N1",
         energyCapacity: ATTACKER_MIN_COST,
-        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader", hostile: true }))],
+        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader" }))],
         visibleRooms: [visibleRoom(NEAR_ROOM, undefined, 0)] // cleared, no invaderCoreLevel
       })
     );
@@ -152,7 +172,7 @@ describe("runRemoteInvaderAttacks", () => {
       colonySnap({
         name: "W1N1",
         energyCapacity: ATTACKER_MIN_COST,
-        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader", hostile: true }))],
+        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader" }))],
         visibleRooms: [visibleRoom(NEAR_ROOM, undefined, 1, 0)],
         attacking: [NEAR_ROOM]
       })
@@ -170,7 +190,7 @@ describe("runRemoteInvaderAttacks", () => {
       colonySnap({
         name: "W1N1",
         energyCapacity: ATTACKER_MIN_COST - 1,
-        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader", hostile: true }))],
+        scoutTargets: [scoutTarget(NEAR_ROOM, scouted({ owner: "Invader" }))],
         visibleRooms: [visibleRoom(NEAR_ROOM, undefined, 1, 0)]
       })
     );

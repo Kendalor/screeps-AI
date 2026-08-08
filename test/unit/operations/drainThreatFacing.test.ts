@@ -12,10 +12,18 @@
 // any 2x2 shape) rather than pre-formed — the only way to observe threatFacing's OWN output rather than
 // whatever facing the fixture happened to hard-code the squad into.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Drain } from "../../../src/operations/drain";
 import { planSquadMove } from "../../../src/lib/squad";
+import { clearSquadMatrixCache } from "../../../src/lib/squadCostMatrix";
+import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
 import { colonySnap, hostileAt, snapCreep } from "../../fixtures";
+
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
 
 const drain = new Drain("W1N1");
 const ROOM = "W2N1";
@@ -69,7 +77,7 @@ function runDrain(
     if (!state) throw new Error(`no squad state at tick ${tick}`);
     log.push({ tick, facing: state.facing, anchor: state.anchor });
     const goal = drain.goalTile(snap, state.members, "W1N5");
-    const intents = planSquadMove(state, goal, r => snap.drainRoomTerrain[r]);
+    const intents = planSquadMove(state, goal, r => snap.drainRoomTerrain[r], tick);
     const byId = new Map(intents.map(i => [i.creep, i.to]));
     members = members.map(m => {
       const to = byId.get(m.id);

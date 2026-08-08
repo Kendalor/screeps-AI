@@ -43,14 +43,16 @@ export type Intent =
   // (or the staging room center pre-assembly). Room-membership rallying let two stragglers converging on
   // each other's CURRENT room chase each other across a border forever; a real tile fixes that.
   | { kind: "setDrainRallyPos"; creep: Id<Creep>; pos: XY & { room: string } }
-  // Stateful squad membership (see CreepMemory.squadJoined): a creep joins a squad once — when it first
-  // comes within the formation's own footprint of the squad's anchor — and STAYS joined (skipping its own
-  // step table, driven by runSquads instead) until explicitly cleared, rather than membership being
-  // re-derived from live position fresh every tick. Fixes a border-crossing flicker: a formation legitimately
-  // straddles two rooms for a tile or two mid-crossing, and any purely-positional membership test can (and,
-  // confirmed live, did) flip a straddling member in and out of the plan tick to tick even though nothing
-  // about whether it belongs actually changed.
-  | { kind: "setSquadJoined"; creep: Id<Creep> }
+  // Stateful squad membership (see CreepMemory.squadJoined): a creep joins ONE NAMED squad (`op`, the same
+  // opName stamp as CreepMemory.op — e.g. "drain:W1N1") once — when it first comes within the formation's
+  // own footprint of that squad's anchor — and STAYS joined (skipping its own step table, driven by
+  // runSquads instead) until explicitly cleared, rather than membership being re-derived from live position
+  // fresh every tick. `op` disambiguates WHICH squad: a bare joined/not-joined flag would be meaningless
+  // once more than one squad-bearing operation exists. Fixes a border-crossing flicker: a formation
+  // legitimately straddles two rooms for a tile or two mid-crossing, and any purely-positional membership
+  // test can (and, confirmed live, did) flip a straddling member in and out of the plan tick to tick even
+  // though nothing about whether it belongs actually changed.
+  | { kind: "setSquadJoined"; creep: Id<Creep>; op: string }
   | { kind: "clearSquadJoined"; creep: Id<Creep> }
   // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
   // execute.ts owns the memory write" split as setCreepRole above).

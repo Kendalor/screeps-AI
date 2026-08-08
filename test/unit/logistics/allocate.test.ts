@@ -316,6 +316,38 @@ describe("allocate", () => {
     expect(ids).toEqual(["near"]);
   });
 
+  it("chains the next leg from the stand tile actually reached, not the last stop's own position", () => {
+    // Two walled 3x3 pockets, each with a single-tile gap: "second"'s gap faces away from "first"
+    // (south), "first"'s gap faces toward second's pocket (west). "first" is visited first (its gap
+    // sits right off the approach corridor). The tile a creep actually stands on to deliver to "first"
+    // (at its gap, range 1) is one tile closer to "second"'s gap than first's own raw (x, y) is: 3 tiles
+    // (MAX_CHAIN_HOP) from the real stand tile, but 4 from first's own position. The pre-fix code priced
+    // the next hop from the consumer's own position and would wrongly cut the chain there; pricing it
+    // from the real stand tile keeps "second" within the cap.
+    const terrain = openTerrain();
+    const setWall = (x: number, y: number) => (terrain[x * 50 + y] = 0);
+    for (let x = 8; x <= 10; x++) {
+      for (let y = 8; y <= 10; y++) {
+        if ((x === 8 || x === 10 || y === 8 || y === 10) && !(x === 9 && y === 10)) setWall(x, y);
+      }
+    }
+    for (let x = 12; x <= 14; x++) {
+      for (let y = 8; y <= 10; y++) {
+        if ((x === 12 || x === 14 || y === 8 || y === 10) && !(x === 12 && y === 9)) setWall(x, y);
+      }
+    }
+    const costMatrix = buildCostMatrix({ terrain, structures: [] });
+
+    const creep = idleHauler({ storeEnergy: 150, storeCapacity: 200, x: 9, y: 0 });
+    const sinks = [consumer("second", 50, 100, { x: 9, y: 9 }), consumer("first", 50, 100, { x: 13, y: 9 })];
+    const result = allocate([provider("src", 1000)], sinks, [creep], emptyReserved(), null, costMatrix);
+
+    const task = result[creep.id];
+    const ids: string[] = [];
+    for (let leg = task; leg; leg = leg.next) if (leg.kind === "deliver") ids.push((leg.to as { id: string }).id);
+    expect(ids).toEqual(["first", "second"]);
+  });
+
   it("still reaches a single far consumer as the FIRST stop — the cap only limits hops between chained stops", () => {
     // No nearby sink at all: the sole consumer is bunker-scale far from the creep's own position. That
     // first hop must never be capped, or a creep with only one distant sink to serve would get nothing.

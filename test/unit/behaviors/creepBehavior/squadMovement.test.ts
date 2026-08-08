@@ -5,9 +5,12 @@
 // state, recompute-every-tick" rule (ADR 0006) — rather than a test-supplied fixed anchor, so a moving-goal
 // scenario doesn't fight against a stale anchor the way squadFormation.test.ts's fixed-anchor tests would.
 
-import { describe, expect, it } from "vitest";
-import type { Formation } from "../../../../src/lib/formation";
+import { beforeEach, describe, expect, it } from "vitest";
+import { inFormation } from "../../../../src/lib/squad";
+import { slotTiles, type Formation } from "../../../../src/lib/formation";
 import { range, type XY } from "../../../../src/lib/geometry";
+import { clearSquadMatrixCache } from "../../../../src/lib/squadCostMatrix";
+import { clearTiles, stubPathFinderSingleRoom } from "../../../constants";
 import { openRooms, SquadWorld } from "./squadWorld";
 
 const BLOCK_2X2: Formation = [
@@ -19,17 +22,31 @@ const BLOCK_2X2: Formation = [
 
 const ROOM = "W2N1";
 
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
+
 /** The full per-tick plan SquadWorld.run() needs: the live anchor slot's tile (the attacker's own position
  * when alive — mirrors Drain.anchorTile's attacker-is-the-anchor-slot rule — else the first surviving
- * member's tile), an axis-aligned facing toward the goal (mirrors Drain's drainFacing collapsing the 8
- * travel directions onto the 4 the strict 2x2 needs), and the goal itself passed straight through. */
+ * member's tile), and a facing. Facing prefers whichever axis-aligned orientation the LIVE block already
+ * sits tight at (mirrors operations/drain.ts's currentFacing — same fix as bug #6 in the handoff and
+ * squadBorderCrossing.test.ts's liveFacingToward), falling back to the goal direction only when the block
+ * isn't currently tight at any of them. Without this, a diagonal PathFinder route (Chebyshev-shortest, no
+ * bias toward straight travel — real PathFinder behavior, not a stub artifact) drifts the anchor's x/y
+ * off-axis from a purely-north/south/east/west goal, flipping the naive goal-direction facing every tick
+ * and mirroring the formation back and forth instead of ever holding one orientation. */
 function livePlan(world: SquadWorld, goal: XY & { room: string }): { anchor: XY & { room: string }; facing: DirectionConstant; goal: XY & { room: string } } {
   const attacker = world.members.find(m => m.role === "drainAttacker");
   const ref = attacker ?? world.members[0];
   const anchor = { x: ref.x, y: ref.y, room: ref.room };
   const dx = goal.x - anchor.x;
   const dy = goal.y - anchor.y;
-  const facing: DirectionConstant = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? RIGHT : LEFT) : dy > 0 ? BOTTOM : TOP;
+  const goalFacing: DirectionConstant = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? RIGHT : LEFT) : dy > 0 ? BOTTOM : TOP;
+  const axisFacings: DirectionConstant[] = [TOP, RIGHT, BOTTOM, LEFT];
+  const state = world.state(anchor, goalFacing);
+  const facing = axisFacings.find(f => inFormation(state.members, slotTiles(anchor, f, world.formation))) ?? goalFacing;
   return { anchor, facing, goal };
 }
 

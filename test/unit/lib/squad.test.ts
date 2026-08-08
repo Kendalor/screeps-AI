@@ -3,10 +3,12 @@
 // per-member move intents out — no Game, no Colony. planSquadActions' generic signature is exercised
 // here with a trivial planner; Drain's real content is tested in the drain suite.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { planSquadActions, planSquadMove, reformAssignment, threatFacing, type SquadState, type Threat } from "../../../src/lib/squad";
 import type { Formation } from "../../../src/lib/formation";
 import { range } from "../../../src/lib/geometry";
+import { clearSquadMatrixCache } from "../../../src/lib/squadCostMatrix";
+import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
 import { colonySnap, snapCreep } from "../../fixtures";
 
 const BLOCK_2X2: Formation = [
@@ -46,6 +48,12 @@ function drainSquad(over: {
   });
   return { members, formation: BLOCK_2X2, anchor: { x: 25, y: 25, room }, facing };
 }
+
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
 
 describe("reformAssignment", () => {
   it("assigns each member to the nearest available destination tile, one-to-one", () => {
@@ -172,7 +180,7 @@ describe("planSquadMove", () => {
     // move intent, and each intent is within range 1 of the member's current tile (a single step) — the
     // whole formation advances together, never one member racing ahead.
     const state = drainSquad();
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain);
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     expect(intents).toHaveLength(4);
     for (const member of state.members) {
       const intent = intents.find(i => i.creep === member.id);
@@ -187,7 +195,7 @@ describe("planSquadMove", () => {
     // behind while unfatigued squadmates still slid forward, reintroducing per-member drift under a
     // different mechanism than the independent-Traveler convergence ADR 0007 replaced.
     const state = drainSquad({ fatigue: [0, 0, 3, 0] });
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain);
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     expect(intents).toHaveLength(4);
     for (const member of state.members) {
       const intent = intents.find(i => i.creep === member.id);
@@ -198,7 +206,7 @@ describe("planSquadMove", () => {
 
   it("advances normally once every member's fatigue clears", () => {
     const state = drainSquad({ fatigue: [0, 0, 0, 0] });
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain);
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     // At least one member actually moves toward the goal (y decreases) — confirms fatigue:0 doesn't
     // spuriously hold the squad the way the fatigued case above does.
     const advanced = intents.some(i => {
@@ -210,7 +218,7 @@ describe("planSquadMove", () => {
 
   it("keeps the destination tiles a valid mutual-range-1 block (the whole squad stays welded)", () => {
     const state = drainSquad();
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain);
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     const dests = intents.map(i => i.to);
     for (let i = 0; i < dests.length; i++) {
       for (let j = 0; j < dests.length; j++) {
@@ -232,7 +240,7 @@ describe("planSquadMove", () => {
         { x: 40, y: 40 } // straggler, far out of formation
       ]
     });
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain);
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     const anchorIntent = intents.find(i => i.creep === state.members[0].id);
     // Anchor holds at its own slot tile — it does not step toward the goal while the block is broken.
     expect(anchorIntent!.to).toEqual({ x: 25, y: 25, room: "W2N1" });
@@ -261,7 +269,7 @@ describe("planSquadMove", () => {
       anchor: { x: 25, y: 25, room: "W2N1" },
       facing: TOP
     };
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain);
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     expect(intents).toHaveLength(3); // only the 3 survivors get intents; the vacant slot needs nobody
     for (const member of state.members) {
       const intent = intents.find(i => i.creep === member.id);
@@ -278,7 +286,7 @@ describe("planSquadMove", () => {
     wallTerrain[26 * 50 + 24] = 0; // and its neighbour, so the straight-ahead block truly can't fit
     const src = (room: string) => (room === "W2N1" ? wallTerrain : undefined);
     const state = drainSquad();
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src);
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src, 0);
     for (const i of intents) {
       expect(wallTerrain[i.to.x * 50 + i.to.y]).not.toBe(0);
     }
@@ -312,7 +320,7 @@ describe("planSquadMove", () => {
         { x: 16, y: 16 } // this tile is NOT open in the staircase — the block was never actually tight
       ]
     });
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src);
+    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src, 0);
     expect(intents).toHaveLength(4);
     // Every member is steered toward the fitting pocket, not held at the unfittable staircase position —
     // each intent should move at least one member closer to the pocket (30-32,30-32) than its current tile.
@@ -365,7 +373,7 @@ describe("planSquadMove", () => {
     const [, healerA, healerB, straggler] = members;
     const state: SquadState = { members, formation: BLOCK_2X2, anchor, facing: TOP };
 
-    const intents = planSquadMove(state, anchor, terrain); // goal === anchor: isolate reform from advance
+    const intents = planSquadMove(state, anchor, terrain, 0); // goal === anchor: isolate reform from advance
     const healerAIntent = intents.find(i => i.creep === healerA.id)!;
     const healerBIntent = intents.find(i => i.creep === healerB.id)!;
     const stragglerIntent = intents.find(i => i.creep === straggler.id)!;

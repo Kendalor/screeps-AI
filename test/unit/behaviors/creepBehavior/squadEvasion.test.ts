@@ -7,10 +7,12 @@
 // production contract: every bystander tile reads as occupied, but the squad's OWN member tiles are always
 // excluded so a formation never reads itself as blocking its own current slots.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Formation } from "../../../../src/lib/formation";
 import { range } from "../../../../src/lib/geometry";
 import type { TerrainSource } from "../../../../src/lib/squadPath";
+import { clearSquadMatrixCache } from "../../../../src/lib/squadCostMatrix";
+import { clearTiles, stubPathFinderSingleRoom } from "../../../constants";
 import { openRooms, SquadWorld } from "./squadWorld";
 
 const BLOCK_2X2: Formation = [
@@ -21,6 +23,12 @@ const BLOCK_2X2: Formation = [
 ];
 
 const ROOM = "W2N1";
+
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
 
 function tightSquad(world: SquadWorld, anchor: { x: number; y: number; room: string }) {
   const off = [
