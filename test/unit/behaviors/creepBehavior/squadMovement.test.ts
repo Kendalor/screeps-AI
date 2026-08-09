@@ -1,13 +1,17 @@
 // Squad movement: does a tight formation actually advance toward a goal, stay welded while doing so, obey
 // fatigue gating, and follow a MOVING goal (a flag being walked toward, or dragged) rather than only ever
-// converging on one fixed point? Anchor/facing are recomputed from the squad's OWN live positions every
-// tick via SquadWorld.run()'s plan callback — mirroring operations/drain.ts's squadState() "no persisted
-// state, recompute-every-tick" rule (ADR 0006) — rather than a test-supplied fixed anchor, so a moving-goal
-// scenario doesn't fight against a stale anchor the way squadFormation.test.ts's fixed-anchor tests would.
+// converging on one fixed point? The anchor here is recomputed from the squad's OWN live positions every
+// tick via SquadWorld.run()'s plan callback — a test-harness convenience, NOT what production does anymore:
+// Drain's real squadState() reads a PERSISTED anchor (ColonyMemory.drainAnchor) in steady state, only ever
+// falling back to a live-position derivation at first assembly (see operations/drain.ts's squadState doc).
+// Re-deriving from live positions every tick happens to track the SAME value the persisted anchor would
+// (both mean "where the tight block's anchor slot ended up"), so this shortcut is a faithful enough
+// stand-in for what this test needs — same reasoning squadLockstep.test.ts's advance test documents.
+// There is no facing concept anywhere in this harness or in production anymore — the formation's box never
+// rotates (see lib/formation.ts's module header), so nothing needs to be derived or tracked for it here.
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { inFormation } from "../../../../src/lib/squad";
-import { slotTiles, type Formation } from "../../../../src/lib/formation";
+import type { Formation } from "../../../../src/lib/formation";
 import { range, type XY } from "../../../../src/lib/geometry";
 import { clearSquadMatrixCache } from "../../../../src/lib/squadCostMatrix";
 import { clearTiles, stubPathFinderSingleRoom } from "../../../constants";
@@ -28,26 +32,14 @@ beforeEach(() => {
   stubPathFinderSingleRoom();
 });
 
-/** The full per-tick plan SquadWorld.run() needs: the live anchor slot's tile (the attacker's own position
- * when alive — mirrors Drain.anchorTile's attacker-is-the-anchor-slot rule — else the first surviving
- * member's tile), and a facing. Facing prefers whichever axis-aligned orientation the LIVE block already
- * sits tight at (mirrors operations/drain.ts's currentFacing — same fix as bug #6 in the handoff and
- * squadBorderCrossing.test.ts's liveFacingToward), falling back to the goal direction only when the block
- * isn't currently tight at any of them. Without this, a diagonal PathFinder route (Chebyshev-shortest, no
- * bias toward straight travel — real PathFinder behavior, not a stub artifact) drifts the anchor's x/y
- * off-axis from a purely-north/south/east/west goal, flipping the naive goal-direction facing every tick
- * and mirroring the formation back and forth instead of ever holding one orientation. */
-function livePlan(world: SquadWorld, goal: XY & { room: string }): { anchor: XY & { room: string }; facing: DirectionConstant; goal: XY & { room: string } } {
+/** The full per-tick plan SquadWorld.run() needs: the live anchor slot's tile — the attacker's own position
+ * when alive (mirrors Drain.anchorTile's attacker-is-the-anchor-slot rule), else the first surviving
+ * member's tile. */
+function livePlan(world: SquadWorld, goal: XY & { room: string }): { anchor: XY & { room: string }; goal: XY & { room: string } } {
   const attacker = world.members.find(m => m.role === "drainAttacker");
   const ref = attacker ?? world.members[0];
   const anchor = { x: ref.x, y: ref.y, room: ref.room };
-  const dx = goal.x - anchor.x;
-  const dy = goal.y - anchor.y;
-  const goalFacing: DirectionConstant = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? RIGHT : LEFT) : dy > 0 ? BOTTOM : TOP;
-  const axisFacings: DirectionConstant[] = [TOP, RIGHT, BOTTOM, LEFT];
-  const state = world.state(anchor, goalFacing);
-  const facing = axisFacings.find(f => inFormation(state.members, slotTiles(anchor, f, world.formation))) ?? goalFacing;
-  return { anchor, facing, goal };
+  return { anchor, goal };
 }
 
 function tightSquad(world: SquadWorld, room = ROOM) {

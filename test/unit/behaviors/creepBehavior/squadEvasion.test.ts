@@ -57,7 +57,7 @@ describe("Squad evasion: terrain and live-creep obstacles", () => {
 
     const log = world.run(60, w => {
       const attacker = w.members.find(m => m.role === "drainAttacker")!;
-      return { anchor: { x: attacker.x, y: attacker.y, room: attacker.room }, facing: TOP, goal };
+      return { anchor: { x: attacker.x, y: attacker.y, room: attacker.room }, goal };
     });
 
     for (const entry of log) {
@@ -77,14 +77,14 @@ describe("Squad evasion: terrain and live-creep obstacles", () => {
     const world = new SquadWorld(BLOCK_2X2, openRooms(ROOM));
     tightSquad(world, { x: 25, y: 25, room: ROOM });
     const goal = { x: 25, y: 5, room: ROOM };
-    // Squarely in the middle of the straight-line path, wide enough to actually block the 2x2 footprint at
-    // every axis-aligned facing if the squad tried to walk straight through it.
+    // Squarely in the middle of the straight-line path, wide enough to actually block the 2x2 footprint if
+    // the squad tried to walk straight through it.
     world.addBystander({ id: "frozenDefender", x: 25, y: 15, room: ROOM });
     world.addBystander({ id: "frozenDefender2", x: 26, y: 15, room: ROOM });
 
     const log = world.run(60, w => {
       const attacker = w.members.find(m => m.role === "drainAttacker")!;
-      return { anchor: { x: attacker.x, y: attacker.y, room: attacker.room }, facing: TOP, goal };
+      return { anchor: { x: attacker.x, y: attacker.y, room: attacker.room }, goal };
     });
 
     // No member ever occupies the bystanders' own tiles.
@@ -108,7 +108,7 @@ describe("Squad evasion: terrain and live-creep obstacles", () => {
 
     const log = world.run(60, w => {
       const attacker = w.members.find(m => m.role === "drainAttacker")!;
-      return { anchor: { x: attacker.x, y: attacker.y, room: attacker.room }, facing: TOP, goal };
+      return { anchor: { x: attacker.x, y: attacker.y, room: attacker.room }, goal };
     });
 
     for (const entry of log) {
@@ -129,7 +129,7 @@ describe("Squad evasion: terrain and live-creep obstacles", () => {
     tightSquad(world, { x: 25, y: 25, room: ROOM });
     // Goal == anchor (no advance incentive) — isolates whether the squad holds tight vs. spuriously flees.
     const anchor = { x: 25, y: 25, room: ROOM };
-    const entry = world.step(anchor, TOP, anchor);
+    const entry = world.step(anchor, anchor);
     expect(entry.tight, `squad treated its own tiles as occupied and broke formation:\n${world.describeLog()}`).toBe(true);
     // And it genuinely held at its own current slots rather than fleeing to some other fitting tile.
     const anchorMember = entry.positions.find(p => p.role === "drainAttacker")!;
@@ -154,7 +154,7 @@ describe("Squad evasion: terrain and live-creep obstacles", () => {
 
     const log = world.run(80, w => {
       const attacker = w.members.find(m => m.role === "drainAttacker")!;
-      return { anchor: { x: attacker.x, y: attacker.y, room: attacker.room }, facing: TOP, goal };
+      return { anchor: { x: attacker.x, y: attacker.y, room: attacker.room }, goal };
     });
 
     for (const entry of log) {

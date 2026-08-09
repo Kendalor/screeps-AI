@@ -1,5 +1,8 @@
-// The creep behaviour runner. Acts directly rather than returning intents, since travelTo keeps
-// internal path state. Empire-scoped because it iterates Game.creeps directly, not a snapshot.
+// The creep behaviour runner. Acts directly rather than returning intents for most work, since travelTo
+// keeps internal path state — EXCEPT the squad anchor write-back (runSquads), a plain Memory decision with
+// no such internal state, which goes through the same Intent/execute.ts pipeline every other operation
+// decision uses (see SquadBearingOperation.setSquadAnchor's doc) rather than a bespoke direct write.
+// Empire-scoped because it iterates Game.creeps directly, not a snapshot.
 
 import {
   canCoFire,
@@ -17,9 +20,10 @@ import { sweepEnRoute } from "../behaviors/sweep";
 import { parkNearBunker, runTransport } from "../behaviors/transport";
 import type { Step } from "../behaviors/types";
 import type { Colony } from "../colony";
-import { rotateFormation, slotTiles } from "../lib/formation";
-import { inFormation, planSquadActions, planSquadMove, type ActionIntent, type SquadState } from "../lib/squad";
+import { slotTiles } from "../lib/formation";
+import { inFormation, planSquadActions, planSquadMove, type ActionIntent, type SquadMovePlan, type SquadState } from "../lib/squad";
 import { nearestFittingAnchor, NO_OCCUPANCY, type OccupancySource, type TerrainSource } from "../lib/squadPath";
+import type { Intent } from "../intents/types";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import type { ColonySnapshot } from "../snapshot/types";
@@ -37,6 +41,23 @@ interface SquadBearingOperation {
   // OccupancySource consumer already assumes for a room with no entry.
   occupancy?(colony: ColonySnapshot): OccupancySource;
   actionPlanner: (state: SquadState, colony: ColonySnapshot) => Map<Id<Creep>, ActionIntent>;
+  // Optional: a squad type that wants a placement PREFERENCE the generic planSquadMove deliberately knows
+  // nothing about (e.g. Drain's attacker-faces-threat — operations/drain.ts's attackerBiasedMove) supplies
+  // its own wrapper here. Omitted entirely by a squad type with no such preference (e.g. Parade) — runSquads
+  // falls back to calling the generic planSquadMove directly.
+  planMove?(
+    state: SquadState,
+    goal: { x: number; y: number; room: string },
+    colony: ColonySnapshot,
+    terrain: TerrainSource,
+    now: number,
+    occupancy: OccupancySource
+  ): SquadMovePlan;
+  // The persisted-anchor write side (see ColonyMemory.drainAnchor/paradeAnchor's doc): called by runSquads
+  // whenever this tick's plan.anchor differs from the SquadState it was computed from, returning the
+  // Intent(s) that persist the change. Every squad-bearing operation must supply this — the anchor is
+  // always a persisted value once a squad exists, never optional the way planMove's placement bias is.
+  setSquadAnchor(colony: ColonySnapshot, anchor: { x: number; y: number; room: string }): Intent[];
 }
 
 function isSquadBearing(op: unknown): op is SquadBearingOperation {
@@ -53,6 +74,8 @@ interface ResolvedSquad {
   occupancy: OccupancySource;
   colony: ColonySnapshot;
   actionPlanner: (state: SquadState, colony: ColonySnapshot) => Map<Id<Creep>, ActionIntent>;
+  planMove?: SquadBearingOperation["planMove"];
+  setSquadAnchor: SquadBearingOperation["setSquadAnchor"];
 }
 
 // Resolve every colony's squad-bearing operations into ready-to-run squads, and collect every squad
@@ -69,14 +92,26 @@ function resolveSquads(colonies: readonly Colony[]): { squads: ResolvedSquad[]; 
       const goal = op.squadGoal(colony.snapshot);
       if (!goal) continue;
       const occupancy = op.occupancy ? op.occupancy(colony.snapshot) : NO_OCCUPANCY;
-      squads.push({ state, goal, terrain: op.terrain(colony.snapshot), occupancy, colony: colony.snapshot, actionPlanner: op.actionPlanner });
+      squads.push({
+        state,
+        goal,
+        terrain: op.terrain(colony.snapshot),
+        occupancy,
+        colony: colony.snapshot,
+        actionPlanner: op.actionPlanner,
+        planMove: op.planMove?.bind(op),
+        setSquadAnchor: op.setSquadAnchor.bind(op)
+      });
       for (const m of state.members) members.add(m.id);
     }
   }
   return { squads, members };
 }
 
-export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: readonly Colony[] = []): void {
+// Returns the squad anchor write-back intents (see SquadBearingOperation.setSquadAnchor's doc) — the ONE
+// piece of this function's work that goes through the Intent/execute.ts pipeline; everything else
+// (movement, actions) acts directly on Game objects, per the module header.
+export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: readonly Colony[] = []): Intent[] {
   // Compute squad membership once, up front — the single source of truth shared between the per-creep
   // skip below and the runSquads pass, so a squadded creep is never run by both or neither (ADR 0007).
   const { squads, members: squadMembers } = resolveSquads(colonies);
@@ -110,7 +145,7 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
     runOne(creep);
   }
 
-  runSquads(squads);
+  return runSquads(squads);
 }, "creeps:runCreepBehaviors");
 
 // The squad pass (ADR 0007): iterate SQUADS (not creeps), compute each squad's shared plan once, and
@@ -119,33 +154,45 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
 // distinction, no shared per-tick resource to contend over (the whole reason the step table's standStill
 // referee is gone). Thin and Game-coupled by design (left untested directly — ADR 0007): it only
 // translates already-computed assignments into real move/heal/attack calls.
-function runSquads(squads: readonly ResolvedSquad[]): void {
+//
+// planSquadMove now returns a SquadMovePlan, not just a move list — its `anchor` field is the squad's
+// PERSISTED anchor value (see SquadState's doc, lib/squad.ts) after this tick's plan, which may differ from
+// `squad.state.anchor` (advanced by a tight-advance step, or corrected by a reform retarget). Persisting
+// that change is the owning operation's job (setSquadAnchor, see SquadBearingOperation) — this module
+// doesn't write Memory directly for anything else, so the anchor write goes through the same
+// Intent/execute.ts pipeline every other per-tick operation decision already uses.
+function runSquads(squads: readonly ResolvedSquad[]): Intent[] {
+  const out: Intent[] = [];
   for (const squad of squads) {
-    const moves = planSquadMove(squad.state, squad.goal, squad.terrain, Game.time, squad.occupancy);
+    const plan = squad.planMove
+      ? squad.planMove(squad.state, squad.goal, squad.colony, squad.terrain, Game.time, squad.occupancy)
+      : planSquadMove(squad.state, squad.goal, squad.terrain, Game.time, squad.occupancy);
     const actions = planSquadActions(squad.state, squad.colony, squad.actionPlanner);
-    logSquadDecision(squad, moves);
-    for (const move of moves) {
+    logSquadDecision(squad, plan.moves);
+    for (const move of plan.moves) {
       const creep = Game.getObjectById(move.creep);
       if (!creep) continue;
       runSquadMember(creep, move.to, actions.get(move.creep));
     }
+    const a = plan.anchor;
+    if (a.x !== squad.state.anchor.x || a.y !== squad.state.anchor.y || a.room !== squad.state.anchor.room) {
+      out.push(...squad.setSquadAnchor(squad.colony, a));
+    }
   }
+  return out;
 }
 
 // Traces planSquadMove's branch (tight-advance vs. reform, and WHERE it's reforming to) plus the actual
 // per-member move intents dispatched this tick — everything needed to see why a squad is or isn't
 // converging without re-deriving planSquadMove's own logic by hand off a raw position dump. Re-runs the
-// same cheap predicates planSquadMove itself used (inFormation, nearestFittingAnchor) purely for the log
-// line; never influences the plan, which was already computed above.
+// same cheap predicate planSquadMove itself used (inFormation) purely for the log line; never influences
+// the plan, which was already computed above.
 function logSquadDecision(squad: ResolvedSquad, moves: readonly { creep: Id<Creep>; to: { x: number; y: number; room: string } }[]): void {
-  const currentSlots = slotTiles(squad.state.anchor, squad.state.facing, squad.state.formation);
+  const currentSlots = slotTiles(squad.state.anchor, squad.state.formation);
   const tight = inFormation(squad.state.members, currentSlots);
   let branch: string;
   if (!tight) {
-    // Rotated to squad.state.facing before the fit-check — see squad.ts's planSquadMove for why the raw
-    // canonical-TOP formation would silently check the wrong footprint shape at any other facing.
-    const facingFormation = rotateFormation(squad.state.formation, squad.state.facing);
-    const fit = nearestFittingAnchor(squad.state.anchor, facingFormation, squad.terrain, squad.occupancy, Game.time);
+    const fit = nearestFittingAnchor(squad.state.anchor, squad.state.formation, squad.terrain, squad.occupancy, Game.time);
     const currentFits = fit && fit.x === squad.state.anchor.x && fit.y === squad.state.anchor.y && fit.room === squad.state.anchor.room;
     branch = currentFits
       ? "reform@current"
@@ -158,7 +205,7 @@ function logSquadDecision(squad: ResolvedSquad, moves: readonly { creep: Id<Cree
   log.debugRoom(
     squad.colony.name,
     `runSquads: anchor=(${squad.state.anchor.x},${squad.state.anchor.y},${squad.state.anchor.room}) ` +
-      `facing=${squad.state.facing} goal=(${squad.goal.x},${squad.goal.y},${squad.goal.room}) tight=${tight} branch=${branch} ` +
+      `goal=(${squad.goal.x},${squad.goal.y},${squad.goal.room}) tight=${tight} branch=${branch} ` +
       `moves=[${moves
         .map(m => {
           const creep = Game.getObjectById(m.creep);

@@ -14,10 +14,21 @@
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import { incomingHeal, towerDamageAt, type HealSource } from "../lib/combat";
-import { slotTiles, type Formation } from "../lib/formation";
+import { assertSquareTopLeftAnchor, slotTiles, type Formation } from "../lib/formation";
 import { range, worldOf, type XY } from "../lib/geometry";
 import { log } from "../lib/log";
-import { inFormation, mostUrgentThreat, type ActionIntent, type SquadActionPlanner, type SquadState, type Threat } from "../lib/squad";
+import {
+  inFormation,
+  mostUrgentThreat,
+  planSquadMove,
+  reformAssignment,
+  reformOnto,
+  type ActionIntent,
+  type SquadActionPlanner,
+  type SquadMovePlan,
+  type SquadState,
+  type Threat
+} from "../lib/squad";
 import type { OccupancySource, TerrainSource } from "../lib/squadPath";
 import type { ColonySnapshot, SnapCreep, SnapTower } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
@@ -28,16 +39,21 @@ const DRAIN_HEALER_COUNT = 3;
 const DRAIN_SQUAD_SIZE = 1 + DRAIN_HEALER_COUNT;
 
 // Drain's formation as data (ADR 0007): the attacker is the anchor slot at (0,0), the three healers fill
-// the other three tiles of a strict 2x2 block trailing right/down of the anchor at the canonical TOP
-// facing. A strict 2x2 requires mutual range-1 (heal-assist reach), which only holds at the 4 axis-aligned
-// facings — Drain's own facing-selection (drainFacing below) collapses the 8 travel directions onto those
-// 4, keeping that constraint in Drain's content rather than in the generic rotation math.
+// the other three tiles of a fixed 2x2 block trailing right/down of the anchor. The box's tile-set never
+// rotates (formation.ts's module header) — every member is within range 1 of every other at all times by
+// construction, regardless of which live creep occupies which tile. WHICH creep (attacker vs. which healer)
+// ends up on which of the 4 fixed tiles is a placement preference Drain resolves itself (see
+// Drain.planMove below) — the generic squad layer has no notion of it at all.
 export const DRAIN_FORMATION: Formation = [
   { dx: 0, dy: 0, role: "drainAttacker" },
   { dx: 1, dy: 0, role: "drainHealer" },
   { dx: 0, dy: 1, role: "drainHealer" },
   { dx: 1, dy: 1, role: "drainHealer" }
 ];
+// Fails loudly at module load if DRAIN_FORMATION ever stops satisfying the square/top-left-anchor
+// constraint squad pathing requires (see formation.ts's assertSquareTopLeftAnchor) — a violation should
+// surface immediately, not get buried inside a pathfinder result a tick later.
+assertSquareTopLeftAnchor(DRAIN_FORMATION);
 
 /** The first room along `route` (home -> target, see ColonySnapshot.drainRoute) where ScoutInfo.hostile
  * is false — an unscouted room defaults to `hostile: false` at the snapshot boundary already, so this
@@ -48,31 +64,17 @@ export function pickStagingRoom(route: readonly { room: string; hostile: boolean
   return route.find(r => !r.hostile)?.room;
 }
 
-/** The axis-aligned facing (TOP/RIGHT/BOTTOM/LEFT) nearest the travel direction from `from` toward `to`.
- * A strict 2x2 only has these 4 valid orientations (its diagonals splay the block past range 1 — see
- * DRAIN_FORMATION), so Drain collapses the compass onto them here rather than the generic slotTiles doing
- * so. Ties (a perfect diagonal) resolve toward the dominant-or-vertical axis, deterministically. */
-function drainFacing(from: XY, to: XY): DirectionConstant {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? RIGHT : LEFT;
-  if (Math.abs(dy) > 0) return dy > 0 ? BOTTOM : TOP;
-  return TOP; // no movement — hold the canonical facing
-}
-
-const AXIS_FACINGS: DirectionConstant[] = [TOP, RIGHT, BOTTOM, LEFT];
-
 // A melee hostile's engage range (adjacent) vs. a ranged one's (RANGED_ATTACK's max range) — a mixed body
 // (both part types) is classified melee since that's the tighter, more urgent range: it can still land a
 // melee hit the instant it's adjacent regardless of also carrying RANGED_ATTACK parts.
 const MELEE_ENGAGE_RANGE = 1;
 const RANGED_ENGAGE_RANGE = 3;
 
-/** The visible hostile creeps and towers in `room` as generic Threat entries for threatFacing/
- * mostUrgentThreat (lib/squad.ts) — the target-room composition data ColonySnapshot.hostileRoomUnits
- * closes the gap for (see its doc: `hostiles` alone is home-room-only, useless for a squad fighting away
- * from home). An unarmed hostile (no ATTACK/RANGED_ATTACK parts — e.g. a harmless scout) is excluded: it's
- * not a threat the formation needs to orient toward. */
+/** The visible hostile creeps and towers in `room` as generic Threat entries for mostUrgentThreat
+ * (lib/squad.ts) — the target-room composition data ColonySnapshot.hostileRoomUnits closes the gap for
+ * (see its doc: `hostiles` alone is home-room-only, useless for a squad fighting away from home). An
+ * unarmed hostile (no ATTACK/RANGED_ATTACK parts — e.g. a harmless scout) is excluded: it's not a threat
+ * the formation needs to orient toward. */
 function threatsIn(colony: ColonySnapshot, room: string): Threat[] {
   const units = colony.hostileRoomUnits[room] ?? [];
   const towers = colony.hostileRoomTowers[room] ?? [];
@@ -81,27 +83,6 @@ function threatsIn(colony: ColonySnapshot, room: string): Threat[] {
     .map(u => ({ x: u.x, y: u.y, engageRange: u.attackParts > 0 ? MELEE_ENGAGE_RANGE : RANGED_ENGAGE_RANGE }));
   const towerThreats: Threat[] = towers.map(t => ({ x: t.x, y: t.y, engageRange: Infinity }));
   return [...unitThreats, ...towerThreats];
-}
-
-/** The facing the squad's LIVE positions already sit tight at, if any — checked BEFORE trusting the
- * goal-directed drainFacing. Without this, squadState() recomputed facing fresh every tick purely from
- * travel direction, with no regard for what facing the squad's actual current shape corresponds to: a
- * squad that settled into a tight TOP-facing block (e.g. after a reform driven by whatever positions
- * stragglers happened to converge from) but whose goal now lies roughly west would be stamped facing=LEFT
- * every tick regardless — inFormation() (checked against that STATED facing) then reports "not tight"
- * forever, since the block's real shape is TOP's, not LEFT's, even though it never moves and IS tight.
- * Confirmed live: a squad stuck reporting reform@nearestFit onto its own already-occupied tiles, tick after
- * tick, because the stated facing didn't match reality. Trying the 4 axis-aligned facings (the only ones
- * DRAIN_FORMATION's strict 2x2 needs — see drainFacing) against the LIVE anchor is enough: if one fits, the
- * squad reports that as `facing` so inFormation can actually recognize it, and findSquadPath's own
- * reform-edge search is what plans the (stationary) turn toward the goal-directed facing afterward — that
- * mechanism already exists, it just never got a chance to run while squadState kept overwriting "current"
- * with "desired" outright. */
-function currentFacing(anchor: XY & { room: string }, members: readonly SnapCreep[], formation: Formation): DirectionConstant | undefined {
-  for (const facing of AXIS_FACINGS) {
-    if (inFormation(members, slotTiles(anchor, facing, formation))) return facing;
-  }
-  return undefined;
 }
 
 /** Projected tower damage against the squad's current heal output, at candidate anchor position `nextPos`
@@ -210,19 +191,17 @@ export class Drain extends Operation {
    * attacker's position in W5N3. No default fallback is fabricated here either: an empty squad is the
    * caller's problem to guard against (squadState already returns undefined before reaching this), not a
    * harmless {25,25} default that could paper over a real bug elsewhere. */
-  private anchorTile(attacker: SnapCreep | undefined, healers: readonly SnapCreep[], facing: DirectionConstant): XY & { room: string } {
+  private anchorTile(attacker: SnapCreep | undefined, healers: readonly SnapCreep[]): XY & { room: string } {
     if (attacker) return { x: attacker.x, y: attacker.y, room: attacker.room };
     // Attacker slot vacant: place the anchor so the first healer (deterministic) sits on its own slot tile.
-    // Healer slots at the canonical facing are (1,0),(0,1),(1,1); the anchor is that healer's tile minus
-    // its rotated offset. We use the first healer and the first healer slot for a stable reference.
+    // The first healer slot's FIXED offset is (1,0) (DRAIN_FORMATION) — never rotated — so the anchor is
+    // simply that healer's tile minus (1,0), no facing to back out.
     const healer = [...healers].sort((a, b) => a.name.localeCompare(b.name))[0];
     // No healer either: squadState never calls this on an empty squad (it returns undefined first), so this
     // is unreachable in practice — asserted rather than defaulted, since a silent {25,25,""} anchor would
     // mask whatever caller-side bug got here instead.
     if (!healer) throw new Error("Drain.anchorTile: called with no attacker and no healers");
-    // The first healer slot offset (1,0) rotated to the current facing.
-    const off = rotatedHealerOffset(facing);
-    return { x: healer.x - off.dx, y: healer.y - off.dy, room: healer.room };
+    return { x: healer.x - 1, y: healer.y, room: healer.room };
   }
 
   /** The SquadState the generic Squad entity runs on this tick, or undefined while the squad is still
@@ -294,49 +273,81 @@ export class Drain extends Operation {
       if (rejoining.length > 0) joined = [...joined, ...rejoining];
     }
 
-    // A PROVISIONAL room, used ONLY to pick which room's threats to look at before the real anchor exists
-    // below — never fed into the anchor itself (see anchorTile's doc for why: a vote here mixed with one
-    // member's x/y elsewhere is exactly handoff open issue #1's bug). Before the first push that's simply
-    // the staging room (the whole squad is physically there); once underway it's the joined set's mode room
-    // — a rough "where's most of the squad" read that's fine for threat-lookup purposes, since a wrong guess
-    // here only means checking the wrong room's (usually empty) threat list for one tick, not a corrupted
-    // anchor position.
-    const threatLookupRoom = readyForFirstPush ? staging : mostCommonRoom(joined);
-    const goal = this.goalTile(colony, squad, staging);
-    const threatRef = anchorReference(joined, threatLookupRoom);
-    // Face the nearest THREAT, not the travel goal, whenever one is actually present in the anchor room —
-    // a squad mid-fight needs to keep its attacker (the anchor slot, always the formation's "front" at any
-    // axis facing) oriented toward whatever's hitting it, not toward wherever it happens to be walking.
-    // Falls back to the ordinary goal-directed drainFacing when the room is clear (nothing to react to) or
-    // has no vision this tick (threatsIn reads empty, same fail-open convention as hostileRoomTowers).
-    const threat = mostUrgentThreat(threatRef, threatsIn(colony, threatLookupRoom));
-    const desiredFacing = threat ? drainFacing(threatRef, threat) : drainFacing(threatRef, goal);
-    // THE anchor — every field (x, y, room) derived from ONE reference creep's own live snapshot via
-    // anchorTile (see its doc), never a separately-voted room. `desiredFacing` only affects the degraded
-    // (attacker-dead) case's healer-offset direction here; it does not influence anchor.room either way.
-    const anchor = this.anchorTile(
-      joined.find(c => c.role === "drainAttacker"),
-      joined.filter(c => c.role === "drainHealer"),
-      desiredFacing
-    );
+    // THE anchor — a PERSISTED value (ColonyMemory.drainAnchor, see its doc) read straight off the
+    // snapshot in steady state, never re-derived from a live creep's position once it exists. Falls back
+    // to the live-position derivation (anchorTile, see its doc) only when nothing is persisted yet — the
+    // very first tick a squad ever welds up, before intents() has had a chance to seed it (seeded this
+    // same tick via setDrainAnchor below, mirroring joinIntents' own "grant the identical decision this
+    // tick" pattern) — so a colony resuming mid-drain (this operation restarting) or freshly bootstrapping
+    // never briefly reads an undefined anchor.
+    const anchor = colony.drainAnchor ?? this.anchorTile(joined.find(c => c.role === "drainAttacker"), joined.filter(c => c.role === "drainHealer"));
     const members = joined;
-    // Report whichever facing the squad's LIVE positions already sit tight at, if any — NOT unconditionally
-    // the goal-directed one. A tight block whose real shape doesn't match desiredFacing (settled from
-    // wherever stragglers converged, not necessarily facing the goal) would otherwise be stamped a facing
-    // it never actually holds, so inFormation() (checked against the STATED facing) reports "not tight"
-    // forever even though the squad is genuinely welded — confirmed live (a squad frozen "reforming" onto
-    // tiles it already occupied, every tick, because the reported facing didn't match its real shape).
-    // findSquadPath's own reform-edge search handles turning toward desiredFacing once this reports the
-    // squad's true current facing — that mechanism only needed a correct starting point to run at all.
-    const facing = currentFacing(anchor, members, DRAIN_FORMATION) ?? desiredFacing;
     log.debugRoom(
       colony.name,
-      `drain squadState: readyForFirstPush=${readyForFirstPush} underway=${underway} threatLookupRoom=${threatLookupRoom} ` +
-        `anchor=(${anchor.x},${anchor.y},${anchor.room}) facing=${facing} desiredFacing=${desiredFacing} goal=(${goal.x},${goal.y},${goal.room}) ` +
+      `drain squadState: readyForFirstPush=${readyForFirstPush} underway=${underway} ` +
+        `anchor=(${anchor.x},${anchor.y},${anchor.room}) ` +
         `squad=[${squad.map(c => `${c.name}@${c.room}(${c.x},${c.y})`).join(",")}] members=[${members.map(c => c.name).join(",")}]`
     );
     if (members.length === 0) return undefined;
-    return { members, formation: DRAIN_FORMATION, anchor, facing };
+    return { members, formation: DRAIN_FORMATION, anchor };
+  }
+
+  /** SquadBearingOperation's optional planMove hook (empire/creeps.ts): Drain's own wrapper around the
+   * generic planSquadMove (lib/squad.ts), adding the ONE piece of placement preference the generic layer
+   * deliberately knows nothing about: the attacker should end up on
+   * whichever of the formation's 4 FIXED tiles is nearest the current threat (or the goal, absent one) — a
+   * real tactical need (an attacker facing away from what's hitting it fights at a disadvantage), but NOT a
+   * geometric rotation (see formation.ts's module header and DRAIN_FORMATION's own doc: the box's tiles
+   * never rotate; only which live creep sits on which fixed tile can change).
+   *
+   * Only applies during a REFORM (planSquadMove's "not tight" branch) — an already-tight, already-advancing
+   * squad has every member on some slot already (including the attacker on whichever one it's on); nothing
+   * to bias. Two-phase assignment: (1) find the tile nearest the threat/goal among the reform target's own
+   * slot tiles, (2) assign the attacker there FIRST via reformAssignment (nearest attacker to that one
+   * tile — trivial with a single attacker, but reuses the same primitive rather than a bespoke one-off), (3)
+   * defer to planSquadMove's own ordinary reform for every other member onto the remaining slots. This
+   * deliberately bypasses slotChainRepair for the attacker's own move (accepted — see the design doc: the
+   * attacker is a single always-present member, not a variable-count group a doorway jam could strand). */
+  public planMove(
+    state: SquadState,
+    goal: XY & { room: string },
+    colony: ColonySnapshot,
+    terrain: TerrainSource,
+    now: number,
+    occupancy: OccupancySource
+  ): SquadMovePlan {
+    const plain = planSquadMove(state, goal, terrain, now, occupancy);
+    const attacker = state.members.find(m => m.role === "drainAttacker");
+    if (!attacker) return plain; // no attacker to bias toward anything
+
+    // Only bias a REFORM — checked against the CURRENT anchor's slots (state.anchor), never plan.anchor:
+    // during an ordinary tight advance, plan.anchor is already the NEXT tick's anchor, so checking
+    // inFormation against ITS slots would compare the members' CURRENT (pre-move) positions to where
+    // they're headed next — always false mid-advance — and wrongly fall through to the reform-bias branch
+    // every single tick of an otherwise-ordinary lockstep advance, discarding planSquadMove's own
+    // same-index advanceOnto matching in favor of a plain nearest-distance reform. That mismatch is exactly
+    // what produced a perpetual oscillation in one member once the block was moving (confirmed via the
+    // real-engine border-crossing integration test).
+    const currentSlots = slotTiles(state.anchor, state.formation);
+    if (inFormation(state.members, currentSlots)) return plain; // already tight — nothing to reform, no bias to apply
+
+    const reformSlots = slotTiles(plain.anchor, state.formation);
+    const threatRoom = mostCommonRoom(state.members);
+    const threat = mostUrgentThreat(attacker, threatsIn(colony, threatRoom));
+    const preferred = threat ?? goal;
+    const preferredTile = reformSlots.reduce((best, s) => (range(s, preferred) < range(best, preferred) ? s : best), reformSlots[0]);
+
+    const attackerAssignment = reformAssignment([{ id: attacker.id, pos: attacker }], [preferredTile]);
+    const attackerTo = attackerAssignment.get(attacker.id);
+    if (!attackerTo) return plain; // shouldn't happen with one member/one destination, but stay total
+
+    const rest = state.members.filter(m => m.id !== attacker.id);
+    const remainingSlots = reformSlots.filter(s => s.x !== preferredTile.x || s.y !== preferredTile.y || s.room !== preferredTile.room);
+    const restMoves = reformOnto(rest, remainingSlots, terrain);
+    return {
+      moves: [{ creep: attacker.id, to: { x: attackerTo.x, y: attackerTo.y, room: reformSlots[0]?.room ?? attacker.room } }, ...restMoves],
+      anchor: plain.anchor
+    };
   }
 
   /** Where the squad is heading this tick — deeper into the target room when advancing is safe (and the
@@ -375,6 +386,14 @@ export class Drain extends Operation {
    * creep re-resolving its own target. */
   public readonly actionPlanner: SquadActionPlanner = (state, colony) => planDrainActions(state, colony);
 
+  /** SquadBearingOperation's setSquadAnchor hook (empire/creeps.ts's runSquads): persists a corrected/
+   * advanced anchor the moment planMove's own SquadMovePlan.anchor differs from what squadState reported
+   * this tick — the write side of the persisted-anchor contract (see ColonyMemory.drainAnchor's doc).
+   * Called at most once per tick, only when the value actually changed. */
+  public setSquadAnchor(colony: ColonySnapshot, anchor: XY & { room: string }): Intent[] {
+    return [{ kind: "setDrainAnchor", room: colony.name, anchor }];
+  }
+
   public override intents(colony: ColonySnapshot): Intent[] {
     const squad = this.squad(colony);
     const out: Intent[] = [];
@@ -393,6 +412,15 @@ export class Drain extends Operation {
 
     const state = this.squadState(colony);
     out.push(...this.joinIntents(squad, state));
+
+    // Seed the persisted anchor (ColonyMemory.drainAnchor) the moment a squad state first exists but
+    // nothing is stored yet — mirrors joinIntents' own "grant this tick's already-computed decision"
+    // pattern: squadState already fell back to the live-position derivation for `state.anchor` above, so
+    // this simply writes that same value through rather than leaving it to be silently recomputed (and
+    // potentially drift) every tick until some OTHER path happens to persist it.
+    if (state && !colony.drainAnchor) {
+      out.push({ kind: "setDrainAnchor", room: colony.name, anchor: state.anchor });
+    }
 
     // Steer every UNSQUADDED member (not in the current squad state's member set — assembling, or a
     // replacement still walking in) toward a concrete TILE, not just a room: the squad's live anchor once
@@ -451,22 +479,6 @@ export class Drain extends Operation {
   }
 }
 
-// The first healer slot offset (1,0 at the canonical TOP facing) rotated to the current facing — used to
-// back out the anchor tile from a surviving healer when the attacker (anchor slot) is dead.
-function rotatedHealerOffset(facing: DirectionConstant): { dx: number; dy: number } {
-  // (1,0) rotated: RIGHT -> (0,1), BOTTOM -> (-1,0), LEFT -> (0,-1), TOP -> (1,0).
-  switch (facing) {
-    case RIGHT:
-      return { dx: 0, dy: 1 };
-    case BOTTOM:
-      return { dx: -1, dy: 0 };
-    case LEFT:
-      return { dx: 0, dy: -1 };
-    default:
-      return { dx: 1, dy: 0 };
-  }
-}
-
 // The set of rooms on the route that lie BEYOND the staging room toward the target (staging's successors,
 // target included) — "underway" territory. A room before staging (a transit room the squad is still
 // walking through to reach staging) is not in this set.
@@ -476,7 +488,8 @@ function roomsBeyondStaging(route: readonly { room: string }[], staging: string)
   return new Set(route.slice(idx + 1).map(r => r.room));
 }
 
-// The tile the facing is measured FROM — the attacker's tile when present, else the first squad member's.
+// A reference tile for the squad's rough position in `room` — the attacker's tile when present, else the
+// first squad member's. Used by the re-entry join-radius gate (squadState) to test a straggler's distance.
 function anchorReference(squad: readonly SnapCreep[], room: string): XY {
   const attacker = squad.find(c => c.role === "drainAttacker" && c.room === room);
   const ref = attacker ?? squad.find(c => c.room === room) ?? squad[0];
@@ -486,11 +499,11 @@ function anchorReference(squad: readonly SnapCreep[], room: string): XY {
 // The room most of the squad's members currently stand in. NO LONGER used to derive the formation's
 // anchor room (see anchorTile's doc — that was handoff open issue #1's bug: a majority vote could disagree
 // with the SAME anchor's own x/y whenever the attacker itself was the outlier, e.g. having just crossed a
-// border alone). Its two remaining callers are both lower-stakes "roughly where's the squad" reads that
+// border alone). Its remaining callers are both lower-stakes "roughly where's the squad" reads that
 // tolerate an occasionally-wrong guess without corrupting anything: which room's threat list to consult for
-// facing (a wrong guess just means checking an empty list for one tick) and the re-entry join-radius gate's
-// reference room (a wrong guess there only delays a straggler's join by a tick, never joins/excludes
-// incorrectly on its own — the actual range check still uses real world-coordinate distance).
+// planMove's attacker bias (a wrong guess just means checking an empty list for one tick) and the re-entry
+// join-radius gate's reference room (a wrong guess there only delays a straggler's join by a tick, never
+// joins/excludes incorrectly on its own — the actual range check still uses real world-coordinate distance).
 function mostCommonRoom(squad: readonly SnapCreep[]): string {
   const counts = new Map<string, number>();
   for (const c of squad) counts.set(c.room, (counts.get(c.room) ?? 0) + 1);

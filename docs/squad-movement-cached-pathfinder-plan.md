@@ -1,9 +1,12 @@
 # Squad movement: cached CostMatrix + real PathFinder, decoupled facing, single-source anchor
 
 **Status: DONE, uncommitted, branch `rewrite`.** All 4 steps implemented, plus the cross-room integration
-suite. Independently verified 2026-08-08: unit suite 94 files / 1510 tests green (`npx vitest run`),
-integration suite 4/4 green (`npx vitest run --config vitest.integration.config.ts
-test/integration/drain-squad-border-crossing.test.ts`). Nothing outstanding on this plan.
+suite. Verified against the LIVE pserver on 2026-08-08 (not just the test suites) — a real drain squad
+stalled at a room border and, once fixed, was seen actually crossing on the real running server. Unit suite
+94 files / 1512 tests green (`npx vitest run`), integration suite 4/4 green (`npx vitest run --config
+vitest.integration.config.ts test/integration/drain-squad-border-crossing.test.ts`). The edge-cost mechanism
+went through two iterations before matching Overmind's real source exactly — see Step 1's write-up below,
+important context if touching `squadCostMatrix.ts` again.
 
 ## Context
 
@@ -232,17 +235,33 @@ green.
 Building/extending this suite found two more real, structural bugs — both fixed, full write-up in the test
 file's own header comment:
 
-1. **The moving-maximum matrix made every border crossing structurally impossible, in every facing.**
-   `applyMovingMaximum`'s room-edge-overflow case (a footprint window needing a tile past the room's own
-   50x50 grid) was priced `IMPASSABLE` — and since `DRAIN_FORMATION`'s shape doesn't rotate mid-route, this
-   blocks the SAME edge on both sides of every crossing, for all 4 of the formation's valid facings. Confirmed
-   live against the real engine before the fix. **User's explicit direction, after pushing back on treating
-   this as an accepted correctness gap ("What does blocked mean? Cost infinite? It should only be expensive
-   50+"):** price the overflow at a high-but-finite `ROOM_EDGE_OVERFLOW_COST = 50` instead of `IMPASSABLE`,
-   justified by the real Screeps engine guarantee that an exit tile always opens onto walkable ground at least
-   a tile or two into the neighboring room — PathFinder only reaches for the edge as a last resort, but is no
-   longer structurally forbidden from crossing. `src/lib/squadCostMatrix.ts`; a real wall sharing the same
-   window still wins the max over any overflow cell (`squadCostMatrix.test.ts`'s dedicated test for this).
+1. **The moving-maximum matrix made every border crossing structurally impossible, in every facing** — since
+   fixed TWICE, the first fix itself turned out to be wrong (see below). `applyMovingMaximum`'s room-edge
+   case (a footprint window needing a tile past the room's own 50x50 grid) was originally priced `IMPASSABLE`
+   — and since `DRAIN_FORMATION`'s shape doesn't rotate mid-route, this blocked the SAME edge on both sides
+   of every crossing, for all 4 of the formation's valid facings. Confirmed live against the real engine
+   before any fix. **First fix (2026-08-08, later reverted):** priced the overflow at a high-but-finite
+   `ROOM_EDGE_OVERFLOW_COST = 50` instead of `IMPASSABLE` (applied inside `applyMovingMaximum` for ANY
+   anchor whose window needed an out-of-grid tile), on the reasoning that an exit tile always opens onto
+   walkable ground a tile or two into the neighboring room. **This was wrong and caused a real live bug**:
+   pricing EVERY room's raw edge at a flat, tuned-only-against-"more than a plain step" cost of 50 made
+   every edge of every room look like a similarly-cheap escape hatch to PathFinder, not just the border
+   actually being crossed — confirmed live (colony W5N3's drain squad, same day) taking the WRONG edge (bailing
+   straight back into its own home room) over a genuinely available ~85-cost detour around an interior wall,
+   because 50 was never checked against real detour costs and just happened to be cheaper. **Second, correct
+   fix**: re-read Overmind's actual `Pathing.ts` source (not just the plan's earlier paraphrase) and matched
+   its real mechanism exactly — `setExitCosts` prices ONLY genuine, non-wall room-edge tiles (`x/y ∈
+   {0,49}`) at a small constant (`EXIT_COST = 10`, matching Overmind's own default) on the RAW matrix,
+   *before* `applyMovingMaximum` smears it outward like any other real cost; `applyMovingMaximum` itself goes
+   back to never evaluating an out-of-bounds anchor at all (Overmind's own `x <= 50-width` loop bound,
+   exactly) rather than inventing any overflow-specific cost. `src/lib/squadCostMatrix.ts`. Companion fix in
+   `src/lib/squadPath.ts`'s `footprintFitsAt`: an out-of-bounds anchor now reads `matrix.get` as the
+   CostMatrix default (0), which used to falsely count as "fits" — `footprintFitsAt` now bounds-checks the
+   anchor against the footprint size directly before consulting the matrix at all.
+   Separately (same investigation): `findSquadPath`'s `PathFinder.search` call never set `maxOps`, so it
+   silently used PathFinder's default (2000) — the moving-maximum matrix's window-widening effect made a real
+   interior wall inflate the search past that budget well before finding an existing route, reporting
+   `incomplete` even though the squad was never actually stuck. Fixed by setting an explicit `maxOps = 20000`.
 2. **Natural Source/Mineral tiles weren't marked occupied.** `snapshot/colony.ts`'s `drainOccupancyFor` only
    scanned `FIND_STRUCTURES` for `OBSTACLE_OBJECT_TYPES` members — Source/Mineral are obstacle-type in the
    real engine but are NOT Structures, so a source sitting in the formation's advance path read as free

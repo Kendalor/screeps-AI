@@ -4,6 +4,7 @@ import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
 import { log } from "../lib/log";
 import { HEAL_ASSIST_RANGE, massAttackDamagePerPartAt, RANGED_ATTACK_RANGE } from "../lib/combat";
 import { isDangerous } from "../memory/reputation";
+import { INVADER_USERNAME } from "../mining/remoteSources";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import { wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
@@ -333,7 +334,7 @@ function moveToRoom(
   return { acted: true, didAct: false };
 }
 
-// Moves toward a concrete TILE read from a memory field (currently only drainRallyPos — see the Step
+// Moves toward a concrete TILE read from a memory field (drainRallyPos or paradeRallyPos — see the Step
 // union's doc), refreshed every tick by the owning operation. Unlike moveToRoom, "arrived" is never
 // declared here at all: the destination is a live point that can itself be moving (a squad's anchor
 // tracking its own advance), so there is nothing to latch as "reached" the way a static room name has.
@@ -341,7 +342,7 @@ function moveToRoom(
 // the creep is within ITS OWN range of ITS OWN target, exactly like moveToRoom's relationship to the step
 // that follows it today. A no-op (falls through) when the field is unset, mirroring moveToRoom's
 // no-destination case — a role between assembly and dissolution simply has nothing to rally toward.
-function moveToPos(creep: Creep, step: { to: "drainRallyPos" }): StepResult {
+function moveToPos(creep: Creep, step: { to: "drainRallyPos" | "paradeRallyPos" }): StepResult {
   const dest = creep.memory[step.to];
   if (!dest) return { acted: false, didAct: false };
   creep.travelTo(new RoomPosition(dest.x, dest.y, dest.room), { range: 1 });
@@ -452,10 +453,19 @@ function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: 
 // A claimer reserves the controller of whatever room it stands in (its targetRoom, reached by the
 // preceding moveToRoom step). reserveController is range 1. No drawing-closer nicety — a claimer just
 // needs to be adjacent; it holds that spot for life.
+//
+// A controller left reserved by a STRUCTURE_INVADER_CORE (username "Invader") is attackController'd down
+// instead of reserveController'd: reserveController against the Invader's reservation would work (see
+// operations/reservation.ts's header), but attackController strips it in one shot per call regardless of
+// the claimer's CLAIM count, where reserveController only nets the difference between CLAIM count and the
+// reservation's own per-tick decay — the same slow-drain problem the claimer's 2-CLAIM floor exists to
+// avoid (see claimer.ts's body comment). Once the Invader's reservation hits 0 the controller is neutral
+// again and the very next call is a normal reserveController — no separate "done attacking" state to
+// track, just re-check reservation.username every tick, same pattern as claimStep.
 function reserveStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
-  const controller = resolveTarget(creep, { find: "controller" }, locked);
+  const controller = resolveTarget(creep, { find: "controller" }, locked) as StructureController | undefined;
   if (!controller) return { acted: false, didAct: false };
-  const controllerPos = (controller as StructureController).pos;
+  const controllerPos = controller.pos;
 
   if (!creep.pos.inRangeTo(controllerPos, 1)) {
     if (!allowTravel) return { acted: false, didAct: false };
@@ -463,7 +473,12 @@ function reserveStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: 
     return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
   }
 
-  creep.reserveController(controller as StructureController);
+  if (controller.reservation?.username === INVADER_USERNAME) {
+    creep.attackController(controller);
+    return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
+  }
+
+  creep.reserveController(controller);
   return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
 }
 

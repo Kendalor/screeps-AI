@@ -50,6 +50,12 @@ export interface SquadTickLog {
   tick: number;
   goal: XY & { room: string };
   intents: SquadMoveIntent[];
+  // The anchor value planSquadMove itself returned for this tick (SquadMovePlan.anchor) — may differ from
+  // the anchor the caller's `plan` callback supplied THIS tick (advanced by a tight-advance step, or
+  // CORRECTED by a reform retarget). Production persists this and feeds it back as next tick's input (see
+  // lib/squad.ts's SquadState doc) — this harness surfaces it so a `plan` callback can do the same, rather
+  // than being stuck re-supplying a stale/wrong anchor forever.
+  anchor: XY & { room: string };
   // Snapshot of every member's position AFTER this tick's move was applied — the thing a real debugColony
   // trace would show, and what every test in this suite asserts on.
   positions: { id: Id<Creep>; role: string; room: string; x: number; y: number; fatigue: number }[];
@@ -205,33 +211,32 @@ export class SquadWorld {
     return false; // boxed in on every candidate direction — held in place this call
   }
 
-  /** The live SquadState as lib/squad.ts would see it right now — anchor/facing supplied by the caller
-   * (mirrors Drain.squadState()'s own anchor/facing derivation, which is Drain's content, not the generic
-   * Squad's — this harness stays formation-agnostic and takes them as given). */
-  state(anchor: XY & { room: string }, facing: DirectionConstant): SquadState {
+  /** The live SquadState as lib/squad.ts would see it right now — anchor supplied by the caller (mirrors
+   * Drain.squadState()'s own anchor derivation, which is Drain's content, not the generic Squad's — this
+   * harness stays formation-agnostic and takes it as given). */
+  state(anchor: XY & { room: string }): SquadState {
     return {
       members: this.members.map(m => snapCreepFromMember(m)),
       formation: this.formation,
-      anchor,
-      facing
+      anchor
     };
   }
 
   /** Runs ONE tick: computes planSquadMove against the CURRENT live positions, applies every resulting
    * intent directly to the corresponding member (assumed-successful move, per module header), advances the
    * tick counter, and appends+returns a full log entry — the per-tick observability the test suite needs. */
-  step(anchor: XY & { room: string }, facing: DirectionConstant, goal: XY & { room: string }): SquadTickLog {
-    const state = this.state(anchor, facing);
+  step(anchor: XY & { room: string }, goal: XY & { room: string }): SquadTickLog {
+    const state = this.state(anchor);
     const tight = isTight(state, this.formation);
-    const intents = planSquadMove(state, goal, this.terrain, this.tick, this.occupancy());
-    for (const intent of intents) {
+    const { moves, anchor: nextAnchor } = planSquadMove(state, goal, this.terrain, this.tick, this.occupancy());
+    for (const intent of moves) {
       const m = this.member(intent.creep);
       m.x = intent.to.x;
       m.y = intent.to.y;
       m.room = intent.to.room;
     }
     this.tick++;
-    return this.record(goal, intents, tight);
+    return this.record(goal, moves, tight, nextAnchor);
   }
 
   /** Runs ONE tick like `step`, but instead of teleporting each member straight onto its assigned `to`
@@ -247,15 +252,15 @@ export class SquadWorld {
    * PATHFINDING quirk, since this harness has no separate "plan a route, then discover it's blocked" phase;
    * it greedily steps toward the target every tick, same as walkIndependently, and simply fails to progress
    * (stalls in place) if every candidate step is blocked, which is the deadlock signature itself. */
-  stepReal(anchor: XY & { room: string }, facing: DirectionConstant, goal: XY & { room: string }): SquadTickLog {
-    const state = this.state(anchor, facing);
+  stepReal(anchor: XY & { room: string }, goal: XY & { room: string }): SquadTickLog {
+    const state = this.state(anchor);
     const tight = isTight(state, this.formation);
-    const intents = planSquadMove(state, goal, this.terrain, this.tick, this.occupancy());
+    const { moves, anchor: nextAnchor } = planSquadMove(state, goal, this.terrain, this.tick, this.occupancy());
     // Snapshot start-of-tick occupied tiles so members don't treat EACH OTHER's post-move tile as blocking
     // (each member steps off its own current tile "simultaneously", same as the real engine's move
     // resolution) but still can't step onto a squadmate that hasn't vacated yet.
     const occupied = new Set(this.members.map(m => `${m.room}:${m.x},${m.y}`));
-    for (const intent of intents) {
+    for (const intent of moves) {
       const m = this.member(intent.creep);
       const from = { x: m.x, y: m.y, room: m.room };
       occupied.delete(`${from.room}:${from.x},${from.y}`);
@@ -264,7 +269,7 @@ export class SquadWorld {
       void stepped;
     }
     this.tick++;
-    return this.record(goal, intents, tight);
+    return this.record(goal, moves, tight, nextAnchor);
   }
 
   // One Chebyshev-greedy tile step from `m` toward `dest`, refusing to land on any tile in `occupied`
@@ -297,11 +302,12 @@ export class SquadWorld {
     return false; // every candidate step is blocked — held in place this tick
   }
 
-  private record(goal: XY & { room: string }, intents: SquadMoveIntent[], tight: boolean): SquadTickLog {
+  private record(goal: XY & { room: string }, intents: SquadMoveIntent[], tight: boolean, anchor: XY & { room: string }): SquadTickLog {
     const entry: SquadTickLog = {
       tick: this.tick,
       goal,
       intents,
+      anchor,
       positions: this.members.map(m => ({ id: m.id, role: m.role, room: m.room, x: m.x, y: m.y, fatigue: m.fatigue })),
       tight
     };
@@ -309,17 +315,21 @@ export class SquadWorld {
     return entry;
   }
 
-  /** Runs `n` ticks back to back with a FIXED anchor/facing/goal strategy supplied per tick (a function so
-   * a test can recompute anchor/facing from the squad's own live state each tick, mirroring Drain's real
-   * recompute-every-tick rule — see operations/drain.ts's squadState doc) — returns the full per-tick log. */
+  /** Runs `n` ticks back to back with an anchor/goal strategy supplied per tick via `plan` — a
+   * function (not a fixed value) so a test can react to the squad's own evolving state, in particular
+   * threading the PREVIOUS tick's returned anchor forward (`world.log.at(-1)?.anchor`) the way production
+   * now does: the anchor is a persisted value only planSquadMove's own SquadMovePlan.anchor may advance or
+   * correct (see lib/squad.ts's SquadState doc) — a test that re-supplies a fixed anchor forever, ignoring a
+   * reform's correction, is testing a scenario production can no longer produce (a stuck/wrong anchor that
+   * never gets fixed). Returns the full per-tick log. */
   run(
     ticks: number,
-    plan: (world: SquadWorld) => { anchor: XY & { room: string }; facing: DirectionConstant; goal: XY & { room: string } }
+    plan: (world: SquadWorld) => { anchor: XY & { room: string }; goal: XY & { room: string } }
   ): SquadTickLog[] {
     const out: SquadTickLog[] = [];
     for (let i = 0; i < ticks; i++) {
-      const { anchor, facing, goal } = plan(this);
-      out.push(this.step(anchor, facing, goal));
+      const { anchor, goal } = plan(this);
+      out.push(this.step(anchor, goal));
     }
     return out;
   }
@@ -327,12 +337,12 @@ export class SquadWorld {
   /** Same as `run`, but drives `stepReal` instead of the teleport-based `step` — see stepReal's doc. */
   runReal(
     ticks: number,
-    plan: (world: SquadWorld) => { anchor: XY & { room: string }; facing: DirectionConstant; goal: XY & { room: string } }
+    plan: (world: SquadWorld) => { anchor: XY & { room: string }; goal: XY & { room: string } }
   ): SquadTickLog[] {
     const out: SquadTickLog[] = [];
     for (let i = 0; i < ticks; i++) {
-      const { anchor, facing, goal } = plan(this);
-      out.push(this.stepReal(anchor, facing, goal));
+      const { anchor, goal } = plan(this);
+      out.push(this.stepReal(anchor, goal));
     }
     return out;
   }
@@ -373,9 +383,9 @@ function snapCreepFromMember(m: { id: Id<Creep>; role: string; x: number; y: num
   });
 }
 
-// Applies squad.ts's own inFormation predicate to the CURRENT anchor/facing's slot tiles, purely for the
-// log's `tight` field — re-derives nothing planSquadMove itself doesn't already check internally, just
-// surfaces it for observability.
+// Applies squad.ts's own inFormation predicate to the CURRENT anchor's slot tiles, purely for the log's
+// `tight` field — re-derives nothing planSquadMove itself doesn't already check internally, just surfaces
+// it for observability.
 function isTight(state: SquadState, formation: Formation): boolean {
-  return inFormation(state.members, slotTiles(state.anchor, state.facing, formation));
+  return inFormation(state.members, slotTiles(state.anchor, formation));
 }

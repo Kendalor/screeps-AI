@@ -132,7 +132,7 @@ export type Step = ({
     // No-ops (falls through, same as moveToRoom with no dest) while the field is unset. Never self-completes
     // on arrival by itself; the NEXT step (e.g. heal/attack) takes over once in its own range, same
     // structure as moveToRoom+attack/heal today.
-    | { do: "moveToPos"; to: "drainRallyPos" }
+    | { do: "moveToPos"; to: "drainRallyPos" | "paradeRallyPos" }
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
   );
 

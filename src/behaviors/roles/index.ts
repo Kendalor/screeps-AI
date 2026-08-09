@@ -13,6 +13,7 @@ import { DrainAttacker } from "./drainAttacker";
 import { DrainHealer } from "./drainHealer";
 import { Hauler } from "./hauler";
 import { Miner } from "./miner";
+import { ParadeMember } from "./paradeMember";
 import { Repair } from "./repair";
 import { Scout } from "./scout";
 import { Settler } from "./settler";
@@ -38,7 +39,8 @@ export const ROLES = {
   defender: Defender,
   attacker: Attacker,
   drainAttacker: DrainAttacker,
-  drainHealer: DrainHealer
+  drainHealer: DrainHealer,
+  paradeMember: ParadeMember
 } satisfies Partial<Record<RoleName, RoleDef>>;
 
 export function roleDef(role: RoleName): RoleDef | undefined {

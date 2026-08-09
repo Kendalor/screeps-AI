@@ -12,6 +12,7 @@ import { DRAIN_ATTACKER_MIN_COST } from "../../../src/behaviors/roles/drainAttac
 import { DRAIN_HEALER_MIN_COST } from "../../../src/behaviors/roles/drainHealer";
 import { range } from "../../../src/lib/geometry";
 import { clearSquadMatrixCache } from "../../../src/lib/squadCostMatrix";
+import { NO_OCCUPANCY } from "../../../src/lib/squadPath";
 import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
 import { colonySnap, snapCreep, towerAt, visibleRoom } from "../../fixtures";
 
@@ -158,6 +159,8 @@ describe("Drain.squadState assembly gate (ADR 0007 requirement 2: rally is indep
 
 describe("Drain.squadState + squadGoal advance/retreat", () => {
   it("reports an assembled squad (with the attacker as anchor) once all 4 are together in staging", () => {
+    // No ColonyMemory.drainAnchor set yet (first-ever assembly) — squadState falls back to deriving the
+    // anchor from the live attacker's own tile (anchorTile), the same value intents() would seed this tick.
     const members = squad({ room: "W1N5" });
     const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
     const state = drain.squadState(snap);
@@ -165,6 +168,43 @@ describe("Drain.squadState + squadGoal advance/retreat", () => {
     expect(state!.members).toHaveLength(4);
     // The anchor slot is the attacker's tile.
     expect(state!.anchor).toEqual({ x: 25, y: 25, room: "W1N5" });
+  });
+
+  it("reads the PERSISTED anchor once one is stored, ignoring the live attacker's own (possibly different) position", () => {
+    // The attacker's live tile has since drifted from the persisted anchor (e.g. a combat shove) — steady
+    // state must read colony.drainAnchor directly, never fall back to re-deriving from the live creep.
+    const members = squad({ room: "W1N5" });
+    const snap = colonySnap({
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      creeps: members,
+      drainAnchor: { x: 10, y: 10, room: "W1N5" }
+    });
+    const state = drain.squadState(snap);
+    expect(state!.anchor).toEqual({ x: 10, y: 10, room: "W1N5" });
+  });
+
+  it("intents() seeds ColonyMemory.drainAnchor the tick a squad first exists with nothing persisted yet", () => {
+    const members = squad({ room: "W1N5" });
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const intents = drain.intents(snap);
+    const setAnchor = intents.find(i => i.kind === "setDrainAnchor");
+    expect(setAnchor).toBeDefined();
+    expect((setAnchor as { anchor: { x: number; y: number; room: string } }).anchor).toEqual({ x: 25, y: 25, room: "W1N5" });
+  });
+
+  it("intents() does NOT re-seed drainAnchor once one is already persisted", () => {
+    const members = squad({ room: "W1N5" });
+    const snap = colonySnap({
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      creeps: members,
+      drainAnchor: { x: 10, y: 10, room: "W1N5" }
+    });
+    const intents = drain.intents(snap);
+    expect(intents.some(i => i.kind === "setDrainAnchor")).toBe(false);
   });
 
   it("aims the squad goal into the target room when no towers threaten it", () => {
@@ -212,14 +252,11 @@ describe("Drain.squadState + squadGoal advance/retreat", () => {
     expect(goal!.room).toBe("W1N5"); // retreat to heal up
   });
 
-  it("reports the squad's REAL current facing, not the goal-directed one, when the two disagree", () => {
-    // The squad's LIVE positions form a tight TOP-facing 2x2 at anchor (27,26) — attacker(27,26),
-    // healers(28,26)/(27,27)/(28,27) — but the goal (25,25 in the SAME room) lies to the upper-LEFT of
-    // that anchor, so drainFacing's travel-direction heuristic alone would say LEFT. Before the fix,
-    // squadState stamped facing=LEFT unconditionally, so inFormation (checked against slotTiles at LEFT,
-    // which do NOT match these live positions) reported the squad "not tight" forever — a squad that is
-    // genuinely welded, frozen "reforming" onto tiles it already occupies, tick after tick (confirmed live
-    // on the pserver). The fix: detect that the live positions already fit TOP and report that.
+  it("reports the anchor as the attacker's own live tile regardless of which direction the goal lies", () => {
+    // The squad's LIVE positions form a tight 2x2 at anchor (27,26) — attacker(27,26),
+    // healers(28,26)/(27,27)/(28,27) — while the goal (25,25 in the SAME room) lies to the upper-LEFT of
+    // that anchor. There is no facing concept to disagree about anymore (lib/formation.ts's module
+    // header): the anchor is simply the attacker's own tile, full stop, independent of travel direction.
     const members = squad({
       room: "W2N1",
       attacker: { x: 27, y: 26 },
@@ -228,7 +265,7 @@ describe("Drain.squadState + squadGoal advance/retreat", () => {
     const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
     const state = drain.squadState(snap);
     expect(state).toBeDefined();
-    expect(state!.facing).toBe(TOP);
+    expect(state!.anchor).toEqual({ x: 27, y: 26, room: "W2N1" });
   });
 });
 
@@ -238,7 +275,7 @@ describe("Drain squad movement keeps the whole formation in lockstep (planSquadM
     const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
     const state = drain.squadState(snap)!;
     const goal = drain.squadGoal(snap)!;
-    const moves = planSquadMove(state, goal, drain.terrain(snap), 0);
+    const { moves } = planSquadMove(state, goal, drain.terrain(snap), 0);
     expect(moves).toHaveLength(4);
     // every member steps at most one tile...
     for (const m of state.members) {
@@ -257,10 +294,45 @@ describe("Drain squad movement keeps the whole formation in lockstep (planSquadM
     const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
     const state = drain.squadState(snap)!;
     const goal = drain.squadGoal(snap)!;
-    const moves = planSquadMove(state, goal, drain.terrain(snap), 0);
+    const { moves } = planSquadMove(state, goal, drain.terrain(snap), 0);
     // The anchor (attacker) holds on its own slot tile — the block reforms before advancing.
     const anchorMove = moves.find(m => m.creep === members[0].id)!;
     expect({ x: anchorMove.to.x, y: anchorMove.to.y }).toEqual({ x: 25, y: 25 });
+  });
+
+  it("Drain.planMove keeps a tight, already-advancing block welded over many ticks", () => {
+    // Regression guard for planMove's reform-vs-advance branch check: it must compare the members' CURRENT
+    // positions against the CURRENT anchor's slots (state.anchor), never the plan's returned (next-tick)
+    // anchor — comparing against the next anchor's slots mid-advance previously caused the reform-bias
+    // branch to override planSquadMove's own same-index advanceOnto matching every tick, which (depending
+    // on the exact reassignment nearestFittingAnchor/reformAssignment produced) could strand a member
+    // oscillating in place instead of ever advancing — confirmed live via the real-engine border-crossing
+    // integration test (test/integration/drain-squad-border-crossing.test.ts), which is this bug's
+    // authoritative regression coverage (a real single-tile-walk, cross-room scenario this synthetic
+    // teleport-style unit test can't fully reproduce on its own).
+    let members = squad({ room: "W2N1" }); // tight 2x2 at (25,25)
+    const snap0 = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    let state = drain.squadState(snap0)!;
+    const goal = { x: 5, y: 5, room: "W2N1" };
+
+    for (let tick = 0; tick < 20; tick++) {
+      const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members, drainAnchor: state.anchor });
+      state = drain.squadState(snap)!;
+      const plan = drain.planMove(state, goal, snap, drain.terrain(snap), tick, NO_OCCUPANCY);
+      // Every tick, every pair of members must stay within range 1 — the mutual-range-1 welded contract.
+      for (let i = 0; i < plan.moves.length; i++) {
+        for (let j = 0; j < plan.moves.length; j++) {
+          if (i === j) continue;
+          expect(range(plan.moves[i].to, plan.moves[j].to), `not welded at tick ${tick}`).toBeLessThanOrEqual(1);
+        }
+      }
+      const byId = new Map(plan.moves.map(m => [m.creep, m.to]));
+      members = members.map(m => {
+        const to = byId.get(m.id);
+        return to ? { ...m, x: to.x, y: to.y, room: to.room } : m;
+      });
+      state = { ...state, anchor: plan.anchor };
+    }
   });
 });
 
@@ -436,7 +508,7 @@ describe("Drain loss handling (#39): degraded formation, no attacker", () => {
     const state = drain.squadState(snap);
     expect(state).toBeDefined();
     expect(state!.members).toHaveLength(3);
-    const moves = planSquadMove(state!, drain.squadGoal(snap)!, drain.terrain(snap), 0);
+    const { moves } = planSquadMove(state!, drain.squadGoal(snap)!, drain.terrain(snap), 0);
     expect(moves).toHaveLength(3); // only the survivors get moves; the vacant anchor slot needs nobody
   });
 });
@@ -452,8 +524,7 @@ describe("planDrainActions (Drain's plugged-in action content)", () => {
     const state = {
       members: [attacker, ...healers],
       formation: [] as never[],
-      anchor: { x: 25, y: 25, room: "W2N1" },
-      facing: TOP as DirectionConstant
+      anchor: { x: 25, y: 25, room: "W2N1" }
     };
     const snap = colonySnap({ name: "W1N1", draining: "W2N1", hostileRoomTowers: { W2N1: [towerAt(25, 25, "tower_a")] } });
     const actions = planSquadActions(state, snap, planDrainActions);
@@ -466,8 +537,7 @@ describe("planDrainActions (Drain's plugged-in action content)", () => {
     const state = {
       members: [attacker],
       formation: [] as never[],
-      anchor: { x: 25, y: 25, room: "W2N1" },
-      facing: TOP as DirectionConstant
+      anchor: { x: 25, y: 25, room: "W2N1" }
     };
     // colony.hostiles carries the snapshot's hostile creeps; the more-armed one is picked.
     const snap = colonySnap({

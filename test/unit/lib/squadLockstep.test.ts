@@ -56,8 +56,7 @@ describe("planSquadMove keeps the formation welded over real distance (regressio
     // Start as a tight, in-formation 2x2 with the anchor at (25,40); advance toward (25,15) — a 25-tile
     // straight push, the exact scale the independent-pathing model fell apart over.
     let anchor: XY = { x: 25, y: 40 };
-    const facing: DirectionConstant = TOP;
-    const tiles = slotTiles({ ...anchor, room }, facing, BLOCK_2X2);
+    const tiles = slotTiles({ ...anchor, room }, BLOCK_2X2);
     let creeps: SnapCreep[] = tiles.map((t, i) =>
       snapCreep(i === 0 ? "drainAttacker" : "drainHealer", { room, x: t.x, y: t.y, memory: { op: "drain:W1N1" } })
     );
@@ -66,8 +65,8 @@ describe("planSquadMove keeps the formation welded over real distance (regressio
     let advanced = 0;
 
     for (let tick = 0; tick < 80; tick++) {
-      const state: SquadState = { members: creeps, formation: BLOCK_2X2, anchor: { ...anchor, room }, facing };
-      const intents = planSquadMove(state, goal, terrain, tick);
+      const state: SquadState = { members: creeps, formation: BLOCK_2X2, anchor: { ...anchor, room } };
+      const { moves: intents } = planSquadMove(state, goal, terrain, tick);
 
       // Apply the plan: every member steps one tile toward its assigned destination.
       creeps = creeps.map(c => {
@@ -81,7 +80,13 @@ describe("planSquadMove keeps the formation welded over real distance (regressio
       expect(mutualRangeOne(creeps.map(c => ({ x: c.x, y: c.y })))).toBe(true);
 
       // Re-derive the anchor slot's tile from the attacker (slot index 0) so the next tick's plan tracks
-      // the formation as it actually moved — mirroring how Drain recomputes anchor from the live squad.
+      // the formation as it actually moved. NOTE: this is purely a test-harness convenience — production
+      // Drain no longer re-derives its anchor from a live creep's position on every tick (the anchor is now
+      // a persisted, operation-owned value, only advanced via planSquadMove's own returned SquadMovePlan.anchor
+      // — see lib/squad.ts's SquadState doc). Re-deriving from the attacker here happens to produce the SAME
+      // value planSquadMove's own returned anchor would (both track "where did the tight block's anchor slot
+      // end up"), so this shortcut is a faithful enough stand-in for what this test needs without wiring up a
+      // fake persisted-anchor round-trip.
       const attacker = creeps[0];
       if (attacker.y < anchor.y) advanced++;
       anchor = { x: attacker.x, y: attacker.y };
@@ -110,8 +115,8 @@ describe("planSquadMove keeps the formation welded over real distance (regressio
 
     let converged = false;
     for (let tick = 0; tick < 15; tick++) {
-      const state: SquadState = { members: creeps, formation: BLOCK_2X2, anchor, facing: TOP };
-      const intents = planSquadMove(state, { x: 25, y: 15, room }, terrain, tick);
+      const state: SquadState = { members: creeps, formation: BLOCK_2X2, anchor };
+      const { moves: intents } = planSquadMove(state, { x: 25, y: 15, room }, terrain, tick);
       creeps = creeps.map(c => {
         const intent = intents.find(i => i.creep === c.id)!;
         const p = step({ x: c.x, y: c.y }, intent.to);

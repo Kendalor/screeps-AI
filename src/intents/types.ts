@@ -1,6 +1,6 @@
 // Intent union: planners return these; only intents/execute.ts turns them into game API calls.
 
-import type { RoleName, RemoteMemory } from "../memory/schema";
+import type { RoleName, RemoteMemory, SquadAnchorMemory } from "../memory/schema";
 import type { LogisticsTask } from "../logistics/types";
 import type { XY } from "../lib/geometry";
 
@@ -43,6 +43,9 @@ export type Intent =
   // (or the staging room center pre-assembly). Room-membership rallying let two stragglers converging on
   // each other's CURRENT room chase each other across a border forever; a real tile fixes that.
   | { kind: "setDrainRallyPos"; creep: Id<Creep>; pos: XY & { room: string } }
+  // The parade equivalent of setDrainRallyPos, for ParadeMember's own moveToPos step. See
+  // CreepMemory.paradeRallyPos.
+  | { kind: "setParadeRallyPos"; creep: Id<Creep>; pos: XY & { room: string } }
   // Stateful squad membership (see CreepMemory.squadJoined): a creep joins ONE NAMED squad (`op`, the same
   // opName stamp as CreepMemory.op — e.g. "drain:W1N1") once — when it first comes within the formation's
   // own footprint of that squad's anchor — and STAYS joined (skipping its own step table, driven by
@@ -146,12 +149,26 @@ export type Intent =
   // Colony's constructor stops attaching a Drain operation for that colony from the next tick on. No
   // automatic emitter yet (ADR 0006: no automatic end condition in this slice).
   | { kind: "clearDrainTarget"; room: string }
+  // The parade equivalent of setDrainTarget/clearDrainTarget: a flag handoff resolved `room` as the
+  // sponsor for a marching formation named `flag` at squad shape `formation` ("2x2"/"3x3"/...) — see
+  // ColonyMemory.parading. A plain overwrite, not an append, same scalar reasoning as setDrainTarget.
+  | { kind: "setParadeTarget"; room: string; flag: string; formation: string }
+  // Manual/flag-removal stop: clears ColonyMemory.parading so Colony's constructor stops attaching a
+  // Parade operation for that colony from the next tick on.
+  | { kind: "clearParadeTarget"; room: string }
   // Drain's per-tick observation sample (#40/ADR 0006's operation-owned snapshot history) — emitted by
   // drain.ts's intents() whenever it has vision of colony.draining's target this tick (same
   // hostileRoomTowers-presence vision check the advance/retreat rule already uses). execute.ts owns the
   // Memory.colonies[room].drainHistory write, including the reset-on-target-switch: if the stored
   // history's `room` doesn't match `target`, it starts a fresh history instead of appending.
   | { kind: "recordDrainSample"; room: string; target: string; tick: number; towerEnergy: number; storageEnergy: number }
+  // The drain/parade squad's persisted anchor (see ColonyMemory.drainAnchor/paradeAnchor's doc): the
+  // formation's bounding box's FIXED top-left corner, a colony-owned value only the owning operation's own
+  // planMove/planSquadMove route may advance or correct — emitted by empire/creeps.ts's runSquads whenever
+  // SquadMovePlan.anchor differs from the SquadState it was computed from, and by drain.ts/parade.ts's
+  // own intents() at the moment a squad first welds up (seeding the value from the live squad's position).
+  | { kind: "setDrainAnchor"; room: string; anchor: SquadAnchorMemory }
+  | { kind: "setParadeAnchor"; room: string; anchor: SquadAnchorMemory }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
   // Drawing primitives for one room's RoomVisual; drawn in order so later ops paint over earlier ones.

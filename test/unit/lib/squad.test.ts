@@ -4,7 +4,7 @@
 // here with a trivial planner; Drain's real content is tested in the drain suite.
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { planSquadActions, planSquadMove, reformAssignment, threatFacing, type SquadState, type Threat } from "../../../src/lib/squad";
+import { planSquadActions, planSquadMove, reformAssignment, type SquadState } from "../../../src/lib/squad";
 import type { Formation } from "../../../src/lib/formation";
 import { range } from "../../../src/lib/geometry";
 import { clearSquadMatrixCache } from "../../../src/lib/squadCostMatrix";
@@ -24,16 +24,14 @@ function openTerrain(): Uint8Array {
 
 const terrain = (room: string) => (room === "W2N1" || room === "W1N1" ? openTerrain() : undefined);
 
-// A 4-member squad, all in room, anchor at (attackerX, attackerY), facing TOP, in the given mode.
+// A 4-member squad, all in room, anchor at (25,25), in the given mode.
 function drainSquad(over: {
-  facing?: DirectionConstant;
   positions?: { x: number; y: number }[];
   room?: string;
   members?: number;
   fatigue?: number[]; // per-member fatigue override, indexed same as positions; default 0
 } = {}): SquadState {
   const room = over.room ?? "W2N1";
-  const facing = over.facing ?? TOP;
   const n = over.members ?? 4;
   const roles = ["drainAttacker", "drainHealer", "drainHealer", "drainHealer"] as const;
   const defaults = [
@@ -46,7 +44,7 @@ function drainSquad(over: {
     const p = over.positions?.[i] ?? defaults[i];
     return snapCreep(roles[i], { room, x: p.x, y: p.y, fatigue: over.fatigue?.[i] ?? 0, memory: { op: "drain:W1N1" } });
   });
-  return { members, formation: BLOCK_2X2, anchor: { x: 25, y: 25, room }, facing };
+  return { members, formation: BLOCK_2X2, anchor: { x: 25, y: 25, room } };
 }
 
 beforeEach(() => {
@@ -122,65 +120,13 @@ describe("reformAssignment", () => {
   });
 });
 
-describe("threatFacing", () => {
-  const from = { x: 25, y: 25 };
-
-  it("returns undefined with no threats", () => {
-    expect(threatFacing(from, [])).toBeUndefined();
-  });
-
-  it("faces the 4 cardinal directions correctly", () => {
-    expect(threatFacing(from, [{ x: 25, y: 20, engageRange: 1 }])).toBe(TOP);
-    expect(threatFacing(from, [{ x: 30, y: 25, engageRange: 1 }])).toBe(RIGHT);
-    expect(threatFacing(from, [{ x: 25, y: 30, engageRange: 1 }])).toBe(BOTTOM);
-    expect(threatFacing(from, [{ x: 20, y: 25, engageRange: 1 }])).toBe(LEFT);
-  });
-
-  it("faces the 4 diagonal directions correctly", () => {
-    expect(threatFacing(from, [{ x: 30, y: 20, engageRange: 1 }])).toBe(TOP_RIGHT);
-    expect(threatFacing(from, [{ x: 30, y: 30, engageRange: 1 }])).toBe(BOTTOM_RIGHT);
-    expect(threatFacing(from, [{ x: 20, y: 30, engageRange: 1 }])).toBe(BOTTOM_LEFT);
-    expect(threatFacing(from, [{ x: 20, y: 20, engageRange: 1 }])).toBe(TOP_LEFT);
-  });
-
-  it("prefers whichever threat is closer to ITS OWN engage range, not raw distance", () => {
-    // A melee creep (engageRange 1) at range 4 to the north: urgency 4-1=3, not yet hitting.
-    // A ranged creep (engageRange 3) at range 3 to the east: urgency 3-3=0, already hitting.
-    // Despite the melee creep being nearer in raw tiles, the ranged creep is more urgent (already engaged).
-    const melee: Threat = { x: 25, y: 21, engageRange: 1 };
-    const ranged: Threat = { x: 28, y: 25, engageRange: 3 };
-    expect(threatFacing(from, [melee, ranged])).toBe(RIGHT);
-  });
-
-  it("flips facing when the more urgent threat repositions to the other side", () => {
-    const melee: Threat = { x: 25, y: 21, engageRange: 1 }; // north, urgency 3
-    const rangedEast: Threat = { x: 28, y: 25, engageRange: 3 }; // east, urgency 0 (most urgent)
-    expect(threatFacing(from, [melee, rangedEast])).toBe(RIGHT);
-    // Once the ranged attacker also closes past its engage range, the melee attacker (now equally close to
-    // ITS engage range, having also advanced) can retake priority once it's the more urgent of the two.
-    const meleeAdjacent: Threat = { x: 25, y: 24, engageRange: 1 }; // north, urgency 1-1=0
-    const rangedFar: Threat = { x: 29, y: 25, engageRange: 3 }; // east, urgency 4-3=1
-    expect(threatFacing(from, [meleeAdjacent, rangedFar])).toBe(TOP);
-  });
-
-  it("a tower is always the most urgent threat present (Infinity engageRange)", () => {
-    const meleeAdjacent: Threat = { x: 25, y: 24, engageRange: 1 }; // urgency 1-1=0
-    const tower: Threat = { x: 25, y: 15, engageRange: Infinity }; // urgency -Infinity, far away in tiles
-    expect(threatFacing(from, [meleeAdjacent, tower])).toBe(TOP); // faces the distant tower, not the adjacent melee
-  });
-
-  it("holds the canonical TOP facing when the sole threat is co-located (no meaningful direction)", () => {
-    expect(threatFacing(from, [{ x: 25, y: 25, engageRange: 1 }])).toBe(TOP);
-  });
-});
-
 describe("planSquadMove", () => {
   it("moves every member by (at most) one tile in lockstep when advancing toward the goal", () => {
     // A tight, in-formation 2x2 advancing toward a goal several tiles away. Every member gets exactly one
     // move intent, and each intent is within range 1 of the member's current tile (a single step) — the
     // whole formation advances together, never one member racing ahead.
     const state = drainSquad();
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
+    const { moves: intents } = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     expect(intents).toHaveLength(4);
     for (const member of state.members) {
       const intent = intents.find(i => i.creep === member.id);
@@ -195,7 +141,7 @@ describe("planSquadMove", () => {
     // behind while unfatigued squadmates still slid forward, reintroducing per-member drift under a
     // different mechanism than the independent-Traveler convergence ADR 0007 replaced.
     const state = drainSquad({ fatigue: [0, 0, 3, 0] });
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
+    const { moves: intents } = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     expect(intents).toHaveLength(4);
     for (const member of state.members) {
       const intent = intents.find(i => i.creep === member.id);
@@ -206,7 +152,7 @@ describe("planSquadMove", () => {
 
   it("advances normally once every member's fatigue clears", () => {
     const state = drainSquad({ fatigue: [0, 0, 0, 0] });
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
+    const { moves: intents } = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     // At least one member actually moves toward the goal (y decreases) — confirms fatigue:0 doesn't
     // spuriously hold the squad the way the fatigued case above does.
     const advanced = intents.some(i => {
@@ -218,7 +164,7 @@ describe("planSquadMove", () => {
 
   it("keeps the destination tiles a valid mutual-range-1 block (the whole squad stays welded)", () => {
     const state = drainSquad();
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
+    const { moves: intents } = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     const dests = intents.map(i => i.to);
     for (let i = 0; i < dests.length; i++) {
       for (let j = 0; j < dests.length; j++) {
@@ -230,8 +176,8 @@ describe("planSquadMove", () => {
 
   it("holds the formation (assigns members onto slot tiles, does not advance) when a member is out of formation", () => {
     // One healer has drifted far from its slot — the squad is not a tight block. planSquadMove must NOT
-    // advance the anchor; instead it assigns each member to its current-facing slot tile so the stragglers
-    // close the gap. The anchor slot's member stays on the anchor tile (already there).
+    // advance the anchor; instead it assigns each member onto the formation's fixed slot tiles so the
+    // stragglers close the gap. The anchor slot's member stays on the anchor tile (already there).
     const state = drainSquad({
       positions: [
         { x: 25, y: 25 }, // anchor, in place
@@ -240,7 +186,7 @@ describe("planSquadMove", () => {
         { x: 40, y: 40 } // straggler, far out of formation
       ]
     });
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
+    const { moves: intents } = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     const anchorIntent = intents.find(i => i.creep === state.members[0].id);
     // Anchor holds at its own slot tile — it does not step toward the goal while the block is broken.
     expect(anchorIntent!.to).toEqual({ x: 25, y: 25, room: "W2N1" });
@@ -266,10 +212,9 @@ describe("planSquadMove", () => {
         snapCreep("drainHealer", { room: "W2N1", x: 26, y: 26, memory: { op: "drain:W1N1" } })
       ],
       formation: BLOCK_2X2,
-      anchor: { x: 25, y: 25, room: "W2N1" },
-      facing: TOP
+      anchor: { x: 25, y: 25, room: "W2N1" }
     };
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
+    const { moves: intents } = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, terrain, 0);
     expect(intents).toHaveLength(3); // only the 3 survivors get intents; the vacant slot needs nobody
     for (const member of state.members) {
       const intent = intents.find(i => i.creep === member.id);
@@ -286,20 +231,20 @@ describe("planSquadMove", () => {
     wallTerrain[26 * 50 + 24] = 0; // and its neighbour, so the straight-ahead block truly can't fit
     const src = (room: string) => (room === "W2N1" ? wallTerrain : undefined);
     const state = drainSquad();
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src, 0);
+    const { moves: intents } = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src, 0);
     for (const i of intents) {
       expect(wallTerrain[i.to.x * 50 + i.to.y]).not.toBe(0);
     }
   });
 
-  it("retargets the reform onto the nearest fitting anchor when the CURRENT anchor/facing fits nowhere", () => {
-    // A diagonal one-tile-wide staircase corridor — no 2x2 block fits anywhere along it at any facing
-    // (each step only opens 2 diagonally-adjacent tiles, never a full square). The squad's live anchor sits
-    // mid-staircase (not tight — members scattered by prior independent movement, mirroring the live bug:
-    // a squad reaching this position via step-table pathing before ever coming under squad control). A
-    // 3x3 open pocket a few tiles away DOES fit a 2x2 at some facing. Without the escape hatch, reforming
-    // onto the (unfittable) current-anchor slots would hold every member here forever; with it, the plan
-    // must send members toward the pocket instead.
+  it("retargets the reform onto the nearest fitting anchor when the CURRENT anchor fits nowhere", () => {
+    // A diagonal one-tile-wide staircase corridor — no 2x2 block fits anywhere along it (each step only
+    // opens 2 diagonally-adjacent tiles, never a full square). The squad's live anchor sits mid-staircase
+    // (not tight — members scattered by prior independent movement, mirroring the live bug: a squad
+    // reaching this position via step-table pathing before ever coming under squad control). A 3x3 open
+    // pocket a few tiles away DOES fit a 2x2. Without the escape hatch, reforming onto the (unfittable)
+    // current-anchor slots would hold every member here forever; with it, the plan must send members
+    // toward the pocket instead.
     const staircase = new Uint8Array(2500).fill(0);
     const open = (x: number, y: number) => {
       staircase[x * 50 + y] = 1;
@@ -308,7 +253,7 @@ describe("planSquadMove", () => {
       open(10 + i, 10 + i);
       open(11 + i, 10 + i);
     }
-    // A 3x3 pocket well clear of the staircase — fits a 2x2 at the canonical TOP facing.
+    // A 3x3 pocket well clear of the staircase — fits a 2x2.
     for (let x = 30; x <= 32; x++) for (let y = 30; y <= 32; y++) open(x, y);
     const src = (room: string) => (room === "W2N1" ? staircase : undefined);
 
@@ -320,7 +265,7 @@ describe("planSquadMove", () => {
         { x: 16, y: 16 } // this tile is NOT open in the staircase — the block was never actually tight
       ]
     });
-    const intents = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src, 0);
+    const { moves: intents } = planSquadMove(state, { x: 25, y: 20, room: "W2N1" }, src, 0);
     expect(intents).toHaveLength(4);
     // Every member is steered toward the fitting pocket, not held at the unfittable staircase position —
     // each intent should move at least one member closer to the pocket (30-32,30-32) than its current tile.
@@ -353,12 +298,9 @@ describe("planSquadMove", () => {
   it("reform repair SHIFTS a doorway blocker into the vacant slot, not swaps it out to the straggler's far slot", () => {
     const room = "W2N1";
     const anchor = { x: 24, y: 26, room };
-    // With fully open terrain, nearestFittingAnchor's radius-0 search returns the CURRENT anchor at the
-    // first facing that fits (TOP, its search order's first entry) regardless of what facing the state
-    // itself claims — so the formation actually in effect is the TOP-facing slot set: attacker (24,26),
-    // healers (25,26)/(24,27)/(25,27) (verified directly against slotTiles(anchor, TOP, BLOCK_2X2), not
-    // hand-derived, since nearestFittingAnchor's facing choice is otherwise easy to get wrong by assumption
-    // — see squadReformDeadlock.test.ts's comment on the same gotcha).
+    // With fully open terrain, nearestFittingAnchor's radius-0 search returns the CURRENT anchor — the
+    // formation's fixed slot set relative to it: attacker (24,26), healers (25,26)/(24,27)/(25,27)
+    // (verified directly against slotTiles(anchor, BLOCK_2X2), not hand-derived).
     const healerASlot = { x: 25, y: 26 };
     const healerBSlot = { x: 24, y: 27 };
     const vacantSlot = { x: 25, y: 27 };
@@ -371,9 +313,9 @@ describe("planSquadMove", () => {
       snapCreep("drainHealer", { room, x: 5, y: 5, memory: { op: "drain:W1N1" } })
     ];
     const [, healerA, healerB, straggler] = members;
-    const state: SquadState = { members, formation: BLOCK_2X2, anchor, facing: TOP };
+    const state: SquadState = { members, formation: BLOCK_2X2, anchor };
 
-    const intents = planSquadMove(state, anchor, terrain, 0); // goal === anchor: isolate reform from advance
+    const { moves: intents } = planSquadMove(state, anchor, terrain, 0); // goal === anchor: isolate reform from advance
     const healerAIntent = intents.find(i => i.creep === healerA.id)!;
     const healerBIntent = intents.find(i => i.creep === healerB.id)!;
     const stragglerIntent = intents.find(i => i.creep === straggler.id)!;

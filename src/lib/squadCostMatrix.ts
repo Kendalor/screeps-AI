@@ -49,8 +49,8 @@ export function footprintSize(formation: Formation): FootprintSize {
     minDy = Math.min(minDy, slot.dy);
     maxDy = Math.max(maxDy, slot.dy);
   }
-  // `+ 0` normalizes a rounded -0 back to 0 (minDx/minDy of 0 negated is -0) — matches formation.ts's
-  // rotateOffset's own convention so equality checks never distinguish the two.
+  // `+ 0` normalizes a rounded -0 back to 0 (minDx/minDy of 0 negated is -0) so equality checks never
+  // distinguish the two.
   return { width: maxDx - minDx + 1, height: maxDy - minDy + 1, anchorDx: -minDx + 0, anchorDy: -minDy + 0 };
 }
 
@@ -60,23 +60,23 @@ export function footprintSize(formation: Formation): FootprintSize {
 // footprint fit here," not to re-litigate plains-vs-swamp costing.
 const IMPASSABLE = 0xff;
 
-// The cost applied to an anchor slot whose footprint would need a tile PAST this room's own 50x50 grid — a
-// window overflow, not a real wall (see applyMovingMaximum's doc). Genuinely IMPASSABLE (0xff) here means
-// PathFinder can NEVER route the anchor onto this room's own edge column/row in the overflow direction —
-// which, for a corner-anchored formation (any facing of DRAIN_FORMATION's trailing 2x2), is EVERY facing's
-// SAME edge in BOTH the room being left and the room being entered (the shape doesn't change mid-route), so
-// a strict-impassable edge makes every room border structurally uncrossable in any facing — confirmed via a
-// real-engine integration test (test/integration/drain-squad-border-crossing.test.ts) before this was fixed.
-// A HIGH-BUT-FINITE cost instead lets PathFinder use the edge only when nothing better exists (a genuine
-// border crossing), while still strongly preferring any route that doesn't need it. This is a deliberate,
-// bounded correctness trade — this room's matrix genuinely cannot verify the footprint fits in the
-// NEIGHBORING room without peeking at its terrain (forbidden by this module's cross-room hard constraint,
-// see the module header) — justified by a real Screeps engine guarantee: an exit tile always opens onto real
-// walkable ground at least a tile or two into the neighboring room (exits never open directly onto a
-// corner/dead-end), so a small formation (a 2x2, the only shape this codebase currently uses) landing just
-// past a border is safe in practice, not a real gamble. Sized well above PLAIN_COST/SWAMP_COST so PathFinder
-// only reaches for this as a last resort, never as a shortcut past genuinely cheaper in-room routes.
-const ROOM_EDGE_OVERFLOW_COST = 50;
+// Overmind's own EXIT_COST equivalent (Pathing.ts's setExitCosts, default argument 10) — priced on the RAW,
+// pre-moving-maximum matrix, on real room-edge tiles only (x/y ∈ {0,49}) that aren't already a wall. This
+// is deliberately NOT the mechanism the first cut of this file used (a fabricated "window overflow" cost
+// applied inside applyMovingMaximum for any anchor whose footprint would need an out-of-grid tile) — that
+// approach primed EVERY edge of EVERY room as a cheap-ish escape hatch, not just the border actually being
+// crossed, and was confirmed live (2026-08-08, colony W5N3's drain squad) to make PathFinder prefer bailing
+// out the WRONG edge (straight back into the squad's own home room) over a genuinely available ~85-cost
+// detour around an interior wall, because the fabricated overflow cost (50, tuned only against "should be
+// more than a plain step" reasoning, never against real detour costs) was cheaper than actually walking
+// around the obstacle. Re-read from Overmind's real source (Pathing.ts) to fix this: they price the tile
+// ITSELF (not a fictitious tile past it), at a small constant (10 — 2x a swamp step, 10x a plain step) BEFORE
+// applyMovingMaximum's window-max pass smears it outward like any other cost. `applyMovingMaximum` still
+// never evaluates an anchor whose footprint would need an actually-out-of-bounds tile (see its own doc) —
+// matching Overmind's `x <= 50-width` loop bound exactly, no separate overflow branch invented for that case
+// at all. The smeared exit cost alone is what lets a footprint's anchor walk right up to (and eventually
+// past, via PathFinder's own native per-room roomCallback stitching) a real exit, cheaply but not for free.
+const EXIT_COST = 10;
 
 function baseCostMatrix(room: string, terrain: TerrainSource, occupancy: OccupancySource): CostMatrix {
   const matrix = new PathFinder.CostMatrix();
@@ -86,6 +86,7 @@ function baseCostMatrix(room: string, terrain: TerrainSource, occupancy: Occupan
     for (let y = 0; y < 50; y++) {
       const blocked = (t && t[x * 50 + y] !== 1) || (o && o[x * 50 + y] === 1);
       if (blocked) matrix.set(x, y, IMPASSABLE);
+      else if (x === 0 || x === 49 || y === 0 || y === 49) matrix.set(x, y, EXIT_COST);
     }
   }
   return matrix;
@@ -107,30 +108,26 @@ function baseCostMatrix(room: string, terrain: TerrainSource, occupancy: Occupan
  * tile" is already a correct footprint-fit search. O(2500 * w * h), trivial for the 2x2/1x2 shapes this
  * codebase uses (ADR 0007 follow-up).
  *
- * Deliberately room-local only, no cross-room lookups: a window that overflows this room's own 50x50 grid
- * costs ROOM_EDGE_OVERFLOW_COST HERE (a real, un-verifiable-without-peeking wall might be there — but might
- * just as well be open ground one tile into the neighboring room — see that constant's own doc for why a
- * high-but-finite cost, not IMPASSABLE, is the right call) — border crossing itself is still
- * PathFinder.search's job (its own native per-room roomCallback stitching across a route), not something
- * this single-room matrix pre-solves by peeking at a neighbor; it just no longer forecloses the possibility
- * outright. A genuinely BLOCKED in-room tile (real terrain/occupancy, `matrix.get` already IMPASSABLE) stays
- * IMPASSABLE regardless of whether the SAME window also touches an overflow cell — `Math.min(worst,
- * IMPASSABLE)` below caps the window's cost, but a window is only capped there if literally every cell in it
- * scored IMPASSABLE already; an overflow cell alone never promotes a window past ROOM_EDGE_OVERFLOW_COST, and
- * a real wall inside the window still wins the max (worst) over any overflow cell, staying IMPASSABLE. Matches
- * Overmind's own applyMovingMaximum in spirit (confirmed from source) and the instruction this module
- * follows: let PathFinder handle route/room transitions, never hand-roll cross-room position math — this
- * only prices the uncertainty at a border, it doesn't resolve it by computing anything cross-room itself. */
+ * Deliberately room-local only, no cross-room lookups: an anchor whose footprint window would need a tile
+ * PAST this room's own 50x50 grid is simply never evaluated at all — matching Overmind's own
+ * applyMovingMaximum exactly (`x <= 50-width`/`y <= 50-height` loop bounds, confirmed from source), not
+ * priced with any fabricated "overflow" cost (an earlier version of this function invented one; see
+ * EXIT_COST's doc for why that was wrong and got reverted). Cells outside the evaluated range are left at
+ * cost 0 in `out`, which PathFinder reads as "use plainCost/swampCost" — effectively unconstrained by this
+ * matrix — but those anchors are already unreachable in practice: they're the room's own literal edge row/
+ * column, and EXIT_COST (baseCostMatrix) already primed real exit tiles as smeared-in-cheap by the window
+ * pass over IN-BOUNDS cells, so an anchor a full footprint-width back from the edge already reads the exit's
+ * cost correctly without this function ever needing to reach past x/y 49 itself. Border crossing is entirely
+ * PathFinder.search's own job (its native per-room roomCallback stitching across a route) — this module never
+ * computes or guesses anything about a neighboring room. */
 function applyMovingMaximum(matrix: CostMatrix, width: number, height: number, anchorDx: number, anchorDy: number): CostMatrix {
   const out = new PathFinder.CostMatrix();
-  for (let x = 0; x < 50; x++) {
-    for (let y = 0; y < 50; y++) {
+  for (let x = anchorDx; x <= 50 - width + anchorDx; x++) {
+    for (let y = anchorDy; y <= 50 - height + anchorDy; y++) {
       let worst = 0;
       for (let dx = -anchorDx; dx < width - anchorDx && worst < IMPASSABLE; dx++) {
         for (let dy = -anchorDy; dy < height - anchorDy && worst < IMPASSABLE; dy++) {
-          const nx = x + dx;
-          const ny = y + dy;
-          const cost = nx < 0 || nx >= 50 || ny < 0 || ny >= 50 ? ROOM_EDGE_OVERFLOW_COST : matrix.get(nx, ny);
+          const cost = matrix.get(x + dx, y + dy);
           if (cost > worst) worst = cost;
         }
       }
@@ -159,14 +156,18 @@ const TTL_TICKS = 20;
 /** The cached, moving-maximum-transformed CostMatrix for `formation`'s footprint in `room`, built from
  * `terrain` + `occupancy`. Lazily rebuilt on a cache miss or TTL expiry; `now` is the caller's current tick
  * (a parameter, not a direct Game.time read, matching remotePath.ts's pure-function convention so this stays
- * testable without a live Game global). Cache key includes the footprint's (width, height, anchorDx, anchorDy)
- * — two formations with the same bounding box AND the same anchor-slot offset within it (e.g. any two 2x2s
- * at the same facing) share a cache entry, matching how the matrix itself only ever encodes "does a box this
- * size, anchored here, fit" — but anchorDx/anchorDy must be part of the key too: a formation rotated to a
- * different facing keeps the same (width, height) yet the anchor slot can sit at a DIFFERENT corner of that
- * box (e.g. BOTTOM-facing BLOCK_2X2 anchors its bottom-right corner, not its top-left), which needs a
- * differently-shifted moving-maximum window (see applyMovingMaximum's doc) — omitting anchorDx/anchorDy from
- * the key would silently serve one facing's matrix to another. */
+ * testable without a live Game global).
+ *
+ * Cache key is `${room}:${width}x${height}` ONLY — every squad formation is now required (formation.ts's
+ * assertSquareTopLeftAnchor, docs/adr/0007-squad-movement.md's follow-up) to have a SQUARE bounding box with
+ * its anchor slot fixed at the box's own top-left corner (anchorDx=anchorDy=0 always), which makes the
+ * footprint's tile-set relative to the anchor identical at every facing — pathing (this module, squadPath.ts)
+ * never needs to know a formation's facing at all anymore, so a formation's SIZE alone is enough to key the
+ * cache: one matrix per room per formation size, shared across every facing a squad might currently hold,
+ * not rebuilt/re-keyed on a facing change. (Before this constraint, an off-corner anchor's box-relative
+ * position changed per rotation, so anchorDx/anchorDy had to be part of the key too — see git history on
+ * this comment for that version if `applyMovingMaximum`'s shift parameters are ever needed for a
+ * non-square/off-corner formation again.) */
 export function getSquadMatrix(
   room: string,
   formation: Formation,
@@ -175,7 +176,7 @@ export function getSquadMatrix(
   now: number
 ): CostMatrix {
   const { width, height, anchorDx, anchorDy } = footprintSize(formation);
-  const key = `${room}:${width}x${height}:${anchorDx},${anchorDy}`;
+  const key = `${room}:${width}x${height}`;
   const cached = cache.get(key);
   if (cached && now - cached.tick < TTL_TICKS) return cached.matrix;
 

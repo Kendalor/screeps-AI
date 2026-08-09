@@ -837,10 +837,15 @@ describe("moveToRoom records noPathFrom on a scout's travelTo failure", () => {
 
 // A claimer reserves the controller of the room it stands in. reserveController is range 1, like upgrade.
 describe("reserve step", () => {
-  function claimerAt(inRange: boolean) {
+  function claimerAt(inRange: boolean, reservedBy?: string) {
     const reserved: string[] = [];
+    const attacked: string[] = [];
     const traveled: { x: number; y: number }[] = [];
-    const controller = { id: "ctrl1", pos: { x: 40, y: 40 } };
+    const controller = {
+      id: "ctrl1",
+      pos: { x: 40, y: 40 },
+      reservation: reservedBy === undefined ? undefined : { username: reservedBy }
+    };
     const creep = {
       pos: {
         inRangeTo: () => inRange,
@@ -848,9 +853,10 @@ describe("reserve step", () => {
       },
       room: { controller },
       reserveController: (c: { id: string }) => reserved.push(c.id),
+      attackController: (c: { id: string }) => attacked.push(c.id),
       travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
     };
-    return { creep: creep as unknown as Creep, reserved, traveled };
+    return { creep: creep as unknown as Creep, reserved, attacked, traveled };
   }
 
   it("reserves the controller when in range", () => {
@@ -866,6 +872,22 @@ describe("reserve step", () => {
     expect(reserved).toEqual([]);
     expect(traveled).toEqual([{ x: 40, y: 40 }]);
     expect(result.didAct).toBe(false);
+  });
+
+  it("attacks the controller instead of reserving when held by an Invader core", () => {
+    const { creep, reserved, attacked } = claimerAt(true, "Invader");
+    const result = runStep(creep, { do: "reserve" });
+    expect(attacked).toEqual(["ctrl1"]);
+    expect(reserved).toEqual([]);
+    expect(result.didAct).toBe(false);
+  });
+
+  it("reserves normally once the Invader reservation is gone", () => {
+    const { creep, reserved, attacked } = claimerAt(true, undefined);
+    const result = runStep(creep, { do: "reserve" });
+    expect(reserved).toEqual(["ctrl1"]);
+    expect(attacked).toEqual([]);
+    expect(result.didAct).toBe(true);
   });
 });
 

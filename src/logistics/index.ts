@@ -106,10 +106,12 @@ export const planLogistics = wrapFn(function planLogistics(colony: ColonySnapsho
   const idle = transportCreeps.filter(isIdle);
   if (idle.length === 0) return supplyPlan;
 
-  // A live supply creep owns spawnSystem/tower outright — see consumers()'s skipSupplyTiers doc —
-  // so transport falls straight through to controller-container/builder/upgrader/storage instead of
-  // only working around whatever supply's reservations happened to cover this particular tick.
-  const hasSupply = colony.creeps.some(c => c.role === "supply");
+  // A live supply creep owns spawnSystem/tower outright, but only once storage exists to draw from —
+  // see consumers()'s skipSupplyTiers doc. With storage empty, supply alone can't be trusted to cover
+  // the deficit (it's a short-hop topper, not sized for the room's full spawn throughput), so transport
+  // falls back in at spawnSystem's low priority instead of leaving idle, fully-loaded transport creeps
+  // stranded while spawn/extensions starve.
+  const hasSupply = colony.creeps.some(c => c.role === "supply") && colony.storageEnergy > 0;
   const reserved = mergeReserved(foldReserved(transportCreeps), supplyReserved);
   const assignments = allocate(
     transportProviders(colony),

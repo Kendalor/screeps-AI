@@ -5,6 +5,7 @@ import type { Intent } from "../intents/types";
 import { Attack } from "../operations/attack";
 import { Colonize } from "../operations/colonize";
 import { Drain } from "../operations/drain";
+import { Parade } from "../operations/parade";
 import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
@@ -57,7 +58,11 @@ export class Colony {
       // (ColonyMemory.draining) is set, a flag handoff's future addDrainTarget equivalent (issue #38, not
       // yet built). Unlike Attack's `attacking` list, `draining` is a scalar — ADR 0006's exactly-one-
       // target-per-colony constraint — so this is unconditionally one-instance-or-none, no pooling.
-      ...(snapshot.draining !== undefined ? [new Drain(snapshot.name)] : [])
+      ...(snapshot.draining !== undefined ? [new Drain(snapshot.name)] : []),
+      // Parade isn't in operationsFor() either, same reason: attached only while snapshot.parading
+      // (ColonyMemory.parading) is set, a flag handoff's setParadeTarget (see empire/paradeFlags.ts).
+      // Scalar like `draining` — one parade per colony at a time, no pooling.
+      ...(snapshot.parading !== undefined ? [new Parade(snapshot.name)] : [])
     ];
   }
 

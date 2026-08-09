@@ -349,6 +349,36 @@ export interface ColonySnapshot {
   // planSquadMove/nearestFittingAnchor so a squad routes around a bystander creep or structure exactly as
   // it would a wall, closing the gap flagged in docs/drain-squad-handoff.md's open issue #2.
   drainRoomOccupancy: Partial<Record<string, Uint8Array>>;
+  // The parade equivalent of `draining` above (ColonyMemory.parading), but the whole record rather than
+  // just a room name: Parade needs the formation shape too, and — unlike a drain target room, which is
+  // fixed at handoff time — has no target ROOM concept at all (see paradeGoal below for the live position
+  // that actually drives it). Owned by parade.ts; Colony's constructor attaches a real Parade operation
+  // while this is set.
+  parading?: { flag: string; formation: string };
+  // The parade flag's CURRENT position, read fresh from Game.flags every tick at the snapshot boundary
+  // (the one place Game.flags is touched outside empire/*Flags.ts — see paradeFlags.ts's header for why a
+  // flag's presence/position must be re-read live rather than cached: unlike draining's fixed target room,
+  // Parade's whole point is that the player can drag the flag and the squad follows). Undefined when
+  // `parading` is set but the named flag itself has been removed (paradeFlags.ts hasn't cleared it yet, a
+  // one-tick race) — Parade simply holds the squad in place until either the flag reappears or the next
+  // tick's paradeFlags pass clears `parading` outright.
+  paradeGoal?: XY & { room: string };
+  // Terrain for every room Parade might place a squad member in, same not-vision-gated convention as
+  // drainRoomTerrain (Game.map.getRoomTerrain reads static data for any room, seen or not) — just the
+  // flag's own current room and the colony's home room, since a parade (unlike a drain squad walking a
+  // precomputed route toward a fixed hostile target) has no route to precompute: the flag can jump to any
+  // room the player drags it to, so only "where the squad's anchor is now" and "where the goal is now"
+  // are ever actually pathed between in a single tick, and PathFinder resolves whatever lies between them.
+  paradeRoomTerrain: Partial<Record<string, Uint8Array>>;
+  // Live occupancy for the same rooms as paradeRoomTerrain, same vision-gated convention as
+  // drainRoomOccupancy (a room with no vision this tick has no entry, failing open to "nothing occupied").
+  paradeRoomOccupancy: Partial<Record<string, Uint8Array>>;
+  // The drain/parade squad's persisted anchor (ColonyMemory.drainAnchor/paradeAnchor) — a straight
+  // pass-through read, same pattern as `draining`/`parading` themselves. See lib/squad.ts's SquadState doc
+  // and ColonyMemory.drainAnchor's doc for why this exists: the anchor is a colony-owned value the owning
+  // operation's own route advances, not something re-derived from a live creep's position every tick.
+  drainAnchor?: XY & { room: string };
+  paradeAnchor?: XY & { room: string };
 }
 
 export interface EmpireSnapshot {

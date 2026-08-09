@@ -120,6 +120,9 @@ function buildColonySnapshot(
   const attacking = Memory.colonies[room.name]?.attacking ?? [];
   const draining = Memory.colonies[room.name]?.draining;
   const drainRoute = draining ? drainRouteTo(room.name, draining) : [];
+  const parading = Memory.colonies[room.name]?.parading;
+  const paradeGoal = parading ? paradeGoalFor(parading.flag) : undefined;
+  const paradeRooms = new Set([room.name, ...(paradeGoal ? [paradeGoal.room] : [])]);
   const vision = remoteRoomVision(remotes, controller.owner?.username);
   const remoteStructures: Partial<Record<string, SnapStructure[]>> = {};
   const remoteSites: Partial<Record<string, SnapStructure[]>> = {};
@@ -248,8 +251,54 @@ function buildColonySnapshot(
     hostileRoomUnits,
     hostileRoomStorageEnergy,
     drainRoomTerrain: drainTerrainFor(draining, drainRoute),
-    drainRoomOccupancy: drainOccupancyFor(draining, drainRoute)
+    drainRoomOccupancy: drainOccupancyFor(draining, drainRoute),
+    parading,
+    paradeGoal,
+    paradeRoomTerrain: terrainFor(paradeRooms),
+    paradeRoomOccupancy: occupancyFor(paradeRooms),
+    drainAnchor: Memory.colonies[room.name]?.drainAnchor,
+    paradeAnchor: Memory.colonies[room.name]?.paradeAnchor
   };
+}
+
+// The parade flag's live position, or undefined if it's been removed (see ColonySnapshot.paradeGoal's
+// doc) — the one place besides empire/paradeFlags.ts that reads Game.flags, needed here because
+// buildColonySnapshot runs every tick regardless of whether paradeFlags.ts has caught up yet to a flag the
+// player just deleted.
+function paradeGoalFor(flagName: string): (XY & { room: string }) | undefined {
+  const flag = Game.flags[flagName];
+  if (!flag) return undefined;
+  return { x: flag.pos.x, y: flag.pos.y, room: flag.pos.roomName };
+}
+
+// Terrain for an arbitrary room set — the parade equivalent of drainTerrainFor, generalized since Parade
+// has no fixed route to precompute (see paradeRoomTerrain's doc): just whichever rooms are actually in
+// play this tick (home + the flag's current room). Not vision-gated, same reasoning as drainTerrainFor.
+function terrainFor(rooms: ReadonlySet<string>): Partial<Record<string, Uint8Array>> {
+  const out: Partial<Record<string, Uint8Array>> = {};
+  for (const room of rooms) out[room] = walkablePixelsForRoom(room);
+  return out;
+}
+
+// Live occupancy for an arbitrary room set — the parade equivalent of drainOccupancyFor, same
+// vision-gated/obstacle rules (a room with no vision this tick has no entry).
+function occupancyFor(rooms: ReadonlySet<string>): Partial<Record<string, Uint8Array>> {
+  const out: Partial<Record<string, Uint8Array>> = {};
+  for (const roomName of rooms) {
+    const room = Game.rooms[roomName];
+    if (!room) continue;
+    const grid = new Uint8Array(2500);
+    for (const creep of room.find(FIND_CREEPS)) grid[creep.pos.x * 50 + creep.pos.y] = 1;
+    for (const structure of room.find(FIND_STRUCTURES)) {
+      if ((OBSTACLE_OBJECT_TYPES as readonly string[]).includes(structure.structureType)) {
+        grid[structure.pos.x * 50 + structure.pos.y] = 1;
+      }
+    }
+    for (const source of room.find(FIND_SOURCES)) grid[source.pos.x * 50 + source.pos.y] = 1;
+    for (const mineral of room.find(FIND_MINERALS)) grid[mineral.pos.x * 50 + mineral.pos.y] = 1;
+    out[roomName] = grid;
+  }
+  return out;
 }
 
 // Terrain for every room Drain might place a squad member in — `draining` itself plus every room on the

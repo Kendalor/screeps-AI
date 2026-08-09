@@ -29,7 +29,7 @@ function openTerrain(): Uint8Array {
 }
 const terrain = (room: string) => (room === "W2N1" ? openTerrain() : undefined);
 
-// A tight 2x2 drain squad standing at anchor (25,25) in W2N1, facing TOP.
+// A tight 2x2 drain squad standing at anchor (25,25) in W2N1.
 function tightSquad(healerHits: number[] = [500, 500, 500]): SquadState {
   const room = "W2N1";
   const attacker = snapCreep("drainAttacker", { room, x: 25, y: 25, hits: 500, hitsMax: 500, memory: { op: "drain:W1N1" } });
@@ -40,7 +40,7 @@ function tightSquad(healerHits: number[] = [500, 500, 500]): SquadState {
   ].map((p, i) =>
     snapCreep("drainHealer", { room, x: p.x, y: p.y, hits: healerHits[i], hitsMax: 500, memory: { op: "drain:W1N1" } })
   );
-  return { members: [attacker, ...healers], formation: DRAIN_FORMATION, anchor: { x: 25, y: 25, room }, facing: TOP };
+  return { members: [attacker, ...healers], formation: DRAIN_FORMATION, anchor: { x: 25, y: 25, room } };
 }
 
 describe("DrainHealer formation latch regression (ADR 0007: movement is out of the step table)", () => {
@@ -53,8 +53,8 @@ describe("DrainHealer formation latch regression (ADR 0007: movement is out of t
     const healthy = tightSquad([500, 500, 500]);
     const wounded = tightSquad([500, 10, 500]); // second healer nearly dead
 
-    const healthyMoves = planSquadMove(healthy, goal, terrain, 0);
-    const woundedMoves = planSquadMove(wounded, goal, terrain, 0);
+    const { moves: healthyMoves } = planSquadMove(healthy, goal, terrain, 0);
+    const { moves: woundedMoves } = planSquadMove(wounded, goal, terrain, 0);
 
     // Same member order and ids in both fixtures — compare each member's destination tile.
     for (let i = 0; i < healthy.members.length; i++) {
@@ -81,7 +81,7 @@ describe("DrainHealer formation latch regression (ADR 0007: movement is out of t
     // The squad is a tight block already at the goal; planSquadMove assigns each member its own current
     // slot tile (zero movement), regardless of any heal target. No member is ever pulled toward a patient.
     const state = tightSquad([500, 10, 500]);
-    const moves = planSquadMove(state, { x: 25, y: 25, room: "W2N1" }, terrain, 0);
+    const { moves } = planSquadMove(state, { x: 25, y: 25, room: "W2N1" }, terrain, 0);
     for (const member of state.members) {
       const move = moves.find(m => m.creep === member.id)!;
       expect({ x: move.to.x, y: move.to.y }).toEqual({ x: member.x, y: member.y }); // stays on its own tile

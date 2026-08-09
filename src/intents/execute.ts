@@ -131,6 +131,12 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       creep.memory.drainRallyPos = intent.pos;
       return OK;
     }
+    case "setParadeRallyPos": {
+      const creep = Game.getObjectById(intent.creep);
+      if (!creep) return ERR_NOT_FOUND;
+      creep.memory.paradeRallyPos = intent.pos;
+      return OK;
+    }
     case "setSquadJoined": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;
@@ -310,6 +316,16 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       if (mem) mem.draining = undefined;
       return OK;
     }
+    case "setParadeTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      mem.parading = { flag: intent.flag, formation: intent.formation };
+      return OK;
+    }
+    case "clearParadeTarget": {
+      const mem = Memory.colonies[intent.room];
+      if (mem) mem.parading = undefined;
+      return OK;
+    }
     case "recordDrainSample": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
       // Scoped per target room (#40/ADR 0006): a stored history against a different (or no) target is
@@ -318,6 +334,16 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
         mem.drainHistory = { room: intent.target, samples: [] };
       }
       mem.drainHistory.samples.push({ tick: intent.tick, towerEnergy: intent.towerEnergy, storageEnergy: intent.storageEnergy });
+      return OK;
+    }
+    case "setDrainAnchor": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      mem.drainAnchor = intent.anchor;
+      return OK;
+    }
+    case "setParadeAnchor": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      mem.paradeAnchor = intent.anchor;
       return OK;
     }
     case "recordSourceSpot": {

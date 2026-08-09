@@ -50,10 +50,27 @@ export interface Consumer {
 // faulty — an empty tower during an attack is worse than the controller container missing its 0.7
 // floor. Logistics ranks tower above controller-container instead; this graph is the new, additive
 // consumer of the spawn/extension-first knowledge only, not a full copy of hauler.ts's tier order.
+//
+// spawnSystem ranks below storage (and below tower/controllerContainer) on purpose: once storage
+// exists, a dedicated supply creep (see logistics/index.ts's hasSupply gate) is responsible for
+// keeping spawn/extensions topped, and transport filling them directly as a HIGH-priority job was
+// clogging the bunker — transport creeps queuing on spawn/extension tiles ahead of storage/controller
+// work, for a job supply already owns. Transport still falls back to spawnSystem once supply can't
+// keep up (storage is empty — see hasSupply's doc), just at low priority so it doesn't crowd out
+// storage/tower/controller-container traffic while doing it.
 const PRIORITY = {
-  spawnSystem: 100,
   tower: 90,
   controllerContainer: 80,
+  // Storage is the sink once it exists: builder/upgrader (below) are the pre-storage fallback so a
+  // creep isn't left to self-harvest before storage is built, but consumers() stops emitting them the
+  // moment storage exists — transport should always feed storage rather than hand-feeding creeps
+  // directly. It is the inverse of the source-side gate below — storage is a sink exactly when the
+  // spawn system has no deficit, and a source exactly when it does, so it is never both in the same
+  // tick and can never feed itself in a loop.
+  storage: 70,
+  // Low priority by design — see the block comment above. Still above builder/upgrader: with no
+  // storage yet (supply's gate open), an empty spawn is still worse than a hand-fed creep.
+  spawnSystem: 60,
   // New sinks so builder/upgrader aren't left to self-harvest once transport claims every ground
   // pile before they can scavenge it (the regression this fixes: construction/upgrading throughput
   // collapsed to whatever a creep could personally harvest, once maxHaulers:0 meant transport was
@@ -61,14 +78,7 @@ const PRIORITY = {
   // explicit direction — a stalled build blocks the room's economy longer than slower upgrading does.
   // Pre-storage only: consumers() below emits these two exclusively while colony.storageId is unset.
   builder: 40,
-  upgrader: 30,
-  // Storage is the sink once it exists: builder/upgrader (above) are the pre-storage fallback so a
-  // creep isn't left to self-harvest before storage is built, but consumers() stops emitting them the
-  // moment storage exists — transport should always feed storage rather than hand-feeding creeps
-  // directly. Still below spawn/tower/controller-container. It is the inverse of the source-side gate
-  // below — storage is a sink exactly when the spawn system has no deficit, and a source exactly when
-  // it does, so it is never both in the same tick and can never feed itself in a loop.
-  storage: 70
+  upgrader: 30
 } as const;
 
 // The controller container is topped to a floor (not filled to 100%) so upgraders draining it for
@@ -244,12 +254,15 @@ export function supplyConsumers(colony: ColonySnapshot): Consumer[] {
 /**
  * Spawn/extensions as one aggregate node, plus the controller container while below its fill floor.
  *
- * `skipSupplyTiers`: while a live supply creep exists, transport must leave spawnSystem/tower to it
- * entirely rather than only working around whatever supply's own allocate() pass reserved this tick —
- * supply is a short-hop topper that's typically idle/mid-trip on any given tick, so without this a
- * multi-extension room's uncovered remainder kept falling to transport, which then treated a routine
- * top-off as equal-or-higher priority than controller-container/storage and dragged transport off its
- * own longer-haul work every time supply couldn't reach every sink in one pass. Supply's own view
+ * `skipSupplyTiers`: while a live supply creep exists AND storage has energy to draw from, transport
+ * must leave spawnSystem/tower to supply entirely rather than only working around whatever supply's
+ * own allocate() pass reserved this tick — supply is a short-hop topper that's typically idle/mid-trip
+ * on any given tick, so without this a multi-extension room's uncovered remainder kept falling to
+ * transport, which then dragged transport off its own longer-haul work every time supply couldn't
+ * reach every sink in one pass. Gated on storage energy too: with storage empty, supply has nothing
+ * to draw from and can't be trusted to cover the deficit alone (a single supply creep sized to
+ * top-off duty, not the room's full spawn throughput), so transport falls back in at spawnSystem's now
+ * -low priority (see PRIORITY's doc) rather than leaving spawn/extensions to starve. Supply's own view
  * (supplyConsumers, below) is unaffected — it never looks at this flag.
  */
 export function consumers(colony: ColonySnapshot, skipSupplyTiers = false): Consumer[] {

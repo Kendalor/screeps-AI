@@ -39,7 +39,7 @@ describe("Squad formation and creation", () => {
 
     const anchor = { x: 25, y: 25, room: ROOM };
     const goal = { x: 25, y: 20, room: ROOM }; // a goal beyond the rally, so the squad tries to advance once tight
-    const log = world.run(40, () => ({ anchor, facing: TOP, goal }));
+    const log = world.run(40, () => ({ anchor, goal }));
 
     const becameTight = log.some(e => e.tight);
     expect(becameTight, `squad never became tight:\n${world.describeLog()}`).toBe(true);
@@ -57,7 +57,7 @@ describe("Squad formation and creation", () => {
 
     const anchor = { x: 25, y: 25, room: ROOM };
     const goal = { x: 25, y: 20, room: ROOM };
-    const first = world.step(anchor, TOP, goal);
+    const first = world.step(anchor, goal);
 
     // The attacker (anchor slot, already on its own tile) must NOT have moved off its slot on the very
     // first tick — the block holds for the straggler rather than advancing without it (planSquadMove's
@@ -67,7 +67,7 @@ describe("Squad formation and creation", () => {
     expect(attackerPos.y).toBe(25);
 
     // Run it out — the straggler should eventually close the gap and the block become tight.
-    const rest = world.run(60, () => ({ anchor, facing: TOP, goal }));
+    const rest = world.run(60, () => ({ anchor, goal }));
     const allTight = rest.some(e => e.tight);
     expect(allTight, `straggler never joined the formation:\n${world.describeLog()}`).toBe(true);
     // Sanity: the straggler actually moved from its starting tile at some point (it wasn't just ignored).
@@ -91,14 +91,14 @@ describe("Squad formation and creation", () => {
     // fixed `anchor` this test keeps passing after killing a member).
     const goal = anchor;
     // Confirm fully tight first (sanity baseline).
-    const baseline = world.step(anchor, TOP, goal);
+    const baseline = world.step(anchor, goal);
     expect(baseline.tight).toBe(true);
 
     // Kill the attacker (the anchor slot) — the surviving 3 healers are still sitting on their own slot
     // tiles, so with only 3 live members the formation should STILL read as tight (a vacant slot needs
     // nobody — see lib/squad.ts's inFormation doc).
     world.kill(attacker);
-    const afterLoss = world.step(anchor, TOP, goal);
+    const afterLoss = world.step(anchor, goal);
     expect(afterLoss.tight, `degraded formation not recognized as tight:\n${world.describeLog()}`).toBe(true);
     expect(afterLoss.positions).toHaveLength(3);
   });
@@ -114,14 +114,14 @@ describe("Squad formation and creation", () => {
     // Goal == anchor so the tight 3-member block has nowhere to advance to — see the degraded-formation
     // test above for why a moving anchor would invalidate this test's later fixed-anchor assertions.
     const goal = anchor;
-    const before = world.step(anchor, TOP, goal);
+    const before = world.step(anchor, goal);
     expect(before.tight).toBe(true); // 3-member degraded formation, already tight
 
     world.addMember({ role: "drainHealer", x: 40, y: 40, room: ROOM }); // replacement, far from the block
-    const afterJoin = world.step(anchor, TOP, goal);
+    const afterJoin = world.step(anchor, goal);
     expect(afterJoin.tight).toBe(false); // now 4 members, one off-slot — correctly no longer tight
 
-    const converged = world.run(60, () => ({ anchor, facing: TOP, goal }));
+    const converged = world.run(60, () => ({ anchor, goal }));
     expect(converged.some(e => e.tight), `replacement never joined:\n${world.describeLog()}`).toBe(true);
   });
 });

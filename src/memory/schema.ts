@@ -100,6 +100,11 @@ declare global {
     // control (dissolved, or explicitly left) — never left stale on a creep that continues to exist under a
     // different assignment.
     squadJoined?: string;
+    // A parade squad member's rally destination TILE — the Parade equivalent of drainRallyPos above, same
+    // reasoning (a real point, not a room, or two stragglers converging on each other's current room chase
+    // each other across a border forever). Owned by operations/parade.ts, recomputed every tick for every
+    // unsquadded member: the squad's live anchor once one exists, else the assembly point near home.
+    paradeRallyPos?: XY & { room: string };
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
     // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's
@@ -144,7 +149,8 @@ export type RoleName =
   | "defender"
   | "attacker"
   | "drainAttacker"
-  | "drainHealer";
+  | "drainHealer"
+  | "paradeMember";
 
 export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building
@@ -190,6 +196,35 @@ export interface ColonyMemory {
   // reset check). Observability only for now: nothing reads this to drive advance/retreat/spawn
   // decisions (see ADR 0006's consequences — "already positioned to drive this later").
   drainHistory?: { room: string; samples: { tick: number; towerEnergy: number; storageEnergy: number }[] };
+  // The single parade this colony is currently marching (sponsoring a formation for), owned by parade.ts —
+  // a scalar like `draining` above (one parade per colony at a time). `flag` is the flag name (not a room
+  // or a position: Parade's whole point is walking to wherever that flag CURRENTLY sits, which the flag's
+  // own room can change as the player drags it — see ColonySnapshot.paradeGoal for the live position read
+  // fresh from Game.flags every tick). `formation` is the parsed squad shape ("2x2"/"3x3"/...), fixed at
+  // handoff time — resizing an in-progress parade isn't supported; move the flag to a fresh name to
+  // restart with a new shape. Written by a flag handoff (empire/paradeFlags.ts's setParadeTarget); read
+  // every tick by Colony's constructor to attach a real Parade operation, same pattern as `draining`.
+  parading?: { flag: string; formation: string };
+  // The drain squad's own persisted anchor — the formation's bounding box's FIXED top-left corner (see
+  // lib/squad.ts's SquadState doc), owned by operations/drain.ts. Seeded once from the live squad's own
+  // position at the moment it first welds up (the same live-position derivation the anchor used to be
+  // re-derived from every tick, before this field existed), then advanced ONLY by planSquadMove's own
+  // returned SquadMovePlan.anchor going forward (a tight-advance step, or a reform's fitting-tile
+  // correction) — never re-derived from a live creep's position again in steady state. Written via the
+  // setDrainAnchor intent (execute.ts), same pipeline as drainRallyPos above.
+  drainAnchor?: SquadAnchorMemory;
+  // The parade squad's persisted anchor — identical rule to drainAnchor, owned by operations/parade.ts,
+  // written via setParadeAnchor.
+  paradeAnchor?: SquadAnchorMemory;
+}
+
+// A squad's persisted anchor tile — see ColonyMemory.drainAnchor/paradeAnchor's doc for the full rationale
+// (a fixed point the owning operation's own route advances, never re-derived from a live creep every
+// tick). Shared shape so both squad-bearing operations use one type rather than two ad hoc duplicates.
+export interface SquadAnchorMemory {
+  x: number;
+  y: number;
+  room: string;
 }
 
 // One remote room we've chosen to mine, cached in ColonyMemory so selection is stable and not re-ranked

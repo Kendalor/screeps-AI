@@ -1,7 +1,8 @@
 // findSquadPath/nearestFittingAnchor: footprint-fit routing over a cached, moving-maximum-transformed
-// CostMatrix (squadCostMatrix.ts), via real PathFinder.search. Facing is no longer searched here (see
-// squadPath.ts's module header) — every step of a route carries the SAME facing it started with, and
-// nearestFittingAnchor answers only "where," never "which way."
+// CostMatrix (squadCostMatrix.ts), via real PathFinder.search. Facing never reaches this module at all (see
+// squadPath.ts's module header) — every formation is required to be square with its anchor fixed at the
+// box's own top-left corner, making the footprint facing-invariant, so neither function takes or returns a
+// facing value; nearestFittingAnchor answers only "where," never "which way."
 //
 // This file stays at the unit level (stubPathFinderSingleRoom — a real single-room Dijkstra over
 // whatever CostMatrix findSquadPath's roomCallback builds, see test/constants.ts) because every case here
@@ -49,7 +50,7 @@ beforeEach(() => {
 describe("findSquadPath", () => {
   it("finds a straight path across open terrain where the footprint fits at every step", () => {
     const path = findSquadPath(
-      { anchor: { x: 10, y: 10, room: "W1N1" }, facing: TOP },
+      { x: 10, y: 10, room: "W1N1" },
       { x: 20, y: 10, room: "W1N1" },
       BLOCK_2X2,
       terrainSource({ W1N1: openTerrain() }),
@@ -60,8 +61,6 @@ describe("findSquadPath", () => {
     const last = path![path!.length - 1];
     expect(last.anchor.room).toBe("W1N1");
     expect(Math.max(Math.abs(last.anchor.x - 20), Math.abs(last.anchor.y - 10))).toBeLessThanOrEqual(1);
-    // Facing never changes mid-route — every step carries the SAME facing the route started with.
-    for (const step of path!) expect(step.facing).toBe(TOP);
   });
 
   it("keeps the whole 2x2 footprint on walkable tiles at every step, never routing a slot through a wall", () => {
@@ -72,7 +71,7 @@ describe("findSquadPath", () => {
       [16, 11]
     ]);
     const path = findSquadPath(
-      { anchor: { x: 10, y: 10, room: "W1N1" }, facing: TOP },
+      { x: 10, y: 10, room: "W1N1" },
       { x: 20, y: 10, room: "W1N1" },
       BLOCK_2X2,
       terrainSource({ W1N1: terrain }),
@@ -104,7 +103,7 @@ describe("findSquadPath", () => {
     }
     const terrain = terrainWithWalls(walls);
     const path = findSquadPath(
-      { anchor: { x: 10, y: 10, room: "W1N1" }, facing: TOP },
+      { x: 10, y: 10, room: "W1N1" },
       { x: 20, y: 10, room: "W1N1" },
       BLOCK_2X2,
       terrainSource({ W1N1: terrain }),
@@ -116,7 +115,7 @@ describe("findSquadPath", () => {
 
   it("returns a trivial single-step path when the start already sits at the goal", () => {
     const path = findSquadPath(
-      { anchor: { x: 25, y: 25, room: "W1N1" }, facing: TOP },
+      { x: 25, y: 25, room: "W1N1" },
       { x: 25, y: 25, room: "W1N1" },
       BLOCK_2X2,
       terrainSource({ W1N1: openTerrain() }),
@@ -140,7 +139,7 @@ describe("findSquadPath", () => {
       return grid;
     };
     const path = findSquadPath(
-      { anchor: { x: 10, y: 10, room: "W1N1" }, facing: TOP },
+      { x: 10, y: 10, room: "W1N1" },
       { x: 20, y: 10, room: "W1N1" },
       BLOCK_2X2,
       terrainSource({ W1N1: openTerrain() }),
@@ -153,6 +152,42 @@ describe("findSquadPath", () => {
       const onBystander = (x === 15 || x === 16) && (y === 10 || y === 11);
       expect(onBystander, `anchor (${x},${y}) placed the footprint on a bystander tile`).toBe(false);
     }
+  });
+
+  // The whole point of the square/top-left-anchor constraint (formation.ts's assertSquareTopLeftAnchor):
+  // pathing must give the IDENTICAL result no matter which facing the caller's formation happens to be
+  // expressed at, since the anchor's position within the bounding box never moves. Before that constraint,
+  // a caller feeding in a formation pre-rotated to a different facing (as lib/squad.ts's planSquadMove used
+  // to do) could get a DIFFERENT route, because the anchor's offset within its own box changed per rotation.
+  it("gives an identical route regardless of which facing's rotation the caller's formation happens to be expressed at", () => {
+    // BLOCK_2X2 rotated 180 degrees about its own anchor (dx,dy) -> (-dx,-dy) — same size, same anchor slot
+    // still at index 0, but if this module still cared about facing, a formation "trailing" up/left instead
+    // of down/right could route differently near an obstacle.
+    const rotated180: Formation = BLOCK_2X2.map(s => ({ dx: -s.dx, dy: -s.dy, role: s.role }));
+    const terrain = terrainWithWalls([
+      [15, 11],
+      [16, 11]
+    ]);
+    const a = findSquadPath(
+      { x: 10, y: 10, room: "W1N1" },
+      { x: 20, y: 10, room: "W1N1" },
+      BLOCK_2X2,
+      terrainSource({ W1N1: terrain }),
+      NO_OCCUPANCY,
+      0
+    );
+    clearSquadMatrixCache();
+    const b = findSquadPath(
+      { x: 10, y: 10, room: "W1N1" },
+      { x: 20, y: 10, room: "W1N1" },
+      rotated180,
+      terrainSource({ W1N1: terrain }),
+      NO_OCCUPANCY,
+      0
+    );
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+    expect(a!.map(s => s.anchor)).toEqual(b!.map(s => s.anchor));
   });
 });
 

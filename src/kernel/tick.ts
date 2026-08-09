@@ -6,6 +6,7 @@ import { empire, type Empire } from "../empire";
 import { runAttackFlags } from "../empire/attackFlags";
 import { runColonizeFlags } from "../empire/colonizeFlags";
 import { runDrainFlags } from "../empire/drainFlags";
+import { runParadeFlags } from "../empire/paradeFlags";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
 import { runRemoteInvaderAttacks } from "../empire/remoteInvaderAttacks";
 import { execute } from "../intents/execute";
@@ -79,8 +80,7 @@ function runOperations(colony: Colony): Intent[] {
 
 // Wrapped so e.creeps() fits the Intent[]-returning System shape and shares CPU accounting.
 function runCreeps(e: Empire): Intent[] {
-  e.creeps();
-  return [];
+  return e.creeps();
 }
 
 // `injected` isn't a default parameter — that would build the snapshot before cleanCreepMemory() below.
@@ -118,6 +118,8 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   runGuarded("attackFlags", () => runAttackFlags(world));
   // Flag-triggered drain, same reasoning as attackFlags above — Drain isn't a default operation either.
   runGuarded("drainFlags", () => runDrainFlags(world));
+  // Flag-triggered parade, same reasoning as attackFlags above — Parade isn't a default operation either.
+  runGuarded("paradeFlags", () => runParadeFlags(world));
   // Automatic counterpart to attackFlags: launches an Attack at any selected remote reserved by the
   // Invader NPC with its core still standing — see remoteInvaderAttacks.ts's header.
   runGuarded("remoteInvaderAttacks", () => runRemoteInvaderAttacks(world));

@@ -1,24 +1,38 @@
 // The Squad entity's pure planning core (ADR 0007). A squad computes ONE plan for the whole formation
 // each tick — every member's move is dictated by the squad, so members cannot diverge from each other by
 // construction (the mechanism fix replacing per-creep independent Traveler convergence). This module is
-// GENERIC infrastructure: it knows only slots, members, anchors, facings, and routing — nothing about
+// GENERIC infrastructure: it knows only slots, members, anchors, and routing — nothing about
 // towers, healing, or attackers. A squad "type" is a Formation plus a plugged-in planSquadActions
 // function (Drain supplies its own), the same split RoleDef/Step draw between the generic step engine and
 // each role's content. Pure: plain SquadState in, plain intents out, no Game access.
 
-import { rotateFormation, slotTiles, type Formation, type SlotTile } from "./formation";
+import { slotTiles, type Formation, type SlotTile } from "./formation";
 import { range, type XY } from "./geometry";
 import { findSquadPath, nearestFittingAnchor, NO_OCCUPANCY, type OccupancySource, type TerrainSource } from "./squadPath";
 import type { SnapCreep } from "../snapshot/types";
 
-// The squad's shared state for a tick — every member's position/HP/role, the formation shape, the anchor
-// SLOT's tile (not a creep's position: the anchor is a fixed slot that may be vacant), and its facing.
+// The squad's shared state for a tick — every member's position/HP/role, the formation shape, and the
+// anchor's tile.
+//
+// `anchor` is the formation's bounding box's own FIXED top-left corner (formation.ts's
+// assertSquareTopLeftAnchor requires every formation to be square with its anchor there) — a PERSISTED
+// value owned by the calling operation (ColonyMemory.drainAnchor/paradeAnchor), never re-derived from any
+// live creep's position. This is a deliberate departure from an earlier design (and from Overmind, the
+// reference implementation) where the anchor was always whichever creep occupied the anchor SLOT's own live
+// `.pos` — routing/placement should never care which creep sits where, only where the formation's box
+// itself is. Only planSquadMove's own returned SquadMovePlan.anchor may advance this value going forward;
+// the caller is responsible for persisting a changed anchor (see empire/creeps.ts's runSquads).
+//
+// There is no `facing` field: the box's tile-set (formation.ts's slotTiles) never rotates, so generic squad
+// infrastructure has nothing to place "at a facing." Any preference for WHICH live member ends up on WHICH
+// already-fixed tile (e.g. Drain's attacker-faces-threat requirement) is resolved entirely by the operation
+// that wants it, composing reformAssignment itself — see operations/drain.ts — never a concern here.
+//
 // `members` may be FEWER than formation.length (a degraded formation with vacant slots — see ADR 0007).
 export interface SquadState {
   members: SnapCreep[];
   formation: Formation;
   anchor: XY & { room: string };
-  facing: DirectionConstant;
 }
 
 // A resolved per-member move: the concrete tile this member should step toward this tick. Not a
@@ -27,6 +41,18 @@ export interface SquadState {
 export interface SquadMoveIntent {
   creep: Id<Creep>;
   to: XY & { room: string };
+}
+
+// planSquadMove's full result: the per-member moves AND the anchor value after this tick's plan. The anchor
+// is returned (not just consumed internally) because it's now a PERSISTED value (see SquadState's doc) that
+// this module — which has zero Game/Memory access by design — cannot write back itself; the caller compares
+// `anchor` against the SquadState it passed in and, if different, persists the new value (empire/creeps.ts's
+// runSquads). `anchor` equals the input state's anchor when holding/reforming in place, advances one step
+// when the tight-advance branch fires, or is CORRECTED to a different fitting tile when a reform retargets
+// (see planSquadMove's own doc for why a correction must be written through rather than discarded).
+export interface SquadMovePlan {
+  moves: SquadMoveIntent[];
+  anchor: XY & { room: string };
 }
 
 // A resolved per-member action (attack/heal/...), supplied by a squad type's own planSquadActions.
@@ -99,22 +125,16 @@ export interface Threat extends XY {
   engageRange: number; // Infinity for an always-in-range threat (a tower)
 }
 
-// The 8 compass directions in CW_STEPS order (formation.ts) — TOP first, then clockwise. Facing selection
-// below picks among these the same way rotateOffset's canonical ordering does, so a caller collapsing to a
-// formation's own valid subset (e.g. Drain's 4 axis-aligned-only 2x2, see drainFacing in operations/
-// drain.ts) can post-process this result exactly like it already does for goal-directed facing.
-const COMPASS: DirectionConstant[] = [TOP, TOP_RIGHT, RIGHT, BOTTOM_RIGHT, BOTTOM, BOTTOM_LEFT, LEFT, TOP_LEFT];
-
 /** The single most urgent threat, or undefined when `threats` is empty. Urgency is `range(from, threat) -
  * threat.engageRange` — how close the threat already is to actually landing a hit, NOT raw distance — so a
  * ranged attacker already at range 3 (urgency 0, hitting right now) outranks a melee attacker at range 4
  * (urgency 3, not yet hitting) even though the melee one is nearer in absolute tiles; a tower's Infinity
  * engageRange makes its urgency -Infinity whenever it's a candidate at all (a visible tower is always the
  * most urgent threat present). Ties keep the first-encountered threat (deterministic given a stable input
- * order) — a caller that cares about a specific tiebreak should pre-sort. Exported separately from
- * threatFacing (which calls this) so a caller collapsing to a formation-specific facing subset (e.g.
- * Drain's 4 axis-aligned-only 2x2, drainFacing in operations/drain.ts) can run ITS OWN direction collapse
- * against the same winning threat's position, rather than duplicating the urgency comparison. */
+ * order) — a caller that cares about a specific tiebreak should pre-sort. Used by a squad type that wants
+ * to bias WHICH member ends up on WHICH fixed slot tile toward a threat (e.g. Drain's attacker-faces-threat
+ * — see operations/drain.ts) — this module has no notion of "facing" at all, only this raw urgency
+ * comparison, which the caller composes with its own tile-preference/assignment logic. */
 export function mostUrgentThreat(from: XY, threats: readonly Threat[]): Threat | undefined {
   let worst: Threat | undefined;
   let worstUrgency = Infinity;
@@ -128,39 +148,20 @@ export function mostUrgentThreat(from: XY, threats: readonly Threat[]): Threat |
   return worst;
 }
 
-/** The facing that turns the formation's canonical-TOP-facing "front" (dy < 0 side) most directly toward
- * the single most urgent threat (mostUrgentThreat), or undefined when there's nothing to face (no threats).
- *
- * `from` is the point urgency/direction are measured from (a squad's anchor, or whichever tile a caller
- * treats as its reference) — this function has no notion of "which slot is the front"; a formation
- * collapsing to axis-aligned-only facings (see COMPASS's doc) applies that constraint itself afterward,
- * same as it already does for goal-directed facing. Pure: no Game access, no formation/slot knowledge. */
-export function threatFacing(from: XY, threats: readonly Threat[]): DirectionConstant | undefined {
-  const worst = mostUrgentThreat(from, threats);
-  if (!worst) return undefined;
-  const dx = worst.x - from.x;
-  const dy = worst.y - from.y;
-  if (dx === 0 && dy === 0) return TOP; // threat is co-located — no meaningful direction, hold canonical
-  // The compass direction nearest the (dx, dy) vector's angle — atan2's 0 is along +x (RIGHT), and screeps'
-  // y grows downward same as atan2's convention here, so no axis flip is needed before mapping onto the
-  // 8-way compass (COMPASS[0] = TOP = -90 degrees from +x, hence the +2 step offset below).
-  const angle = Math.atan2(dy, dx); // -PI..PI, 0 = RIGHT, PI/2 = BOTTOM (y-down)
-  const step = Math.round(angle / (Math.PI / 4)) + 2; // shift so index 0 lands on TOP
-  const idx = ((step % 8) + 8) % 8;
-  return COMPASS[idx];
-}
-
-/** The one shared movement plan for the whole formation this tick. Returns one move intent per member.
+/** The one shared movement plan for the whole formation this tick. Returns every member's move intent PLUS
+ * the anchor value after this tick's plan (SquadMovePlan — see its own doc for why the anchor must be
+ * returned rather than just consumed internally: it's a persisted value this module cannot write itself).
  *
  * - When the block is NOT tight (a member off its slot, a straggler catching up, a replacement just
- *   joined), the anchor HOLDS and every member is assigned onto the current-facing slot tiles (greedy
+ *   joined), the anchor HOLDS and every member is assigned onto the current slot tiles (greedy
  *   nearest) so the block reforms — never advances while broken. UNLESS the squad's own current anchor can
- *   no longer fit the whole formation anywhere at its CURRENT facing (some member shoved off, a degraded
- *   formation's inferred anchor landing in a pocket too narrow for the full shape, independent movement
- *   before joining walking it into a dead end) — reforming onto an unfittable target would hold forever, so
- *   the squad instead retargets the reform onto the NEAREST anchor that fits (nearestFittingAnchor, at the
- *   SAME facing — see its doc; orientation is never searched, only "where"), still never advancing toward
- *   `goal` until tight again.
+ *   no longer fit the whole formation anywhere (some member shoved off, a stale persisted anchor from a
+ *   long interruption, independent movement before joining walking it into a dead end) — reforming onto an
+ *   unfittable target would hold forever, so the squad instead retargets the reform onto the NEAREST anchor
+ *   that fits (nearestFittingAnchor). That retargeted anchor is returned as the plan's new `anchor` — a
+ *   REAL correction, not just a movement retarget — because this anchor is no longer cheap to re-derive
+ *   from a live creep next tick the way it used to be; if the caller doesn't persist the correction, the
+ *   squad would silently drift from its own record of where its box is.
  * - When the block IS tight but a member is FATIGUED (creep.fatigue > 0 — swamp, an overweight body), the
  *   squad holds at its current slots rather than advancing: a fatigued creep's move() silently no-ops this
  *   tick, so committing the whole formation to slide forward would leave that one member behind while its
@@ -174,16 +175,22 @@ export function threatFacing(from: XY, threats: readonly Threat[]): DirectionCon
  *   anchor) — so the whole formation moves exactly one tile in lockstep. When no route exists (walled in) or
  *   the squad is already at the goal, it holds.
  *
- *   Each slot is placed FRESH via slotTiles(nextAnchor, facing, formation) — a single-shot per-slot
- *   derivation from the new anchor, NOT a uniform world-coordinate delta applied independently across
+ *   Pathing (findSquadPath/nearestFittingAnchor) and placement (slotTiles) are both given `state.formation`
+ *   as-is, with no rotation anywhere: every formation is required to be a square with its anchor fixed at
+ *   the box's own top-left corner (formation.ts's assertSquareTopLeftAnchor), so the footprint's tile-set
+ *   relative to the anchor is simply fixed, full stop — there is no facing concept left to keep in sync
+ *   between the two. (An earlier version of this function rotated the formation for pathing, then rotated it
+ *   AGAIN independently for placement via a since-removed facing parameter — the two could disagree for any
+ *   corner-anchored box, which placed a member on a tile pathing never actually verified; see git history on
+ *   this comment and formation.ts's module header for the concrete reproduction.)
+ *
+ *   Each slot is placed FRESH via slotTiles(nextAnchor, formation) — a single-shot per-slot derivation from
+ *   the new anchor, NOT a uniform world-coordinate delta applied independently across
  *   members (this module's earlier design). A uniform delta assumes the world-coordinate lattice always
  *   means "walkable neighbor," which the game does not guarantee at every room border (some rooms lack an
  *   exit on a given side, sector boundaries break uniform adjacency) — re-deriving each slot from the SAME
  *   single anchor, the way slotTiles already safely does for reform, closes that class of bug by construction
- *   rather than by convention. Facing no longer changes mid-route (see squadPath.ts's module header — the
- *   pather has one fixed orientation) — the facing used for placement here is always state.facing, whatever
- *   the caller currently wants (e.g. threatFacing/drainFacing, operations/drain.ts), independent of travel
- *   direction — the mechanism a later retreat-while-facing-forward feature needs.
+ *   rather than by convention.
  *
  * Walkability is ALWAYS checked against the full formation shape (via findSquadPath), even with vacant
  * slots — a shrunk fit-check could strand a later replacement (ADR 0007). `occupancy` (optional, defaults
@@ -199,39 +206,28 @@ export function planSquadMove(
   terrain: TerrainSource,
   now: number,
   occupancy: OccupancySource = NO_OCCUPANCY
-): SquadMoveIntent[] {
-  const currentSlots = slotTiles(state.anchor, state.facing, state.formation);
-  // The footprint shape squadCostMatrix.ts's fit-check needs, ALREADY rotated to state.facing — that module
-  // is deliberately facing-blind (see its own doc) and expects a formation "already expressed at the facing
-  // [the caller] cares about," not the raw canonical-TOP state.formation plus a separate facing parameter it
-  // would silently ignore. Passing the unrotated formation here previously let nearestFittingAnchor report a
-  // tile as "fitting" using the WRONG (canonical-TOP) footprint shape whenever state.facing wasn't TOP,
-  // sending members onto tiles slotTiles' own (correctly rotated) placement never actually checked — confirmed
-  // live via squadReformDeadlock.test.ts's BOTTOM-facing repro, which stalled forever on a wall tile the
-  // canonical-shape fit-check couldn't see.
-  const facingFormation = rotateFormation(state.formation, state.facing);
+): SquadMovePlan {
+  const currentSlots = slotTiles(state.anchor, state.formation);
 
   // Not a tight block: hold and reform — but only onto a target the full formation can actually occupy.
   if (!inFormation(state.members, currentSlots)) {
-    const fit = nearestFittingAnchor(state.anchor, facingFormation, terrain, occupancy, now);
-    const reformSlots =
-      fit && (fit.x !== state.anchor.x || fit.y !== state.anchor.y || fit.room !== state.anchor.room)
-        ? slotTiles(fit, state.facing, state.formation)
-        : currentSlots;
-    return reformOnto(state.members, reformSlots, terrain);
+    const fit = nearestFittingAnchor(state.anchor, state.formation, terrain, occupancy, now);
+    const retargeted = fit !== undefined && (fit.x !== state.anchor.x || fit.y !== state.anchor.y || fit.room !== state.anchor.room);
+    const reformSlots = retargeted ? slotTiles(fit!, state.formation) : currentSlots;
+    return { moves: reformOnto(state.members, reformSlots, terrain), anchor: retargeted ? fit! : state.anchor };
   }
 
   // Tight but a member can't actually move this tick — hold rather than advance without it.
   if (state.members.some(m => m.fatigue > 0)) {
-    return reformOnto(state.members, currentSlots, terrain);
+    return { moves: reformOnto(state.members, currentSlots, terrain), anchor: state.anchor };
   }
 
   // Tight block: try to advance one footprint-fit step toward the goal.
-  const path = findSquadPath({ anchor: state.anchor, facing: state.facing }, goal, facingFormation, terrain, occupancy, now);
+  const path = findSquadPath(state.anchor, goal, state.formation, terrain, occupancy, now);
   const next = path && path.length > 1 ? path[1] : undefined;
   if (!next) {
     // Already at the goal, or no route the whole footprint can take — hold in place.
-    return reformOnto(state.members, currentSlots, terrain);
+    return { moves: reformOnto(state.members, currentSlots, terrain), anchor: state.anchor };
   }
 
   // A straight advance: every member is reassigned onto the next anchor's slot tiles, re-derived fresh from
@@ -247,8 +243,8 @@ export function planSquadMove(
   // instead of actually advancing — confirmed live via squadEvasion.test.ts's wall/bystander detours, which
   // route diagonally and never made progress under the old nearest-distance match. Since `inFormation` above
   // already confirmed every member sits on some `currentSlots[i]`, the index correspondence is unambiguous.
-  const nextSlots = slotTiles(next.anchor, state.facing, state.formation);
-  return advanceOnto(state.members, currentSlots, nextSlots, terrain);
+  const nextSlots = slotTiles(next.anchor, state.formation);
+  return { moves: advanceOnto(state.members, currentSlots, nextSlots, terrain), anchor: next.anchor };
 }
 
 // Moves each member from its CURRENT slot to the slot at the SAME formation index in `nextSlots` — the
@@ -281,7 +277,7 @@ function advanceOnto(members: readonly SnapCreep[], currentSlots: readonly SlotT
 }
 
 // Greedy-assign each member to its nearest available slot tile and emit a move intent per member. Used
-// for a reform (facing change) and for holding a broken block back together. Fewer members than slots (a
+// for a reform and for holding a broken block back together. Fewer members than slots (a
 // degraded formation) leaves some slot tiles unfilled — the vacant slot needs nobody. The initial match is
 // role-BLIND, same as it always was (a healer standing on a dead attacker's vacant slot is harmless — the
 // formation only cares that every LIVE member sits on SOME slot, not which one — and role-restricting this
@@ -300,7 +296,13 @@ function advanceOnto(members: readonly SnapCreep[], currentSlots: readonly SlotT
 // vacating its own, exactly like people filing forward through a doorway (see slotChainRepair's doc for the
 // full mechanism). Falls back to the naive assignment unchanged if no such chain exists (never worse than
 // the pre-fix behavior).
-function reformOnto(members: readonly SnapCreep[], slots: readonly SlotTile[], terrain?: TerrainSource): SquadMoveIntent[] {
+//
+// Exported so a squad type can compose it directly for a placement PREFERENCE this module deliberately
+// stays ignorant of (e.g. Drain's attacker-faces-threat — operations/drain.ts's attackerBiasedMove calls
+// this for every member EXCEPT the one it pre-assigned itself) — this does not make reformOnto role-aware
+// itself; it's still the same role-blind nearest-distance match called twice by the caller, once for a
+// pre-seeded member/slot and once for the rest, rather than lib/squad.ts gaining any notion of "attacker."
+export function reformOnto(members: readonly SnapCreep[], slots: readonly SlotTile[], terrain?: TerrainSource): SquadMoveIntent[] {
   const room = slots[0]?.room ?? members[0]?.room ?? "";
   const memberRefs = members.map(m => ({ id: m.id, pos: { x: m.x, y: m.y } }));
   const assignment = reformAssignment(memberRefs, slots);

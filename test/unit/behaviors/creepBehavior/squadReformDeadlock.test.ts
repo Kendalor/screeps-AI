@@ -69,20 +69,26 @@ describe("Squad reform deadlock (live pserver repro)", () => {
     world.addMember({ role: "drainHealer", x: 23, y: 25, room: ROOM });
     const straggler = world.addMember({ role: "drainHealer", x: 18, y: 21, room: ROOM });
 
-    const anchor = { x: 24, y: 26, room: ROOM };
-    // The live trace's runSquads line reported `branch=reform@nearestFit(24,26,W7N3,facing=5)` — facing 5 is
-    // BOTTOM (Screeps' TOP=1..TOP_LEFT=8 clockwise numbering), NOT the separately-reported squadState
-    // `facing=1` (that's Drain's own desiredFacing/currentFacing, a different value planSquadMove never
-    // receives directly — nearestFittingAnchor independently searches for whichever facing the CURRENT
-    // anchor/live shape actually fits at). Slot tiles at (24,26) facing BOTTOM are exactly
-    // (24,26)/(23,26)/(24,25)/(23,25) — matching the live moves=[...] targets byte for byte, confirming
-    // this is the facing actually in effect (verified directly against the real slotTiles(), not by
-    // hand-deriving rotateOffset — see git history if this ever needs re-deriving).
-    const facing = BOTTOM;
-    const goal = anchor; // isolate reform from advance — the live case also never advanced (readyForFirstPush
-    // stayed true, underway false, anchor pinned) for the entire window this was traced
+    // The live trace's runSquads line reported `branch=reform@nearestFit(24,26,W7N3,facing=5)` — facing 5
+    // was BOTTOM under the OLD mechanism (nearestFittingAnchor searched a formation pre-rotated to the
+    // current facing, so it could report an anchor at whichever corner that rotation put it at, and
+    // PLACEMENT then rotated AGAIN independently — the two could disagree, which is exactly the bug this
+    // test caught: a healer got routed onto a real wall tile because the verified-open canonical box and
+    // the actually-placed rotated box were different tile sets). Under the current design there is no
+    // facing/rotation anywhere — the box's tile-set is fixed, full stop (lib/formation.ts's module header)
+    // — so the geometrically equivalent open pocket is found via its own real top-left corner instead —
+    // (23,25), one tile from the live trace's (24,26) — which nearestFittingAnchor reaches on its own; the
+    // exact anchor value is no longer significant, only that the search converges AND placement uses the
+    // SAME (never-rotated) tile set pathing verified. `goal` still equals the STARTING anchor (isolating
+    // reform from advance, matching the live incident: readyForFirstPush stayed true, underway false,
+    // anchor pinned for the entire traced window).
+    const startAnchor = { x: 24, y: 26, room: ROOM };
+    const goal = startAnchor;
 
-    const log = world.runReal(300, () => ({ anchor, facing, goal }));
+    // Threads each tick's returned (possibly-corrected) anchor into the next tick's plan — production does
+    // the same via SquadMovePlan.anchor (see lib/squad.ts's SquadState doc and squadWorld.ts's run/runReal
+    // doc) rather than re-supplying a fixed anchor forever.
+    const log = world.runReal(300, w => ({ anchor: w.log.at(-1)?.anchor ?? startAnchor, goal }));
 
     const becameTight = log.some(e => e.tight);
     expect(
@@ -132,7 +138,7 @@ describe("Squad reform deadlock (live pserver repro)", () => {
 
     const anchor = { x: 10, y: 25, room: ROOM };
     const goal = anchor;
-    const log = world.runReal(50, () => ({ anchor, facing: TOP, goal }));
+    const log = world.runReal(50, () => ({ anchor, goal }));
 
     expect(log).toHaveLength(50);
     for (const entry of log) {
