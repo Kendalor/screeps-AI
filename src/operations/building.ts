@@ -4,6 +4,7 @@ import { countPart } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
 import { roleDef } from "../behaviors/roles";
 import { roomLinearDistance } from "../lib/roomName";
+import { remoteMinedIncome } from "../logistics/fleet";
 import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
@@ -23,12 +24,23 @@ const config = {
   // energy competition over upgraders (upgrading throttles to the remainder), so the whole income can
   // back building while a backlog exists.
   buildEnergyPerWork: 5,
-  sourceRegenPerTick: 10
+  sourceRegenPerTick: 10,
+  // Remote sources add hauling/upkeep overhead local sources don't pay, so only a fraction of what
+  // they're actually yielding right now (see remoteMinedIncome — staffed sources only, already
+  // clamped to their own regen cap) counts toward the shared build/upgrade budget.
+  remoteIncomeShare: 0.5
 } as const;
 
-/** Steady-state harvest ceiling: sources can't be out-mined, so income tops out at regen per source. */
+/**
+ * Steady-state harvest ceiling: local sources can't be out-mined, so their share tops out at regen per
+ * source. Remote sources add whatever they're actually yielding right now, discounted by
+ * remoteIncomeShare — the rest is spoken for by the haul/upkeep cost of running them.
+ */
 export function incomePerTick(colony: ColonySnapshot): number {
-  return colony.sources.length * config.sourceRegenPerTick;
+  const local = colony.sources.length * config.sourceRegenPerTick;
+  const miners = colony.creeps.filter(c => c.role === "miner");
+  const remote = remoteMinedIncome(miners, colony) * config.remoteIncomeShare;
+  return local + remote;
 }
 
 /** Sustainable build WORK the room's income can feed: income / 5 e/t-per-WORK, floored. */

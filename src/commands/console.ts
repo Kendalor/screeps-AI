@@ -7,6 +7,7 @@ import type { LogLevel } from "../lib/log";
 import { buildEmpireSnapshot } from "../snapshot/colony";
 import { listColonizeCandidates } from "../empire/pickColonyTargets";
 import { execute } from "../intents/execute";
+import { SPAWNABLE_OPERATIONS } from "../operations";
 
 const VALID: LogLevel[] = ["error", "warn", "info"];
 
@@ -27,6 +28,7 @@ declare global {
   function clearDebug(): string;
   function resetDebug(): string;
   function spawnLoad(room?: string): string;
+  function operationKinds(): string;
   function colonizeTargets(): string;
   function clearDrainTarget(room: string): string;
   function help(): string;
@@ -115,6 +117,11 @@ export function installConsoleCommands(): void {
       .join("\n");
   };
   register("spawnLoad(room?)", "true spawn load: living + outstanding-request parts / capacity, matching the panel exactly");
+
+  global.operationKinds = (): string => {
+    return SPAWNABLE_OPERATIONS.map(op => `${op.kind} — ${op.trigger}`).join("\n");
+  };
+  register("operationKinds()", "list every operation kind that can request a creep spawn, and what attaches it to a colony");
 
   global.colonizeTargets = (): string => {
     const world = empire(buildEmpireSnapshot());

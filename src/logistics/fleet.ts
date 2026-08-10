@@ -76,6 +76,16 @@ export function harvestIncome(miners: readonly SnapCreep[], colony: ColonySnapsh
   return local.income + remotes.reduce((sum, b) => sum + b.income, 0);
 }
 
+/**
+ * The remote-only slice of harvestIncome: every staffed remote source's own clamped income, summed —
+ * no local buckets, no cap. Exported so a caller pricing something off "energy actually being mined
+ * remotely" (e.g. building.ts's upgrader/builder budget) doesn't have to re-run harvestIncome and then
+ * subtract the local portion back out.
+ */
+export function remoteMinedIncome(miners: readonly SnapCreep[], colony: ColonySnapshot): number {
+  return remoteBuckets(miners, colony.remoteSources).reduce((sum, b) => sum + b.income, 0);
+}
+
 /** Where energy is delivered: storage if built, else the anchor. Null before either exists. */
 export function dropOff(colony: ColonySnapshot): XY | null {
   if (colony.storageId) {

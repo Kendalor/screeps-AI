@@ -17,7 +17,7 @@ declare const __PROFILER_ENABLED__: boolean;
 
 // The farthest the scouting frontier grows, in rooms. Legacy's MAX_RANGE. Lives here because
 // advanceScoutRadius owns the radius write and its bounds.
-const MAX_SCOUT_RANGE = 6;
+const MAX_SCOUT_RANGE = 8;
 
 export const execute = wrapFn(function execute(intents: Intent[]): void {
   // Tiles chosen by a recordSourcePath/setRemotes resolution earlier in *this* batch â€” passed to the

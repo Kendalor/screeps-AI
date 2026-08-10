@@ -35,6 +35,11 @@ export const MAX_COLONY_DISTANCE = 8;
 // a colonize commitment into a mediocre room. Project decision, not derived from any other constant.
 export const MIN_COLONY_SCORE = 80;
 
+// A candidate room must have at least this many sources to be worth claiming a controller over — a
+// single-source room's economy rarely justifies the GCL/logistics commitment of a full colony, versus
+// just remote-mining it from a neighbor. Project decision, not derived from any other constant.
+export const MIN_COLONY_SOURCES = 2;
+
 // Re-derive at most this many top-scoring candidates' live neighborhoods per firing. Bounds the cost of
 // a throttle tick regardless of how many rooms have been scouted empire-wide; a candidate that misses the
 // cut this pass is simply re-considered (with fresher data) on the next ~5000-tick firing.
@@ -64,6 +69,7 @@ function cachedCandidates(): Candidate[] {
     const info = rooms[room]?.scouted;
     if (!info || !info.anchor || !info.potentialChecked || !info.potential) continue;
     if (info.owner || info.hostile) continue;
+    if (info.sources.length < MIN_COLONY_SOURCES) continue;
     out.push({
       room,
       cachedScore: colonizePotentialScore({ potential: info.potential, ownMineral: info.mineral, haveMinerals })

@@ -9,7 +9,8 @@ import {
   AUTO_PICK_INTERVAL,
   MIN_COLONY_DISTANCE,
   MAX_COLONY_DISTANCE,
-  MIN_COLONY_SCORE
+  MIN_COLONY_SCORE,
+  MIN_COLONY_SOURCES
 } from "../../../src/empire/pickColonyTargets";
 import { COLONIZER_COST } from "../../../src/behaviors/roles/colonizer";
 import { NEW_MINERAL_BONUS } from "../../../src/mining/colonizePotentialScore";
@@ -18,7 +19,12 @@ import { stubGame } from "../../helpers";
 import type { ColonizationPotential, ScoutInfo } from "../../../src/memory/schema";
 
 function scoutInfo(over: Partial<ScoutInfo> = {}): ScoutInfo {
-  return { tick: 0, type: "normal", sources: [], hostile: false, ...over };
+  return { tick: 0, type: "normal", sources: sourcesOf(MIN_COLONY_SOURCES), hostile: false, ...over };
+}
+
+// Minimal ScoutedSource stand-ins — only `.length` is exercised by the source-count gate under test.
+function sourcesOf(count: number): ScoutInfo["sources"] {
+  return Array.from({ length: count }, (_, i) => ({ id: `source${i}` as Id<Source>, x: 10, y: 10 }));
 }
 
 // Default normal potential is comfortably above MIN_COLONY_SCORE so tests not specifically exercising the
@@ -110,6 +116,24 @@ describe("autoPickColonyTarget", () => {
     autoPickColonyTarget(world);
 
     expect(colonizingOf("W1N1")).toEqual([]);
+  });
+
+  it("ignores a room with fewer than MIN_COLONY_SOURCES sources", () => {
+    setUp({ W5N5: viableCandidate({ sources: sourcesOf(MIN_COLONY_SOURCES - 1) }) });
+    const world = testEmpire(affordableSponsor());
+
+    autoPickColonyTarget(world);
+
+    expect(colonizingOf("W1N1")).toEqual([]);
+  });
+
+  it("includes a room with exactly MIN_COLONY_SOURCES sources", () => {
+    setUp({ W5N5: viableCandidate({ sources: sourcesOf(MIN_COLONY_SOURCES) }) });
+    const world = testEmpire(affordableSponsor());
+
+    autoPickColonyTarget(world);
+
+    expect(colonizingOf("W1N1")).toEqual(["W5N5"]);
   });
 
   it("ignores a room whose potential hasn't been scored yet", () => {
@@ -345,6 +369,13 @@ describe("listColonizeCandidates", () => {
       W5N5: viableCandidate({ anchor: undefined }),
       W6N6: viableCandidate({ potentialChecked: false, potential: undefined })
     });
+    const world = testEmpire(affordableSponsor());
+
+    expect(listColonizeCandidates(world)).toEqual([]);
+  });
+
+  it("excludes a room with fewer than MIN_COLONY_SOURCES sources", () => {
+    setUp({ W5N5: viableCandidate({ sources: sourcesOf(MIN_COLONY_SOURCES - 1) }) });
     const world = testEmpire(affordableSponsor());
 
     expect(listColonizeCandidates(world)).toEqual([]);

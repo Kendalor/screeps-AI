@@ -41,6 +41,52 @@ describe("builder workforce", () => {
     ).toHaveLength(4);
   });
 
+  // A staffed remote source adds to the pre-storage income cap too, at half its actual yield (the other
+  // half is spoken for by the extra haul/upkeep a remote source costs that a local one doesn't).
+  it("adds half of a staffed remote source's yield to the income-capped WORK budget", () => {
+    // 1 local source = 10 e/t -> floor(10/5) = 2 sustainable WORK with no remote miner.
+    const base = colonySnap({ constructionProgress: 8_000, storageEnergy: 0 });
+    expect(building.desiredCreeps(base)).toHaveLength(2);
+
+    // A remote miner with 6 WORK on an unreserved source yields min(6*2, grossHarvest(false)=5) = 5 e/t.
+    // Half of that (2.5) added to local's 10 e/t -> floor(12.5/5) = 2 sustainable WORK still (rounds down).
+    const oneRemoteMiner = snapCreep("miner", {
+      body: [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE, MOVE, MOVE],
+      memory: { sourceId: "remote_src_W2N1_25_25" as Id<Source> }
+    });
+    const withRemote = colonySnap({
+      constructionProgress: 8_000,
+      storageEnergy: 0,
+      remoteSources: [remoteSourceAt(25, 25, "W2N1")],
+      creeps: [oneRemoteMiner]
+    });
+    // 10 (local) + 0.5*5 (remote) = 12.5 e/t -> floor(12.5/5) = 2 WORK -> still 2 builders.
+    expect(building.desiredCreeps(withRemote)).toHaveLength(2);
+
+    // Two reserved remote sources, each fully staffed, yield grossHarvest(true)=10 e/t apiece = 20 e/t.
+    // 10 (local) + 0.5*20 (remote) = 20 e/t -> floor(20/5) = 4 WORK -> 4 builders.
+    const twoReservedMiners = [
+      snapCreep("miner", {
+        body: [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE, MOVE, MOVE],
+        memory: { sourceId: "remote_src_W2N1_25_25" as Id<Source> }
+      }),
+      snapCreep("miner", {
+        body: [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE, MOVE, MOVE],
+        memory: { sourceId: "remote_src_W3N1_25_25" as Id<Source> }
+      })
+    ];
+    const withTwoReserved = colonySnap({
+      constructionProgress: 8_000,
+      storageEnergy: 0,
+      remoteSources: [
+        remoteSourceAt(25, 25, "W2N1", { reserved: true }),
+        remoteSourceAt(25, 25, "W3N1", { reserved: true })
+      ],
+      creeps: twoReservedMiners
+    });
+    expect(building.desiredCreeps(withTwoReserved)).toHaveLength(4);
+  });
+
   // A bigger body (more WORK per creep) needs fewer creeps to cover the same WORK target.
   it("needs fewer creeps once the body carries more WORK per creep", () => {
     // 1100-capacity builder body carries multiple WORK parts, so 5k of progress (5 WORK) fits in fewer creeps.

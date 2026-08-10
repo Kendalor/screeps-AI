@@ -111,6 +111,15 @@ describe("console: clearDrainTarget", () => {
   });
 });
 
+describe("console: operationKinds", () => {
+  it("lists always-on and conditional operation kinds with their trigger", () => {
+    const text = global.operationKinds();
+    expect(text).toContain("mining — always");
+    expect(text).toContain("drain — ColonyMemory.draining set (drain flag)");
+    expect(text).toContain("parade — ColonyMemory.parading set (parade flag)");
+  });
+});
+
 describe("console: help", () => {
   it("lists every registered command", () => {
     const text = global.help();

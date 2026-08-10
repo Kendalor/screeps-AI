@@ -234,10 +234,11 @@ describe("planLogistics — supply", () => {
     }
   });
 
-  it("leaves a spawn deficit supply can't reach this tick for transport to skip too, while a supply creep is alive", () => {
+  it("leaves a spawn deficit supply can't reach this tick for transport to skip too, while storage backs supply", () => {
     // The one supply creep is already mid-trip elsewhere (busy, not idle), so it reserves nothing this
     // tick and spawn1's full deficit is left uncovered. Transport must still leave spawn1 alone — supply
-    // owns spawn/extensions outright whenever it's alive, not just whatever it happened to reserve.
+    // owns spawn/extensions outright whenever it's alive AND storage has energy to draw from (it's
+    // trusted to keep up because it can always pull from storage on its next trip).
     const container = containerAt(10, 10, 300);
     const busySupply = snapCreep("supply", {
       memory: { logistics: { current: { kind: "pickup", from: { kind: "structure", id: "storage1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 } } }
@@ -249,6 +250,9 @@ describe("planLogistics — supply", () => {
         containers: [container],
         controller: { x: 25, y: 25 },
         spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")],
+        storageId: "storage1" as Id<StructureStorage>,
+        storageEnergy: 5000,
+        storageCapacity: 10000,
         energyAvailable: 200,
         energyCapacity: 300
       })
@@ -260,5 +264,29 @@ describe("planLogistics — supply", () => {
       while (deliver && deliver.kind !== "deliver") deliver = deliver.next;
       expect(deliver?.to).not.toEqual({ kind: "structure", id: "spawn1" });
     }
+  });
+
+  it("falls back to filling spawn1 itself when supply is alive but storage is empty", () => {
+    // No storage energy for the lone supply creep to draw from — it can't be trusted to cover the
+    // deficit alone (a short-hop topper, not sized for the room's full spawn throughput), so transport
+    // must step in rather than leave idle, fully-loaded transport creeps stranded while spawn starves.
+    const busySupply = snapCreep("supply", {
+      memory: { logistics: { current: { kind: "pickup", from: { kind: "structure", id: "storage1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 } } }
+    });
+    const idleTransport = snapCreep("transport", { storeEnergy: 100, storeCapacity: 100 });
+    const plan = planLogistics(
+      colonySnap({
+        creeps: [busySupply, idleTransport],
+        controller: { x: 25, y: 25 },
+        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")],
+        energyAvailable: 200,
+        energyCapacity: 300
+      })
+    );
+
+    const transportTask = plan.assignments[idleTransport.id];
+    let deliver = transportTask?.kind === "deliver" ? transportTask : transportTask?.next;
+    while (deliver && deliver.kind !== "deliver") deliver = deliver.next;
+    expect(deliver?.to).toEqual({ kind: "structure", id: "spawn1" });
   });
 });

@@ -60,3 +60,35 @@ export function operationsFor(room: string, siblingRemoteSourceIds: ReadonlySet<
     new Reservation(room)
   ];
 }
+
+/** One operation `kind`, for listing every kind that can request a creep spawn (desiredCreeps) — see
+ * `SPAWNABLE_OPERATIONS` below. `trigger` documents *why* a colony would or wouldn't be attached to it
+ * right now: "always" mirrors operationsFor() above verbatim, everything else names the memory/flag
+ * condition Colony's constructor gates attachment on (see each operation's own file header). */
+export interface SpawnableOperationInfo {
+  kind: string;
+  trigger: string;
+}
+
+/** Every Operation subclass that overrides `desiredCreeps()` — i.e. every kind that can end up
+ * requesting a spawn — not just the ten unconditionally attached by operationsFor(). Attack, Colonize,
+ * Drain and Parade are flag/memory-triggered add-ons (see operations/index.ts's imports for where each
+ * is actually attached: Colony's constructor for Attack/Colonize/Drain, paradeFlags.ts for Parade) and
+ * deliberately excluded from operationsFor() itself, so this list has to be hand-kept in sync with the
+ * Operation subclasses rather than derived from that array. */
+export const SPAWNABLE_OPERATIONS: readonly SpawnableOperationInfo[] = [
+  { kind: "mining", trigger: "always" },
+  { kind: "defense", trigger: "always" },
+  { kind: "upgrading", trigger: "always" },
+  { kind: "bootstrap", trigger: "always" },
+  { kind: "building", trigger: "always" },
+  { kind: "repairing", trigger: "always" },
+  { kind: "scouting", trigger: "always" },
+  { kind: "logistics", trigger: "always" },
+  { kind: "supply", trigger: "always" },
+  { kind: "reservation", trigger: "always" },
+  { kind: "attack", trigger: "ColonyMemory.attacking non-empty (attack flag)" },
+  { kind: "colonize", trigger: "ColonyMemory.colonizing non-empty (colonize flag or auto-pick)" },
+  { kind: "drain", trigger: "ColonyMemory.draining set (drain flag)" },
+  { kind: "parade", trigger: "ColonyMemory.parading set (parade flag)" }
+];

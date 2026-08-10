@@ -220,6 +220,13 @@ export class Drain extends Operation {
     const squad = [...(attacker ? [attacker] : []), ...healers];
     if (squad.length === 0) return undefined;
 
+    // Squad EXISTENCE is STATEFUL: once ANY member carries squadJoined === this.name, the squad exists — a
+    // memory-persisted fact, never re-derived from live position. This is the single source of truth for
+    // "is there a squad this tick," matching squadJoined's whole purpose (membership persistence). It's read
+    // FIRST, before any position-derived readiness below, so a live squad can never be dissolved by where its
+    // members happen to stand this tick.
+    const alreadyJoined = squad.some(c => c.memory.squadJoined === this.name);
+
     const assembled = attacker !== undefined && healers.length >= DRAIN_HEALER_COUNT && squad.length >= DRAIN_SQUAD_SIZE;
     // Ready for the first push: fully assembled AND every member physically together in the staging room.
     const readyForFirstPush = assembled && squad.every(c => c.room === staging);
@@ -231,9 +238,17 @@ export class Drain extends Operation {
     const beyondStaging = roomsBeyondStaging(colony.drainRoute, staging);
     const underway = squad.some(c => beyondStaging.has(c.room));
 
-    // Still assembling — not a full squad physically together in staging, and not yet committed past it.
-    // No squad machinery: members rally independently via their own step tables (ADR 0007 requirement 2).
-    if (!readyForFirstPush && !underway) return undefined;
+    // The position-derived readiness gate governs ONLY the FIRST formation of a never-joined squad (members
+    // rally independently via their own step tables until physically together in staging or already pushed
+    // past it — ADR 0007 requirement 2). Once the squad has joined (alreadyJoined), its existence is stateful
+    // and this gate is bypassed entirely — a member transiently teleported OFF the route by a border straddle
+    // (e.g. the footprint's trailing column landing on a room-edge column that isn't toward the goal — the
+    // confirmed live W5N3 freeze, 2026-08-10) must NOT dissolve the whole squad and revert everyone to their
+    // rally step tables. Deriving squad existence from live position every tick (this gate, before the fix)
+    // produced a per-tick dissolve/reform flicker: on an off-route-teleport tick both readyForFirstPush and
+    // underway read false, the squad ceased to exist, members ran their own moveToPos toward rally, and next
+    // tick they walked back and re-formed — thrashing forever, never crossing.
+    if (!alreadyJoined && !readyForFirstPush && !underway) return undefined;
 
     // Squad membership is now STATEFUL (CreepMemory.squadJoined), not re-derived from live position every
     // tick. A creep joins once (see `joinIntents` below, called from `intents()`) and stays a member until

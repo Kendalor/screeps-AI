@@ -65,6 +65,47 @@ const TARGET = "W2N1";
 
 const OPEN = (): TerrainMatrix => new TerrainMatrix();
 
+// A room walled solid EXCEPT a narrow vertical corridor pinned against the WEST edge (x = 0..corridorMaxX),
+// clear top to bottom. Reproduces the live geometry (colony W5N3's drain squad, 2026-08-08) that a fully-open
+// test room never exercises: an interior wall block leaves the ONLY route to a room exit hugging the border,
+// so a 2-tile-wide formation's trailing column is forced onto (or one tile shy of) the edge tiles as it
+// travels toward the exit — the exact condition under which the persisted anchor and the engine's per-creep
+// edge-relocation can fall out of phase (advance shoves the trailing column across, the block reads broken,
+// reform yanks it back, repeat). The corridor is kept `corridorMaxX + 1` tiles wide so a 2x2 physically fits
+// inside it (a 1-wide corridor could never hold the formation at all — a different, unrelated failure).
+function westEdgeCorridor(corridorMaxX: number): TerrainMatrix {
+  const terrain = new TerrainMatrix();
+  for (let x = 0; x < 50; x++) {
+    for (let y = 0; y < 50; y++) {
+      if (x > corridorMaxX) terrain.set(x, y, "wall");
+    }
+  }
+  return terrain;
+}
+
+// A room whose LOWER portion (y >= openFromY) is walled solid except a 2-wide corridor pinned against the
+// EAST edge (x = 48,49), while its UPPER portion (y < openFromY) is fully open. Reproduces the live W5N3
+// off-route-dissolve WITHOUT the harder forced-corner-crossing: the squad's GOAL is a room to the NORTH, and
+// the only route up through the lower room hugs the EAST border (x=49), so the 2-wide footprint's trailing
+// column lands on x=49 and the engine teleports that member EAST into the off-route neighbour room — which
+// tripped Drain.squadState's position-derived existence gate (readyForFirstPush/underway both false: the
+// member is neither in staging nor a beyond-staging room), dissolving the whole already-joined squad every
+// other tick (the odd/even flicker confirmed live on atomic data). The OPEN top band then lets a squad whose
+// existence survives (the fix) slide off the edge and cross the north border through open ground — so this
+// terrain fails ONLY on the dissolve bug, not the separate forced-corner-crossing residual (a corridor that
+// stays 2-wide all the way to the border also strands a member ON the corner, a distinct bug tracked
+// separately). A west-edge corridor toward a WEST goal never reproduces the dissolve at all: there the
+// teleport lands in a beyond-staging room, so `underway` stays true.
+function eastEdgeCorridorOpenTop(openFromY: number): TerrainMatrix {
+  const terrain = new TerrainMatrix();
+  for (let x = 0; x < 50; x++) {
+    for (let y = 0; y < 50; y++) {
+      if (y >= openFromY && x < 48) terrain.set(x, y, "wall");
+    }
+  }
+  return terrain;
+}
+
 // The real DRAIN_FORMATION shape (src/operations/drain.ts) — kept in sync by hand since it's not exported
 // in a form a test-only file should import from src/ (this is a black-box integration test, no internal
 // call sites). 1 drainAttacker anchor (0,0) + 3 drainHealer trailing right/down, canonical TOP facing.
@@ -144,6 +185,39 @@ async function addSquad(colony: BootedColony, seed: SquadSeed): Promise<void> {
   await colony.patchMemory(mem => {
     const creeps = (mem.creeps ??= {}) as Record<string, CreepMemory>;
     for (const m of seed.members) creeps[m.name] = { role: m.role, home: seed.home, op: seed.op };
+  });
+}
+
+// Seeds ONE squad member (real engine object + CreepMemory), optionally already carrying squadJoined so
+// Drain.squadState reads it as an existing member (its re-entry branch, not the all-or-nothing bootstrap —
+// see drain.ts's squadState doc). Used to reproduce the live freeze: a set of already-joined survivors plus
+// a NOT-yet-joined replacement seeded far away, the exact state a mid-drain respawn produces (and the exact
+// state none of the pre-tight, all-present seeds above ever reach, so none of them exercised the re-entry
+// path that was broken live).
+async function addMember(
+  colony: BootedColony,
+  home: string,
+  op: string,
+  member: { name: string; role: "drainAttacker" | "drainHealer"; x: number; y: number; room: string; joined?: boolean }
+): Promise<void> {
+  const gameTime = await colony.server.world.gameTime;
+  const body = member.role === "drainAttacker" ? ATTACKER_BODY : HEALER_BODY;
+  await colony.server.world.addRoomObject(member.room, "creep", member.x, member.y, {
+    name: member.name,
+    user: colony.bot.id,
+    notifyWhenAttacked: true,
+    body,
+    store: { energy: 0 },
+    storeCapacity: 0,
+    hits: body.length * 100,
+    hitsMax: body.length * 100,
+    spawning: false,
+    fatigue: 0,
+    ageTime: gameTime + 1400
+  });
+  await colony.patchMemory(mem => {
+    const creeps = (mem.creeps ??= {}) as Record<string, CreepMemory>;
+    creeps[member.name] = { role: member.role, home, op, ...(member.joined ? { squadJoined: op } : {}) };
   });
 }
 
@@ -553,4 +627,164 @@ test(
     ).not.toBeNull();
   },
   120_000
+);
+
+// REGRESSION (reproduces a live oscillation, colony W5N3's drain squad, 2026-08-08 — NOT covered by any test
+// above, all of which use fully-open terrain): when the ONLY route to a room exit hugs the border (an
+// interior wall block leaves no interior detour — the live W6N3 pocket), a 2-tile-wide formation travelling
+// that corridor keeps shoving its trailing column onto the edge tiles. The engine relocates any creep on an
+// edge tile into the neighbouring room the same tick, per creep; if the persisted squad anchor doesn't
+// advance ONTO/ACROSS the border in phase with those relocated members, the block reads as "broken" every
+// other tick (members no longer on the slot tiles slotTiles computes from an anchor still one tile short of
+// the border), so planSquadMove alternates advance -> (teleport breaks it) -> reform-pull-back -> advance
+// forever, never crossing, and exposing a lone teleported member out of heal range (one died live). The
+// cohesion machinery itself is already correct for a straddle (inFormation + slotTiles place and match
+// across-border slot tiles fine, proven at the unit level) — the failure is purely the anchor advancement
+// falling out of phase with the engine's edge relocation, which only manifests when terrain forces the
+// formation to actually travel along a border rather than crossing it head-on from open ground.
+//
+// The assertions reuse assertWeldedOrTransientCrossingSplit (a BOUNDED transient split is real-engine
+// behaviour, see CROSSING_SPLIT_TOLERANCE) — so this test does NOT forbid the brief straddle every crossing
+// has; it fails specifically on the INDEFINITE oscillation (a split that never heals, i.e. the squad never
+// crossing) that the phase bug produces, plus the concrete symptom that a member gets stranded/lost.
+test(
+  "a tight 2x2 in a border-pinned corridor crosses in ONE pass with only bounded oscillation (live W5N3 regression)",
+  async () => {
+    // Corridor 0..3 (4 tiles wide) so the 2x2 physically fits; everything x>3 is wall — the ONLY route to the
+    // STAGING/TARGET border (W1N1's west edge, x=0) hugs the edge, no interior detour, exactly like the live
+    // W6N3 pocket that a fully-open test room never exercises. This is the terrain class the pre-rework
+    // indefinite oscillation lived on: a 2-tile-wide formation forced to travel touching a border, its
+    // trailing column clipping the edge tiles the engine relocates on every step. If the anchor advancement
+    // stays in phase with the engine's per-creep teleport, this is one pass with only a brief straddle; if it
+    // falls out of phase, the squad ping-pongs in place and never crosses (assertWeldedOrTransientCrossingSplit
+    // catches the never-healing split; the crossedTick assertion catches never crossing at all).
+    const CORRIDOR_MAX_X = 3;
+    const colony = await BootedColony.boot({ botCode: bundleBot(), room: HOME, terrain: OPEN() });
+    colonies.push(colony);
+    await colony.server.world.setTerrain(STAGING, westEdgeCorridor(CORRIDOR_MAX_X));
+    await colony.server.world.setTerrain(TARGET, OPEN());
+
+    await colony.server.tick();
+
+    const seed = tightSquadSeed(HOME, STAGING, 2, 44, "corr");
+    await addSquad(colony, seed);
+    await startDraining(colony, HOME, TARGET);
+
+    const positionsLog: Array<Array<{ x: number; y: number; room: string }>> = [];
+    const splitStreak = { count: 0 };
+    let maxSplitStreak = 0;
+    const fullyAcross = async (): Promise<boolean> => {
+      const members = await squadRoomObjects(colony, seed, [STAGING, TARGET]);
+      return members.length === 4 && members.every(m => m.room === TARGET);
+    };
+
+    let crossedTick: number | null = null;
+    for (let tick = 0; tick < 150 && crossedTick === null; tick++) {
+      await colony.server.tick();
+      const members = await squadRoomObjects(colony, seed, [STAGING, TARGET]);
+      positionsLog.push(members.map(m => ({ x: m.x, y: m.y, room: m.room })));
+      for (const m of members) {
+        expect(m.x, `out-of-range x at tick ${tick}`).toBeGreaterThanOrEqual(0);
+        expect(m.x).toBeLessThanOrEqual(49);
+        expect(m.y).toBeGreaterThanOrEqual(0);
+        expect(m.y).toBeLessThanOrEqual(49);
+      }
+      expect(members.length, `squad member vanished/stranded at tick ${tick}`).toBe(4);
+      assertWeldedOrTransientCrossingSplit(members, tick, splitStreak, positionsLog);
+      maxSplitStreak = Math.max(maxSplitStreak, splitStreak.count);
+      if (await fullyAcross()) crossedTick = tick;
+    }
+
+    const trace = positionsLog.map((row, i) => `t${i}: ${row.map(m => `(${m.x},${m.y},${m.room})`).join(" ")}`).join("\n");
+    expect(crossedTick, `squad never crossed the long border-hugging corridor into ${TARGET} (oscillated indefinitely):\n${trace}`).not.toBeNull();
+    // The crossing must not just eventually happen, it must happen cleanly: the worst consecutive-split run
+    // stays under the tolerance (the squad-movement rework — commit 4d7d708's fixed anchor placement, removed
+    // rotation, and fixed cost matrices — turned the pre-rework INDEFINITE oscillation into a one-pass
+    // crossing). NOTE: the true goal is a fully SMOOTH transition with NO oscillation at all — as of the
+    // rework this crossing still shows a brief reform snap-back (a straddled block pulled back into the old
+    // room for a tick before re-crossing), tolerated here because the engine's per-creep edge relocation makes
+    // SOME transient straddle unavoidable, but a maxSplitStreak of 0–1 (never a snap-back) is the target this
+    // guard should be tightened toward once the anchor advancement is fully in phase with the relocation. For
+    // now it fails only on the never-healing regression, while recording that a smooth crossing is the aim.
+    expect(maxSplitStreak, `max consecutive split streak too high for a one-pass crossing:\n${trace}`).toBeLessThanOrEqual(CROSSING_SPLIT_TOLERANCE);
+  },
+  120_000
+);
+
+// REGRESSION — the confirmed live W5N3 freeze (2026-08-10), reproduced on the EXACT geometry that produced
+// it and that no other test here reaches: goal to the NORTH, but the only northward route hugs the EAST
+// border, so the 2-wide footprint's trailing column keeps landing on x=49 and the engine teleports that
+// member EAST into an OFF-ROUTE room. Confirmed root cause (atomic single-tick pserver data): Drain.squadState
+// dissolves the whole ALREADY-JOINED squad on any tick a member is off-route — its position-derived existence
+// gate (readyForFirstPush && every member in staging, OR underway && a member in a beyond-staging room) runs
+// BEFORE the stateful squadJoined membership check, so an off-route teleport makes both false and the function
+// returns undefined. With no squad that tick, every member reverts to its own rally step table; next tick the
+// member walks back, the squad re-forms, the member is put back on the edge and teleports off-route again —
+// a perfect odd/even flicker (verified by tick parity: runSquads on even ticks, step-table moveToPos on odd).
+// The squad thrashes between two conflicting targets forever and never crosses. This test seeds a fully
+// squadJoined squad and asserts it stays a squad and actually crosses north; RED until squad EXISTENCE comes
+// from squadJoined (memory) once joined, with the position gate governing only the never-joined first push.
+const HOME_N = "W2N1"; // west of STAGING_N, so the off-route EAST room (W0N1) is neutral, not the colony room
+const STAGING_N = "W1N1";
+const TARGET_N = "W1N2"; // directly NORTH of STAGING_N — route goes north, NOT east
+const OFFROUTE_E = "W0N1"; // east neighbour of STAGING_N — where an x=49 straddle teleports a member, OFF-route
+
+test(
+  "an already-joined squad forced against the EAST border while heading NORTH does not dissolve off-route and crosses (live W5N3 freeze)",
+  async () => {
+    // Lower 2/3 of STAGING_N is a 2-wide east-edge corridor (forces the footprint onto x=49 → off-route
+    // teleport → the dissolve bug); the top band (y < 15) is open so a squad that SURVIVES the dissolve (the
+    // fix) can slide west off the edge and cross the north border through open ground, isolating the dissolve
+    // bug from the separate forced-corner-crossing residual.
+    const OPEN_FROM_Y = 15;
+    const colony = await BootedColony.boot({ botCode: bundleBot(), room: HOME_N, terrain: OPEN() });
+    colonies.push(colony);
+    await colony.server.world.setTerrain(STAGING_N, eastEdgeCorridorOpenTop(OPEN_FROM_Y));
+    await colony.server.world.setTerrain(TARGET_N, OPEN());
+
+    await colony.server.tick();
+
+    const op = `drain:${HOME_N}`;
+    // Seed a fully-assembled, already-squadJoined squad DOWN in the 2-wide east corridor (anchor (48,25),
+    // footprint (48,25),(49,25),(48,26),(49,26)). Travelling north toward the goal it keeps its trailing
+    // column on x=49, so a member is teleported EAST into the off-route room W0N1 (neither staging nor a
+    // beyond-staging room) — the condition that dissolved the squad every other tick pre-fix. squadJoined is
+    // pre-set so this exercises squad EXISTENCE persistence, not the first-assembly bootstrap. Once it reaches
+    // the open top band it slides off the edge and crosses north (only possible if the squad survived the
+    // off-route ticks — i.e. with the fix).
+    const members = [
+      { name: "eastxing_attacker", role: "drainAttacker" as const, x: 48, y: 25, room: STAGING_N },
+      { name: "eastxing_healer_a", role: "drainHealer" as const, x: 49, y: 25, room: STAGING_N },
+      { name: "eastxing_healer_b", role: "drainHealer" as const, x: 48, y: 26, room: STAGING_N },
+      { name: "eastxing_healer_c", role: "drainHealer" as const, x: 49, y: 26, room: STAGING_N }
+    ];
+    for (const m of members) await addMember(colony, HOME_N, op, { ...m, joined: true });
+    const seed: SquadSeed = { home: HOME_N, op, members };
+    await startDraining(colony, HOME_N, TARGET_N);
+
+    // The load-bearing observable is simply: does the already-joined squad make progress north and cross,
+    // or does it freeze/scatter on the east border? squadJoinedCount is NOT a useful probe here — the memory
+    // flag persists even while squadState returns undefined (the dissolve is a squad-EXISTENCE flip, not a
+    // membership-flag clear), so the bug shows as "never crosses", the squad reverting to rally step tables
+    // every off-route tick and thrashing in place, never completing the northward crossing.
+    const positionsLog: Array<Array<{ x: number; y: number; room: string }>> = [];
+    let crossedTick: number | null = null;
+    for (let tick = 0; tick < 120 && crossedTick === null; tick++) {
+      await colony.server.tick();
+      const found = await squadRoomObjects(colony, seed, [STAGING_N, TARGET_N, OFFROUTE_E, "W0N2", "W2N1", "W2N2"]);
+      positionsLog.push(found.map(m => ({ x: m.x, y: m.y, room: m.room })));
+      for (const m of found) {
+        expect(m.x, `out-of-range x at tick ${tick}`).toBeGreaterThanOrEqual(0);
+        expect(m.x).toBeLessThanOrEqual(49);
+        expect(m.y).toBeGreaterThanOrEqual(0);
+        expect(m.y).toBeLessThanOrEqual(49);
+      }
+      expect(found.length, `squad member vanished at tick ${tick}`).toBe(4);
+      if (found.length === 4 && found.every(m => m.room === TARGET_N)) crossedTick = tick;
+    }
+
+    const trace = positionsLog.map((row, i) => `t${i}: ${row.map(m => `(${m.x},${m.y},${m.room})`).join(" ")}`).join("\n");
+    expect(crossedTick, `squad never crossed NORTH into ${TARGET_N} (froze/scattered on the east border):\n${trace}`).not.toBeNull();
+  },
+  180_000
 );

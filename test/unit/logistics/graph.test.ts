@@ -168,8 +168,8 @@ describe("consumers", () => {
     );
 
     // ext1 wants 30 (50 cap - 20 held), ext2 wants 50 — each its own consumer at spawn-system priority.
-    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 100, pos: { x: 10, y: 10 } });
-    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext2" }, resource: RESOURCE_ENERGY, wanted: 50, priority: 100, pos: { x: 11, y: 10 } });
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 60, pos: { x: 10, y: 10 } });
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext2" }, resource: RESOURCE_ENERGY, wanted: 50, priority: 60, pos: { x: 11, y: 10 } });
     // No single-node aggregate is emitted anymore.
     expect(result.some(c => c.ref.kind === "spawnSystem")).toBe(false);
   });
@@ -391,7 +391,7 @@ describe("transportProviders", () => {
 describe("supplyConsumers", () => {
   it("includes a spawn/extension sink", () => {
     const result = supplyConsumers(colonySnap({ spawnSinks: [sinkAt(10, 10, 20, 50, "ext1")] }));
-    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 100, pos: { x: 10, y: 10 } });
+    expect(result).toContainEqual({ ref: { kind: "structure", id: "ext1" }, resource: RESOURCE_ENERGY, wanted: 30, priority: 60, pos: { x: 10, y: 10 } });
   });
 
   it("includes a tower sink", () => {

@@ -184,7 +184,7 @@ export const runStep = wrapFn(function runStep(
 // a couple of tiles of margin. A live hostile creep gets the same radius since its own attack range is
 // unknown from scout vision alone (could be a ranged attacker just as easily as a healer).
 const DANGER_RADIUS = 5;
-const DANGER_COST = 20; // added on top of terrain cost, per tile within DANGER_RADIUS — enough to make a multi-tile detour cheaper than cutting through
+const DANGER_COST = 25; // added on top of terrain cost, per tile within DANGER_RADIUS — enough to make a multi-tile detour cheaper than cutting through
 
 // Penalizes tiles near source keeper lairs and hostile-owned creeps so an unarmed traveller (a scout)
 // detours around them instead of pathing straight through a keeper's kill zone. A friendly/neutral
