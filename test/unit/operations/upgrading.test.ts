@@ -190,15 +190,23 @@ describe("Upgrading.structures — controller container + road", () => {
     expect(upgrading.structures(gated({ anchor: null }))).toEqual([]);
   });
 
-  // Two structures on one tile is not a plan planBuilding can execute.
-  it("never claims a tile a sibling already planned", () => {
+  // Two DIFFERENT structures on one tile is not a plan planBuilding can execute — but a road claim
+  // landing on a tile a sibling already planned as a road is agreement, not a conflict, and must still
+  // go out as this operation's own claim (see structures()' doc: dropping it silently used to make
+  // building.ts's gateRoads treat the tile as un-exempt from its adjacency gate, and a shared-corridor
+  // road with nothing else served nearby could fail that too — confirmed live on W47N14 2026-08-13,
+  // where the controller-approach road runs along Mining's own remote route corridor).
+  it("never claims a tile a sibling already planned with a DIFFERENT structure type", () => {
     const claimed = upgrading.structures(gated());
-    // Feed its own claim back as the planned set: nothing new may be claimed on those tiles.
+    // Feed its own claim back as the planned set: a different type on those tiles must still be blocked.
     const planned = claimed.map(c => ({ x: c.x, y: c.y, type: c.type }));
     const second = upgrading.structures(gated(), planned);
 
-    const taken = new Set(planned.map(p => `${p.x},${p.y}`));
-    for (const c of second) expect(taken.has(`${c.x},${c.y}`)).toBe(false);
+    const plannedTypeAt = new Map(planned.map(p => [`${p.x},${p.y}`, p.type]));
+    for (const c of second) {
+      const existing = plannedTypeAt.get(`${c.x},${c.y}`);
+      expect(existing === undefined || existing === c.type).toBe(true);
+    }
   });
 
   // A live bug: the bunker's own road grid is seeded into `planned` before any operation runs (see
@@ -216,6 +224,29 @@ describe("Upgrading.structures — controller container + road", () => {
     expect(containers).toHaveLength(1);
     expect({ x: containers[0].x, y: containers[0].y }).not.toEqual({ x: natural.x, y: natural.y });
     expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(1);
+  });
+
+  // Confirmed live on W47N14 2026-08-13: the controller-approach road's A* path runs down the same
+  // corridor Mining's own remote-route road already occupies for a large stretch (both searches share
+  // the same PathFinder `preferred`-tile convergence bias — see remotePath.ts), so nearly every road
+  // tile in the route collided with an already-planned road from `planned` (bunker grid or a sibling
+  // operation). The untyped dedup dropped every one of those claims outright, so gateRoads never saw
+  // them as "this operation's own claimed road" and any of those tiles with nothing else served nearby
+  // could fail its adjacency gate too — silently starving genuinely-unbuilt stretches of the controller
+  // road of a construction site, tick after tick, with no way to self-heal.
+  it("still claims its own road tiles even when the route runs along a corridor a sibling already planned as road", () => {
+    const claimed = upgrading.structures(gated());
+    const roads = claimed.filter(s => s.type === "road");
+    expect(roads.length).toBeGreaterThan(0);
+
+    // A sibling (e.g. Mining) already planned the whole route as road — same tiles, same type.
+    const siblingCorridor = roads.map(r => ({ x: r.x, y: r.y, type: "road" as const }));
+    const claimedWithCorridor = upgrading.structures(gated(), siblingCorridor);
+    const roadsWithCorridor = claimedWithCorridor.filter(s => s.type === "road");
+
+    // Every road tile still comes out as this operation's own claim, not silently dropped.
+    expect(roadsWithCorridor).toHaveLength(roads.length);
+    for (const r of roads) expect(roadsWithCorridor).toContainEqual(r);
   });
 });
 

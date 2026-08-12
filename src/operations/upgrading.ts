@@ -132,12 +132,24 @@ export class Upgrading extends Operation {
     const route = this.route(colony, planned);
     if (!route) return [];
 
-    const taken = new Set(planned.map(p => `${p.x},${p.y}`));
+    // Only a DIFFERENT structure type on a tile blocks a claim here — a road this route's own path
+    // shares with the bunker grid or (very often, since the same PathFinder `preferred`-tile bias steers
+    // both toward one shared corridor — see remotePath.ts) a Mining remote-route road is agreement, not
+    // a conflict, and must still go out as this operation's own claim. Dropping it silently meant
+    // building.ts's gateRoads never saw it as "an operation's own claimed road" (its exemption from the
+    // adjacency-to-a-served-structure gate), so a shared-corridor tile with nothing else served nearby
+    // fell back to that gate and could fail it outright — the tile was already largely built for Mining's
+    // own reasons, but that didn't stop THIS claim's absence from starving the genuine gaps in it of a
+    // construction site. Confirmed live on W47N14 2026-08-13: the entire controller-approach road runs
+    // along the same corridor Mining's W47N15 remote route uses, and every one of Upgrading's 16 road
+    // claims for it were silently dropped — 13 of those tiles are genuinely unbuilt but never got sited.
+    const takenType = new Map(planned.map(p => [`${p.x},${p.y}`, p.type]));
     const out: PlacedStructure[] = [];
     const claim = (p: PlacedStructure): void => {
       const key = `${p.x},${p.y}`;
-      if (taken.has(key)) return;
-      taken.add(key);
+      const existing = takenType.get(key);
+      if (existing !== undefined && existing !== p.type) return;
+      takenType.set(key, p.type);
       out.push(p);
     };
 
