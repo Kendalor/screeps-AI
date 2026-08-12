@@ -241,7 +241,8 @@ export function installConsoleCommands(): void {
       .map(c => {
         const dist = Number.isFinite(c.distance) ? c.distance : "-";
         const viability = c.reason ? REASON_LABEL[c.reason] : "viable";
-        return `${c.room}: score=${c.score.toFixed(1)} distance=${dist} (${viability})`;
+        const mineral = c.mineral ?? "none";
+        return `${c.room}: score=${c.score.toFixed(1)} distance=${dist} mineral=${mineral} (${viability})`;
       })
       .join("\n");
   };

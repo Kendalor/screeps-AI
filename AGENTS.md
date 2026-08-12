@@ -17,6 +17,9 @@ squad-based offense.
   layers, execute intents.
 - **In-game commands** — [docs/console-commands.md](docs/console-commands.md).
 - **Contributing** — [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Screeps engine reference** — [docs.screeps.com](https://docs.screeps.com/index.html)
+  and the [API reference](https://docs.screeps.com/api/), for game rules and
+  engine behavior this codebase is built against.
 
 ## Source layout
 
@@ -47,3 +50,20 @@ economy/RCL-timing regressions over many ticks.
 
 Use the `debug-local` skill (pserver) or `debug-main` skill (screeps.com) rather
 than guessing — they know how to read Memory/stats and send console commands.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live as markdown files under `.scratch/<feature-slug>/` in this
+repo, not GitHub Issues. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`), unmodified. See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context: one [CONTEXT.md](CONTEXT.md) + [docs/adr/](docs/adr/) at the repo
+root. See [docs/agents/domain.md](docs/agents/domain.md).

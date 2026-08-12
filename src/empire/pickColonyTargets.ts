@@ -48,6 +48,7 @@ const LIVE_RECHECK_TOP_N = 5;
 interface Candidate {
   room: string;
   cachedScore: number;
+  mineral?: MineralConstant;
 }
 
 function routeDistance(a: string, b: string): number {
@@ -72,7 +73,8 @@ function cachedCandidates(): Candidate[] {
     if (info.sources.length < MIN_COLONY_SOURCES) continue;
     out.push({
       room,
-      cachedScore: colonizePotentialScore({ potential: info.potential, ownMineral: info.mineral, haveMinerals })
+      cachedScore: colonizePotentialScore({ potential: info.potential, ownMineral: info.mineral, haveMinerals }),
+      mineral: info.mineral
     });
   }
   return out;
@@ -130,6 +132,7 @@ export interface ColonizeCandidateListing {
   room: string;
   score: number;
   distance: number; // real room-graph hops to the nearest owned colony; Infinity if unreachable
+  mineral?: MineralConstant;
   // Why this candidate isn't (yet) a legal auto-pick target, on cached data alone — undefined means fully
   // viable. Mirrors the gates autoPickColonyTarget itself applies, in the same order, so this listing never
   // shows a candidate as viable that the auto-picker would actually reject.
@@ -153,7 +156,7 @@ export function listColonizeCandidates(world: Empire): ColonizeCandidateListing[
       else if (distance < MIN_COLONY_DISTANCE) reason = "tooClose";
       else if (distance > MAX_COLONY_DISTANCE) reason = "tooFar";
       else if (c.cachedScore < MIN_COLONY_SCORE) reason = "scoreTooLow";
-      return { room: c.room, score: c.cachedScore, distance, reason };
+      return { room: c.room, score: c.cachedScore, distance, mineral: c.mineral, reason };
     })
     .sort((a, b) => b.score - a.score);
 }
