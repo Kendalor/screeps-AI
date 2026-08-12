@@ -245,11 +245,22 @@ export class Mining extends Operation {
     // are deliberately excluded — a claim isn't "place a site," so dropping it once built would make
     // Mining demolish its own container the tick after it went up. Keyed by room too: a remote route
     // can share (x,y) with a home-room tile without being the same tile.
-    const taken = new Set(planned.map(p => `${p.room ?? colony.name},${p.x},${p.y}`));
+    //
+    // Only a DIFFERENT structure type on the same tile blocks a claim — a route road that happens to
+    // land on a tile the bunker grid also wants as a road is agreement, not a conflict, and must still
+    // go out as this source's own claim. Dropping it silently (as a plain (x,y) dedup once did) meant
+    // building.ts's gateRoads never saw it as "an operation's own claimed road" (its exemption from the
+    // adjacency-to-a-served-structure gate), so a route tile with no served structure next to it fell
+    // back to that gate and failed it outright — the road was never placed AND the route's own group
+    // read as permanently incomplete (nothing ever confirms routeBuilt there either). Confirmed live on
+    // W47N14 2026-08-12: the W46N13 route's very first home-room hop, (41,12), coincides exactly with a
+    // bunker-grid road tile and silently vanished from every plan, budget, and routeBuilt check as a result.
+    const takenType = new Map(planned.map(p => [`${p.room ?? colony.name},${p.x},${p.y}`, p.type]));
     const claim = (p: PlacedStructure): void => {
       const key = `${p.room ?? colony.name},${p.x},${p.y}`;
-      if (taken.has(key)) return;
-      taken.add(key);
+      const existing = takenType.get(key);
+      if (existing !== undefined && existing !== p.type) return;
+      takenType.set(key, p.type);
       out.push(p);
     };
 

@@ -2,7 +2,14 @@
 // reconstructing a workforce (integration seeding) sizes bodies exactly as the requesters would.
 
 import type { BodyContext } from "../behaviors/types";
+import { plannedObstacles } from "../layouts/goal";
+import GOAL_JSON from "../layouts/Base_2.json";
+import { stampLayout } from "../layouts/stamp";
+import type { GoalLayout } from "../layouts/sync";
+import { isRoadEligible } from "../lib/remotePath";
 import type { ColonySnapshot } from "../snapshot/types";
+
+const GOAL = GOAL_JSON as GoalLayout;
 
 // sourceId narrows hasContainer/hasContainerSite to one source's own tile — a miner's body must reflect
 // what sits at ITS source, not "does any source in the colony have a container" (which a multi-source
@@ -26,17 +33,31 @@ export function bodyContext(colony: ColonySnapshot, roads = allRemoteRoutesBuilt
   };
 }
 
-// True once every currently-selected remote source's route is fully paved (routeBuilt is all "1"s) —
-// see the roads doc above for why that also certifies the home-room leg. False (never "roads=true") with
-// no remote selected yet: there is no route to confirm built, and a colony's very first remote source
-// spawns straight into an unpaved route, so the off-road-safe 1:1 ratio must stay the default until proven otherwise.
+// True once every currently-selected remote source's route is fully paved (routeBuilt is "1" at every
+// road-eligible tile) — see the roads doc above for why that also certifies the home-room leg. False
+// (never "roads=true") with no remote selected yet: there is no route to confirm built, and a colony's
+// very first remote source spawns straight into an unpaved route, so the off-road-safe 1:1 ratio must
+// stay the default until proven otherwise.
+//
+// A route tile the road claim was never going to ask for in the first place — the container tile, an
+// exit tile, or a home-room tile the bunker layout claims for something else (the route happens to path
+// past the anchor through what's now an extension/spawn) — can never flip routeBuilt to "1" (see
+// isRoadEligible). Checking those indices anyway meant this could never return true even with every
+// genuine road built: confirmed live on W47N14 2026-08-12, where all four remote routes' routeBuilt sat
+// permanently short by exactly their non-road tiles, holding every transporter at the off-road 1:1 ratio.
 function allRemoteRoutesBuilt(colony: ColonySnapshot): boolean {
   if (colony.remoteSources.length === 0) return false;
+  // Roads themselves are excluded from the obstacle set: a bunker ROAD placement sharing a route tile is
+  // the genuine road this tile wants, not something blocking it — only a non-road structure (spawn,
+  // extension, ...) actually prevents a road from ever standing there.
+  const obstacles = colony.anchor
+    ? stampLayout(plannedObstacles(GOAL, colony.controllerLevel, colony.anchor, colony.sources), colony.anchor).filter(p => p.type !== "road")
+    : [];
   return colony.remoteSources.every(source => {
     const route = source.route;
     if (!route || route.length === 0) return false;
     const built = source.routeBuilt ?? "";
-    return route.every((_, i) => built[i] === "1");
+    return route.every((tile, i) => !isRoadEligible(tile, i, route, obstacles) || built[i] === "1");
   });
 }
 

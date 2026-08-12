@@ -573,8 +573,12 @@ describe("Mining.structures", () => {
     expect(toSource(roads[0])).toBeLessThan(toSource(roads[roads.length - 1]));
   });
 
-  // Two structures on one tile is not a plan planBuilding can execute.
-  it("never claims a tile the layout or a sibling already planned", () => {
+  // Two DIFFERENT structures on one tile is not a plan planBuilding can execute — but a road claim
+  // landing on a tile the bunker grid also wants as a road is agreement, not a conflict, and must
+  // survive as this source's own claim (see mining.ts's claim() doc: dropping it silently used to make
+  // building.ts's gateRoads treat the tile as un-exempt from its adjacency gate, and it could fail that
+  // too, vanishing from the plan entirely — confirmed live on W47N14 2026-08-12).
+  it("never claims a tile the layout or a sibling already planned with a DIFFERENT structure type", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
@@ -582,8 +586,11 @@ describe("Mining.structures", () => {
     const planned = plannedAt(anchor, 3, [source]);
     const claimed = mining.structures(snap, planned);
 
-    const takenTiles = new Set(planned.map(p => `${p.x},${p.y}`));
-    for (const c of claimed) expect(takenTiles.has(`${c.x},${c.y}`)).toBe(false);
+    const plannedTypeAt = new Map(planned.map(p => [`${p.x},${p.y}`, p.type]));
+    for (const c of claimed) {
+      const existing = plannedTypeAt.get(`${c.x},${c.y}`);
+      expect(existing === undefined || existing === c.type).toBe(true);
+    }
     // And no duplicates within its own claim.
     const keys = claimed.map(c => `${c.x},${c.y}`);
     expect(new Set(keys).size).toBe(keys.length);
@@ -808,6 +815,47 @@ describe("Mining.structures — remote sources", () => {
 
     const claims = mining.structures(snap, [homeClaimSameCoords]);
     expect(claims).toContainEqual({ x: 1, y: 10, room: "W2N1", type: "container", sourceId: source.id });
+  });
+
+  // Confirmed live on W47N14 2026-08-12: a remote route's home-room leg can coincide, tile for tile,
+  // with a road the bunker's own layout grid also wants there. The old dedup treated any (x,y) already
+  // in `planned` as taken regardless of type, so this claim was silently dropped — meaning it never
+  // reached building.ts's gateRoads as "an operation's own claimed road" (its exemption from the
+  // adjacency-to-a-served-structure gate) and never fed gateSourceGroups/builtAt's routeBuilt tracking
+  // either. The tile then had to survive gateRoads on the bunker grid's own adjacency test alone, which
+  // it failed — vanishing from the plan (no site ever placed) while the route's group also read as
+  // permanently incomplete, blocking every source group behind it. A same-type (road-on-road) collision
+  // must NOT drop the claim; only a genuinely different structure type should.
+  it("still claims a route's road tile even when the bunker layout also wants a road there", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+    const bunkerRoadSameTile: PlacedStructure = { x: 11, y: 10, type: "road" }; // home room, same tile as the route's home-room leg
+
+    const claims = mining.structures(snap, [bunkerRoadSameTile]);
+    expect(claims).toContainEqual({ x: 11, y: 10, room: "W1N1", type: "road", sourceId: source.id });
+  });
+
+  it("still drops the claim when the bunker layout wants a genuinely different structure on that tile", () => {
+    const source = remoteSourceAt(2, 10, "W2N1", { route });
+    const snap = colonySnap({
+      anchor,
+      sources: [],
+      controllerLevel: 3,
+      energyCapacity: 800,
+      remoteSources: [source],
+      remoteStructures: { W2N1: [] }
+    });
+    const bunkerExtensionSameTile: PlacedStructure = { x: 11, y: 10, type: "extension" };
+
+    const claims = mining.structures(snap, [bunkerExtensionSameTile]);
+    expect(claims.some(c => c.x === 11 && c.y === 10 && (c.room ?? "W1N1") === "W1N1")).toBe(false);
   });
 
   // The W8N3 incident's actual mechanism: pickRemotes' reevaluate branch (mining/pickRemotes.ts) can

@@ -228,7 +228,13 @@ describe("planBuilding polls operations", () => {
   });
 
   // The payoff of the above: an operation that paths bends onto an existing planned route rather
-  // than laying its own a tile over.
+  // than laying its own a tile over. Mining itself is always first in operationsFor() (see
+  // operations/index.ts) and, as of the (41,12) fix below, deliberately does NOT dedupe its own road
+  // claims against a same-type road already in `planned` — dropping them broke gateRoads' exemption and
+  // routeBuilt bookkeeping for a route tile that happens to coincide with the bunker's own road grid
+  // (confirmed live on W47N14 2026-08-12). So this test uses a plain stand-in "later" operation — any
+  // real sibling that runs after Mining — to demonstrate the general mechanism the pipeline still
+  // provides: seeing a sibling's already-planned road and not laying a second one over it.
   it("lets a pathing operation reuse a road a sibling already planned", () => {
     const source = sourceAt(40, 12);
     const snap = colonySnap({
@@ -247,13 +253,24 @@ describe("planBuilding polls operations", () => {
     const corridor = soloRoads.slice(0, Math.floor(soloRoads.length / 2));
     expect(corridor.length).toBeGreaterThan(0);
 
-    const withCorridor = new Mining("W1N1").structures(snap, [...plannedAt(snap), ...corridor]);
+    // A later, non-Mining pathing operation: strictly dedupes any tile already in `planned`,
+    // regardless of type — the general-purpose rule every operation but Mining still follows.
+    class PathingStub extends Operation {
+      public readonly kind = "pathingStub";
+      public override structures(_c: ColonySnapshot, planned: readonly PlacedStructure[] = []): PlacedStructure[] {
+        const takenKeys = new Set(planned.map(p => `${p.x},${p.y}`));
+        return soloRoads.filter(p => !takenKeys.has(`${p.x},${p.y}`));
+      }
+    }
+
+    const withoutCorridor = new PathingStub("W1N1").structures(snap, plannedAt(snap));
+    const withCorridor = new PathingStub("W1N1").structures(snap, [...plannedAt(snap), ...corridor]);
 
     const roadKeys = (s: PlacedStructure[]) => new Set(s.filter(p => p.type === "road").map(p => `${p.x},${p.y}`));
     const corridorKeys = new Set(corridor.map(p => `${p.x},${p.y}`));
 
-    // With the corridor visible, Mining claims fewer new roads: the shared tiles are already planned.
-    expect(roadKeys(withCorridor).size).toBeLessThan(roadKeys(alone).size);
+    // With the corridor visible, the stub claims fewer new roads: the shared tiles are already planned.
+    expect(roadKeys(withCorridor).size).toBeLessThan(roadKeys(withoutCorridor).size);
     // And it never re-claims a tile the corridor already covers.
     for (const k of roadKeys(withCorridor)) expect(corridorKeys.has(k)).toBe(false);
   });
