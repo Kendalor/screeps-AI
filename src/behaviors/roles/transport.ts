@@ -1,3 +1,4 @@
+import type { BodyContext } from "../types";
 import { haulerBody } from "./hauler";
 import { Role } from "./role";
 
@@ -15,7 +16,7 @@ export class Transport extends Role {
   // everything transport does too.
   static override readonly priority = 100;
   static override readonly mover = true;
-  static override body(energy: number): BodyPartConstant[] {
-    return haulerBody(energy);
+  static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
+    return haulerBody(energy, ctx.roads);
   }
 }

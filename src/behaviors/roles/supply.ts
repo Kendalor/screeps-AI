@@ -15,8 +15,8 @@ export const config = {
 const SUPPLY_SET: BodyPartConstant[] = [CARRY, CARRY, MOVE];
 const MAX_HAULER_SETS = 25; // matches hauler.ts's cap — 25 sets = 50 parts, the hard body cap
 
-export function supplyBody(energy: number, controllerLevel: number): BodyPartConstant[] {
-  if (controllerLevel < config.twoSupplyRcl) return haulerBody(energy);
+export function supplyBody(energy: number, controllerLevel: number, roads = false): BodyPartConstant[] {
+  if (controllerLevel < config.twoSupplyRcl) return haulerBody(energy, roads);
 
   const fullSets = affordableSets(energy, SUPPLY_SET, 1, MAX_HAULER_SETS);
   const halfSets = Math.max(1, Math.floor(fullSets / 2));
@@ -41,6 +41,6 @@ export class Supply extends Role {
   static override readonly priority = 101;
   static override readonly mover = true;
   static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
-    return supplyBody(energy, ctx.controllerLevel ?? 0);
+    return supplyBody(energy, ctx.controllerLevel ?? 0, ctx.roads);
   }
 }

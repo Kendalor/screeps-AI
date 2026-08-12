@@ -23,9 +23,12 @@ export function stewardBody(energy: number): BodyPartConstant[] {
 // of its targets are room-fixed and zero-travel from the anchor, so there's no pickup/deliver matching
 // to do — just "is a rebalance needed this tick".
 export class Steward extends Role {
-  // Below transport (100): a spawn/extension/tower deficit should always win a spawn slot over
-  // rebalancing storage/terminal, which is never urgent enough to block real production.
-  static override readonly priority = 60;
+  // Below transport(100)/miner(95)/drainHealer/drainAttacker/attacker(94): a spawn/extension/tower
+  // deficit, a source going unmined, or an active offensive squad should all win a spawn slot over
+  // rebalancing storage/terminal. Above every other economy role — once a steward is due for handoff
+  // (see operations/logistics.ts's needsHandoff), it must not get bumped by a lower-value role or the
+  // link triangle goes unrefereed for a gap.
+  static override readonly priority = 93;
   static override body(energy: number): BodyPartConstant[] {
     return stewardBody(energy);
   }

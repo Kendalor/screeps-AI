@@ -1,16 +1,21 @@
 import { affordableSets } from "../../spawn/body";
-import type { Step } from "../types";
+import type { BodyContext, Step } from "../types";
 import { Role } from "./role";
 
-// 1:1 CARRY:MOVE so a loaded hauler never fatigues, even off-road.
+// 1:1 CARRY:MOVE so a loaded hauler never fatigues, even off-road — the default until ctx.roads confirms
+// every route this hauler could work is actually paved (see bodyContext.ts's allRemoteRoutesBuilt).
 const HAULER_SET: BodyPartConstant[] = [CARRY, MOVE];
+// 2:1 CARRY:MOVE once the colony's home leg and every selected remote's route are built: a loaded creep
+// on road only needs 1 MOVE per 2 CARRY to stay at full speed, same ratio Supply already uses post-RCL6.
+const HAULER_SET_ROADS: BodyPartConstant[] = [CARRY, CARRY, MOVE];
 const MAX_HAULER_SETS = 25; // 25 sets = 50 parts, the hard body cap
 
-export function haulerBody(energy: number): BodyPartConstant[] {
-  const sets = affordableSets(energy, HAULER_SET, 1, MAX_HAULER_SETS);
+export function haulerBody(energy: number, roads = false): BodyPartConstant[] {
+  const set = roads ? HAULER_SET_ROADS : HAULER_SET;
+  const sets = affordableSets(energy, set, 1, MAX_HAULER_SETS);
   let body: BodyPartConstant[] = [];
   for (let i = 0; i < sets; i++) {
-    body = body.concat(HAULER_SET);
+    body = body.concat(set);
   }
   return body;
 }
@@ -23,8 +28,8 @@ export class Hauler extends Role {
   // Unarmed and ranges into remote rooms — retreats from an armed hostile rather than hauling on
   // obliviously. See Role.flee.
   static override readonly flee = true;
-  static override body(energy: number): BodyPartConstant[] {
-    return haulerBody(energy);
+  static override body(energy: number, ctx?: BodyContext): BodyPartConstant[] {
+    return haulerBody(energy, ctx?.roads);
   }
   // Source containers (near: "notController" — never the controller container, which the hauler FILLS
   // rather than drains) and drops pooled into one gather, ranked by largest load.

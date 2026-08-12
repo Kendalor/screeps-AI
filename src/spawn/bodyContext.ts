@@ -8,7 +8,13 @@ import type { ColonySnapshot } from "../snapshot/types";
 // what sits at ITS source, not "does any source in the colony have a container" (which a multi-source
 // room, or a remote source sharing this call, would answer wrong). Omitted, it falls back to "any
 // source", preserving every other caller (builder/upgrader/etc., which don't key off a single source).
-export function bodyContext(colony: ColonySnapshot, roads = false, sourceId?: Id<Source>): BodyContext {
+//
+// roads defaults to allRemoteRoutesBuilt(colony) rather than false: mining.ts's road claims run
+// source-outward from the home anchor (see Mining.structures), so a remote source's route[] spans the
+// full home->source path — its routeBuilt reaching all-"1" means the home-room leg is paved too, not
+// just the remote room's own tiles. A caller sizing a body that never leaves the home room (or that
+// deliberately wants the off-road-safe ratio regardless of road state) can still pass an explicit value.
+export function bodyContext(colony: ColonySnapshot, roads = allRemoteRoutesBuilt(colony), sourceId?: Id<Source>): BodyContext {
   return {
     // Only a SOURCE container flips a miner onto the container-miner body — the controller container is a
     // hauler's deposit target, no miner ever stands on it, so it must not count here.
@@ -18,6 +24,20 @@ export function bodyContext(colony: ColonySnapshot, roads = false, sourceId?: Id
     roads,
     controllerLevel: colony.controllerLevel
   };
+}
+
+// True once every currently-selected remote source's route is fully paved (routeBuilt is all "1"s) —
+// see the roads doc above for why that also certifies the home-room leg. False (never "roads=true") with
+// no remote selected yet: there is no route to confirm built, and a colony's very first remote source
+// spawns straight into an unpaved route, so the off-road-safe 1:1 ratio must stay the default until proven otherwise.
+function allRemoteRoutesBuilt(colony: ColonySnapshot): boolean {
+  if (colony.remoteSources.length === 0) return false;
+  return colony.remoteSources.every(source => {
+    const route = source.route;
+    if (!route || route.length === 0) return false;
+    const built = source.routeBuilt ?? "";
+    return route.every((_, i) => built[i] === "1");
+  });
 }
 
 // Adjacency test shared by the built-container and container-site checks: a container tile counts only

@@ -28,6 +28,7 @@ import type { ColonySnapshot } from "../snapshot/types";
 import { fillTo, type CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 import { roleDef } from "../behaviors/roles";
+import type { SnapCreep } from "../snapshot/types";
 
 const GOAL = GOAL_JSON as GoalLayout;
 
@@ -46,6 +47,15 @@ const config = {
   bootstrapEnergy: 300, // base spawn capacity, always affordable — size the FIRST transport off this
   wantedStewards: 1 // one is enough — it never leaves the anchor tile, so there's no throughput case for a second
 } as const;
+
+// Whether the sole surviving steward is close enough to death that its replacement must already be
+// spawning — spawn time is body-length-dependent, so a late request leaves the link triangle
+// unrefereed for a gap after it dies. Same shape as supply.ts's needsHandoff.
+function needsHandoff(creeps: readonly SnapCreep[], body: BodyPartConstant[]): boolean {
+  if (creeps.length !== 1) return false; // one-in, one-out only — quota shortfalls take the branch above
+  const left = creeps[0].ticksToLive;
+  return left !== undefined && left <= body.length * CREEP_SPAWN_TIME;
+}
 
 export class Logistics extends Operation {
   public readonly kind = "logistics";
@@ -97,7 +107,22 @@ export class Logistics extends Operation {
   private desiredStewards(colony: ColonySnapshot): CreepRequest[] {
     if (!colony.storageId) return [];
     if (colony.controllerLevel < 5 || colony.links.length < 2) return [];
-    return this.fillRole(colony, "steward", config.wantedStewards, roleDef("steward")!.priority);
+
+    const have = this.owned(colony, "steward");
+    const def = roleDef("steward")!;
+    const body = orderBody(def.body(colony.energyCapacity, bodyContext(colony)));
+
+    const missing = config.wantedStewards - have.length;
+    const requestCount = missing > 0 ? missing : needsHandoff(have, body) ? 1 : 0;
+    if (requestCount === 0) return [];
+
+    return Array.from({ length: requestCount }, () => ({
+      body: [...body],
+      priority: def.priority,
+      memory: { role: "steward", home: colony.name, op: this.name },
+      targetRoom: colony.name,
+      spawnRoom: colony.name
+    }));
   }
 
   /** How many transport creeps current income warrants: steady-state pile, capped. */

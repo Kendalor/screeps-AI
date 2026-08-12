@@ -1,16 +1,25 @@
 import { affordableSets } from "../../spawn/body";
 import { REPAIRABLE } from "../../lib/repairable";
-import type { Step } from "../types";
+import type { BodyContext, Step } from "../types";
 import { Role } from "./role";
 
 // Same WORK/CARRY body shape as the builder it converts from (a converted builder keeps its own body;
-// this is only used if a repairer is ever spawned directly). 2:1 weight:MOVE for road speed.
-function repairBody(energy: number): BodyPartConstant[] {
-  const BASE_BODY = [WORK, CARRY, MOVE, MOVE];
-  const sets = affordableSets(energy, BASE_BODY, 1, 6);
+// this is only used if a repairer is ever spawned directly). 1:1 weight:MOVE (2 weight parts, 2 MOVE) so
+// an off-road repairer — routinely working an unpaved remote route it's the one paving, or a home leg not
+// yet built — never fatigues. This is the default until ctx.roads confirms the colony's home leg and
+// every selected remote's route are actually built (see bodyContext.ts's allRemoteRoutesBuilt); routeBuilt
+// only tracks placement, not decay, so a road worn down enough to need repair still reads as "built" here,
+// which is correct — the ratio is about travel speed, not about whether this repairer's own job exists.
+const BASE_BODY: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE];
+// 2:1 weight:MOVE once every route is paved, matching builder/upgrader's own road-speed convention.
+const BASE_BODY_ROADS: BodyPartConstant[] = [WORK, WORK, CARRY, MOVE];
+
+function repairBody(energy: number, roads = false): BodyPartConstant[] {
+  const set = roads ? BASE_BODY_ROADS : BASE_BODY;
+  const sets = affordableSets(energy, set, 1, 6);
   let body: BodyPartConstant[] = [];
   for (let i = 0; i < sets; i++) {
-    body = body.concat(BASE_BODY);
+    body = body.concat(set);
   }
   return body;
 }
@@ -23,8 +32,8 @@ export class Repair extends Role {
   static override readonly flee = true;
   // Once every WORK part is destroyed this body can't repair or harvest at all — see Role.retreatPart.
   static override readonly retreatPart = WORK;
-  static override body(energy: number): BodyPartConstant[] {
-    return repairBody(energy);
+  static override body(energy: number, ctx?: BodyContext): BodyPartConstant[] {
+    return repairBody(energy, ctx?.roads);
   }
   // Two-tier target search so the repairer doesn't crisscross the room chasing the single most-damaged
   // structure while ignoring one it's standing next to: first look for anything below 50% (there's a

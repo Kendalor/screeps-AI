@@ -3,6 +3,7 @@
 // Harvest rate is the one stored exception — see harvestRate() for why a window, not a running total.
 
 import { roleDef } from "../behaviors/roles";
+import { builtAt } from "./building";
 import type { PlacedStructure } from "../layouts/stamp";
 import { needsRepair, REPAIRABLE } from "../lib/repairable";
 import type { RoleName } from "../memory/schema";
@@ -149,14 +150,25 @@ function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[], targets: 
 }
 
 // Built vs. targeted per structure type; a type appears if either count is > 0. Sorted most-remaining first.
-export function buildingsFor(built: readonly SnapStructure[], targeted: readonly PlacedStructure[]): BuildingRow[] {
-  const builtBy = countByType(built);
+//
+// `built` is derived from `targeted` via `isBuilt` (colony/building.ts's builtAt), not from a raw
+// live-structures list: a remote room's structures only populate for a tick it's actually visible (see
+// snapshot/colony.ts), so counting live structures directly would undercount a route road the moment
+// its room drops out of vision, even though it's genuinely standing — the same problem builtAt's own
+// routeBuilt fallback exists to solve for placement. A structure genuinely built but not part of any
+// current target (e.g. torn down from the goal) has nothing to be counted against and is intentionally
+// omitted from `built`, matching what the panel is meant to show (progress toward the current plan).
+export function buildingsFor(
+  targeted: readonly PlacedStructure[],
+  isBuilt: (p: PlacedStructure) => boolean
+): BuildingRow[] {
   const targetBy = countByType(targeted);
+  const builtBy: Partial<Record<BuildableStructureConstant, number>> = {};
+  for (const p of targeted) {
+    if (isBuilt(p)) builtBy[p.type] = (builtBy[p.type] ?? 0) + 1;
+  }
 
-  const types = new Set<BuildableStructureConstant>([
-    ...(Object.keys(builtBy) as BuildableStructureConstant[]),
-    ...(Object.keys(targetBy) as BuildableStructureConstant[])
-  ]);
+  const types = new Set<BuildableStructureConstant>(Object.keys(targetBy) as BuildableStructureConstant[]);
 
   return [...types]
     .map(type => ({ type, built: builtBy[type] ?? 0, targeted: targetBy[type] ?? 0 }))
@@ -258,12 +270,9 @@ export function collectMetrics(
     tick: snapshot.tick,
     census: censusFor(snapshot, requests, roleTargets),
     operations: operationNames,
-    // `targeted` includes remote-claimed structures (mining containers/roads), so `built` must count
-    // them too or a fully-built remote container reads as permanently missing (home-only undercount).
-    buildings: buildingsFor(
-      [...snapshot.structures, ...Object.values(snapshot.remoteStructures).flatMap(s => s ?? [])],
-      targeted
-    ),
+    // isBuilt uses builtAt's vision-independent routeBuilt fallback for remote route roads, so a road
+    // in a currently-unseen transit room still counts as built instead of undercounting (see buildingsFor).
+    buildings: buildingsFor(targeted, p => builtAt(snapshot, p)),
     energy: {
       available: snapshot.energyAvailable,
       capacity: snapshot.energyCapacity,

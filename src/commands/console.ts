@@ -10,6 +10,13 @@ import { listColonizeCandidates } from "../empire/pickColonyTargets";
 import { execute } from "../intents/execute";
 import { SPAWNABLE_OPERATIONS } from "../operations";
 import { Mining } from "../operations/mining";
+import { needsScouting, staleAfter } from "../behaviors/scout";
+import { COLONIZER_COST } from "../behaviors/roles/colonizer";
+import { SETTLER_MIN_COST } from "../behaviors/roles/settler";
+import { ATTACKER_MIN_COST } from "../behaviors/roles/attacker";
+import { DRAIN_ATTACKER_MIN_COST } from "../behaviors/roles/drainAttacker";
+import { DRAIN_HEALER_MIN_COST } from "../behaviors/roles/drainHealer";
+import { PARADE_MEMBER_MIN_COST } from "../behaviors/roles/paradeMember";
 import {
   claimsOf,
   builtAt,
@@ -31,6 +38,54 @@ const REASON_LABEL: Record<string, string> = {
   unreachable: "unreachable"
 };
 
+interface FlagOperationInfo {
+  kind: string;
+  trigger: string;
+  // The sponsor-pick floor (colonizeSponsor.ts/attackSponsor.ts/drainSponsor.ts/paradeSponsor.ts): a
+  // colony below this energyCapacity is never offered the flag's target at all, regardless of anything
+  // else — the flag just sits unresolved (logged every tick) until some colony crosses this line.
+  minEnergyCapacity: number;
+  gateDetail: string;
+  spawns: string;
+}
+
+const DRAIN_SQUAD_MIN_COST = Math.max(DRAIN_ATTACKER_MIN_COST, DRAIN_HEALER_MIN_COST);
+
+// One entry per Operation that's attached via a flag/CLI handoff rather than unconditionally
+// (operationsFor() in operations/index.ts) — mirrors SPAWNABLE_OPERATIONS' hand-kept list, but for the
+// sponsor-pick affordability floor instead of "what attaches it." See each *Sponsor.ts file's own
+// `affordable = colonies.filter(...)` line for where these numbers come from.
+const FLAG_OPERATIONS: readonly FlagOperationInfo[] = [
+  {
+    kind: "colonize",
+    trigger: 'flag "colonize" or "colonize:<room>" (or auto-pick via pickColonyTargets)',
+    minEnergyCapacity: COLONIZER_COST,
+    gateDetail: "cheapest legal colonizer body (1 CLAIM set) — colonizeSponsor.ts",
+    spawns: `1 colonizer (claims the controller, min ${COLONIZER_COST}e) + up to 4 settlers once claimed (min ${SETTLER_MIN_COST}e each)`
+  },
+  {
+    kind: "attack",
+    trigger: 'flag "attack" or "attack:<room>"',
+    minEnergyCapacity: ATTACKER_MIN_COST,
+    gateDetail: "cheapest legal attacker body (1 ATTACK set) — attackSponsor.ts",
+    spawns: `up to 2 attackers pooled across every sponsored target (min ${ATTACKER_MIN_COST}e each)`
+  },
+  {
+    kind: "drain",
+    trigger: 'flag "drain" or "drain:<room>" — flag is the operation\'s lifetime, removing it stops the drain',
+    minEnergyCapacity: DRAIN_SQUAD_MIN_COST,
+    gateDetail: "most expensive single body in the fixed squad (max of drainAttacker/drainHealer min cost) — drainSponsor.ts",
+    spawns: `1 drainAttacker (min ${DRAIN_ATTACKER_MIN_COST}e) + 3 drainHealers (min ${DRAIN_HEALER_MIN_COST}e each)`
+  },
+  {
+    kind: "parade",
+    trigger: 'flag "parade", "parade:<shape>", "parade:<room>", or "parade:<room>:<shape>" — flag is the operation\'s lifetime',
+    minEnergyCapacity: PARADE_MEMBER_MIN_COST,
+    gateDetail: "cheapest legal paradeMember body (2 MOVE) — paradeSponsor.ts",
+    spawns: `formation.length paradeMembers (default 2x2 = 4, min ${PARADE_MEMBER_MIN_COST}e each)`
+  }
+];
+
 declare global {
   function setLogLevel(level: LogLevel): string;
   function setDebugMetrics(on: boolean): string;
@@ -45,7 +100,10 @@ declare global {
   function remoteStatus(room: string): string;
   function miningClaims(room: string): string;
   function operationKinds(): string;
+  function operationRequirements(): string;
   function colonizeTargets(): string;
+  function scoutStatus(room?: string): string;
+  function scoutInfo(room: string): string;
   function scanMarket(): string;
   function manufactureCost(resource: string, includeDecompress?: boolean): string;
   function clearDrainTarget(room: string): string;
@@ -233,6 +291,17 @@ export function installConsoleCommands(): void {
   };
   register("operationKinds()", "list every operation kind that can request a creep spawn, and what attaches it to a colony");
 
+  global.operationRequirements = (): string => {
+    return FLAG_OPERATIONS.map(op => {
+      const gate = `needs energyCapacity >= ${op.minEnergyCapacity} (${op.gateDetail})`;
+      return `${op.kind} — trigger: ${op.trigger}\n  sponsor gate: ${gate}\n  spawns: ${op.spawns}`;
+    }).join("\n");
+  };
+  register(
+    "operationRequirements()",
+    "list every flag/CLI-triggerable operation (colonize, attack, drain, parade): how to trigger it and the energyCapacity a colony must have before pickSponsor will hand it the target (current live per-role staffing is census(), not this)"
+  );
+
   global.colonizeTargets = (): string => {
     const world = empire(buildEmpireSnapshot());
     const listing = listColonizeCandidates(world);
@@ -247,6 +316,59 @@ export function installConsoleCommands(): void {
       .join("\n");
   };
   register("colonizeTargets()", "list every cached colonize candidate, sorted by score, with distance and auto-pick viability");
+
+  global.scoutStatus = (room?: string): string => {
+    const world = empire(buildEmpireSnapshot());
+    const colonies = room ? world.colonies.filter(c => c.name === room) : world.colonies;
+    if (colonies.length === 0) return room ? `no colony "${room}"` : "no colonies";
+
+    const radius = Memory.scouting?.radius ?? 1;
+    const lines = colonies.map(c => {
+      const snapshot = c.snapshot;
+      const scouts = snapshot.creeps.filter(cr => cr.memory.role === "scout");
+      const frontier = snapshot.scoutTargets.filter(t => t.room !== snapshot.name);
+      const stale = frontier.filter(t => needsScouting(t, snapshot.tick));
+      const neverSeen = frontier.filter(t => !t.info || t.info.tick === undefined);
+      const scoutLines = scouts.map(s => {
+        const target = s.memory.scoutTarget ?? "-";
+        const last = s.memory.lastRoom ?? "-";
+        const stranded = s.room === snapshot.name && s.memory.scoutTarget === undefined && s.memory.lastRoom === undefined;
+        return `  ${s.name}: room=${s.room} target=${target} lastRoom=${last}${stranded ? " STRANDED" : ""}`;
+      });
+      return (
+        `${c.name}: radius=${radius} frontier=${frontier.length} stale=${stale.length} neverSeen=${neverSeen.length} scouts=${scouts.length}\n` +
+        (scoutLines.length > 0 ? scoutLines.join("\n") : "  (no scouts)")
+      );
+    });
+    return lines.join("\n");
+  };
+  register("scoutStatus(room?)", "per-colony scouting summary: frontier radius, stale/never-seen counts, and each live scout's current room/target/lastRoom (flags a stranded scout)");
+
+  global.scoutInfo = (room: string): string => {
+    const info = Memory.rooms?.[room]?.scouted;
+    if (!info) return `${room}: never scouted (no ScoutInfo on record)`;
+
+    const now = Game.time;
+    const age = info.tick !== undefined ? now - info.tick : undefined;
+    const stale = needsScouting({ room, distance: 0, type: info.type, info }, now);
+    const lines = [
+      `${room}: type=${info.type} lastSeen=${info.tick ?? "never"}${age !== undefined ? ` (${age} ticks ago, staleAfter=${staleAfter(info.type)})` : ""} ${stale ? "STALE" : "fresh"}`,
+      `  owner=${info.owner ?? "-"} hostile=${info.hostile} mineral=${info.mineral ?? "-"}`,
+      `  anchor=${info.anchor ? `(${info.anchor.x},${info.anchor.y})` : info.anchorChecked ? "none (checked)" : "not checked"}`,
+      `  sources=${info.sources.length}${info.sources.length > 0 ? `: ${info.sources.map(s => s.id).join(", ")}` : ""}`,
+      `  potential=${info.potential ? `normal=${info.potential.normal.toFixed(1)} keeper=${info.potential.keeper.toFixed(1)}` : info.potentialChecked ? "checked, 0" : "not checked"}`
+    ];
+    if (info.lethalAt !== undefined) lines.push(`  lethalAt=${info.lethalAt} (${now - info.lethalAt} ticks ago)`);
+    if (info.invaderCore) {
+      const core = info.invaderCore;
+      lines.push(`  invaderCore: level=${core.level} ticksToDeploy=${core.ticksToDeploy ?? "-"} collapseTicksRemaining=${core.collapseTicksRemaining ?? "-"}`);
+    }
+    if (info.noPathFrom && Object.keys(info.noPathFrom).length > 0) {
+      lines.push(`  noPathFrom: ${Object.entries(info.noPathFrom).map(([h, t]) => `${h}@${t}`).join(", ")}`);
+    }
+    return lines.join("\n");
+  };
+  register("scoutInfo(room)", "dump one room's cached ScoutInfo in full: type, last-seen age vs staleAfter, owner/hostile/mineral, anchor, sources, colonize potential, lethal/invader-core/noPathFrom negative caches");
 
   global.scanMarket = (): string => {
     Memory.market = scanMarketNow();

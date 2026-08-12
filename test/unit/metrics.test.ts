@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { builtAt } from "../../src/colony/building";
 import { buildingsFor, collectMetrics, HARVEST_WINDOW, type ColonyMetrics } from "../../src/colony/metrics";
 import type { PlacedStructure } from "../../src/layouts/stamp";
 import type { ColonyMetricsMemory, RoleName } from "../../src/memory/schema";
 import type { RoleTarget } from "../../src/operations/operation";
-import type { SnapStructure } from "../../src/snapshot/types";
+import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
 import type { CreepRequest } from "../../src/spawn/request";
 import { colonySnap, containerAt, dropAt, remoteEnergyAt, remoteSourceAt, snapCreeps, spawn } from "../fixtures";
 
@@ -40,6 +41,13 @@ const built = (type: BuildableStructureConstant, n: number): SnapStructure[] =>
   Array.from({ length: n }, (_, i) => ({ type, x: i, y: 0 }));
 const target = (type: BuildableStructureConstant, n: number): PlacedStructure[] =>
   Array.from({ length: n }, (_, i) => ({ type, x: i, y: 0 }));
+
+// buildingsFor's isBuilt predicate, standing in for builtAt: a placement counts as built when the same
+// (x,y,type) appears in `standing`.
+const isBuiltIn =
+  (standing: readonly SnapStructure[]) =>
+  (p: PlacedStructure): boolean =>
+    standing.some(s => s.type === p.type && s.x === p.x && s.y === p.y);
 
 describe("metrics: census", () => {
   it("counts alive creeps per role as current", () => {
@@ -117,24 +125,24 @@ describe("metrics: operations", () => {
 
 describe("metrics: buildings (buildingsFor)", () => {
   it("reports built vs targeted per structure type", () => {
-    const rows = buildingsFor(built("extension", 3), target("extension", 5));
+    const rows = buildingsFor(target("extension", 5), isBuiltIn(built("extension", 3)));
     expect(rows).toEqual([{ type: "extension", built: 3, targeted: 5 }]);
   });
 
   it("shows a type that is planned but not yet built as 0/N", () => {
-    const rows = buildingsFor([], target("tower", 1));
+    const rows = buildingsFor(target("tower", 1), isBuiltIn([]));
     expect(rows).toEqual([{ type: "tower", built: 0, targeted: 1 }]);
   });
 
-  it("shows a type built but no longer planned as N/0", () => {
-    const rows = buildingsFor(built("container", 2), []);
-    expect(rows).toEqual([{ type: "container", built: 2, targeted: 0 }]);
+  it("omits a type that's standing but no longer targeted (nothing to count it against)", () => {
+    const rows = buildingsFor([], isBuiltIn(built("container", 2)));
+    expect(rows).toEqual([]);
   });
 
   it("orders the most-remaining type first", () => {
     const rows = buildingsFor(
-      [...built("extension", 4), ...built("tower", 0)],
-      [...target("extension", 5), ...target("tower", 2)] // extension short 1, tower short 2
+      [...target("extension", 5), ...target("tower", 2)], // extension short 1, tower short 2
+      isBuiltIn([...built("extension", 4), ...built("tower", 0)])
     );
     expect(rows.map(r => r.type)).toEqual(["tower", "extension"]);
   });
@@ -149,13 +157,54 @@ describe("metrics: buildings (buildingsFor)", () => {
   it("collectMetrics counts remote-room structures as built, not just home-room ones", () => {
     // Remote containers/roads are claimed structures included in `targeted` (see wantedStructures), so
     // built structures standing in a remote room must count too or they read as permanently missing.
+    // builtAt is room-sensitive (roomOf), so the targeted placements must declare the same room the
+    // structure actually stands in — a bare (x,y,type) match across rooms would be a false positive.
+    const remoteTarget = (type: BuildableStructureConstant, room: string, n: number): PlacedStructure[] =>
+      Array.from({ length: n }, (_, i) => ({ type, x: i, y: 0, room }));
     const snap = colonySnap({
       structures: [...built("road", 1)],
       remoteStructures: { W2N1: built("container", 2), W3N1: built("road", 1) }
     });
-    const m = collect(snap, [], [], [...target("container", 8), ...target("road", 3)]);
+    const m = collect(snap, [], [], [
+      ...remoteTarget("container", "W2N1", 8),
+      ...target("road", 1), // home-room road, already built
+      ...remoteTarget("road", "W3N1", 2)
+    ]);
     expect(m.buildings).toContainEqual({ type: "container", built: 2, targeted: 8 });
     expect(m.buildings).toContainEqual({ type: "road", built: 2, targeted: 3 });
+  });
+
+  it("collectMetrics still counts a remote route road as built once vision is lost (routeBuilt fallback)", () => {
+    // Confirmed live on W47N14 2026-08-12: a remote room's `remoteStructures` entry only populates for a
+    // tick it's actually visible (see snapshot/colony.ts). Before this fix `buildingsFor` counted `built`
+    // straight off `remoteStructures`, so every road in a currently-unseen transit/source room read as
+    // "missing" even though builtAt (and thus the real placement logic) already knew it was standing via
+    // RemoteSourceMemory.routeBuilt — undercounting the visual panel (e.g. "175/203") with nothing actually
+    // left to build.
+    const sourceId = "remote_src_W2N1_5_5";
+    const snap: Partial<ColonySnapshot> = {
+      structures: [],
+      remoteStructures: {}, // W2N1 currently has no vision
+      remoteSources: [
+        remoteSourceAt(5, 5, "W2N1", {
+          id: sourceId as Id<Source>,
+          route: [{ room: "W2N1", x: 1, y: 1 }],
+          routeBuilt: "1"
+        })
+      ]
+    };
+    const fullSnap = colonySnap(snap);
+    const targeted: PlacedStructure[] = [{ type: "road", x: 1, y: 1, room: "W2N1", sourceId: sourceId as Id<Source> }];
+    const m = collect(fullSnap, [], [], targeted);
+    expect(m.buildings).toContainEqual({ type: "road", built: 1, targeted: 1 });
+  });
+});
+
+describe("colony/building: builtAt is what collectMetrics' isBuilt predicate delegates to", () => {
+  it("sanity-checks the import used above still exists and behaves", () => {
+    const snap = colonySnap({ structures: built("road", 1) });
+    expect(builtAt(snap, { type: "road", x: 0, y: 0 })).toBe(true);
+    expect(builtAt(snap, { type: "road", x: 9, y: 9 })).toBe(false);
   });
 });
 
