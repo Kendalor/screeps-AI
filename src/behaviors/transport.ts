@@ -10,6 +10,7 @@ import type { LogisticsTask, NodeRef } from "../logistics/types";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import { transferTo, withdrawOrPickup } from "./actions";
+import { dangerAvoidanceOptions } from "./interpreter";
 import { stepOffRoad } from "./roadAvoidance";
 
 const PARK_RADIUS = 3; // "near the bunker" — anywhere within this range of the anchor counts as parked
@@ -253,7 +254,12 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
         return;
       }
     }
-    creep.travelTo(homeRoomWaypoint(creep));
+    // Danger-aware the same way moveToRoom's avoidDanger step is (see dangerAvoidanceOptions's doc):
+    // this is a genuine cross-room trip, unlike the withdraw/deliver legs below which are usually a
+    // same-room walk to an already-resolved target — a plain travelTo here had no route awareness at
+    // all, so a remote hauler could path straight through a keeper guardian's patrol radius and get
+    // batted back and forth by fleeThreat forever instead of detouring around it.
+    creep.travelTo(homeRoomWaypoint(creep), dangerAvoidanceOptions(creep.memory.home));
     return;
   }
 
@@ -276,8 +282,16 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
     return;
   }
 
+  // Only the home-room-vs-not distinction matters here (not "is the target's room actually risky") —
+  // dangerCostMatrix/dangerRouteCallback are no-ops in a room with nothing dangerous in it, so passing
+  // this unconditionally for any off-home leg costs nothing and simply gives Traveler a chance to route
+  // around a keeper lair/hostile it would otherwise walk straight through (see dangerAvoidanceOptions).
+  const travelOptions = creep.room.name === creep.memory.home && target.pos.roomName === creep.memory.home
+    ? undefined
+    : dangerAvoidanceOptions(creep.memory.home);
+
   if (task.kind === "pickup") {
-    const result = withdrawOrPickup(creep, target, task.resource);
+    const result = withdrawOrPickup(creep, target, task.resource, true, travelOptions);
     // Advance once this pickup can make no further progress here: the creep filled up, OR the provider
     // is now empty (a partial container/pile that didn't fill the creep). Without the drained-provider
     // check a chain would re-withdraw from an empty source forever, since it's not idle and so never
@@ -308,6 +322,6 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
   // slow-draining builder/upgrader forever, AND lets a multi-dropoff chain flow sink->sink: each leg
   // fires once and advances to the next. `didAct` is true only when it acted in range; false means it
   // merely traveled toward the target this tick.
-  const result = transferTo(creep, target, task.resource);
+  const result = transferTo(creep, target, task.resource, true, travelOptions);
   if (result.didAct) advanceOrPark(creep);
 }, "transport:runTransport");

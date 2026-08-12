@@ -38,6 +38,8 @@ function builderBody(energy: number): BodyPartConstant[] {
 export class Builder extends Role {
   static override readonly priority = 65;
   static override readonly doNotBlockRoads = true;
+  // Once every WORK part is destroyed this body can't build or harvest at all — see Role.retreatPart.
+  static override readonly retreatPart = WORK;
   static override body(energy: number): BodyPartConstant[] {
     return builderBody(energy);
   }
@@ -54,9 +56,14 @@ export class Builder extends Role {
       do: "gather",
       from: {
         find: "any",
+        // alsoAdjacentRooms: a builder stranded in a Source Keeper room has nothing safe to gather
+        // there (no container until the road it's building exists) — falls back to a neighboring room's
+        // container/drops rather than self-harvesting a keeper-guarded source. Local energy still wins
+        // whenever any exists (see alsoAdjacentRooms' doc in behaviors/types.ts), so this is a no-op for
+        // an ordinary well-stocked home-room builder.
         of: [
-          { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
-          { find: "dropped", unlessSpawnNeedsEnergy: true }
+          { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy", alsoAdjacentRooms: true },
+          { find: "dropped", unlessSpawnNeedsEnergy: true, alsoAdjacentRooms: true }
         ],
         prefer: "nearest"
       }

@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import { Colonize, MAX_SETTLERS, SELF_SUFFICIENT_ENERGY_CAP } from "../../../src/operations/colonize";
 import { colonySnap, snapCreep } from "../../fixtures";
 
-const colonize = (target: string, targetEnergyCapacity?: number) => new Colonize("W1N1", target, targetEnergyCapacity);
+const colonize = (target: string, targetEnergyCapacity?: number, targetSpawnBuilt = false) =>
+  new Colonize("W1N1", target, targetEnergyCapacity, targetSpawnBuilt);
 
 // Colonizer body floors at 650 (1 CLAIM + 1 MOVE) â€” flat, unlike the reserving claimer's 2-set floor.
 const COLONIZER_AFFORDABLE = { energyCapacity: 650 };
@@ -143,6 +144,22 @@ describe("Colonize settler demand", () => {
     );
     expect(requests).toHaveLength(1);
   });
+
+  it("stops requesting once the target's own spawn is built, even well below the self-sufficient energy cap", () => {
+    const requests = requestsByRole(
+      colonize("W2N1", SELF_SUFFICIENT_ENERGY_CAP - 1, true).desiredCreeps(colonySnap(COLONIZER_AFFORDABLE)),
+      "settler"
+    );
+    expect(requests).toEqual([]);
+  });
+
+  it("still requests while the controller is claimed but the target's own spawn isn't built yet", () => {
+    const requests = requestsByRole(
+      colonize("W2N1", SELF_SUFFICIENT_ENERGY_CAP - 1, false).desiredCreeps(colonySnap(COLONIZER_AFFORDABLE)),
+      "settler"
+    );
+    expect(requests).toHaveLength(1);
+  });
 });
 
 describe("Colonize removal (intents)", () => {
@@ -161,6 +178,18 @@ describe("Colonize removal (intents)", () => {
     expect(colonize("W2N1", SELF_SUFFICIENT_ENERGY_CAP).intents(snap)).toEqual([
       { kind: "removeColonizeTarget", room: "W1N1", target: "W2N1" }
     ]);
+  });
+
+  it("removes the target once its own spawn is built, even well below the self-sufficient energy cap", () => {
+    const snap = colonySnap(COLONIZER_AFFORDABLE);
+    expect(colonize("W2N1", SELF_SUFFICIENT_ENERGY_CAP - 1, true).intents(snap)).toEqual([
+      { kind: "removeColonizeTarget", room: "W1N1", target: "W2N1" }
+    ]);
+  });
+
+  it("does not remove the target while the controller is claimed but its own spawn isn't built yet", () => {
+    const snap = colonySnap(COLONIZER_AFFORDABLE);
+    expect(colonize("W2N1", SELF_SUFFICIENT_ENERGY_CAP - 1, false).intents(snap)).toEqual([]);
   });
 
   it("removes the target once the colonizer has seen the room genuinely owned by someone else", () => {

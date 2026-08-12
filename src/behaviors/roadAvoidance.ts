@@ -15,7 +15,11 @@ function moverNearby(pos: RoomPosition, self: Creep): boolean {
     for (let y = Math.max(0, pos.y - NEARBY_MOVER_RANGE); y <= Math.min(49, pos.y + NEARBY_MOVER_RANGE); y++) {
       const found = new RoomPosition(x, y, pos.roomName)
         .lookFor(LOOK_CREEPS)
-        .some(creep => creep.id !== self.id && roleDef(creep.memory.role)?.mover);
+        // A foreign creep (Invader NPC, another player's) has no `memory` at all — checked before
+        // indexing .role, or one wandering within range throws and aborts the WHOLE empire-wide creeps
+        // system for the tick (every creep after it in Game.creeps iteration order silently freezes).
+        // Confirmed live on shard1: an Invader in W47N15 crashed this every tick it stayed in range.
+        .some(creep => creep.id !== self.id && creep.memory && roleDef(creep.memory.role)?.mover);
       if (found) return true;
     }
   }

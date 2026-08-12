@@ -4,6 +4,9 @@ An autonomous Screeps bot that grows a single room from an empty controller to a
 self-sustaining colony. This glossary covers the colony's energy economy and the
 creep roles that run it.
 
+For where things live in the repo, see [AGENTS.md](AGENTS.md). For why the
+architecture is shaped the way it is, see [docs/adr/](docs/adr/).
+
 ## Language
 
 ### Roles

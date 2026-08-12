@@ -536,6 +536,7 @@ function upgradeCreep(over: {
   pos: { x: number; y: number };
   containerPos?: { x: number; y: number };
   containerOccupant?: string; // creep id currently on the container tile, if any
+  ticksToDowngrade?: number;
 }): { creep: Creep; upgraded: string[]; traveled: { x: number; y: number }[] } {
   const upgraded: string[] = [];
   const traveled: { x: number; y: number }[] = [];
@@ -565,7 +566,7 @@ function upgradeCreep(over: {
     };
   }
 
-  const controller = { id: "controller1", level: 2, pos: controllerPos };
+  const controller = { id: "controller1", level: 2, pos: controllerPos, ticksToDowngrade: over.ticksToDowngrade ?? 0 };
 
   const creepPos = {
     x: over.pos.x,
@@ -633,6 +634,47 @@ describe("upgrade step: drawing closer to the controller", () => {
     expect(upgraded).toEqual(["controller1"]);
     expect(traveled).toEqual([]);
     expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+  });
+});
+
+describe("upgrade step: urgentBelow gate", () => {
+  it("falls through without acting when ticksToDowngrade is above the threshold", () => {
+    const { creep, traveled, upgraded } = upgradeCreep({ pos: { x: 25, y: 26 }, ticksToDowngrade: 5000 });
+
+    const result = runStep(creep, { do: "upgrade", urgentBelow: 1000 });
+
+    expect(upgraded).toEqual([]);
+    expect(traveled).toEqual([]);
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("upgrades when ticksToDowngrade is below the threshold", () => {
+    const { creep, traveled, upgraded } = upgradeCreep({ pos: { x: 25, y: 26 }, ticksToDowngrade: 500 });
+
+    const result = runStep(creep, { do: "upgrade", urgentBelow: 1000 });
+
+    expect(upgraded).toEqual(["controller1"]);
+    expect(traveled).toEqual([]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "controller1" });
+  });
+
+  it("travels to the controller while urgent even when out of range", () => {
+    const { creep, traveled, upgraded } = upgradeCreep({ pos: { x: 10, y: 10 }, ticksToDowngrade: 500 });
+
+    const result = runStep(creep, { do: "upgrade", urgentBelow: 1000 });
+
+    expect(upgraded).toEqual([]);
+    expect(traveled).toEqual([{ x: 25, y: 25 }]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "controller1" });
+  });
+
+  it("ignores the gate entirely when urgentBelow is unset", () => {
+    const { creep, upgraded } = upgradeCreep({ pos: { x: 25, y: 26 }, ticksToDowngrade: 999999 });
+
+    const result = runStep(creep, { do: "upgrade" });
+
+    expect(upgraded).toEqual(["controller1"]);
+    expect(result.didAct).toBe(true);
   });
 });
 
@@ -792,6 +834,162 @@ describe("moveToRoom forces useFindRoute for avoidDanger steps", () => {
     const { creep, options } = roamerWithOptions("W1N1", "W2N1");
     runStep(creep, { do: "moveToRoom", to: "targetRoom" });
     expect((options[0] as { useFindRoute?: boolean }).useFindRoute).toBeUndefined();
+  });
+});
+
+// Regression: dangerCostMatrix only ever sees a keeper guardian's position at the moment a path is
+// COMPUTED. A guardian that patrols after that goes unnoticed by Traveler's own repath triggers — ranged
+// damage doesn't stop the creep from moving (no stuckCount trip), and useFindRoute:true (forced above)
+// exempts the path from the room-entry blindPath repath too. Traveler's dangerCheck option is the only
+// thing that forces a recheck once the creep is already mid-room; this suite verifies moveToRoom actually
+// wires one through, and that it correctly flags/clears danger by live distance to the creep.
+describe("moveToRoom's dangerCheck (live keeper/hostile recheck)", () => {
+  function roamerWithOptions(room: string, targetRoom: string) {
+    const options: unknown[] = [];
+    const creep = {
+      room: { name: room },
+      memory: { targetRoom, home: room },
+      travelTo: (_p: unknown, opts?: unknown) => {
+        options.push(opts);
+        return OK;
+      }
+    };
+    return { creep: creep as unknown as Creep, options };
+  }
+
+  function fakeRoom(
+    hostiles: { x: number; y: number; username: string }[],
+    lairs: { x: number; y: number }[],
+    roomName = "W1N1"
+  ) {
+    const at = (x: number, y: number) => ({ ...rangedPos(x, y, roomName) });
+    return {
+      find: (findType: number, opts?: { filter?: (o: { pos: unknown }) => boolean }) => {
+        const items =
+          findType === FIND_HOSTILE_CREEPS
+            ? hostiles.map(h => ({ pos: at(h.x, h.y), owner: { username: h.username } }))
+            : findType === FIND_STRUCTURES
+              ? lairs.map(l => ({ pos: at(l.x, l.y), structureType: STRUCTURE_KEEPER_LAIR }))
+              : [];
+        return opts?.filter ? items.filter(opts.filter) : items;
+      }
+    } as unknown as Room;
+  }
+
+  function rangedPos(x: number, y: number, roomName: string) {
+    return { x, y, roomName, getRangeTo: (t: { x: number; y: number }) => Math.max(Math.abs(t.x - x), Math.abs(t.y - y)) };
+  }
+
+  it("passes a dangerCheck callback when avoidDanger is set", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    expect(typeof (options[0] as { dangerCheck?: unknown }).dangerCheck).toBe("function");
+  });
+
+  it("leaves dangerCheck unset when avoidDanger is not set", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom" });
+    expect((options[0] as { dangerCheck?: unknown }).dangerCheck).toBeUndefined();
+  });
+
+  it("flags danger when a Source Keeper lair is within DANGER_RADIUS of the creep's current position", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    const dangerCheck = (options[0] as { dangerCheck: (room: Room, pos: unknown) => boolean }).dangerCheck;
+    const room = fakeRoom([], [{ x: 25, y: 25 }]);
+    expect(dangerCheck(room, rangedPos(27, 25, "W1N1"))).toBe(true); // range 2, inside radius 5
+  });
+
+  it("does not flag danger past DANGER_RADIUS", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    const dangerCheck = (options[0] as { dangerCheck: (room: Room, pos: unknown) => boolean }).dangerCheck;
+    const room = fakeRoom([], [{ x: 25, y: 25 }]);
+    expect(dangerCheck(room, rangedPos(40, 25, "W1N1"))).toBe(false); // range 15, well outside radius 5
+  });
+
+  it("flags danger from a live Source Keeper guardian creep, not just its lair", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    const dangerCheck = (options[0] as { dangerCheck: (room: Room, pos: unknown) => boolean }).dangerCheck;
+    // Guardian has patrolled away from its lair (none placed here) to right next to the creep's path.
+    const room = fakeRoom([{ x: 30, y: 25, username: "Source Keeper" }], []);
+    expect(dangerCheck(room, rangedPos(31, 25, "W1N1"))).toBe(true);
+  });
+
+  it("ignores a non-dangerous player's creep", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    const dangerCheck = (options[0] as { dangerCheck: (room: Room, pos: unknown) => boolean }).dangerCheck;
+    const room = fakeRoom([{ x: 25, y: 25, username: "SomeFriendlyPlayer" }], []);
+    expect(dangerCheck(room, rangedPos(25, 26, "W1N1"))).toBe(false);
+  });
+});
+
+// Regression: PathFinder's own contract (docs.screeps.com/api/#PathFinder-CostMatrix) — "if a non-0 value
+// is found in a room's CostMatrix, that value is used INSTEAD OF the default terrain cost." A wall tile
+// that dangerCostMatrix hasn't touched yet reads 0 from the matrix, same as an ordinary open tile — the
+// current>=0xff guard only protects tiles something ELSE already marked impassable (structures/creeps via
+// addStructuresToMatrix/addCreepsToMatrix), not real terrain walls, which are never written into the
+// matrix at all. Blindly adding DANGER_COST to that 0 turns a solid wall into a cheap PASSABLE tile (25,
+// under swamp's 50) instead of a detour penalty. Confirmed live: a settler's avoidDanger path cut straight
+// through a wall next to a keeper lair in W44N14 and got stuck walking into it every tick.
+describe("moveToRoom's roomCallback (dangerCostMatrix) never overwrites real terrain walls", () => {
+  beforeEach(() => stubGame());
+
+  function roamerWithOptions(room: string, targetRoom: string) {
+    const options: unknown[] = [];
+    const creep = {
+      room: { name: room },
+      memory: { targetRoom, home: room },
+      travelTo: (_p: unknown, opts?: unknown) => {
+        options.push(opts);
+        return OK;
+      }
+    };
+    return { creep: creep as unknown as Creep, options };
+  }
+
+  // Minimal CostMatrix stand-in: a plain object map, get() defaults to 0 like the real API.
+  function fakeMatrix() {
+    const cells = new Map<string, number>();
+    return {
+      get: (x: number, y: number) => cells.get(`${x},${y}`) ?? 0,
+      set: (x: number, y: number, v: number) => cells.set(`${x},${y}`, v)
+    } as unknown as CostMatrix;
+  }
+
+  function fakeRoomWithTerrain(lairPos: { x: number; y: number }, wallTiles: Array<[number, number]>) {
+    const walls = new Set(wallTiles.map(([x, y]) => `${x},${y}`));
+    return {
+      find: (findType: number) =>
+        findType === FIND_STRUCTURES ? [{ pos: { x: lairPos.x, y: lairPos.y }, structureType: STRUCTURE_KEEPER_LAIR }] : [],
+      getTerrain: () => ({
+        get: (x: number, y: number) => (walls.has(`${x},${y}`) ? TERRAIN_MASK_WALL : 0)
+      })
+    } as unknown as Room;
+  }
+
+  it("leaves a wall tile within DANGER_RADIUS of a lair at cost 0 (still impassable)", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    const roomCallback = (options[0] as { roomCallback: (name: string, m: CostMatrix) => CostMatrix }).roomCallback;
+    (globalThis as { Game: { rooms: Record<string, Room> } }).Game.rooms = {
+      W1N1: fakeRoomWithTerrain({ x: 25, y: 25 }, [[27, 25]]) // wall 2 tiles from the lair
+    };
+    const result = roomCallback("W1N1", fakeMatrix());
+    expect(result.get(27, 25)).toBe(0); // untouched — PathFinder still reads this as a wall via terrain
+  });
+
+  it("still bumps the cost of a plain tile within DANGER_RADIUS of a lair", () => {
+    const { creep, options } = roamerWithOptions("W1N1", "W2N1");
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    const roomCallback = (options[0] as { roomCallback: (name: string, m: CostMatrix) => CostMatrix }).roomCallback;
+    (globalThis as { Game: { rooms: Record<string, Room> } }).Game.rooms = {
+      W1N1: fakeRoomWithTerrain({ x: 25, y: 25 }, []) // no walls at all
+    };
+    const result = roomCallback("W1N1", fakeMatrix());
+    expect(result.get(27, 25)).toBeGreaterThan(0);
   });
 });
 
@@ -1112,6 +1310,102 @@ describe("renew step", () => {
     const { creep, renewed } = settlerAt({ ticksToLive: 100, renewResult: ERR_BUSY });
     const result = runStep(creep, { do: "renew", below: 500 });
     expect(renewed).toEqual(["settler1"]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "spawn1" });
+  });
+});
+
+// recycleCreep is called on the SPAWN, not the creep — same hand-rolled inversion as renewStep. Scoped
+// to the creep's own targetRoom, same as renewStep — a settler spawns in the sponsor's room, which
+// already has a well-developed energyCapacityAvailable, so without this the step would recycle at the
+// SPONSOR's spawn before the settler ever travels to the actually-nascent target room. Falls through
+// (acted:false) whenever the room's energyCapacityAvailable hasn't reached the threshold yet, the room
+// has no spawn, or the creep isn't in its target room yet, so this can sit early in a role's step table
+// without blocking real work below it.
+describe("recycle step", () => {
+  function settlerAt(opts: {
+    energyCapacityAvailable?: number;
+    inRange?: boolean;
+    hasSpawn?: boolean;
+    recycleResult?: ScreepsReturnCode;
+    currentRoom?: string;
+    targetRoom?: string;
+  }) {
+    const {
+      energyCapacityAvailable = 550,
+      inRange = true,
+      hasSpawn = true,
+      recycleResult = OK,
+      currentRoom = "W2N1",
+      targetRoom = "W2N1"
+    } = opts;
+    const recycled: string[] = [];
+    const traveled: { x: number; y: number }[] = [];
+    const spawn = {
+      id: "spawn1",
+      structureType: STRUCTURE_SPAWN,
+      pos: { x: 10, y: 10 },
+      recycleCreep: (c: { name: string }) => {
+        recycled.push(c.name);
+        return recycleResult;
+      }
+    };
+    const creep = {
+      name: "settler1",
+      memory: { targetRoom },
+      pos: {
+        inRangeTo: () => inRange,
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      room: { name: currentRoom, energyCapacityAvailable, find: () => (hasSpawn ? [spawn] : []) },
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    };
+    return { creep: creep as unknown as Creep, recycled, traveled };
+  }
+
+  it("recycles when in range and the room has reached the threshold", () => {
+    const { creep, recycled } = settlerAt({ energyCapacityAvailable: 550 });
+    const result = runStep(creep, { do: "recycle", aboveEnergyCapacity: 550 });
+    expect(recycled).toEqual(["settler1"]);
+    expect(result).toEqual({ acted: true, didAct: true, target: "spawn1" });
+  });
+
+  it("falls through (acted:false) while still in the sponsor room, even if the sponsor's own energyCapacityAvailable is already above threshold", () => {
+    const { creep, recycled } = settlerAt({
+      currentRoom: "W1N1",
+      targetRoom: "W2N1",
+      energyCapacityAvailable: 550
+    });
+    const result = runStep(creep, { do: "recycle", aboveEnergyCapacity: 550 });
+    expect(recycled).toEqual([]);
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("falls through (acted:false) below the threshold", () => {
+    const { creep, recycled } = settlerAt({ energyCapacityAvailable: 549 });
+    const result = runStep(creep, { do: "recycle", aboveEnergyCapacity: 550 });
+    expect(recycled).toEqual([]);
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("falls through when the room has no spawn yet", () => {
+    const { creep, recycled } = settlerAt({ energyCapacityAvailable: 550, hasSpawn: false });
+    const result = runStep(creep, { do: "recycle", aboveEnergyCapacity: 550 });
+    expect(recycled).toEqual([]);
+    expect(result).toEqual({ acted: false, didAct: false });
+  });
+
+  it("travels to the spawn when out of range instead of recycling", () => {
+    const { creep, recycled, traveled } = settlerAt({ energyCapacityAvailable: 550, inRange: false });
+    const result = runStep(creep, { do: "recycle", aboveEnergyCapacity: 550 });
+    expect(recycled).toEqual([]);
+    expect(traveled).toEqual([{ x: 10, y: 10 }]);
+    expect(result).toEqual({ acted: true, didAct: false, target: "spawn1" });
+  });
+
+  it("reports didAct:false but stays engaged when the spawn rejects the call (e.g. busy spawning)", () => {
+    const { creep, recycled } = settlerAt({ energyCapacityAvailable: 550, recycleResult: ERR_BUSY });
+    const result = runStep(creep, { do: "recycle", aboveEnergyCapacity: 550 });
+    expect(recycled).toEqual(["settler1"]);
     expect(result).toEqual({ acted: true, didAct: false, target: "spawn1" });
   });
 });

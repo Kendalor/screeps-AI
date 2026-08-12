@@ -788,3 +788,79 @@ test(
   },
   180_000
 );
+
+// REGRESSION — the confirmed live W5N3 freeze (2026-08-10) in its TRUE root cause, which every test above
+// misses because they all seed the squad in STAGING (or rally it there) and never exercise the squad forming/
+// marching in the HOME room over HOME-room walls. Root cause (atomic pserver data): the squad's terrain source
+// (ColonySnapshot.drainRoomTerrain, built by snapshot/colony.ts's drainTerrainFor) covered `draining` + every
+// drainRoute room but NOT the home room — because drainRoute comes from Game.map.findRoute, which OMITS the
+// source room. So while the squad's anchor was still in the HOME room, terrain(home) read undefined → the
+// squad cost matrix failed OPEN (no walls) for the whole home room. The anchor then "fit" onto a home-room
+// WALL tile the matrix couldn't see (live: (0,7)/(1,7) are walls, yet the persisted anchor sat at (0,7)),
+// nearestFittingAnchor returned that same wall tile as already-fitting, reform never retargeted, and members
+// were sent onto walls they can't stand on → inFormation never true → advance never fires → frozen forever
+// (compounded by the x=0 edge-teleport flicker). This test puts a real WALL BLOCK in the HOME room across the
+// squad's only route to the STAGING border and asserts the squad escapes HOME and reaches STAGING — RED while
+// drainTerrainFor omits the home room (the matrix is blind to these walls and the anchor deadlocks on one),
+// GREEN once the home room is included. It goes through the FULL production terrain assembly (real
+// buildColonySnapshot → drainRouteTo → drainTerrainFor), not a hand-seeded grid, which is the only reason it
+// can catch a bug that lives in that assembly.
+test(
+  "a squad forming in the HOME room escapes past HOME-room walls to reach staging (live W5N3 home-terrain-blind freeze)",
+  async () => {
+    // HOME (W0N1) is walled solid except a 4-wide corridor pinned against its WEST edge (x=0..3) — the HOME/
+    // STAGING border is HOME's own west edge, so this is the ONLY route out toward staging, hugging x=0 exactly
+    // like the live W5N3 pocket. The squad is seeded IN this HOME corridor (anchor (2,25)); to leave HOME its
+    // anchor must travel down the corridor to the west border and cross — the exact path on which the live
+    // anchor deadlocked on a wall tile (0,7) the home-blind terrain couldn't see. STAGING/TARGET are open so
+    // that once the squad escapes HOME, nothing else obstructs it (isolating the home-terrain-blindness bug).
+    const HOME_CORRIDOR_MAX_X = 3;
+    const colony = await BootedColony.boot({ botCode: bundleBot(), room: HOME, terrain: westEdgeCorridor(HOME_CORRIDOR_MAX_X) });
+    colonies.push(colony);
+    await colony.server.world.setTerrain(STAGING, OPEN());
+    await colony.server.world.setTerrain(TARGET, OPEN());
+
+    await colony.server.tick();
+
+    // Seeded already-joined in the HOME corridor, several tiles up from the west border, so squadState runs
+    // the squad from tick 0 (existence is stateful from squadJoined — the prior fix) and the ONLY thing under
+    // test is whether its production terrain lets the anchor route down the home corridor to the exit rather
+    // than deadlocking on a home-room wall the matrix can't see.
+    const op = `drain:${HOME}`;
+    const members = [
+      { name: "homewall_attacker", role: "drainAttacker" as const, x: 2, y: 25, room: HOME },
+      { name: "homewall_healer_a", role: "drainHealer" as const, x: 3, y: 25, room: HOME },
+      { name: "homewall_healer_b", role: "drainHealer" as const, x: 2, y: 26, room: HOME },
+      { name: "homewall_healer_c", role: "drainHealer" as const, x: 3, y: 26, room: HOME }
+    ];
+    for (const m of members) await addMember(colony, HOME, op, { ...m, joined: true });
+    const seed: SquadSeed = { home: HOME, op, members };
+    await startDraining(colony, HOME, TARGET);
+
+    // The observable: does the already-joined squad LEAVE the home room and reach staging, or does it freeze
+    // on a home-room wall tile? "Reached staging" (every member in STAGING or beyond) is the pass condition —
+    // pre-fix the squad never leaves HOME at all (anchor deadlocked on an unseen wall), so this stays null.
+    const positionsLog: Array<Array<{ x: number; y: number; room: string }>> = [];
+    let reachedStagingTick: number | null = null;
+    for (let tick = 0; tick < 120 && reachedStagingTick === null; tick++) {
+      await colony.server.tick();
+      const found = await squadRoomObjects(colony, seed, [HOME, STAGING, TARGET]);
+      positionsLog.push(found.map(m => ({ x: m.x, y: m.y, room: m.room })));
+      for (const m of found) {
+        expect(m.x, `out-of-range x at tick ${tick}`).toBeGreaterThanOrEqual(0);
+        expect(m.x).toBeLessThanOrEqual(49);
+        expect(m.y).toBeGreaterThanOrEqual(0);
+        expect(m.y).toBeLessThanOrEqual(49);
+      }
+      expect(found.length, `squad member vanished at tick ${tick}`).toBe(4);
+      if (found.length === 4 && found.every(m => m.room === STAGING || m.room === TARGET)) reachedStagingTick = tick;
+    }
+
+    const trace = positionsLog.map((row, i) => `t${i}: ${row.map(m => `(${m.x},${m.y},${m.room})`).join(" ")}`).join("\n");
+    expect(
+      reachedStagingTick,
+      `squad never escaped the HOME room past its walls to reach ${STAGING} (froze on a home-room wall the terrain source couldn't see):\n${trace}`
+    ).not.toBeNull();
+  },
+  180_000
+);

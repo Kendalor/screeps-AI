@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Defense } from "../../../src/operations/defense";
-import { colonySnap, hostileAt, remoteSourceAt, snapCreep, structureAt, towerAt, woundedAt } from "../../fixtures";
+import { colonySnap, hostileAt, remoteSourceAt, snapCreep, structureAt, towerAt, visibleRoom, woundedAt } from "../../fixtures";
 
 const defense = new Defense("W1N1");
 
@@ -277,5 +277,60 @@ describe("Defense remote dispatch (defendTargetRoom)", () => {
     });
     const intents = defense.intents(snap);
     expect(intents.some(i => i.kind === "setDefendTargetRoom")).toBe(false);
+  });
+});
+
+// Flag-sponsored targets (ColonyMemory.defending, handed off via defendFlags.ts's addDefendTarget) are
+// pooled into the same shared defender fleet as home/remote hostiles — no separate operation class, see
+// defense.ts's header. Mirrors operations/attack.test.ts's target-lifecycle coverage.
+describe("Defense sponsored targets (defending)", () => {
+  it("requests a defender for a sponsored target even with a quiet home room and no remotes", () => {
+    const snap = colonySnap({ hostiles: [], defending: ["W9N9"] });
+    const requests = defense.desiredCreeps(snap);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].memory.role).toBe("defender");
+  });
+
+  it("does not request a defender for a sponsored target already seen clear", () => {
+    const snap = colonySnap({ hostiles: [], defending: ["W9N9"], visibleRooms: [visibleRoom("W9N9", undefined, 0)] });
+    expect(defense.desiredCreeps(snap)).toEqual([]);
+  });
+
+  it("still requests for a sponsored target that's never been scouted (absent from visibleRooms)", () => {
+    const snap = colonySnap({ hostiles: [], defending: ["W9N9"], visibleRooms: [] });
+    const requests = defense.desiredCreeps(snap);
+    expect(requests).toHaveLength(1);
+  });
+
+  it("dispatches an idle defender's target room to the sponsored target", () => {
+    const snap = colonySnap({
+      hostiles: [],
+      defending: ["W9N9"],
+      creeps: [snapCreep("defender", { memory: { op: "defense:W1N1" } })]
+    });
+    const intents = defense.intents(snap);
+    expect(intents).toContainEqual({ kind: "setDefendTargetRoom", creep: expect.any(String), room: "W9N9" });
+  });
+
+  it("prefers the home room over a sponsored target when both are invaded", () => {
+    const snap = colonySnap({
+      hostiles: [hostileAt(10, 10)],
+      defending: ["W9N9"],
+      creeps: [snapCreep("defender", { memory: { op: "defense:W1N1" } })]
+    });
+    const intents = defense.intents(snap);
+    expect(intents).toContainEqual({ kind: "setDefendTargetRoom", creep: expect.any(String), room: "W1N1" });
+  });
+
+  it("drops a sponsored target once seen clear, emitting removeDefendTarget", () => {
+    const snap = colonySnap({ hostiles: [], defending: ["W9N9"], visibleRooms: [visibleRoom("W9N9", undefined, 0)] });
+    const intents = defense.intents(snap);
+    expect(intents).toContainEqual({ kind: "removeDefendTarget", room: "W1N1", target: "W9N9" });
+  });
+
+  it("keeps a sponsored target that's still hostile", () => {
+    const snap = colonySnap({ hostiles: [], defending: ["W9N9"], visibleRooms: [visibleRoom("W9N9", undefined, 2)] });
+    const intents = defense.intents(snap);
+    expect(intents.some(i => i.kind === "removeDefendTarget")).toBe(false);
   });
 });

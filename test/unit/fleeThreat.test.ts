@@ -1,11 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { runCreepBehaviors } from "../../src/empire/creeps";
+import { stubPathFinder } from "../constants";
 import { stubGame } from "../helpers";
 
 // Role.flee (miner, repair, hauler, transport/supply) breaks off its normal work and retreats once an
 // armed, reputation-dangerous hostile closes within FLEE_RADIUS (4) — driven through the public
 // runCreepBehaviors entry point, same convention as creepDispatch.test.ts, so these survive refactors
 // of the dispatch internals.
+//
+// fleeThreat resolves its escape tile via PathFinder.search({flee:true}) (terrain-aware — see
+// interpreter.ts's fleeSpotAcrossRooms) rather than bare coordinate math, so every test here scripts
+// PathFinder via stubPathFinder(). stubMirrorFlee below is a minimal stand-in for what the real engine's
+// flee search returns in open terrain: one tile straight away from the threat (mirrors the coordinate
+// math this suite asserted before the fix — still the right shape for "did it flee, which direction" in
+// a room with nothing blocking).
+function stubMirrorFlee(): void {
+  stubPathFinder((originArg, goalArg) => {
+    const origin = originArg as { x: number; y: number; roomName: string };
+    const goal = goalArg as { pos: { x: number; y: number } };
+    const dx = Math.sign(origin.x - goal.pos.x) || 1;
+    const dy = Math.sign(origin.y - goal.pos.y) || 1;
+    const dest = { x: origin.x + dx, y: origin.y + dy, roomName: origin.roomName };
+    return {
+      path: [{ ...dest, isEqualTo: (o: { x: number; y: number; roomName: string }) => o.x === dest.x && o.y === dest.y && o.roomName === dest.roomName } as never],
+      incomplete: false,
+      ops: 1,
+      cost: 1
+    };
+  });
+}
 
 function hostile(x: number, y: number, opts: { armed?: boolean; ranged?: boolean; owner?: string } = {}) {
   const armed = opts.armed ?? true;
@@ -27,7 +50,10 @@ const OPEN_TERRAIN = { getTerrain: () => ({ get: () => 0 }) };
 // A miner standing at its source: harvest is step 0's target once a source is in reach.
 // harvested is an array (not a count) so the caller's snapshot, taken before runCreepBehaviors() runs,
 // still reflects mutations the harvest() closure makes during that call.
-function miner(hostiles: object[]): { creep: Creep; traveled: { x: number; y: number }[]; harvested: number[] } {
+function miner(
+  hostiles: object[],
+  controller?: { my: boolean; safeMode?: number }
+): { creep: Creep; traveled: { x: number; y: number }[]; harvested: number[] } {
   const traveled: { x: number; y: number }[] = [];
   const harvested: number[] = [];
   const source = { id: "src", energy: 100, pos: { x: 5, y: 5, findInRange: () => [] }, room: OPEN_TERRAIN };
@@ -45,6 +71,7 @@ function miner(hostiles: object[]): { creep: Creep; traveled: { x: number; y: nu
       findClosestByPath: (list: object[]) => list[0] ?? null
     },
     room: {
+      controller,
       find: (kind: FindConstant) => {
         if (kind === FIND_HOSTILE_CREEPS) return hostiles;
         if (kind === FIND_SOURCES) return [source];
@@ -55,7 +82,10 @@ function miner(hostiles: object[]): { creep: Creep; traveled: { x: number; y: nu
       harvested.push(1);
       return 0;
     },
-    travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y }),
+    // Miner.retreatPart (WORK) checks this before normal dispatch — an intact WORK part here so these
+    // Role.flee tests exercise fleeThreat, not the disarmed retreat.
+    getActiveBodyparts: (part: BodyPartConstant) => (part === WORK ? 1 : 0)
   } as unknown as Creep;
   return { creep, traveled, harvested };
 }
@@ -66,17 +96,19 @@ describe("Role.flee: miner", () => {
   // share-cap cache a prior test populated for the same source id instead of recomputing it fresh.
   it("flees an armed hostile within range instead of harvesting", () => {
     stubGame({ objects: { src: { id: "src" } }, time: 1 });
+    stubMirrorFlee();
     const { creep, traveled } = miner([hostile(7, 5, { armed: true })]); // range 2
     Game.creeps = { m1: creep };
 
     runCreepBehaviors();
 
-    // Hostile due east at range 2 — flees west (and off-axis, fleeSpot's fallback nudge).
+    // Hostile due east at range 2 — flees west (and off-axis, the mirror stub's fallback nudge).
     expect(traveled).toEqual([{ x: 4, y: 6 }]);
   });
 
   it("flees a ranged-armed hostile the same as a melee one", () => {
     stubGame({ objects: { src: { id: "src" } }, time: 2 });
+    stubMirrorFlee();
     const { creep, traveled } = miner([hostile(9, 5, { armed: false, ranged: true })]); // range 4
     Game.creeps = { m1: creep };
 
@@ -115,11 +147,40 @@ describe("Role.flee: miner", () => {
     expect(traveled).toEqual([]);
     expect(harvested).toEqual([1]);
   });
+
+  it("does not flee an armed hostile in our own room while safe mode is active — keeps harvesting", () => {
+    stubGame({ objects: { src: { id: "src" } }, time: 6 });
+    const { creep, traveled, harvested } = miner(
+      [hostile(7, 5, { armed: true })], // range 2
+      { my: true, safeMode: 1000 }
+    );
+    Game.creeps = { m1: creep };
+
+    runCreepBehaviors();
+
+    expect(traveled).toEqual([]);
+    expect(harvested).toEqual([1]);
+  });
+
+  it("still flees in our own room once safe mode has expired", () => {
+    stubGame({ objects: { src: { id: "src" } }, time: 7 });
+    stubMirrorFlee();
+    const { creep, traveled } = miner(
+      [hostile(7, 5, { armed: true })], // range 2
+      { my: true, safeMode: undefined }
+    );
+    Game.creeps = { m1: creep };
+
+    runCreepBehaviors();
+
+    expect(traveled).toEqual([{ x: 4, y: 6 }]);
+  });
 });
 
 describe("Role.flee: transport/supply (diverted before the step table)", () => {
   it("a transport creep flees an armed hostile instead of running its logistics task", () => {
     stubGame({ objects: {} });
+    stubMirrorFlee();
     const traveled: { x: number; y: number }[] = [];
     const h = hostile(7, 5, { armed: true });
     const creep = {
@@ -141,6 +202,80 @@ describe("Role.flee: transport/supply (diverted before the step table)", () => {
     runCreepBehaviors();
 
     expect(traveled).toEqual([{ x: 4, y: 6 }]);
+  });
+
+  // Regression test for the live bug this fix addresses: a transport creep pinned against a wall, with
+  // the only open ground on the threat's own side, used to compute its flee target from bare coordinate
+  // mirroring — pointing straight into rock — and sat exposed while travelTo failed to make progress.
+  // PathFinder({flee:true}) is terrain-aware, so it returns the *actual* nearest reachable escape tile,
+  // which here is back along the corridor the creep came from, not the (blocked) mirror direction.
+  it("routes around a wall that blocks the naive mirror-away direction", () => {
+    stubGame({ objects: {} });
+    const traveled: { x: number; y: number }[] = [];
+    // Threat sits northwest of the creep; the naive mirror-away tile (southeast, (6,6)) is walled off —
+    // the only opening is back west along y=5, so a real flee search returns that instead.
+    stubPathFinder((originArg, goalArg, optsArg) => {
+      const origin = originArg as { x: number; y: number; roomName: string };
+      const opts = optsArg as { flee?: boolean };
+      expect(opts.flee).toBe(true); // proves fleeThreat asks for a real flee search, not a plain route
+      const dest = { x: origin.x - 1, y: origin.y, roomName: origin.roomName };
+      return {
+        path: [{ ...dest, isEqualTo: (o: { x: number; y: number; roomName: string }) => o.x === dest.x && o.y === dest.y && o.roomName === dest.roomName } as never],
+        incomplete: false,
+        ops: 1,
+        cost: 1
+      };
+    });
+    const h = hostile(3, 3, { armed: true }); // northwest, range 2
+    const creep = {
+      name: "t1",
+      spawning: false,
+      memory: { role: "transport", logistics: {}, home: "W1N1" },
+      pos: {
+        x: 5,
+        y: 5,
+        roomName: "W1N1",
+        getRangeTo: (p: { x: number; y: number }) => Math.max(Math.abs(5 - p.x), Math.abs(5 - p.y)),
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      room: { find: (kind: FindConstant) => (kind === FIND_HOSTILE_CREEPS ? [h] : []) },
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    } as unknown as Creep;
+    Game.creeps = { t1: creep };
+
+    runCreepBehaviors();
+
+    // Fled west along the open corridor, not into the walled southeast mirror direction.
+    expect(traveled).toEqual([{ x: 4, y: 5 }]);
+  });
+
+  // If PathFinder can't find any tile outside FLEE_RADIUS at all (fully boxed in), fleeThreat holds
+  // rather than issuing a travelTo to a nonsensical destination — see fleeSpotAcrossRooms's undefined
+  // return path.
+  it("holds in place when no escape tile is reachable (fully boxed in)", () => {
+    stubGame({ objects: {} });
+    const traveled: { x: number; y: number }[] = [];
+    stubPathFinder(() => ({ path: [], incomplete: true, ops: 1, cost: 0 }));
+    const h = hostile(6, 5, { armed: true });
+    const creep = {
+      name: "t1",
+      spawning: false,
+      memory: { role: "transport", logistics: {}, home: "W1N1" },
+      pos: {
+        x: 5,
+        y: 5,
+        roomName: "W1N1",
+        getRangeTo: (p: { x: number; y: number }) => Math.max(Math.abs(5 - p.x), Math.abs(5 - p.y)),
+        findClosestByPath: (list: object[]) => list[0] ?? null
+      },
+      room: { find: (kind: FindConstant) => (kind === FIND_HOSTILE_CREEPS ? [h] : []) },
+      travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y })
+    } as unknown as Creep;
+    Game.creeps = { t1: creep };
+
+    runCreepBehaviors();
+
+    expect(traveled).toEqual([]);
   });
 });
 

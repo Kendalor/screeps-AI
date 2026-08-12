@@ -59,6 +59,14 @@ to the user unnecessarily.
 
 ## In-game console commands (bot-defined, in `src/commands/console.ts`)
 
+Full reference for every registered command — including the construction/spawn
+inspection ones (`buildPlan`, `remoteStatus`, `miningClaims`, `spawnLoad`) and
+operation targeting (`operationKinds`, `colonizeTargets`, `clearDrainTarget`,
+`removeOperation`) — lives in **`docs/console-commands.md`**; `help()` run live
+always lists whatever's currently registered if that doc ever drifts. The debug-
+tracing subset gets deeper per-file behavioral notes below, since those are the
+ones reached for most often while chasing a live bug.
+
 - `setLogLevel("error"|"warn"|"info")` — sets `Memory.logLevel`, gates `src/lib/log.ts`'s
   `log.error/warn/info`. Defaults to `"error"` (quiet). Bump to `"info"` via
   `pserver-console.mjs 'setLogLevel("info")'` when chasing a specific bug, then set

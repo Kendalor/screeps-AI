@@ -33,6 +33,8 @@ export type TargetSpec =
       repairBelow?: number;
       // Exclude a candidate the creep can't reach before it dies (see requireReachableAlive doc below).
       requireReachableAlive?: boolean;
+      // See alsoAdjacentRooms doc below (shared across every gather-shaped spec).
+      alsoAdjacentRooms?: boolean;
     }
   // unlessSpawnNeedsEnergy: skip this pool while the room's spawn/extensions aren't full, so builders/
   // upgraders leave ground piles for the hauler (whose own gather step has no such gate) rather than
@@ -44,9 +46,19 @@ export type TargetSpec =
   // Keeps a transport creep near the end of its life from locking onto a pickup (e.g. a remote container)
   // it will die en route to, stranding the energy and wasting the trip. Undefined/false means unchecked,
   // matching every existing caller's behavior.
-  | { find: "dropped"; share?: Share; prefer?: Prefer; unlessSpawnNeedsEnergy?: boolean; requireReachableAlive?: boolean }
-  | { find: "tombstone"; share?: Share; prefer?: Prefer; requireReachableAlive?: boolean }
-  | { find: "ruin"; share?: Share; prefer?: Prefer; requireReachableAlive?: boolean }
+  //
+  // alsoAdjacentRooms: widen the pool to rooms bordering the creep's own, but ONLY as a fallback when the
+  // current room has nothing — a builder stranded in a Source Keeper room (no safe container/drop exists
+  // there until the road it's trying to build gets built) would otherwise starve outright, since every
+  // gather-shaped search is normally scoped to creep.room alone. Same-room candidates always win when any
+  // exist (ranked by the usual findClosestByPath, which only makes sense within one room); the adjacent
+  // pool only kicks in when the local search comes up empty, and is ranked by cheap room-hop + in-room
+  // distance rather than a real cross-room PathFinder search per candidate (mining.ts's own doc flags that
+  // cost: 2%+ of colony CPU when run per-source every tick). Requires live vision into the neighbor
+  // (Game.rooms[name]) — an unseen room contributes nothing, same as any other vision-gated read here.
+  | { find: "dropped"; share?: Share; prefer?: Prefer; unlessSpawnNeedsEnergy?: boolean; requireReachableAlive?: boolean; alsoAdjacentRooms?: boolean }
+  | { find: "tombstone"; share?: Share; prefer?: Prefer; requireReachableAlive?: boolean; alsoAdjacentRooms?: boolean }
+  | { find: "ruin"; share?: Share; prefer?: Prefer; requireReachableAlive?: boolean; alsoAdjacentRooms?: boolean }
   | { find: "source" }
   // structureType/near scope which sites qualify, mirroring the structure spec: a miner builds only the
   // CONTAINER site at its own source, not whatever construction site happens to be nearest.
@@ -65,6 +77,16 @@ export type TargetSpec =
   | { find: "controller" }
   | { find: "creep"; role: RoleName | RoleName[]; where?: "notFull" | "hasEnergy"; share?: Share; prefer?: Prefer } // friendly creep as source/sink, filtered by role
   | { find: "hostile"; prefer?: Prefer } // enemy creep in the room; defaults to "nearest" — a defender wants "mostThreatening" instead
+  // Any hostile-owned structure in the room (FIND_HOSTILE_STRUCTURES) — towers, spawns, extensions, an
+  // invader core, anything another player/faction owns. creep.attack() accepts a Structure exactly as it
+  // does a Creep, so this feeds the same "attack" step as find:"hostile"; unlike find:"structure" there's
+  // no `type` to scope by, since an attacker wants to hit whatever's there regardless of kind.
+  | { find: "hostileStructure"; prefer?: Prefer }
+  // A hostile player's construction site (FIND_HOSTILE_CONSTRUCTION_SITES). Unlike every other structure
+  // target, a construction site has no attack() call at all — the engine destroys it the instant any
+  // creep merely stands on its tile (see the "trample" step below), so this spec exists purely to be
+  // resolved by that step, never by "attack".
+  | { find: "hostileConstructionSite"; prefer?: Prefer }
   // The acting creep's squad-mates: every friendly creep sharing the same memory.op value (see
   // operations/operation.ts's owned(), the same op-based ownership stamp), INCLUDING the acting creep
   // itself — a healer can target itself. Squad membership is derived, not stored (see ADR 0006): there is
@@ -98,7 +120,11 @@ export type Step = ({
     // Dismantle a structure (e.g. an invader core) at range 1. Store-less like attack — never
     // self-completes on store state, only via targetGone once the structure is destroyed.
     | { do: "dismantle"; at: TargetSpec }
-    | { do: "upgrade" }
+    // urgentBelow gates this step to a no-op fall-through unless the room's controller is genuinely at
+    // risk of downgrading (controller.ticksToDowngrade < urgentBelow) — lets a role list the SAME verb
+    // twice: once early (jump the queue when downgrade is imminent) and once at its normal wraparound
+    // spot (the default, ungated fallback every worker-ish role already has).
+    | { do: "upgrade"; urgentBelow?: number }
     | { do: "reserve" } // reserve the current room's controller — a claimer's whole job, once it has arrived
     | { do: "claim" } // claimController on the current room's controller — a colonizer's whole job, once it has arrived
     // Top up ticksToLive at a spawn in the creep's targetRoom, but only below `below` ticks — a no-op
@@ -106,10 +132,21 @@ export type Step = ({
     // reserve/claim this never holds the creep in place once satisfied: renewCreep is called once per
     // tick it's actually needed, same "act or fall through" shape moveToRoom already has with no dest.
     | { do: "renew"; below: number }
+    // Walks to a spawn in the creep's own room and recycleCreep's itself, but only once the room's
+    // energyCapacityAvailable has reached `aboveEnergyCapacity` — a no-op (falls through) below that
+    // threshold or while the room has no spawn yet. Settler's use: once its target room can afford
+    // SELF_SUFFICIENT_ENERGY_CAP on its own, the room's normal operations (Bootstrap et al) take over and
+    // the settler recycles itself for a partial energy refund rather than idling out its natural lifespan.
+    | { do: "recycle"; aboveEnergyCapacity: number }
     // Engage the nearest hostile: ranged-attack at range 3 if the body has RANGED_ATTACK, else close to
     // melee range 1. Never self-completes on store state (a fighter carries nothing) — only targetGone
     // (no hostile left in the room) ends it, same as reserve.
     | { do: "attack"; from: TargetSpec }
+    // Walks onto the resolved hostile construction site's own tile — screeps.com destroys an enemy's
+    // construction site the instant any creep occupies it, no attack() call involved (see
+    // find:"hostileConstructionSite"'s doc). Store-less, never self-completes on store state, only via
+    // targetGone (the site is gone once trampled, or was never there).
+    | { do: "trample"; at: TargetSpec }
     // Heal the resolved target: creep.heal() at range 1 (full HEAL_POWER), creep.rangedHeal() at range
     // 2-3 (reduced RANGED_HEAL_POWER), closing distance via travelTo when out of range 3 entirely. No
     // kiting logic (unlike attackStep) — a healer just needs to get in range and heal. Store-less like
@@ -178,4 +215,7 @@ export interface RoleDef {
   // Opt in to fleeing an armed hostile (behaviors/interpreter.ts's fleeThreat) instead of working on
   // obliviously. Only non-combat roles want this — see Role.flee's doc for the full rationale.
   flee?: boolean;
+  // Opt in to retreating home once every part of this kind has been destroyed by combat damage
+  // (behaviors/interpreter.ts's retreatIfDisarmed) — see Role.retreatPart's doc for the full rationale.
+  retreatPart?: BodyPartConstant;
 }

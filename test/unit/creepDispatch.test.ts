@@ -31,7 +31,10 @@ function builder(sites: object[]): Creep {
     // act on rather than misreading `sites` as candidates for a different find-type.
     room: { find: (kind: FindConstant) => (kind === FIND_MY_CONSTRUCTION_SITES ? sites : []) },
     build: () => 0,
-    travelTo: () => undefined
+    travelTo: () => undefined,
+    // Builder.retreatPart (WORK) checks this before normal dispatch — an intact WORK part here so these
+    // target-locking tests exercise the ordinary build path, not the disarmed retreat.
+    getActiveBodyparts: (part: BodyPartConstant) => (part === WORK ? 1 : 0)
   } as unknown as Creep;
 }
 
@@ -104,7 +107,8 @@ function builderWithOnlySource(source: object): Creep {
       find: (kind: FindConstant) => (kind === FIND_SOURCES ? [source] : [])
     },
     harvest: () => 0,
-    travelTo: () => undefined
+    travelTo: () => undefined,
+    getActiveBodyparts: (part: BodyPartConstant) => (part === WORK ? 1 : 0)
   } as unknown as Creep;
 }
 
@@ -163,7 +167,8 @@ describe("same-tick retry past dead targets", () => {
         find: (kind: FindConstant) => (kind === FIND_DROPPED_RESOURCES ? [dropped] : [])
       },
       pickup: () => 0,
-      travelTo: () => undefined
+      travelTo: () => undefined,
+      getActiveBodyparts: (part: BodyPartConstant) => (part === WORK ? 1 : 0)
     } as unknown as Creep;
     Game.creeps = { b1: creep };
 
@@ -200,7 +205,10 @@ describe("same-tick co-fire: miner harvest + transfer", () => {
       },
       harvest: () => 0,
       transfer: (t: { id: string }) => transferred.push(t.id),
-      travelTo: () => undefined
+      travelTo: () => undefined,
+      // Miner.retreatPart (WORK) checks this before normal dispatch — an intact WORK part here so these
+      // co-fire tests exercise the ordinary harvest+transfer path, not the disarmed retreat.
+      getActiveBodyparts: (part: BodyPartConstant) => (part === WORK ? 1 : 0)
     } as unknown as Creep;
     return { creep, transferred };
   }

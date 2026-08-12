@@ -1,6 +1,7 @@
 // The room-graph walk scouting depends on — the one place Game.map.describeExits is touched.
 // Shared by the snapshot builder and the scout behaviour so both see the same frontier.
 
+import { hasFortifiedInvaderCore } from "../behaviors/scout";
 import { roomType } from "../lib/roomName";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import type { ScoutCandidate } from "./types";
@@ -61,6 +62,10 @@ export function scoutCandidatesAround(origin: string, radius: number, home?: str
       // entered safely, so nothing past it is reachable either — same backoff window as isSealedFrom,
       // since a tower can be destroyed or the room can change hands later.
       if (home !== undefined && isLethal(name)) continue;
+      // A live Stronghold core (schema.ts's ScoutInfo.invaderCore doc) is just as much a dead end for
+      // the BFS as a proven-lethal room — same reasoning as isLethal above: nothing past it is reachable
+      // without first walking an unarmed scout through its ramparted defenders.
+      if (home !== undefined && hasFortifiedInvaderCore(Memory.rooms?.[name]?.scouted, Game.time)) continue;
       const exits = Game.map.describeExits(name);
       if (!exits) continue;
       const fromStatus = statusOf.get(name)!;

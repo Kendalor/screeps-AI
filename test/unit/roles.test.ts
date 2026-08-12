@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ROLES, roleDef } from "../../src/behaviors/roles";
+import { energySourceGroup } from "../../src/behaviors/targets";
 import { bodyCost } from "../../src/spawn/body";
 
 // Body assertions below deliberately avoid pinning exact part layouts: the whole point is that a
@@ -146,8 +147,8 @@ describe("builder role", () => {
         from: {
           find: "any",
           of: [
-            { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
-            { find: "dropped", unlessSpawnNeedsEnergy: true }
+            { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy", alsoAdjacentRooms: true },
+            { find: "dropped", unlessSpawnNeedsEnergy: true, alsoAdjacentRooms: true }
           ],
           prefer: "nearest"
         }
@@ -499,13 +500,15 @@ describe("settler body", () => {
 });
 
 describe("settler role", () => {
-  it("renews first, then walks to its target room, then runs the bootstrap wraparound loop", () => {
+  it("renews first, then recycles once self-sufficient, then walks to its target room, then runs the bootstrap wraparound loop", () => {
     expect(roleDef("settler")).toBe(ROLES.settler);
     expect(roleDef("settler")?.steps).toEqual([
       { do: "renew", below: 500 },
+      { do: "recycle", aboveEnergyCapacity: 550 },
       { do: "moveToRoom", to: "targetRoom", avoidDanger: true },
-      { do: "pickup", from: { find: "dropped", prefer: "largest" } },
+      { do: "gather", from: energySourceGroup("largest") },
       { do: "harvest", from: { find: "source" } },
+      { do: "upgrade", urgentBelow: 1000 },
       { do: "build", at: { find: "constructionSite", structureType: STRUCTURE_SPAWN } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_EXTENSION], where: "notFull" } },
       { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN], where: "notFull" } },
@@ -551,15 +554,17 @@ describe("attacker body", () => {
 });
 
 describe("attacker role", () => {
-  it("walks to its assigned attack target room, attacks any invader core, then fights whatever's there", () => {
+  it("walks to its assigned attack target room, fights any hostile creep, then any hostile structure, then tramples a hostile construction site", () => {
     expect(roleDef("attacker")).toBe(ROLES.attacker);
-    // attack (not dismantle) against the core: this body is TOUGH/ATTACK/MOVE only, no WORK part, and
+    // attack (not dismantle) against a structure: this body is TOUGH/ATTACK/MOVE only, no WORK part, and
     // dismantle() requires one (ERR_NO_BODYPART) — attackStep's structure branch (interpreter.ts) covers
-    // creep.attack() against a Structure exactly as it does a Creep.
+    // creep.attack() against a Structure exactly as it does a Creep. A hostile construction site has no
+    // attack() call at all — trample (interpreter.ts) just walks onto it, which destroys it outright.
     expect(roleDef("attacker")?.steps).toEqual([
       { do: "moveToRoom", to: "attackTargetRoom" },
-      { do: "attack", from: { find: "structure", type: [STRUCTURE_INVADER_CORE] } },
-      { do: "attack", from: { find: "hostile", prefer: "mostThreatening" } }
+      { do: "attack", from: { find: "hostile", prefer: "mostThreatening" } },
+      { do: "attack", from: { find: "hostileStructure" } },
+      { do: "trample", at: { find: "hostileConstructionSite" } }
     ]);
   });
 });

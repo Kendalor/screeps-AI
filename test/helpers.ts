@@ -7,11 +7,15 @@ export interface GameStubOptions {
   bucket?: number;
   /** Called for Game.cpu.getUsed() — return rising values to simulate load. */
   getUsed?: () => number;
+  /** Called for Game.cpu.generatePixel() — defaults to OK. */
+  generatePixel?: () => ScreepsReturnCode;
   /** Objects resolvable via Game.getObjectById. */
   objects?: Record<string, unknown>;
   rooms?: Record<string, unknown>;
   /** Game.map.getRoomLinearDistance(a, b) stub. Defaults to always 0 (same room). */
   roomLinearDistance?: (a: string, b: string) => number;
+  /** Game.map.describeExits(roomName) stub. Defaults to no exits (undefined) for every room. */
+  describeExits?: (roomName: string) => Partial<Record<string, string>> | undefined;
 }
 
 export function stubGame(opts: GameStubOptions = {}): void {
@@ -21,13 +25,15 @@ export function stubGame(opts: GameStubOptions = {}): void {
     cpu: {
       limit: opts.cpuLimit ?? 20,
       bucket: opts.bucket ?? 10000,
-      getUsed: opts.getUsed ?? (() => 0)
+      getUsed: opts.getUsed ?? (() => 0),
+      generatePixel: opts.generatePixel ?? (() => OK)
     },
     rooms: opts.rooms ?? {},
     creeps: {},
     getObjectById: (id: string) => objects[id] ?? null,
     map: {
-      getRoomLinearDistance: opts.roomLinearDistance ?? (() => 0)
+      getRoomLinearDistance: opts.roomLinearDistance ?? (() => 0),
+      describeExits: opts.describeExits ?? (() => undefined)
     }
   };
   (globalThis as Record<string, unknown>).Memory = { creeps: {} };

@@ -80,6 +80,11 @@ export type Intent =
   // kind rather than reusing recordSourceSpot: that one writes ColonyMemory.sources (flat, local-only),
   // while this writes ColonyMemory.remotes[].sources[] (nested under the selected remote room).
   | { kind: "recordRemoteContainer"; room: string; remoteRoom: string; source: Id<Source>; container: Id<StructureContainer> }
+  // Persists which of a remote source's route tiles are confirmed built (see RemoteSourceMemory.routeBuilt's
+  // doc) — the road equivalent of recordRemoteContainer above. `index` is the tile's position in that
+  // source's route[] array; execute.ts flips routeBuilt's character at that index from "0" to "1".
+  // Append-only per index, same non-destructive rule as recordRemoteContainer.
+  | { kind: "recordRemoteRouteBuilt"; room: string; remoteRoom: string; source: Id<Source>; index: number }
   // Persists a remote room's live danger read (see RemoteRoomVision.dangerUntil) so it survives losing
   // vision — execute.ts writes it onto ColonyMemory.remotes[].dangerUntil. Unlike recordRemoteContainer
   // this can move the value down (to undefined) as well as up: it's only ever emitted when vision exists,
@@ -139,6 +144,13 @@ export type Intent =
   // Attack.intents() owns removal: the target room has been seen with zero hostile creeps left — see
   // attack.ts for the exact condition.
   | { kind: "removeAttackTarget"; room: string; target: string }
+  // The defensive equivalent of addAttackTarget/removeAttackTarget: a flag handoff resolved `room` as the
+  // sponsor for defending `target` (a room outside its own home/remotes) — execute.ts owns the
+  // Memory.colonies[room].defending write (append, deduped).
+  | { kind: "addDefendTarget"; room: string; target: string }
+  // Defense.intents() owns removal: the target room has been seen with zero hostile creeps left — same
+  // condition as removeAttackTarget, see defense.ts.
+  | { kind: "removeDefendTarget"; room: string; target: string }
   // The drain equivalent of addAttackTarget: a flag handoff resolved `room` as the sponsor for draining
   // `target` — execute.ts owns the Memory.colonies[room].draining write. Unlike addAttackTarget this is a
   // plain overwrite, not an append: ColonyMemory.draining is a scalar (ADR 0006's exactly-one-drain-
@@ -171,6 +183,9 @@ export type Intent =
   | { kind: "setParadeAnchor"; room: string; anchor: SquadAnchorMemory }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
+  // Spends PIXEL_CPU_COST bucket for one pixel — emitted empire-wide (not per-colony) whenever the bucket
+  // is full; see empire/pixels.ts.
+  | { kind: "generatePixel" }
   // Drawing primitives for one room's RoomVisual; drawn in order so later ops paint over earlier ones.
   | { kind: "roomVisual"; room: string; ops: VisualOp[] };
 

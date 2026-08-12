@@ -2,30 +2,21 @@ import 'dotenv/config';
 import { ScreepsAPI } from 'screeps-api';
 import screepsConfig from '../../../../screeps.json' with { type: 'json' };
 
-const cfg = screepsConfig.main;
+const cfg = screepsConfig.pserver;
 
-function resolveEnv(value) {
-  const match = /^\$\{(\w+)\}$/.exec(value);
-  if (!match) return value;
-  const resolved = process.env[match[1]];
-  if (!resolved) throw new Error(`Missing env var ${match[1]}`);
-  return resolved;
-}
-
-const [, , expression, listenSecondsArg, shardArg] = process.argv;
+const [, , expression, listenSecondsArg] = process.argv;
 const listenSeconds = Number(listenSecondsArg) || 15;
-const shard = shardArg || 'shard1';
 
 const api = new ScreepsAPI({
-  token: resolveEnv(cfg.token),
+  email: cfg.email,
+  password: cfg.password,
   protocol: cfg.protocol,
   hostname: cfg.hostname,
   port: cfg.port,
   path: cfg.path,
 });
 
-// Ensure token/userID cached before opening the socket.
-await api.raw.auth.me();
+await api.auth(cfg.email, cfg.password);
 
 api.socket.on('message', (event) => {
   if (event.channel !== 'console') return;
@@ -46,8 +37,8 @@ await api.socket.subscribe('console');
 
 if (expression) {
   try {
-    await api.raw.user.console(expression, shard);
-    console.log(`[SENT] ${expression} (shard ${shard})`);
+    await api.raw.user.console(expression);
+    console.log(`[SENT] ${expression}`);
   } catch (e) {
     console.error('[SEND ERROR]', e.message);
   }

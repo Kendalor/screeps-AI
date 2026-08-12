@@ -21,6 +21,8 @@ export class Repair extends Role {
   // Unarmed and often working alone (remote roads/containers) — retreats from an armed hostile rather
   // than repairing on obliviously. See Role.flee.
   static override readonly flee = true;
+  // Once every WORK part is destroyed this body can't repair or harvest at all — see Role.retreatPart.
+  static override readonly retreatPart = WORK;
   static override body(energy: number): BodyPartConstant[] {
     return repairBody(energy);
   }
@@ -35,6 +37,12 @@ export class Repair extends Role {
   // remote room); a no-op once already there (moveToRoom completes instantly, falling through to repair
   // the same tick). Absent target (no decay anywhere) makes this step a pure no-op, same as builder's
   // buildTargetRoom step.
+  // alsoAdjacentRooms on structure/dropped mirrors builder.ts's own fix for the identical problem: a
+  // repairer stranded in a Source Keeper room (its repairTargetRoom is often a transit road running
+  // straight through one — see remote route caching in mining/remoteSources.ts) has nothing safe to
+  // gather there either, and would otherwise fall through to self-harvesting a keeper-guarded source with
+  // no danger-aware pathing at all. Local energy still wins whenever any exists, so this is a no-op for an
+  // ordinary well-stocked home-room repairer.
   static override readonly steps: Step[] = [
     { do: "moveToRoom", to: "repairTargetRoom", avoidDanger: true },
     { do: "repair", at: { find: "structure", type: REPAIRABLE, where: "damaged", repairBelow: 0.5, prefer: "mostDamaged" } },
@@ -44,8 +52,8 @@ export class Repair extends Role {
       from: {
         find: "any",
         of: [
-          { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy" },
-          { find: "dropped" },
+          { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy", alsoAdjacentRooms: true },
+          { find: "dropped", alsoAdjacentRooms: true },
           { find: "tombstone" },
           { find: "ruin" }
         ],

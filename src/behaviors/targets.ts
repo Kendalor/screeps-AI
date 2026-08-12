@@ -1,5 +1,6 @@
 // resolveTarget(spec) is the one place that searches for targets.
 
+import { ATTACK_POWER, RANGED_ATTACK_POWER, effectiveHp } from "../lib/combat";
 import { wrapFn } from "../lib/profiler";
 import type { Prefer, TargetSpec } from "./types";
 
@@ -135,7 +136,9 @@ export type TargetKind =
   | { kind: "tombstone" }
   | { kind: "ruin" }
   | { kind: "creep"; role?: string; op?: string }
-  | { kind: "hostile" };
+  | { kind: "hostile" }
+  | { kind: "hostileStructure"; structureType: StructureConstant }
+  | { kind: "hostileConstructionSite" };
 
 // Role match for a creep spec: the spec names one role or a list, and the target must carry one of them.
 function roleMatches(role: string | undefined, spec: Extract<TargetSpec, { find: "creep" }>): boolean {
@@ -164,6 +167,8 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
     case "tombstone":
     case "ruin":
     case "hostile":
+    case "hostileStructure":
+    case "hostileConstructionSite":
       return k.kind === spec.find;
     // op equality can't be expressed here — fitsSpec only sees the target's own kind, not the acting
     // creep's memory.op to compare against. Enforced instead where the acting creep is available:
@@ -205,9 +210,24 @@ function toKind(obj: RoomObject): TargetKind | null {
     my?: boolean;
   };
   // A construction site carries progressTotal AND a structureType (what it will become); capture the
-  // latter so a scoped constructionSite spec can filter on it.
-  if (o.progressTotal !== undefined) return { kind: "constructionSite", structureType: o.structureType };
-  if (o.structureType !== undefined) return { kind: "structure", structureType: o.structureType };
+  // latter so a scoped constructionSite spec can filter on it. `.my` is false only for a site owned by
+  // another player — our own sites (the overwhelming common case) and neutral ones (there is no neutral
+  // site; every site has an owner) both read true, so hostileConstructionSite spec never matches our own.
+  if (o.progressTotal !== undefined) {
+    return o.my === false ? { kind: "hostileConstructionSite" } : { kind: "constructionSite", structureType: o.structureType };
+  }
+  // `.my` is false for a structure owned by another player, true for ours, undefined for one with no
+  // owner concept (roads, walls, containers, ruins-adjacent neutral structures) — only the explicit
+  // false case is a hostile structure; undefined must fall through to the ordinary "structure" kind so
+  // e.g. a neutral container is still findable by every existing find:"structure" spec. A hostile-owned
+  // controller is excluded the same way findCandidates' "hostileStructure" case excludes it (see that
+  // doc) — classified as an ordinary "structure" instead so it never re-validates a stale hostileStructure
+  // lock either.
+  if (o.structureType !== undefined) {
+    return o.my === false && o.structureType !== STRUCTURE_CONTROLLER
+      ? { kind: "hostileStructure", structureType: o.structureType }
+      : { kind: "structure", structureType: o.structureType };
+  }
   if (o.deathTime !== undefined) return { kind: "tombstone" };
   if (o.destroyTime !== undefined) return { kind: "ruin" };
   if (o.resourceType !== undefined) return { kind: "dropped" };
@@ -388,6 +408,48 @@ function threatTier(o: RoomObject): number {
   return 0;
 }
 
+// Raw damage-per-tick a creep deals at melee/ranged range, ignoring the target's own TOUGH boost (no
+// scout-level vision into a hostile's boosts, and the comparison only needs to be a reasonable estimate,
+// not exact combat math) — melee (ATTACK) and ranged (RANGED_ATTACK) both count, since either body shape
+// must be weighed the same way for this "can it actually win" check. Missing getActiveBodyparts (a
+// non-combat test fixture, e.g. collectorCreep, that never carries body parts at all) reads as 0 dps
+// rather than throwing.
+function dpsOf(c: Creep): number {
+  if (typeof c.getActiveBodyparts !== "function") return 0;
+  return c.getActiveBodyparts(ATTACK) * ATTACK_POWER + c.getActiveBodyparts(RANGED_ATTACK) * RANGED_ATTACK_POWER;
+}
+
+// Ticks a hostile needs to kill `creep` outright, given its own dps — Infinity (never) if it deals none.
+function ticksToKill(hostile: Creep, targetHp: number): number {
+  const dps = dpsOf(hostile);
+  return dps > 0 ? targetHp / dps : Infinity;
+}
+
+// True when engaging `hostile` is a losing fight for `creep`: the hostile kills the creep strictly
+// faster than the creep kills the hostile — the same race a kiting ranged body wins/loses in practice,
+// simplified to raw dps/effectiveHp with no range-timing model (good enough to keep a starter defender
+// out of a Source Keeper lair guardian's kill zone, the concrete problem this exists for, without needing
+// a full simulation). A creep with zero damage output (an unarmed scout/hauler pressed into this pool by
+// mistake, or a plain test fixture with no combat stats at all) can never "win" on paper, so in principle
+// it always "loses" to anything that can hurt back — but that would make every non-combat role's other
+// TargetSpecs (which never route through this "hostile" case) irrelevant, and would wrongly block a test
+// fixture with no `hits` field either. A creep with no `hits` reading (undefined, not merely 0) is
+// unassessable, not defeated — treated as never losing so callers with no combat stats at all (any
+// existing non-Defender fixture) see this gate as a no-op, matching every non-fighter TargetSpec's
+// pre-existing behavior. Equally toothless real creeps (0 dps vs 0 dps) still resolve to "doesn't lose"
+// (Infinity < Infinity is false).
+function wouldLoseTo(creep: Creep, hostile: Creep): boolean {
+  if (typeof creep.hits !== "number") return false;
+  const ourHp = effectiveHp(creep.hits, 1);
+  // A hostile with no `hits` reading is a fixture/vision gap, not a 0-hp target — treat it as an
+  // ordinary full-health body (mirrors ourHp's own no-reduction default) rather than letting an
+  // undefined propagate into NaN and silently pass every comparison below.
+  const theirHp = effectiveHp(typeof hostile.hits === "number" ? hostile.hits : 100, 1);
+  const theyKillUsIn = ticksToKill(hostile, ourHp);
+  const weKillThemIn = ticksToKill(creep, theirHp);
+  return theyKillUsIn < weKillThemIn;
+}
+
 // Energy a candidate holds, across the two shapes a gather pool mixes: dropped Resources expose
 // `.amount`, store-holders (containers, tombstones, ruins) expose `.store`. Used to rank a "largest" pool
 // uniformly — reading `.amount` off a store-holder would yield undefined and poison the sort.
@@ -489,6 +551,28 @@ export function openHarvestTiles(at: { pos: { x: number; y: number }; room: { ge
   return open;
 }
 
+// Rooms bordering `room` that we currently have vision into (Game.rooms[name] only exists with vision) —
+// the pool alsoAdjacentRooms draws from. Game.map.describeExits is a per-call lookup (no BFS, no caching
+// needed here): only immediate neighbors are ever considered, not a wider frontier like scouting's own
+// scoutCandidatesAround.
+function adjacentVisibleRooms(room: Room): Room[] {
+  const exits = Game.map.describeExits(room.name);
+  if (!exits) return [];
+  const out: Room[] = [];
+  for (const dir in exits) {
+    const neighbor = Game.rooms[exits[dir as ExitKey]!];
+    if (neighbor) out.push(neighbor);
+  }
+  return out;
+}
+
+// Re-runs a same-room finder against every adjacent visible room and pools the results — the fallback
+// half of alsoAdjacentRooms (see its doc in types.ts). `find` is one of the plain FIND_* calls used below
+// (dropped/tombstone/ruin/structure), never source/creep/etc — those never carry alsoAdjacentRooms.
+function findInAdjacentRooms<T extends RoomObject>(creep: Creep, find: (room: Room) => T[]): T[] {
+  return adjacentVisibleRooms(creep.room).flatMap(find);
+}
+
 function findCandidates(
   creep: Creep,
   spec: Exclude<TargetSpec, { find: "id" } | { find: "controller" } | { find: "any" }>
@@ -509,22 +593,51 @@ function findCandidates(
       if (assigned === undefined) return sources;
       return sources.filter(s => s.id === assigned);
     }
-    case "dropped":
-      return room.find(FIND_DROPPED_RESOURCES);
-    case "tombstone":
-      return room.find(FIND_TOMBSTONES).filter(t => t.store.getUsedCapacity() > 0);
-    case "ruin":
-      return room.find(FIND_RUINS).filter(r => r.store.getUsedCapacity() > 0);
+    case "dropped": {
+      const local = room.find(FIND_DROPPED_RESOURCES);
+      if (local.length > 0 || !spec.alsoAdjacentRooms) return local;
+      return findInAdjacentRooms(creep, r => r.find(FIND_DROPPED_RESOURCES));
+    }
+    case "tombstone": {
+      const local = room.find(FIND_TOMBSTONES).filter(t => t.store.getUsedCapacity() > 0);
+      if (local.length > 0 || !spec.alsoAdjacentRooms) return local;
+      return findInAdjacentRooms(creep, r => r.find(FIND_TOMBSTONES).filter(t => t.store.getUsedCapacity() > 0));
+    }
+    case "ruin": {
+      const local = room.find(FIND_RUINS).filter(r => r.store.getUsedCapacity() > 0);
+      if (local.length > 0 || !spec.alsoAdjacentRooms) return local;
+      return findInAdjacentRooms(creep, rm => rm.find(FIND_RUINS).filter(r => r.store.getUsedCapacity() > 0));
+    }
     case "hostile":
-      return room.find(FIND_HOSTILE_CREEPS);
+      // A fighter must never be handed a target it would predictably lose to (a Source Keeper's lair
+      // guardian is the concrete case — its body outguns any early defender/attacker — but this is a
+      // plain strength comparison, not an owner check, so it also covers any other overtuned hostile).
+      // Losing here means initiating: a defender/attacker that's already being shot at by something
+      // still fights back via nearbyMeleeThreat/kiting in interpreter.ts, which this pool exclusion
+      // never touches — only which target gets PICKED to walk toward and attack first.
+      return room.find(FIND_HOSTILE_CREEPS).filter(h => !wouldLoseTo(creep, h));
+    case "hostileStructure":
+      // FIND_HOSTILE_STRUCTURES includes a hostile-owned/reserved room's controller — creep.attack()
+      // rejects a StructureController outright (ERR_INVALID_TARGET; only attackController touches one,
+      // which needs a CLAIM part this ATTACK/TOUGH/MOVE body never carries), so an attacker locking onto
+      // it would just sit there forever doing nothing. Confirmed live: a hostile room's controller was
+      // resolving as a valid hostileStructure target.
+      return room.find(FIND_HOSTILE_STRUCTURES).filter(s => s.structureType !== STRUCTURE_CONTROLLER);
+    case "hostileConstructionSite":
+      return room.find(FIND_HOSTILE_CONSTRUCTION_SITES);
     case "constructionSite": {
       const sites = room.find(FIND_MY_CONSTRUCTION_SITES).filter(s => spec.structureType === undefined || s.structureType === spec.structureType);
       return sites.filter(s => nearMatches(creep, s, spec.near) && withinCarryRange(creep, s, spec.onlyIfCarryOver));
     }
     case "structure": {
       const wantedTypes = Array.isArray(spec.type) ? spec.type : [spec.type];
-      const structures = room.find(FIND_STRUCTURES).filter(s => wantedTypes.includes(s.structureType));
-      return structures.filter(s => nearMatches(creep, s, spec.near));
+      const matching = (r: Room): Structure[] => r.find(FIND_STRUCTURES).filter(s => wantedTypes.includes(s.structureType));
+      const local = matching(room).filter(s => nearMatches(creep, s, spec.near));
+      if (local.length > 0 || !spec.alsoAdjacentRooms) return local;
+      // near is a home-controller-relative filter (assignedSource/controller/notController) that only
+      // makes sense against the creep's OWN room; a neighbor room's structures never carry it, same as
+      // every other alsoAdjacentRooms fallback here pools raw finds with no positional narrowing.
+      return findInAdjacentRooms(creep, matching);
     }
     case "creep": {
       // Never the actor itself — a creep transferring to itself is a no-op.

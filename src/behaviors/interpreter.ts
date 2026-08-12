@@ -8,6 +8,7 @@ import { INVADER_USERNAME } from "../mining/remoteSources";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import { wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
+import { hasFortifiedInvaderCore } from "./scout";
 import { stepOffRoad } from "./roadAvoidance";
 import { resolveTarget } from "./targets";
 import type { Step, TargetSpec } from "./types";
@@ -28,11 +29,13 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   reserve: "move", // a store-less claimer reserves for life — never self-completes, like a movement step
   claim: "move", // store-less colonizer — never self-completes on store state, only via targetGone (see below)
   renew: "move", // store-less — see renewStep: falls through via acted:false whenever renewal isn't needed/possible
+  recycle: "move", // store-less — see recycleStep: falls through via acted:false whenever the threshold isn't met yet
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
   moveToPos: "move", // same as moveToRoom — completes only via targetGone (never set; see moveToPos's own doc)
   sit: "move",
   attack: "move", // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
-  heal: "move" // store-less healer — never self-completes; ends only via targetGone (target gone)
+  heal: "move", // store-less healer — never self-completes; ends only via targetGone (target gone)
+  trample: "move" // store-less — never self-completes; ends only via targetGone (site destroyed by standing on it)
 };
 
 // The engine's per-tick action pipelines (docs.screeps.com/simultaneous-actions.html): harvest/build/
@@ -156,15 +159,19 @@ export const runStep = wrapFn(function runStep(
     case "dismantle":
       return actOn(creep, step.at, locked, t => creep.dismantle(t as Structure), 1, allowTravel, opts?.doNotBlockRoads);
     case "upgrade":
-      return upgradeStep(creep, locked, allowTravel, opts?.doNotBlockRoads);
+      return upgradeStep(creep, locked, allowTravel, opts?.doNotBlockRoads, step.urgentBelow);
     case "reserve":
       return reserveStep(creep, locked, allowTravel);
     case "claim":
       return claimStep(creep, locked, allowTravel);
     case "renew":
       return renewStep(creep, step.below, locked, allowTravel);
+    case "recycle":
+      return recycleStep(creep, step.aboveEnergyCapacity, locked, allowTravel);
     case "attack":
       return attackStep(creep, step.from, locked, allowTravel);
+    case "trample":
+      return trampleStep(creep, step.at, locked, allowTravel);
     case "heal":
       return healStep(creep, step.at, locked, allowTravel);
     case "moveToRoom":
@@ -186,29 +193,60 @@ export const runStep = wrapFn(function runStep(
 const DANGER_RADIUS = 5;
 const DANGER_COST = 25; // added on top of terrain cost, per tile within DANGER_RADIUS — enough to make a multi-tile detour cheaper than cutting through
 
+// Every source-keeper lair and reputation-flagged-dangerous hostile creep currently visible in `room` —
+// the shared danger-source list behind both dangerCostMatrix (path planning) and dangerNearby (live
+// per-tick recheck) below, so the two can never disagree about what counts as "dangerous."
+function dangerSourcesIn(room: Room): RoomPosition[] {
+  return [
+    ...room.find(FIND_HOSTILE_CREEPS, { filter: c => isDangerous(c.owner.username) }).map(c => c.pos),
+    ...room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_KEEPER_LAIR }).map(s => s.pos)
+  ];
+}
+
 // Penalizes tiles near source keeper lairs and hostile-owned creeps so an unarmed traveller (a scout)
 // detours around them instead of pathing straight through a keeper's kill zone. A friendly/neutral
 // player's creep (isDangerous false) is left unpenalized — only reputation-flagged owners and NPC
 // keepers count as "danger" here (see memory/reputation.ts). Traveler's roomCallback fires for every room
 // PathFinder considers, vision or not — a room with no vision has nothing to penalize, so this is a no-op
 // there (the matrix is returned unchanged) rather than a special case.
-function dangerCostMatrix(room: Room | undefined, matrix: CostMatrix): CostMatrix {
+export function dangerCostMatrix(room: Room | undefined, matrix: CostMatrix): CostMatrix {
   if (!room) return matrix;
-  const dangers: RoomPosition[] = [
-    ...room.find(FIND_HOSTILE_CREEPS, { filter: c => isDangerous(c.owner.username) }).map(c => c.pos),
-    ...room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_KEEPER_LAIR }).map(s => s.pos)
-  ];
+  const terrain = room.getTerrain();
+  const dangers = dangerSourcesIn(room);
   for (const pos of dangers) {
     for (let x = pos.x - DANGER_RADIUS; x <= pos.x + DANGER_RADIUS; x++) {
       for (let y = pos.y - DANGER_RADIUS; y <= pos.y + DANGER_RADIUS; y++) {
         if (x < 0 || x > 49 || y < 0 || y > 49) continue;
         const current = matrix.get(x, y);
         if (current >= 0xff) continue; // already impassable; leave walls/structures alone
+        // A wall tile reads 0 from an untouched matrix (nothing else in the pipeline sets real terrain
+        // into it — see addStructuresToMatrix, which only ever writes structures/sites/minerals) — the
+        // SAME 0 an ordinary open tile reads before any cost has been added. PathFinder's own docs: "if a
+        // non-0 value is found in a room's CostMatrix, that value is used INSTEAD OF the default terrain
+        // cost" — so bumping a wall's 0 up to DANGER_COST doesn't add a detour penalty, it overwrites the
+        // wall into a cheap PASSABLE tile (25, cheaper than swamp's 50). Confirmed live: a settler's
+        // avoidDanger path cut straight through solid terrain next to a keeper lair in W44N14 and got
+        // permanently stuck trying to walk into a wall every tick. Terrain wall tiles must be left alone
+        // exactly like the current>=0xff structures/creeps guard above already protects the ones the
+        // matrix itself marked impassable.
+        if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
         matrix.set(x, y, Math.min(0xfe, current + DANGER_COST));
       }
     }
   }
   return matrix;
+}
+
+// Live per-tick counterpart to dangerCostMatrix, passed as Traveler's dangerCheck (see traveler.ts's own
+// doc on why the room-entry/stuck-counter repath triggers can't substitute for this). dangerCostMatrix only
+// ever sees a danger source's position at the moment a path is COMPUTED; a keeper's guardian patrols after
+// that and Traveler otherwise has no reason to discard a path that's still successfully moving the creep
+// tick over tick — ranged damage doesn't stop movement, so stuckCount never trips either. This re-derives
+// the same danger-source list against the creep's CURRENT position every tick a cached path exists, so a
+// guardian that has since wandered within DANGER_RADIUS of the creep gets caught immediately instead of
+// only at the next room border.
+export function dangerNearby(room: Room, pos: RoomPosition): boolean {
+  return dangerSourcesIn(room).some(d => d.roomName === pos.roomName && d.getRangeTo(pos) <= DANGER_RADIUS);
 }
 
 // How much a reputation-flagged room's hops are inflated in Traveler's own findRoute (called internally
@@ -238,12 +276,31 @@ const DANGEROUS_ROOM_HOPS = 50;
 // died there every single generation, never actually reaching its real destination. A merely-hostile room
 // is still worth a detour-cost crossing since the scout usually survives to reach whatever's beyond it; a
 // lethal one never does, so routing through is pure loss rather than a discouraged-but-viable option.
-function dangerRouteCallback(home: string, roomName: string): number {
+export function dangerRouteCallback(home: string, roomName: string): number {
   const info = Memory.rooms?.[roomName]?.scouted;
   const noPathAt = info?.noPathFrom?.[home];
   if (noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER) return Infinity;
   if (info?.lethalAt !== undefined && Game.time - info.lethalAt < NO_PATH_RETRY_AFTER) return Infinity;
+  // A Stronghold's fortified core (see schema.ts's ScoutInfo.invaderCore doc) is just as much a pure-loss
+  // transit hop as a proven-lethal room — same reasoning as the lethalAt check above, see
+  // hasFortifiedInvaderCore's doc for why a level-0 core doesn't trigger this.
+  if (hasFortifiedInvaderCore(info, Game.time)) return Infinity;
   return isDangerous(info?.owner) ? DANGEROUS_ROOM_HOPS : 1;
+}
+
+// The same danger-avoidance bundle moveToRoom passes to Traveler below (useFindRoute/roomCallback/
+// routeCallback/dangerCheck), factored out so any OTHER cross-room travelTo call — transport.ts's
+// logistics executor in particular, which has no step-table moveToRoom step of its own and previously
+// called creep.travelTo with no danger awareness at all — can opt into identical keeper/hostile-avoidance
+// routing rather than reimplementing or subtly diverging from it. See dangerCostMatrix/dangerRouteCallback/
+// dangerNearby's own docs for what each piece actually does; this is purely the wiring, not new behavior.
+export function dangerAvoidanceOptions(home: string): TravelToOptions {
+  return {
+    useFindRoute: true,
+    roomCallback: (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix),
+    routeCallback: (roomName: string) => dangerRouteCallback(home, roomName),
+    dangerCheck: dangerNearby
+  };
 }
 
 // Moves toward a room, following a precomputed route if present. acted:false on arrival or no destination; acted:true while travelling.
@@ -307,9 +364,7 @@ function moveToRoom(
     // E28S2 — forcing another blind repath from inside it that reversed again, oscillating forever.
     // avoidDanger steps always cross multiple rooms by construction (a same-room step never reaches
     // here — see the arrival check above), so there's no case where forcing this trades away anything.
-    useFindRoute: step.avoidDanger ? true : undefined,
-    roomCallback: step.avoidDanger ? (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix) : undefined,
-    routeCallback: step.avoidDanger ? (roomName: string) => dangerRouteCallback(creep.memory.home, roomName) : undefined
+    ...(step.avoidDanger ? dangerAvoidanceOptions(creep.memory.home) : {})
   });
   // A scout genuinely can't path into nextRoom from here (Traveler's own PathFinder search, with real
   // vision at this border, came back empty) — e.g. the shared border is walled solid by another player.
@@ -431,9 +486,17 @@ function harvestStep(
 const UPGRADE_RANGE = 3;
 const CONTROLLER_CONTAINER_RANGE = 1; // range of the controller the controller container sits within
 
-function upgradeStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean, doNotBlockRoads = false): StepResult {
+function upgradeStep(
+  creep: Creep,
+  locked: Id<_HasId> | undefined,
+  allowTravel: boolean,
+  doNotBlockRoads = false,
+  urgentBelow?: number
+): StepResult {
   const controller = resolveTarget(creep, { find: "controller" }, locked);
   if (!controller) return { acted: false, didAct: false };
+  const ticksToDowngrade = (controller as StructureController).ticksToDowngrade;
+  if (urgentBelow !== undefined && ticksToDowngrade >= urgentBelow) return { acted: false, didAct: false };
   const controllerPos = (controller as StructureController).pos;
 
   if (!creep.pos.inRangeTo(controllerPos, UPGRADE_RANGE)) {
@@ -580,6 +643,34 @@ function renewStep(creep: Creep, below: number, locked: Id<_HasId> | undefined, 
   return { acted: true, didAct: result === OK, target: (spawn as unknown as { id: Id<_HasId> }).id };
 }
 
+// Walks to a spawn in the creep's OWN targetRoom (never a room it's merely passing through, e.g. the
+// sponsor's — same scoping as renewStep, and for the same reason: a settler spawns in the sponsor's
+// room, which already has a well-developed energyCapacityAvailable, so without this gate it would read
+// the SPONSOR's capacity and recycle itself at the sponsor's spawn before ever traveling to the actually-
+// nascent target room) and recycles the creep there, but only once that room's energyCapacityAvailable
+// has reached `aboveEnergyCapacity` — below that threshold, or while the room has no spawn yet, this is a
+// no-op fall-through to the rest of the step table (same "act or fall through" shape as renewStep).
+// Unlike renew this is meant to hold the creep in place once it starts: once the threshold is reached
+// there's nothing else useful left to do, so a caller ordering this step early is expected. recycleCreep
+// is called on the SPAWN, not the creep, same hand-rolled pattern as renewStep/claimStep/reserveStep.
+function recycleStep(creep: Creep, aboveEnergyCapacity: number, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  if (creep.room.name !== creep.memory.targetRoom) return { acted: false, didAct: false };
+  if (creep.room.energyCapacityAvailable < aboveEnergyCapacity) return { acted: false, didAct: false };
+
+  const spawn = resolveTarget(creep, { find: "structure", type: STRUCTURE_SPAWN }, locked);
+  if (!spawn) return { acted: false, didAct: false };
+  const spawnPos = (spawn as StructureSpawn).pos;
+
+  if (!creep.pos.inRangeTo(spawnPos, 1)) {
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(spawnPos, { range: 1 });
+    return { acted: true, didAct: false, target: (spawn as unknown as { id: Id<_HasId> }).id };
+  }
+
+  const result = (spawn as StructureSpawn).recycleCreep(creep);
+  return { acted: true, didAct: result === OK, target: (spawn as unknown as { id: Id<_HasId> }).id };
+}
+
 // All hostile creeps in the room within range of the fighter, closest lookup shared by the melee-threat
 // check and the mass-attack damage total below — both read off room.find (like every other target
 // lookup in this file, see targets.ts's findCandidates) rather than a position-scoped API, so both stay
@@ -684,6 +775,24 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
     : { acted: true, didAct: false, target: hostile.id };
 }
 
+// Walks onto a hostile construction site's own tile — the engine destroys the site the instant any
+// creep (ours or otherwise) occupies it, no attack()-style call involved. So "acting" here is nothing
+// more than closing to range 0: didAct only turns true once actually standing on the tile, which is
+// also the tick the site vanishes (targetGone then ends the step, same as attackStep ending on a dead
+// hostile). No range-3/kiting logic — there's nothing to be threatened by beyond what attackStep already
+// guards elsewhere in the same step table, and a site itself can never fight back.
+function trampleStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  const target = resolveTarget(creep, spec, locked);
+  if (!target) return { acted: false, didAct: false };
+  const site = target as ConstructionSite;
+  if (creep.pos.isEqualTo(site.pos)) {
+    return { acted: true, didAct: true, target: site.id };
+  }
+  if (!allowTravel) return { acted: false, didAct: false };
+  creep.travelTo(site.pos, { range: 0 });
+  return { acted: true, didAct: false, target: site.id };
+}
+
 // Heals the resolved target (a squad-mate, including possibly self — see targets.ts's find:"squadMate").
 // creep.heal() at range 1 for full HEAL_POWER; creep.rangedHeal() at range 2-3 for reduced
 // RANGED_HEAL_POWER; travelTo closes distance when out of range 3 entirely. No kiting logic (unlike
@@ -770,25 +879,44 @@ function nearestArmedThreat(creep: Creep): Creep | undefined {
 
 // Unlike attackStep's kiting (a defender that must hold the room, never get baited across a border), an
 // unarmed Role.flee creep has nothing to gain by staying — the room it's fleeing into can only be as bad
-// as the one it's already in danger in. So this mirrors fleeSpot's step-away math but clamps only to the
-// legal RoomPosition range [0,49], onto the exit tile itself rather than pulled back to the interior,
-// letting travelTo (maxRooms raised below) actually carry the creep across the border.
-function fleeSpotAcrossRooms(from: { x: number; y: number; roomName: string }, threat: { x: number; y: number }): RoomPosition {
-  const dx = Math.sign(from.x - threat.x) || 1;
-  const dy = Math.sign(from.y - threat.y) || 1;
-  return new RoomPosition(Math.min(49, Math.max(0, from.x + dx)), Math.min(49, Math.max(0, from.y + dy)), from.roomName);
+// as the one it's already in danger in. Terrain-aware, unlike a plain mirror-the-threat offset: that
+// naive math picked its target by coordinates alone and could point straight into a wall (confirmed live
+// — a hauler boxed in against a rock formation with the only opening on the threat's side had nowhere to
+// go and sat exposed while travelTo failed to make progress toward an unreachable/walled goal). PathFinder
+// itself is what Screeps ships for exactly this: `flee: true` runs a Dijkstra flood from the threat and
+// returns the nearest tile actually outside `goalRange` that's reachable by real terrain, never a bare
+// offset. maxRooms:2 on the caller's travelTo mirrors the old cross-one-border allowance. threat is a
+// plain {x,y} (the hostile is always in the fleeing creep's own room — nearestArmedThreat's room.find
+// guarantees that — so `from`'s roomName covers both ends; no need to carry the hostile's own roomName).
+function fleeSpotAcrossRooms(from: RoomPosition, threat: { x: number; y: number }): RoomPosition | undefined {
+  const threatPos = new RoomPosition(threat.x, threat.y, from.roomName);
+  const result = PathFinder.search(
+    from,
+    { pos: threatPos, range: FLEE_RADIUS + 1 },
+    { flee: true, maxRooms: 2, plainCost: 2, swampCost: 10 }
+  );
+  const dest = result.path[result.path.length - 1];
+  return dest && !dest.isEqualTo(from) ? dest : undefined;
 }
 
 // For a Role.flee creep: if an armed, reputation-dangerous hostile has closed within FLEE_RADIUS, step
-// directly away from it (mirroring attackStep's own kiting move, but free to leave the room — see
-// fleeSpotAcrossRooms) instead of running the creep's normal step this tick, and report true so the
-// caller skips its usual dispatch. False (no travelTo issued) whenever nothing qualifies, so a caller can
-// fall straight through to its normal behavior with no extra cost on the common, threat-free tick.
+// directly away from it (see fleeSpotAcrossRooms) instead of running the creep's normal step this tick,
+// and report true so the caller skips its usual dispatch. False (no travelTo issued) whenever nothing
+// qualifies OR no escape tile was found (e.g. fully boxed in — nothing to do but sit), so a caller can
+// fall straight through to its normal behavior with no extra cost on the common, threat-free tick. Also
+// false while standing in our own room under an active safe mode: hostile creeps there can't deal damage
+// at all, so fleeing would only interrupt work for no benefit.
 export function fleeThreat(creep: Creep): boolean {
   const threat = nearestArmedThreat(creep);
   if (!threat) return false;
-  log.debugCreep(creep.name, `fleeThreat: fleeing armed hostile ${threat.id} (range=${creep.pos.getRangeTo(threat.pos)})`);
-  creep.travelTo(fleeSpotAcrossRooms(creep.pos, threat.pos), { range: 0, maxRooms: 2 });
+  if (creep.room.controller?.my && creep.room.controller.safeMode) return false;
+  const dest = fleeSpotAcrossRooms(creep.pos, threat.pos);
+  if (!dest) {
+    log.debugCreep(creep.name, `fleeThreat: no reachable escape from armed hostile ${threat.id} — holding`);
+    return false;
+  }
+  log.debugCreep(creep.name, `fleeThreat: fleeing armed hostile ${threat.id} (range=${creep.pos.getRangeTo(threat.pos)}) to (${dest.x},${dest.y})`);
+  creep.travelTo(dest, { range: 0, maxRooms: 2 });
   return true;
 }
 
@@ -811,26 +939,49 @@ function nearestFriendlyHealer(creep: Creep): Creep | undefined {
   return nearest;
 }
 
-// For Defender only (never Role.flee — see its doc): once every RANGED_ATTACK part on the body has
-// been destroyed (hits reduced to 0, so getActiveBodyparts no longer counts it), the creep is a bare
-// MOVE husk that can't fight back at all — continuing to run attackStep would walk it into MELEE range
-// of the hostile it can no longer even shoot at (attackStep's own no-RANGED_ATTACK branch treats a
-// body with no ranged weapon as pure melee and closes to range 1). Retreats toward the nearest
-// friendly HEAL creep in the room if one is visible (so it can actually get topped up), else falls
-// back to walking home (same cross-room travel shape as moveToRoom). Always reports true once
-// disarmed — even with nowhere left to retreat to (already home, no healer) — so the caller always
-// skips the normal attack step rather than letting a weaponless husk walk into melee.
-export function retreatIfDisarmed(creep: Creep): boolean {
-  if (creep.getActiveBodyparts(RANGED_ATTACK) > 0) return false;
+// The bunker anchor recorded for `home`, if building has laid one down yet, else the room centre — same
+// fallback chain as behaviors/transport.ts's homeRoomWaypoint (kept as a separate copy here rather than a
+// shared import: transport.ts's version threads through its own logistics-task plumbing, and duplicating
+// a two-line lookup is cheaper than adding a cross-file dependency for it).
+function homeAnchor(home: string): RoomPosition {
+  const anchor = typeof Memory !== "undefined" ? Memory.colonies?.[home]?.anchor : undefined;
+  return anchor ? new RoomPosition(anchor.x, anchor.y, home) : new RoomPosition(25, 25, home);
+}
+
+// Driven by Role.retreatPart (see its doc): once every part of the role's declared kind has been
+// destroyed (hits reduced to 0, so getActiveBodyparts no longer counts it), the creep can no longer do
+// the one thing its body was built for — for Defender/Attacker specifically, continuing to run attackStep
+// would walk a disarmed husk into (or hold) melee range of a hostile it can no longer even hurt
+// (attackStep's own no-RANGED_ATTACK branch treats a body with no ranged weapon as pure melee and closes
+// to range 1). Retreats toward the nearest friendly HEAL creep in the room if one is visible (useful
+// mid-fight, away from home), else falls back to walking home and PARKING there — the home room's tower
+// heals any damaged friendly creep standing in it (see intents/execute.ts's towerHeal), so simply parking
+// there passively restores hits with no squad healer required. Once home it keeps sitting rather than
+// re-entering the step table, since the lost part can never regenerate on its own; only hits === hitsMax
+// releases it back to normal dispatch. Always reports true once the part count is zero — even with
+// nowhere useful to retreat to — so the caller always skips normal dispatch rather than letting a husk
+// keep trying to do a job it no longer can.
+export function retreatIfDisarmed(creep: Creep, part: BodyPartConstant): boolean {
+  if (creep.getActiveBodyparts(part) > 0) return false;
+  if (creep.hits >= creep.hitsMax && creep.room.name === creep.memory.home) return false; // fully healed home — release back to normal dispatch
   const healer = nearestFriendlyHealer(creep);
   if (healer) {
-    log.debugCreep(creep.name, `retreatIfDisarmed: no rangedAttack parts left — retreating to healer ${healer.id}`);
+    log.debugCreep(creep.name, `retreatIfDisarmed: no ${part} parts left — retreating to healer ${healer.id}`);
     creep.travelTo(healer.pos, { range: 1 });
     return true;
   }
   if (creep.room.name !== creep.memory.home) {
-    log.debugCreep(creep.name, "retreatIfDisarmed: no rangedAttack parts left, no healer in sight — heading home");
-    creep.travelTo(new RoomPosition(25, 25, creep.memory.home), { range: 3 });
+    log.debugCreep(creep.name, `retreatIfDisarmed: no ${part} parts left, no healer in sight — heading home`);
+    // A generic room-centre target with a wide range (the old {range:3} against (25,25)) let Traveler
+    // consider itself "arrived" the moment the creep crossed the border, close enough to satisfy the
+    // range check without ever actually walking off the edge tile — confirmed live: a disarmed defender
+    // sat on the border for exactly one tick before this ran again and re-issued the same near-satisfied
+    // move. homeAnchor (the real bunker anchor, same fallback chain as transport.ts's homeRoomWaypoint)
+    // is a concrete point deep in the room with no range slack, so travelTo has no "close enough" reading
+    // until the creep is actually standing well inside home.
+    creep.travelTo(homeAnchor(creep.memory.home));
+  } else {
+    log.debugCreep(creep.name, `retreatIfDisarmed: no ${part} parts left, home but not fully healed — holding`);
   }
   return true;
 }

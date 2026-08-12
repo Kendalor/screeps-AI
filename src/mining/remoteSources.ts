@@ -67,7 +67,8 @@ export function buildRemoteSources(
         // clears the next time the room is seen with no foreign reservation (see recordRemoteDanger).
         reservedBy: live ? live.reservedBy : remote.reservedBy,
         danger,
-        route: src.route
+        route: src.route,
+        routeBuilt: src.routeBuilt
       });
     }
   }

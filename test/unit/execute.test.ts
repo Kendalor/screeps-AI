@@ -537,20 +537,36 @@ describe("actuator", () => {
       .Memory.colonies.W1N1;
     expect(mem.sources.src1.containerId).toBe("cont1");
   });
+
+  it("calls Game.cpu.generatePixel on generatePixel", () => {
+    const generatePixel = vi.fn(() => OK);
+    stubGame({ generatePixel });
+
+    execute([{ kind: "generatePixel" }]);
+
+    expect(generatePixel).toHaveBeenCalledTimes(1);
+  });
 });
 
 // A live room stub whose finds return the given sources/mineral and controller. find is keyed by the
 // FIND_* constant execute uses.
 function stubScoutRoom(
   name: string,
-  over: { sources?: number; mineral?: string; controller?: unknown } = {}
+  over: { sources?: number; mineral?: string; controller?: unknown; hostileStructures?: unknown[] } = {}
 ): unknown {
   const sources = Array.from({ length: over.sources ?? 2 }, (_, i) => ({ id: `s${i}`, pos: { x: i, y: i } }));
   const minerals = over.mineral ? [{ mineralType: over.mineral }] : [];
   return {
     name,
     controller: over.controller,
-    find: (type: number) => (type === FIND_SOURCES ? sources : type === FIND_MINERALS ? minerals : [])
+    find: (type: number) =>
+      type === FIND_SOURCES
+        ? sources
+        : type === FIND_MINERALS
+          ? minerals
+          : type === FIND_HOSTILE_STRUCTURES
+            ? over.hostileStructures ?? []
+            : []
   };
 }
 
@@ -609,6 +625,58 @@ describe("actuator — scouting", () => {
     const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { owner?: string; hostile?: boolean } }> } })
       .Memory.rooms.W1N2;
     expect(mem.scouted).toMatchObject({ owner: "Invader", hostile: false });
+  });
+
+  it("records a fortified Stronghold core's level and ticksToDeploy before it's deployed", () => {
+    const room = stubScoutRoom("W1N2", {
+      hostileStructures: [{ structureType: STRUCTURE_INVADER_CORE, level: 3, ticksToDeploy: 4000, effects: [] }]
+    });
+    stubGame({ time: 10, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { invaderCore?: unknown } }> } }).Memory.rooms.W1N2;
+    expect(mem.scouted?.invaderCore).toEqual({ level: 3, ticksToDeploy: 4000 });
+  });
+
+  it("records a deployed Stronghold core's collapse timer instead of ticksToDeploy", () => {
+    const room = stubScoutRoom("W1N2", {
+      hostileStructures: [
+        { structureType: STRUCTURE_INVADER_CORE, level: 3, effects: [{ effect: EFFECT_COLLAPSE_TIMER, ticksRemaining: 15000 }] }
+      ]
+    });
+    stubGame({ time: 10, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { invaderCore?: unknown } }> } }).Memory.rooms.W1N2;
+    expect(mem.scouted?.invaderCore).toEqual({ level: 3, collapseTicksRemaining: 15000 });
+  });
+
+  it("records a plain level-0 core with no deploy/collapse timer present", () => {
+    const room = stubScoutRoom("W1N2", {
+      hostileStructures: [{ structureType: STRUCTURE_INVADER_CORE, level: 0, effects: [] }]
+    });
+    stubGame({ time: 10, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { invaderCore?: unknown } }> } }).Memory.rooms.W1N2;
+    expect(mem.scouted?.invaderCore).toEqual({ level: 0 });
+  });
+
+  it("omits invaderCore entirely when no core is present", () => {
+    const room = stubScoutRoom("W1N2");
+    stubGame({ time: 10, rooms: { W1N2: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+    execute([{ kind: "recordScout", room: "W1N2" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { invaderCore?: unknown } }> } }).Memory.rooms.W1N2;
+    expect(mem.scouted?.invaderCore).toBeUndefined();
   });
 
   it("does nothing for a room the scout has no vision of", () => {
@@ -928,6 +996,41 @@ describe("actuator — scouting", () => {
     };
     const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
       expect(options.routeCallback("W1N2")).toBe(Infinity);
+      return [{ room: "W1N9" }, { room: "W1N3" }];
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
+    expect(creep.memory.scoutTarget).toBe("W1N3");
+  });
+
+  // Same reasoning as the lethalAt case above, but for a room whose danger is known the instant it's
+  // seen (a Stronghold's fortified core), not just after a death — see schema.ts's ScoutInfo.invaderCore
+  // doc and behaviors/scout.ts's hasFortifiedInvaderCore.
+  it("prices a room with a live fortified core as impassable via findRoute's routeCallback", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ time: 5000, objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 0, invaderCore: { level: 3 } } } }
+    };
+    const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
+      expect(options.routeCallback("W1N2")).toBe(Infinity);
+      return [{ room: "W1N9" }, { room: "W1N3" }];
+    });
+    (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };
+
+    execute([{ kind: "setScoutTargets", assignments: [{ creep: "scout1" as Id<Creep>, candidates: ["W1N3"] }] }]);
+    expect(creep.memory.scoutTarget).toBe("W1N3");
+  });
+
+  it("does not price a room with only a level-0 core as impassable", () => {
+    const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
+    stubGame({ time: 5000, objects: { scout1: creep } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W1N2: { scouted: { tick: 0, invaderCore: { level: 0 } } } }
+    };
+    const findRoute = vi.fn((_from: string, _dest: string, options: { routeCallback: (r: string) => number }) => {
+      expect(options.routeCallback("W1N2")).toBe(1);
       return [{ room: "W1N9" }, { room: "W1N3" }];
     });
     (globalThis as { Game: { map: unknown } }).Game.map = { findRoute, getRoomStatus: () => ({ status: "normal" }) };

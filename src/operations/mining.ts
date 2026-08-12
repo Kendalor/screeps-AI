@@ -256,8 +256,12 @@ export class Mining extends Operation {
     for (const [source, route] of this.sourceRoutes(colony, planned)) {
       claim({ x: route.structurePos.x, y: route.structurePos.y, type, sourceId: source.id });
       // Claimed source-outward (reversed from path order, which runs anchor->source) so a builder
-      // paves the tiles nearest the source first and works back toward the anchor.
-      const roadTiles = route.path.slice(0, -1); // last tile is the container, first is the anchor
+      // paves the tiles nearest the source first and works back toward the anchor. Exit tiles are
+      // skipped (same reasoning as the remote route below): Screeps refuses a construction site on
+      // one, and an un-droppable claim there reads as permanently unbuilt, stalling gateSourceGroups
+      // forever — confirmed live on W43N15 2026-08-12, where a chokepoint forced the anchor->source
+      // path through (0,34)/(0,33) and every remote room's construction sat frozen behind it.
+      const roadTiles = route.path.slice(0, -1).filter(tile => !isExitTile(tile)); // last tile is the container, first is the anchor
       for (let i = roadTiles.length - 1; i >= 0; i--) {
         const tile = roadTiles[i];
         claim({ x: tile.x, y: tile.y, type: ROAD, sourceId: source.id });
@@ -349,6 +353,28 @@ export class Mining extends Operation {
         source: source.id,
         container: container.id as Id<StructureContainer>
       });
+    }
+
+    // Remote route road built-state: confirms a route tile is actually built (see RemoteSourceMemory.
+    // routeBuilt's doc) using whichever live structure list covers that tile's room — the source's own
+    // room (colony.remoteStructures, same as the container check above) for the route's last leg, or
+    // colony.visibleRoomRoads for a transit room in between (remoteStructures is never populated for a
+    // room the route merely passes through). Only emitted for a tile whose room has vision this tick AND
+    // isn't already confirmed — append-only, one intent per newly-confirmed index.
+    for (const source of colony.remoteSources) {
+      const route = source.route;
+      if (!route || route.length === 0) continue;
+      const alreadyBuilt = source.routeBuilt ?? "";
+      for (let i = 0; i < route.length; i++) {
+        if (alreadyBuilt[i] === "1") continue;
+        const tile = route[i];
+        const roomRoads =
+          tile.room === source.room ? colony.remoteStructures[tile.room]?.filter(s => s.type === ROAD) : colony.visibleRoomRoads[tile.room];
+        if (!roomRoads) continue; // no vision of this tile's room this tick
+        if (!roomRoads.some(r => r.x === tile.x && r.y === tile.y)) continue;
+
+        out.push({ kind: "recordRemoteRouteBuilt", room: colony.name, remoteRoom: source.room, source: source.id, index: i });
+      }
     }
 
     // Remote danger: persist this tick's fresh read (see RemoteMemory.dangerUntil) so it survives losing

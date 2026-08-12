@@ -5,8 +5,11 @@ import type { Colony } from "../colony";
 import { empire, type Empire } from "../empire";
 import { runAttackFlags } from "../empire/attackFlags";
 import { runColonizeFlags } from "../empire/colonizeFlags";
+import { runDefendFlags } from "../empire/defendFlags";
 import { runDrainFlags } from "../empire/drainFlags";
 import { runParadeFlags } from "../empire/paradeFlags";
+import { MARKET_SCAN_INTERVAL, scanMarketNow } from "../empire/market";
+import { planPixels } from "../empire/pixels";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
 import { runRemoteInvaderAttacks } from "../empire/remoteInvaderAttacks";
 import { execute } from "../intents/execute";
@@ -63,8 +66,21 @@ export const SYSTEMS: System[] = [
   // next time it comes around, not silently losing a manually-placed request. AUTO_PICK_INTERVAL is its
   // own internal throttle (this `interval:1` just means "check every tick whether that internal throttle
   // fired"), same relationship `metrics` has to its own once-per-firing cost below.
-  { name: "colonizeTargets", tier: 3, scope: "empire", run: runAutoPickColonyTarget }
+  { name: "colonizeTargets", tier: 3, scope: "empire", run: runAutoPickColonyTarget },
+  // Lowest tier: only fires once the bucket is already at its 10000 cap (see planPixels), which by
+  // definition can't happen on a tick under CPU/bucket pressure — tier 3's own bucket<3000 guard would
+  // always shed this first anyway, so tier 3 just makes that explicit instead of relying on coincidence.
+  { name: "pixels", tier: 3, scope: "empire", run: () => planPixels(Game.cpu.bucket) },
+  // Account-wide (not per-colony) average resource prices, read-only — see empire/market.ts. Not yet
+  // acted on by any trading logic, so this is the lowest-priority luxury; also runnable on demand via
+  // the scanMarket() console command (src/commands/console.ts) without waiting for the interval.
+  { name: "market", tier: 3, scope: "empire", interval: MARKET_SCAN_INTERVAL, run: runMarketScan }
 ];
+
+function runMarketScan(): Intent[] {
+  Memory.market = scanMarketNow();
+  return [];
+}
 
 function runAutoPickColonyTarget(e: Empire): Intent[] {
   autoPickColonyTarget(e);
@@ -116,6 +132,11 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   runGuarded("colonizeFlags", () => runColonizeFlags(world));
   // Flag-triggered attack, same reasoning as colonizeFlags above — Attack isn't a default operation either.
   runGuarded("attackFlags", () => runAttackFlags(world));
+  // Flag-triggered defend: unlike attackFlags, Defense IS a default operation (see operations/index.ts) —
+  // this doesn't attach anything new, it only resolves "defend"/"defend:<room>" flags into
+  // ColonyMemory.defending so the already-running Defense pools a defender onto the target too (see
+  // operations/defense.ts's header).
+  runGuarded("defendFlags", () => runDefendFlags(world));
   // Flag-triggered drain, same reasoning as attackFlags above — Drain isn't a default operation either.
   runGuarded("drainFlags", () => runDrainFlags(world));
   // Flag-triggered parade, same reasoning as attackFlags above — Parade isn't a default operation either.

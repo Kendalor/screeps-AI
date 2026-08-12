@@ -1,5 +1,6 @@
 ﻿// The actuator: calls the game API and logs any non-OK result. Non-game side effects (e.g. recordSourceSpot's Memory write) live here too, so planners stay pure.
 
+import { hasFortifiedInvaderCore } from "../behaviors/scout";
 import { log } from "../lib/log";
 import { recordManual, wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
@@ -256,7 +257,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "setRemotes": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       // A re-selection replaces the whole array, but dangerUntil is a live-derived fact about a room, not
       // part of what pickRemotes decides â€” carry it over so a mid-invasion reselection doesn't heal it.
       const priorDangerUntil = new Map(mem.remotes.map(r => [r.room, r.dangerUntil]));
@@ -274,7 +275,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "recordRemoteDanger": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       const remote = mem.remotes.find(r => r.room === intent.remoteRoom);
       if (remote) {
         remote.dangerUntil = intent.dangerUntil;
@@ -283,7 +284,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "addColonizeTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       // ??= only initializes a brand-new colony record; an existing one from before `colonizing` was
       // added to the schema still lacks the field entirely, so it must be backfilled here too.
       mem.colonizing ??= [];
@@ -291,23 +292,34 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "removeColonizeTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.colonizing = (mem.colonizing ?? []).filter(t => t !== intent.target);
       return OK;
     }
     case "addAttackTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.attacking ??= [];
       if (!mem.attacking.includes(intent.target)) mem.attacking.push(intent.target);
       return OK;
     }
     case "removeAttackTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.attacking = (mem.attacking ?? []).filter(t => t !== intent.target);
       return OK;
     }
+    case "addDefendTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.defending ??= [];
+      if (!mem.defending.includes(intent.target)) mem.defending.push(intent.target);
+      return OK;
+    }
+    case "removeDefendTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.defending = (mem.defending ?? []).filter(t => t !== intent.target);
+      return OK;
+    }
     case "setDrainTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.draining = intent.target;
       return OK;
     }
@@ -317,7 +329,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "setParadeTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.parading = { flag: intent.flag, formation: intent.formation };
       return OK;
     }
@@ -327,7 +339,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "recordDrainSample": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       // Scoped per target room (#40/ADR 0006): a stored history against a different (or no) target is
       // stale and replaced with a fresh one rather than appended to.
       if (!mem.drainHistory || mem.drainHistory.room !== intent.target) {
@@ -337,17 +349,17 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "setDrainAnchor": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.drainAnchor = intent.anchor;
       return OK;
     }
     case "setParadeAnchor": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.paradeAnchor = intent.anchor;
       return OK;
     }
     case "recordSourceSpot": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       const source = (mem.sources[intent.source] ??= {});
       source.spot = intent.spot;
       // Only ever add an id â€” a tick with no vision must not wipe an existing handle.
@@ -356,13 +368,27 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     case "recordRemoteContainer": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       const source = mem.remotes.find(r => r.room === intent.remoteRoom)?.sources.find(s => s.id === intent.source);
       if (source) source.containerId = intent.container; // only ever adds an id, same rule as recordSourceSpot
       return OK;
     }
+    case "recordRemoteRouteBuilt": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      const source = mem.remotes.find(r => r.room === intent.remoteRoom)?.sources.find(s => s.id === intent.source);
+      if (!source || !source.route || intent.index < 0 || intent.index >= source.route.length) return OK;
+      // Pad with "0" up to index if routeBuilt is shorter/absent (route length is stable once cached, but
+      // routeBuilt may not have been written for every earlier index yet) — then flip only this index.
+      const chars = (source.routeBuilt ?? "0".repeat(source.route.length)).padEnd(source.route.length, "0").split("");
+      chars[intent.index] = "1";
+      source.routeBuilt = chars.join("");
+      return OK;
+    }
+    case "generatePixel": {
+      return Game.cpu.generatePixel();
+    }
     case "recordLinkNetwork": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       const links = (mem.links ??= { sources: [] });
       // Only ever adds an id â€” a tick with no fresh detection must not wipe an existing handle.
       if (intent.storage) links.storage = intent.storage;
@@ -401,6 +427,19 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
   const sources = staticKnown ? previous.sources : room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y }));
   const anchorChecked = staticKnown ? previous.anchorChecked ?? false : c !== undefined;
   const anchor = staticKnown ? previous.anchor : resolveScoutedAnchor(room, c, sources);
+  // A STRUCTURE_INVADER_CORE sits independent of any controller (see ScoutInfo.invaderCore's doc), so
+  // it needs its own live find rather than piggybacking on the owner/reservation read above. Re-found
+  // every observation, active or passive, unlike the static sources/mineral/anchor fields above â€” a
+  // core can appear or finish deploying between two passive refreshes of the same room.
+  const invaderCore = room
+    .find(FIND_HOSTILE_STRUCTURES)
+    .find((s): s is StructureInvaderCore => s.structureType === STRUCTURE_INVADER_CORE);
+  // Once deployed, a Stronghold's core carries EFFECT_COLLAPSE_TIMER in its own effects list â€” the real
+  // decay countdown to when it collapses (docs.screeps.com/invaders.html). ticksToDeploy (below) and this
+  // are mutually exclusive in practice: a core either hasn't deployed yet or has, never both.
+  const collapseEffect = invaderCore?.effects?.find(
+    (e): e is NaturalEffect => "ticksRemaining" in e && e.effect === EFFECT_COLLAPSE_TIMER
+  );
   return {
     tick: Game.time,
     type: roomType(room.name),
@@ -409,6 +448,15 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
     ...(owner ? { owner } : {}),
     ...(anchor ? { anchor } : {}),
     ...(anchorChecked ? { anchorChecked } : {}),
+    ...(invaderCore
+      ? {
+          invaderCore: {
+            level: invaderCore.level,
+            ...(invaderCore.ticksToDeploy !== undefined ? { ticksToDeploy: invaderCore.ticksToDeploy } : {}),
+            ...(collapseEffect ? { collapseTicksRemaining: collapseEffect.ticksRemaining } : {})
+          }
+        }
+      : {}),
     // "owned/reserved by another player" (see ScoutInfo.hostile's doc): a full claim we don't hold
     // (c.my false) OR a reservation under a different username than ours â€” a room WE reserved must read
     // as non-hostile, same as a room we own outright. The Invader NPC's own reservation (left by a
@@ -564,6 +612,10 @@ function dangerRouteCost(home: string, roomName: string): number {
   const noPathAt = info?.noPathFrom?.[home];
   if (noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER) return Infinity;
   if (info?.lethalAt !== undefined && Game.time - info.lethalAt < NO_PATH_RETRY_AFTER) return Infinity;
+  // A Stronghold's fortified core (see schema.ts's ScoutInfo.invaderCore doc) is just as much a pure-loss
+  // transit hop as a proven-lethal room — same reasoning as the lethalAt check above, see
+  // hasFortifiedInvaderCore's doc for why a level-0 core doesn't trigger this.
+  if (hasFortifiedInvaderCore(info, Game.time)) return Infinity;
   return isDangerous(info?.owner) ? DANGEROUS_ROOM_HOPS : 1;
 }
 

@@ -249,6 +249,123 @@ Object.assign(globalThis, {
   RESOURCE_GHODIUM_ALKALIDE: "GHO2",
   RESOURCE_CATALYZED_GHODIUM_ALKALIDE: "XGHO2",
 
+  // Mineral reaction recipes + per-unit reaction time, from screeps/common constants — used by
+  // src/empire/market.ts's manufacturingCost() to recursively price compounds.
+  REACTIONS: {
+    H: { O: "OH", L: "LH", K: "KH", U: "UH", Z: "ZH", G: "GH" },
+    O: { H: "OH", L: "LO", K: "KO", U: "UO", Z: "ZO", G: "GO" },
+    Z: { K: "ZK", H: "ZH", O: "ZO" },
+    L: { U: "UL", H: "LH", O: "LO" },
+    K: { Z: "ZK", H: "KH", O: "KO" },
+    G: { H: "GH", O: "GO" },
+    U: { L: "UL", H: "UH", O: "UO" },
+    OH: {
+      UH: "UH2O", UO: "UHO2", ZH: "ZH2O", ZO: "ZHO2",
+      KH: "KH2O", KO: "KHO2", LH: "LH2O", LO: "LHO2", GH: "GH2O", GO: "GHO2"
+    },
+    X: {
+      UH2O: "XUH2O", UHO2: "XUHO2", LH2O: "XLH2O", LHO2: "XLHO2",
+      KH2O: "XKH2O", KHO2: "XKHO2", ZH2O: "XZH2O", ZHO2: "XZHO2", GH2O: "XGH2O", GHO2: "XGHO2"
+    },
+    ZK: { UL: "G" },
+    UL: { ZK: "G" },
+    LH: { OH: "LH2O" },
+    ZH: { OH: "ZH2O" },
+    GH: { OH: "GH2O" },
+    KH: { OH: "KH2O" },
+    UH: { OH: "UH2O" },
+    LO: { OH: "LHO2" },
+    ZO: { OH: "ZHO2" },
+    KO: { OH: "KHO2" },
+    UO: { OH: "UHO2" },
+    GO: { OH: "GHO2" },
+    LH2O: { X: "XLH2O" },
+    KH2O: { X: "XKH2O" },
+    ZH2O: { X: "XZH2O" },
+    UH2O: { X: "XUH2O" },
+    GH2O: { X: "XGH2O" },
+    LHO2: { X: "XLHO2" },
+    UHO2: { X: "XUHO2" },
+    KHO2: { X: "XKHO2" },
+    ZHO2: { X: "XZHO2" },
+    GHO2: { X: "XGHO2" }
+  },
+  REACTION_TIME: {
+    OH: 20, ZK: 5, UL: 5, G: 5,
+    UH: 10, UH2O: 5, XUH2O: 60,
+    UO: 10, UHO2: 5, XUHO2: 60,
+    KH: 10, KH2O: 5, XKH2O: 60,
+    KO: 10, KHO2: 5, XKHO2: 60,
+    LH: 15, LH2O: 10, XLH2O: 65,
+    LO: 10, LHO2: 5, XLHO2: 60,
+    ZH: 20, ZH2O: 40, XZH2O: 160,
+    ZO: 10, ZHO2: 5, XZHO2: 60,
+    GH: 10, GH2O: 15, XGH2O: 80,
+    GO: 10, GHO2: 30, XGHO2: 150
+  },
+
+  // Every Lab.runReaction() call consumes/produces this many units regardless of which reaction, from
+  // screeps/common constants — REACTION_TIME above is the cooldown for one such call, i.e. one batch.
+  LAB_REACTION_AMOUNT: 5,
+
+  // Full factory commodity recipe table, copied verbatim from node_modules/@screeps/common's
+  // lib/constants.js (the pserver's own copy of the real engine data — see docs.screeps.com/resources.html
+  // for the human-readable chain diagrams). Used by src/empire/market.ts's manufacturingCost() for
+  // factory-produced goods, not just lab reactions. Note raw minerals (U/L/Z/K/G/O/H/X) and energy DO
+  // have entries here too — each bar/compound has a reverse "decompress" recipe back to its mineral.
+  COMMODITIES: {
+    utrium_bar: { amount: 100, cooldown: 20, components: { U: 500, energy: 200 } },
+    U: { amount: 500, cooldown: 20, components: { utrium_bar: 100, energy: 200 } },
+    lemergium_bar: { amount: 100, cooldown: 20, components: { L: 500, energy: 200 } },
+    L: { amount: 500, cooldown: 20, components: { lemergium_bar: 100, energy: 200 } },
+    zynthium_bar: { amount: 100, cooldown: 20, components: { Z: 500, energy: 200 } },
+    Z: { amount: 500, cooldown: 20, components: { zynthium_bar: 100, energy: 200 } },
+    keanium_bar: { amount: 100, cooldown: 20, components: { K: 500, energy: 200 } },
+    K: { amount: 500, cooldown: 20, components: { keanium_bar: 100, energy: 200 } },
+    ghodium_melt: { amount: 100, cooldown: 20, components: { G: 500, energy: 200 } },
+    G: { amount: 500, cooldown: 20, components: { ghodium_melt: 100, energy: 200 } },
+    oxidant: { amount: 100, cooldown: 20, components: { O: 500, energy: 200 } },
+    O: { amount: 500, cooldown: 20, components: { oxidant: 100, energy: 200 } },
+    reductant: { amount: 100, cooldown: 20, components: { H: 500, energy: 200 } },
+    H: { amount: 500, cooldown: 20, components: { reductant: 100, energy: 200 } },
+    purifier: { amount: 100, cooldown: 20, components: { X: 500, energy: 200 } },
+    X: { amount: 500, cooldown: 20, components: { purifier: 100, energy: 200 } },
+    battery: { amount: 50, cooldown: 10, components: { energy: 600 } },
+    energy: { amount: 500, cooldown: 10, components: { battery: 50 } },
+
+    composite: { level: 1, amount: 20, cooldown: 50, components: { utrium_bar: 20, zynthium_bar: 20, energy: 20 } },
+    crystal: { level: 2, amount: 6, cooldown: 21, components: { lemergium_bar: 6, keanium_bar: 6, purifier: 6, energy: 45 } },
+    liquid: { level: 3, amount: 12, cooldown: 60, components: { oxidant: 12, reductant: 12, ghodium_melt: 12, energy: 90 } },
+
+    wire: { amount: 20, cooldown: 8, components: { utrium_bar: 20, silicon: 100, energy: 40 } },
+    switch: { level: 1, amount: 5, cooldown: 70, components: { wire: 40, oxidant: 95, utrium_bar: 35, energy: 20 } },
+    transistor: { level: 2, amount: 1, cooldown: 59, components: { switch: 4, wire: 15, reductant: 85, energy: 8 } },
+    microchip: { level: 3, amount: 1, cooldown: 250, components: { transistor: 2, composite: 50, wire: 117, purifier: 25, energy: 16 } },
+    circuit: { level: 4, amount: 1, cooldown: 800, components: { microchip: 1, transistor: 5, switch: 4, oxidant: 115, energy: 32 } },
+    device: { level: 5, amount: 1, cooldown: 600, components: { circuit: 1, microchip: 3, crystal: 110, ghodium_melt: 150, energy: 64 } },
+
+    cell: { amount: 20, cooldown: 8, components: { lemergium_bar: 20, biomass: 100, energy: 40 } },
+    phlegm: { level: 1, amount: 2, cooldown: 35, components: { cell: 20, oxidant: 36, lemergium_bar: 16, energy: 8 } },
+    tissue: { level: 2, amount: 2, cooldown: 164, components: { phlegm: 10, cell: 10, reductant: 110, energy: 16 } },
+    muscle: { level: 3, amount: 1, cooldown: 250, components: { tissue: 3, phlegm: 3, zynthium_bar: 50, reductant: 50, energy: 16 } },
+    organoid: { level: 4, amount: 1, cooldown: 800, components: { muscle: 1, tissue: 5, purifier: 208, oxidant: 256, energy: 32 } },
+    organism: { level: 5, amount: 1, cooldown: 600, components: { organoid: 1, liquid: 150, tissue: 6, cell: 310, energy: 64 } },
+
+    alloy: { amount: 20, cooldown: 8, components: { zynthium_bar: 20, metal: 100, energy: 40 } },
+    tube: { level: 1, amount: 2, cooldown: 45, components: { alloy: 40, zynthium_bar: 16, energy: 8 } },
+    fixtures: { level: 2, amount: 1, cooldown: 115, components: { composite: 20, alloy: 41, oxidant: 161, energy: 8 } },
+    frame: { level: 3, amount: 1, cooldown: 125, components: { fixtures: 2, tube: 4, reductant: 330, zynthium_bar: 31, energy: 16 } },
+    hydraulics: { level: 4, amount: 1, cooldown: 800, components: { liquid: 150, fixtures: 3, tube: 15, purifier: 208, energy: 32 } },
+    machine: { level: 5, amount: 1, cooldown: 600, components: { hydraulics: 1, frame: 2, fixtures: 3, tube: 12, energy: 64 } },
+
+    condensate: { amount: 20, cooldown: 8, components: { keanium_bar: 20, mist: 100, energy: 40 } },
+    concentrate: { level: 1, amount: 3, cooldown: 41, components: { condensate: 30, keanium_bar: 15, reductant: 54, energy: 12 } },
+    extract: { level: 2, amount: 2, cooldown: 128, components: { concentrate: 10, condensate: 30, oxidant: 60, energy: 16 } },
+    spirit: { level: 3, amount: 1, cooldown: 200, components: { extract: 2, concentrate: 6, reductant: 90, purifier: 20, energy: 16 } },
+    emanation: { level: 4, amount: 1, cooldown: 800, components: { spirit: 2, extract: 2, concentrate: 3, keanium_bar: 112, energy: 32 } },
+    essence: { level: 5, amount: 1, cooldown: 600, components: { emanation: 1, spirit: 3, crystal: 110, ghodium_melt: 150, energy: 64 } }
+  },
+
   FIND_CREEPS: 101,
   FIND_MY_CREEPS: 102,
   FIND_HOSTILE_CREEPS: 103,
@@ -258,8 +375,10 @@ Object.assign(globalThis, {
   FIND_DROPPED_RESOURCES: 106,
   FIND_STRUCTURES: 107,
   FIND_MY_STRUCTURES: 108,
+  FIND_HOSTILE_STRUCTURES: 109,
   FIND_CONSTRUCTION_SITES: 111,
   FIND_MY_CONSTRUCTION_SITES: 114,
+  FIND_HOSTILE_CONSTRUCTION_SITES: 115,
   FIND_TOMBSTONES: 118,
   FIND_RUINS: 123,
 
@@ -290,6 +409,9 @@ Object.assign(globalThis, {
   STRUCTURE_CONTROLLER: "controller",
   STRUCTURE_TERMINAL: "terminal",
   STRUCTURE_INVADER_CORE: "invaderCore",
+  STRUCTURE_KEEPER_LAIR: "keeperLair",
+
+  EFFECT_COLLAPSE_TIMER: 1002,
 
   // Real engine's OBSTACLE_OBJECT_TYPES (@screeps/common constants) — structureType/type values a creep
   // can never walk onto. Kept in sync by hand; snapshot/colony.ts's drainOccupancyFor is the one production
@@ -328,6 +450,9 @@ Object.assign(globalThis, {
   SOURCE_ENERGY_NEUTRAL_CAPACITY: 1500,
   SOURCE_ENERGY_KEEPER_CAPACITY: 4000,
   ENERGY_REGEN_TIME: 300, // so reserved => 3000/300 = 10/tick, unreserved => 5/tick, keeper => 4000/300 ~= 13.33/tick
+
+  // Bucket cost of one pixel via Game.cpu.generatePixel(), from screeps/common constants.
+  PIXEL_CPU_COST: 10000,
 
   // A CARRY part holds this much, from screeps/common constants — sizes the haul body.
   CARRY_CAPACITY: 50,

@@ -77,6 +77,19 @@ describe("Colony: colonize target energy capacity threading", () => {
     const settlerRequests = colonize!.desiredCreeps(sponsor).filter(r => r.memory.role === "settler");
     expect(settlerRequests).toHaveLength(1);
   });
+
+  it("stops requesting settlers once the target's own spawn shows up in its snapshot, even well below the self-sufficient cap", () => {
+    const sponsor = colonySnap({ name: "W1N1", energyCapacity: 650, colonizing: ["W5N5"] });
+    const target = colonySnap({
+      name: "W5N5",
+      energyCapacity: 300, // well below the 550 self-sufficient cap
+      spawns: [{ id: "spawn1" as Id<StructureSpawn>, busy: false }]
+    });
+    const c = colony(sponsor, [sponsor, target]);
+    const colonize = c.operations.find(op => op.kind === "colonize");
+    const settlerRequests = colonize!.desiredCreeps(sponsor).filter(r => r.memory.role === "settler");
+    expect(settlerRequests).toEqual([]);
+  });
 });
 
 // Colony's constructor also derives every OTHER colony's currently-selected remote source ids from

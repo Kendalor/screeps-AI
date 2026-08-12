@@ -40,6 +40,27 @@ export function needsPassiveRecording(info: ScoutInfo | undefined, now: number):
   return now - info.tick >= PASSIVE_STALE_AFTER;
 }
 
+// Whether a room's last-recorded Stronghold core (ScoutInfo.invaderCore) is live right now: deployed
+// (either already as of the last observation, or projected to have finished deploying by `now` from its
+// own ticksToDeploy countdown) AND not yet projected to have collapsed (from its own
+// collapseTicksRemaining countdown, present once deployed — see schema.ts's doc). Without projecting the
+// collapse side forward too, a room seen with a live core would stay marked fortified forever: once
+// ticksToDeploy is gone (deployed), this used to unconditionally return true with no way back, poisoning
+// the room's record for good even long after the real stronghold collapsed and a scout could safely walk
+// back in. A level-0 (plain remote-mining-room) core is never fortified — see remoteInvaderAttacks.ts's
+// NON_FORTIFIED_CORE_LEVEL — and is deliberately excluded: it reserves a controller but poses no combat
+// threat, so it must not gate scouting/routing the way a Stronghold's ramparted defenders do. Shared by
+// needsScouting below and execute.ts's/interpreter.ts's route-cost pricing so all three agree on "is this
+// room's Stronghold live."
+export function hasFortifiedInvaderCore(info: ScoutInfo | undefined, now: number): boolean {
+  const core = info?.invaderCore;
+  if (!core || core.level <= 0) return false;
+  const tick = info!.tick;
+  if (core.ticksToDeploy !== undefined) return tick === undefined || now - tick >= core.ticksToDeploy;
+  if (core.collapseTicksRemaining !== undefined) return tick === undefined || now - tick < core.collapseTicksRemaining;
+  return true; // deployed (or observed before either field existed) with no known collapse time yet
+}
+
 /** `now` is passed explicitly (the snapshot's tick) so this stays pure and testable without Game.time. */
 export function needsScouting(candidate: ScoutCandidate, now = 0): boolean {
   const info = candidate.info;
@@ -49,8 +70,22 @@ export function needsScouting(candidate: ScoutCandidate, now = 0): boolean {
   // reflect the visit, which would otherwise leave this permanently "never seen" and re-offered forever.
   // Backoff, not a forever-cache, since a tower can be destroyed later (mirrors noPathFrom's retry window).
   if (info?.lethalAt !== undefined && now - info.lethalAt < NO_PATH_RETRY_AFTER) return false;
+  // A Stronghold's fortified core is just as lethal to an unarmed scout as a towered room, and unlike
+  // lethalAt there's no need to wait for a death to learn it — the core's own level/deploy timer already
+  // says so. No backoff/retry window: a live Stronghold doesn't spontaneously become safe again the way a
+  // reputation-hostile owner might leave — only a later re-survey (see the tightened interval below) can
+  // ever revise this, by observing the core gone/collapsed.
+  if (hasFortifiedInvaderCore(info, now)) return false;
   if (!info || info.tick === undefined) return true; // never physically seen
-  const interval = info.owner === INVADER_USERNAME ? INVADER_OWNED_STALE_AFTER : staleAfter(candidate.type);
+  // A room last seen with a live (or projected-still-live-when-recorded) fortified core gets the same
+  // tightened re-survey cadence as an Invader-owned room, for the identical reason INVADER_OWNED_STALE_AFTER
+  // exists (see its own doc): the room's actual state (deployed -> collapsed) can outpace a normal room's
+  // 100k/keeper room's 200k-tick interval by orders of magnitude, and hasFortifiedInvaderCore's own collapse
+  // projection above is only ever as good as this record's last observation. Without this, a room whose
+  // projected collapse has already passed (hasFortifiedInvaderCore now says false) would still wait out the
+  // full keeper-room interval before a scout is ever sent back to confirm and refresh the stale record.
+  const invaderRelated = info.owner === INVADER_USERNAME || info.invaderCore !== undefined;
+  const interval = invaderRelated ? INVADER_OWNED_STALE_AFTER : staleAfter(candidate.type);
   return now - info.tick >= interval;
 }
 

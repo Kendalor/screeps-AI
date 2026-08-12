@@ -3,7 +3,7 @@
 // Game.map.findRoute (execute.ts's job, covered in execute.test.ts); this pure pool is unit-tested here.
 
 import { describe, expect, it } from "vitest";
-import { needsPassiveRecording, needsScouting, scoutCandidatePool, staleAfter } from "../../src/behaviors/scout";
+import { hasFortifiedInvaderCore, needsPassiveRecording, needsScouting, scoutCandidatePool, staleAfter } from "../../src/behaviors/scout";
 import { scouted, scoutTarget } from "../fixtures";
 
 describe("needsScouting", () => {
@@ -40,6 +40,82 @@ describe("needsScouting", () => {
   it("still refuses a lethal room even if tick looks fresh (e.g. recorded the instant it died)", () => {
     const target = scoutTarget("W1N2", scouted({ tick: 999, lethalAt: 1000 }));
     expect(needsScouting(target, 1000)).toBe(false);
+  });
+
+  // A Stronghold's fortified core is just as lethal to an unarmed scout as a towered room, and unlike
+  // lethalAt it's known the instant the core is seen — no need to wait for a death (see schema.ts's
+  // ScoutInfo.invaderCore doc).
+  it("refuses a room with an already-deployed fortified core", () => {
+    const target = scoutTarget("W1N2", scouted({ tick: 0, invaderCore: { level: 3 } }));
+    expect(needsScouting(target, 100)).toBe(false);
+  });
+
+  it("refuses a room whose fortified core has finished deploying by now", () => {
+    const target = scoutTarget("W1N2", scouted({ tick: 0, invaderCore: { level: 1, ticksToDeploy: 500 } }));
+    expect(needsScouting(target, 500)).toBe(false);
+  });
+
+  // needsScouting still says "not due yet" here (the room isn't otherwise stale — see staleAfter), but
+  // the point of this case is that it's not the FORTIFIED-CORE check refusing it; hasFortifiedInvaderCore
+  // itself (tested directly below) is what actually distinguishes "not deployed yet" from "live."
+  it("does not treat a not-yet-deployed core as fortified", () => {
+    const info = scouted({ tick: 0, invaderCore: { level: 1, ticksToDeploy: 500 } });
+    expect(hasFortifiedInvaderCore(info, 100)).toBe(false);
+  });
+
+  // A level-0 core is a plain remote-mining-room core (see remoteInvaderAttacks.ts's
+  // NON_FORTIFIED_CORE_LEVEL) — no combat threat, so it must not gate scouting the way a Stronghold does.
+  it("does not refuse a room with only a level-0 (non-fortified) core", () => {
+    const target = scoutTarget("W1N2", scouted({ tick: 0, invaderCore: { level: 0 } }));
+    expect(needsScouting(target, staleAfter("normal"))).toBe(true);
+  });
+
+  // Once a fortified core's projected collapse has passed, needsScouting must re-offer the room promptly
+  // (the tightened Invader-related interval), not wait out a keeper room's full 200k-tick staleAfter —
+  // otherwise a room that's actually safe again stays wrongly avoided for a huge stretch of the game.
+  it("re-offers a room soon after its fortified core's projected collapse, on the tightened interval", () => {
+    const target = scoutTarget(
+      "W44N14", // keeper-band room name, so staleAfter("keeper") would be 200000 if not tightened
+      scouted({ type: "keeper", tick: 0, invaderCore: { level: 3, collapseTicksRemaining: 1000 } })
+    );
+    // Collapses at tick 1000; the tightened interval (INVADER_OWNED_STALE_AFTER) counts from tick 0.
+    expect(needsScouting(target, staleAfter("highway"))).toBe(true); // stale by the tightened interval
+    expect(needsScouting(target, staleAfter("highway") - 1)).toBe(false); // one tick short of either gate
+  });
+});
+
+describe("hasFortifiedInvaderCore", () => {
+  it("is false when there's no recorded core", () => {
+    expect(hasFortifiedInvaderCore(scouted(), 100)).toBe(false);
+  });
+
+  it("is false for a level-0 core", () => {
+    expect(hasFortifiedInvaderCore(scouted({ invaderCore: { level: 0 } }), 100)).toBe(false);
+  });
+
+  it("is true for a fortified core with no ticksToDeploy (already deployed)", () => {
+    expect(hasFortifiedInvaderCore(scouted({ invaderCore: { level: 2 } }), 100)).toBe(true);
+  });
+
+  it("projects ticksToDeploy forward from the observation tick", () => {
+    const info = scouted({ tick: 1000, invaderCore: { level: 2, ticksToDeploy: 100 } });
+    expect(hasFortifiedInvaderCore(info, 1050)).toBe(false); // not deployed yet
+    expect(hasFortifiedInvaderCore(info, 1100)).toBe(true); // deployed by now
+  });
+
+  // Without projecting collapseTicksRemaining forward too, a deployed core would read as fortified
+  // forever with no way back — even long after the real stronghold collapsed live.
+  it("projects collapseTicksRemaining forward from the observation tick", () => {
+    const info = scouted({ tick: 1000, invaderCore: { level: 2, collapseTicksRemaining: 500 } });
+    expect(hasFortifiedInvaderCore(info, 1499)).toBe(true); // not collapsed yet
+    expect(hasFortifiedInvaderCore(info, 1500)).toBe(false); // collapsed by now
+  });
+
+  it("stays fortified forever when deployed but the collapse timer was never observed", () => {
+    // A core observed as deployed before this field existed, or an edge case where the collapse effect
+    // wasn't present in the find results — no way to know when it's safe, so this errs toward "avoid".
+    const info = scouted({ tick: 1000, invaderCore: { level: 2 } });
+    expect(hasFortifiedInvaderCore(info, 999999)).toBe(true);
   });
 });
 

@@ -23,6 +23,16 @@ export abstract class Role {
   // remote/hostile rooms want this — a defender/attacker must never set it, or it'd flee the very hostile
   // it's meant to engage.
   static readonly flee: boolean = false;
+  // Opt in to retreating once combat damage has stripped every part of this kind (behaviors/interpreter.ts's
+  // retreatIfDisarmed): a role built around one specific body part (RANGED_ATTACK for Defender, ATTACK for
+  // Attacker, WORK for Builder/Repair/Miner) can no longer do its job at all once that part count hits
+  // zero — hits reduce a part's getActiveBodyparts count to 0 well before the creep itself dies, so a body
+  // can easily outlive its own usefulness. Retreats toward a friendly HEAL creep if one is in the room,
+  // else walks home and PARKS there — the home room's tower heals any damaged friendly creep standing in
+  // it, so "go home and wait" passively restores hits with no squad healer required. Undefined (the
+  // default) opts out entirely: only roles with one clear defining part want this — a hauler's CARRY
+  // degrading doesn't make it useless the same all-or-nothing way, for instance.
+  static readonly retreatPart?: BodyPartConstant;
   static body(_energy: number, _ctx: BodyContext): BodyPartConstant[] {
     return [];
   }

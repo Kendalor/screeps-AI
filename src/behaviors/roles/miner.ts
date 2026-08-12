@@ -57,6 +57,8 @@ export class Miner extends Role {
   // Unarmed and often alone in a remote room — retreats from an armed hostile rather than mining on
   // (and dying) obliviously. See Role.flee.
   static override readonly flee = true;
+  // Once every WORK part is destroyed this body can't harvest at all — see Role.retreatPart.
+  static override readonly retreatPart = WORK;
   static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
     return minerBody(energy, ctx);
   }

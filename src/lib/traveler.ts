@@ -37,6 +37,14 @@ declare global {
         returnData?: TravelToReturnData;
         restrictDistance?: number;
         useFindRoute?: boolean;
+        // Checked every tick against the creep's CURRENT room/position (not just at path-computation time
+        // or room entry) — return true if the cached path should be discarded and recomputed this tick.
+        // Exists for danger that moves after the path was cached (a source keeper's guardian patrols away
+        // from its lair), which neither the room-entry blindPath repath nor the stuck-counter repath below
+        // can catch: the guardian's ranged attack doesn't stop the creep from moving, so stuckCount never
+        // trips, and a route computed via findRoute (useFindRoute — see avoidDanger's caller) is exempt
+        // from the blindPath trigger entirely regardless of whether the danger was visible when planned.
+        dangerCheck?: (room: Room, pos: RoomPosition) => boolean;
         maxOps?: number;
         movingTarget?: boolean;
         freshMatrix?: boolean;
@@ -144,6 +152,16 @@ export class Traveler {
         if (state.pendingRoomRepath && travelData.path && !this.isExit(creep.pos)) {
             delete travelData.path;
             state.pendingRoomRepath = false;
+        }
+
+        // Live danger check, independent of blindPath/stuckCount above — see dangerCheck's own doc for why
+        // those two can't substitute for it. Runs every tick a cached path exists, not just on room entry:
+        // a patrol can wander into an already-cached route well after the creep entered the room.
+        if (options.dangerCheck && travelData.path) {
+            const room = Game.rooms[creep.pos.roomName];
+            if (room && options.dangerCheck(room, creep.pos)) {
+                delete travelData.path;
+            }
         }
 
         if (this.isStuck(creep, state)) {

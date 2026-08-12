@@ -123,30 +123,44 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
     // per-tick runtime state — the same creep runs its own step table on a tick it isn't squadded (before
     // joining, after dissolution, or while a spawned replacement is still walking in — see Drain.squadState).
     if (squadMembers.has(creep.id)) continue;
-    // Diverted before the step-table dispatch: "transport" and "supply"'s ROLES entries deliberately
-    // have empty steps (assignment comes from planLogistics via memory.logistics, not a static step
-    // table — supply is planned through its own restricted provider/consumer view, see
-    // logistics/graph.ts's supplyProviders/supplyConsumers), so falling into runOne would hit its
-    // `def.steps.length === 0` early-return and do nothing.
-    if (creep.memory.role === "transport" || creep.memory.role === "supply") {
-      // Neither role runs through runOne's step table, so its flee check (gated on Role.flee) never
-      // sees them — checked here instead, ahead of the same diversion, so a hauler running the
-      // logistics allocator's own task retreats from an armed hostile exactly like a step-table hauler.
-      if (fleeThreat(creep)) continue;
-      runTransport(creep);
-      continue;
+    // Isolated per creep: an exception dispatching ONE creep must not stop every other creep still left
+    // in this loop from acting that tick — confirmed live (2026-08) a foreign creep with no memory
+    // (Invader NPC) reaching roadAvoidance's moverNearby threw and froze the rest of Game.creeps for the
+    // tick, since the only guard used to be the one system-level runGuarded("creeps", ...) in kernel/tick.ts.
+    try {
+      dispatchCreep(creep);
+    } catch (e) {
+      log.error(`creep ${name} threw: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
     }
-    // Same empty-steps diversion as transport above: assignment is threshold-based inside runSteward
-    // itself, not a static step table.
-    if (creep.memory.role === "steward") {
-      runSteward(creep);
-      continue;
-    }
-    runOne(creep);
   }
 
   return runSquads(squads);
 }, "creeps:runCreepBehaviors");
+
+// One creep's behavior for the tick — split out of the loop above so it can be wrapped in its own
+// try/catch without duplicating the dispatch logic.
+function dispatchCreep(creep: Creep): void {
+  // Diverted before the step-table dispatch: "transport" and "supply"'s ROLES entries deliberately
+  // have empty steps (assignment comes from planLogistics via memory.logistics, not a static step
+  // table — supply is planned through its own restricted provider/consumer view, see
+  // logistics/graph.ts's supplyProviders/supplyConsumers), so falling into runOne would hit its
+  // `def.steps.length === 0` early-return and do nothing.
+  if (creep.memory.role === "transport" || creep.memory.role === "supply") {
+    // Neither role runs through runOne's step table, so its flee check (gated on Role.flee) never
+    // sees them — checked here instead, ahead of the same diversion, so a hauler running the
+    // logistics allocator's own task retreats from an armed hostile exactly like a step-table hauler.
+    if (fleeThreat(creep)) return;
+    runTransport(creep);
+    return;
+  }
+  // Same empty-steps diversion as transport above: assignment is threshold-based inside runSteward
+  // itself, not a static step table.
+  if (creep.memory.role === "steward") {
+    runSteward(creep);
+    return;
+  }
+  runOne(creep);
+}
 
 // The squad pass (ADR 0007): iterate SQUADS (not creeps), compute each squad's shared plan once, and
 // dispatch every current member. Movement (planSquadMove) and action (planSquadActions) are computed
@@ -264,11 +278,11 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
   // step in the table uniformly, not just moveToRoom's between-room travel.
   if (def.flee && fleeThreat(creep)) return;
 
-  // A defender that has lost every RANGED_ATTACK part to damage can't fight back at all — pull it out
-  // toward a healer (or home) instead of running attackStep, which would just keep it standing in the
-  // fight for zero return. Checked only for "defender" (not gated via a Role flag like Role.flee) since
-  // this is about a body that's been shot down to a husk, not a role that was never meant to fight.
-  if (creep.memory.role === "defender" && retreatIfDisarmed(creep)) return;
+  // A role built around one specific part (Role.retreatPart — Defender's RANGED_ATTACK, Attacker's
+  // ATTACK) that's been fully stripped by combat damage can no longer do its job at all: pull it out
+  // toward a healer (or home, where it then sits until the tower heals it back to full — see
+  // retreatIfDisarmed's own doc) instead of running its normal steps for zero return.
+  if (def.retreatPart && retreatIfDisarmed(creep, def.retreatPart)) return;
 
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us

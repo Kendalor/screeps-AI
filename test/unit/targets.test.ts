@@ -505,6 +505,77 @@ describe("resolveTarget prefer ordering", () => {
   });
 });
 
+// A creep with real combat stats (body + hits), unlike collectorCreep/fakeHostile above which have
+// neither — the acting side of the wouldLoseTo comparison in find:"hostile"'s pool.
+function fighterCreep(id: string, body: BodyPartConstant[], hits: number, candidates: object[]): Creep {
+  return {
+    id,
+    pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+    room: { find: () => candidates },
+    hits,
+    getActiveBodyparts: (part: BodyPartConstant) => body.filter(p => p === part).length
+  } as unknown as Creep;
+}
+
+// A hostile with real combat stats, so it can appear on either side of the comparison (the fakeHostile
+// helper above never sets top-level hits, only per-part hits within `body`).
+function fakeHostileWithHits(id: string, body: BodyPartConstant[], hits: number): object {
+  return {
+    id,
+    pos: { x: 5, y: 5 },
+    body: body.map(type => ({ type, hits: 100 })),
+    my: false,
+    hits,
+    getActiveBodyparts: (part: BodyPartConstant) => body.filter(p => p === part).length
+  };
+}
+
+// find:"hostile" must never hand a fighter a target it would predictably lose to — the concrete case
+// this exists for is a Source Keeper lair guardian outgunning a starter Defender body (see
+// behaviors/roles/defender.ts), but the gate itself is a plain dps/effectiveHp comparison, not an
+// owner check.
+describe("resolveTarget hostile pool excludes fights the creep would lose", () => {
+  it("excludes a hostile that would kill the creep before the creep kills it", () => {
+    // Guardian: 100 dps (10 ATTACK), 2000 hits vs. a starter defender: 10 dps (1 RANGED_ATTACK), 50 hits.
+    // Guardian kills us in 0.5 ticks; we'd need 200 ticks to kill it — an easy loss.
+    const guardian = fakeHostileWithHits("guardian", Array(10).fill(ATTACK), 2000);
+    stubGame({ objects: { guardian } });
+
+    const got = resolveTarget(fighterCreep("defender", [RANGED_ATTACK], 50, [guardian]), { find: "hostile" });
+
+    expect(got).toBeNull();
+  });
+
+  it("still offers a hostile the creep can beat", () => {
+    // Lone invader: 30 dps (1 ATTACK), 100 hits vs. a real defender: 40 dps (4 RANGED_ATTACK), 250 hits.
+    // We kill it in 2.5 ticks; it needs ~8.3 ticks to kill us — a winnable fight.
+    const invader = fakeHostileWithHits("invader", [ATTACK], 100);
+    stubGame({ objects: { invader } });
+
+    const got = resolveTarget(fighterCreep("defender", Array(4).fill(RANGED_ATTACK), 250, [invader]), { find: "hostile" });
+
+    expect((got as { id: string }).id).toBe("invader");
+  });
+
+  it("still offers an unarmed hostile (0 dps) even to an unarmed creep, rather than excluding everything", () => {
+    const scout = fakeHostileWithHits("scout", [], 50);
+    stubGame({ objects: { scout } });
+
+    const got = resolveTarget(fighterCreep("defender", [], 50, [scout]), { find: "hostile" });
+
+    expect((got as { id: string }).id).toBe("scout");
+  });
+
+  it("is a no-op for a creep with no combat stats at all (e.g. a plain economy-role fixture)", () => {
+    const attacker = fakeHostile("attacker", [ATTACK]);
+    stubGame({ objects: { attacker } });
+
+    const got = resolveTarget(collectorCreep("me", 200, [attacker]), { find: "hostile" });
+
+    expect((got as { id: string }).id).toBe("attacker");
+  });
+});
+
 describe("resolveTarget pile claim limits", () => {
   it("locks a small pile to a single claimant", () => {
     const small = fakeDrop("small", 80); // under the 100-energy reference capacity -> cap of 1
@@ -995,6 +1066,42 @@ describe("resolveTarget structure type lists", () => {
   });
 });
 
+// find:"hostileStructure" backs an Attacker's creep.attack() step (see behaviors/roles/attacker.ts) —
+// FIND_HOSTILE_STRUCTURES includes a hostile-owned/reserved room's controller, but creep.attack() rejects
+// a StructureController outright (only attackController, which needs a CLAIM part this body never
+// carries, touches one). Confirmed live: an attacker locked onto a hostile room's controller and sat
+// there doing nothing forever.
+describe("resolveTarget hostileStructure excludes the controller", () => {
+  it("never offers a hostile-owned controller from a fresh search", () => {
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    const controller = { id: "ctrl1", pos: { x: 10, y: 10 }, structureType: STRUCTURE_CONTROLLER, my: false };
+    stubGame({ objects: { tower1: tower, ctrl1: controller } });
+
+    const got = resolveTarget(creepFinding([controller, tower]), { find: "hostileStructure" });
+
+    expect((got as { id: string }).id).toBe("tower1");
+  });
+
+  it("drops a stale lock on a hostile controller instead of re-validating it", () => {
+    const controller = { id: "ctrl1", pos: { x: 10, y: 10 }, structureType: STRUCTURE_CONTROLLER, my: false };
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    stubGame({ objects: { ctrl1: controller, tower1: tower } });
+
+    const got = resolveTarget(creepFinding([tower]), { find: "hostileStructure" }, "ctrl1" as Id<_HasId>);
+
+    expect((got as { id: string }).id).toBe("tower1");
+  });
+
+  it("still resolves a genuine hostile structure (e.g. a tower) as a valid lock", () => {
+    const tower = { id: "tower1", pos: { x: 10, y: 10 }, structureType: STRUCTURE_TOWER, my: false };
+    stubGame({ objects: { tower1: tower } });
+
+    const got = resolveTarget(creepWithNoSearch(), { find: "hostileStructure" }, "tower1" as Id<_HasId>);
+
+    expect(got).toBe(tower);
+  });
+});
+
 // requireReachableAlive excludes a pickup a low-ticksToLive creep would die walking to, using
 // getRangeTo as a cheap lower-bound on travel time (safe for a 1-MOVE-per-CARRY hauler, which never
 // fatigues, so its real travel time is never less than range).
@@ -1170,5 +1277,130 @@ describe("resolveTarget grouped (any) specs", () => {
     const got = resolveTarget(groupCreep({ [FIND_STRUCTURES]: [spawn] }, spawn), energySinkGroup());
 
     expect((got as { id: string }).id).toBe("spawn1");
+  });
+});
+
+// alsoAdjacentRooms: a builder stranded in a Source Keeper room (no safe container/drop exists there
+// until the road it's building gets built) falls back to a neighboring room's energy rather than starving
+// or self-harvesting a keeper-guarded source. Local candidates must always win when any exist; the
+// neighbor pool is a fallback only, gated on live vision (Game.rooms) into the bordering room.
+describe("resolveTarget alsoAdjacentRooms fallback", () => {
+  // A room whose FIND_* results are keyed by constant, same shape as roomWithKinds above, plus a name for
+  // describeExits/Game.rooms lookups.
+  function fakeRoom(name: string, byKind: Partial<Record<FindConstant, object[]>>): { name: string; find: (k: FindConstant) => object[] } {
+    return { name, find: (k: FindConstant) => byKind[k] ?? [] };
+  }
+
+  function creepIn(room: { name: string; find: (k: FindConstant) => object[] }, nearest?: object): Creep {
+    return {
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => (nearest && list.includes(nearest) ? nearest : list[0] ?? null) },
+      room,
+      store: { getFreeCapacity: () => 200 },
+      memory: { task: { step: 0 } }
+    } as unknown as Creep;
+  }
+
+  it("never searches a neighbor room when the local pool already has candidates", () => {
+    const localPile = fakeDrop("local", 500);
+    const home = fakeRoom("W1N1", { [FIND_DROPPED_RESOURCES]: [localPile] });
+    stubGame({
+      objects: { local: localPile },
+      rooms: {
+        W1N1: home,
+        // If the local-empty check were wrong, this would be searched and its pile picked instead.
+        W2N1: fakeRoom("W2N1", {
+          [FIND_DROPPED_RESOURCES]: [{ id: "neighbor", pos: { x: 5, y: 5 }, amount: 500 }]
+        })
+      },
+      describeExits: () => ({ "1": "W2N1" })
+    });
+
+    const got = resolveTarget(creepIn(home), { find: "dropped", alsoAdjacentRooms: true });
+
+    expect((got as { id: string }).id).toBe("local");
+  });
+
+  it("falls back to a bordering room's dropped pile when the local room has none", () => {
+    const empty = fakeRoom("W1N1", {});
+    const neighborPile = { id: "neighbor", pos: { x: 5, y: 5 }, amount: 500 };
+    stubGame({
+      objects: { neighbor: neighborPile },
+      rooms: { W1N1: empty, W2N1: fakeRoom("W2N1", { [FIND_DROPPED_RESOURCES]: [neighborPile] }) },
+      describeExits: (name: string) => (name === "W1N1" ? { "1": "W2N1" } : undefined)
+    });
+
+    const got = resolveTarget(creepIn(empty), { find: "dropped", alsoAdjacentRooms: true });
+
+    expect((got as { id: string }).id).toBe("neighbor");
+  });
+
+  it("without the flag, an empty local room never reaches into a neighbor", () => {
+    const empty = fakeRoom("W1N1", {});
+    const neighborPile = { id: "neighbor", pos: { x: 5, y: 5 }, amount: 500 };
+    stubGame({
+      objects: { neighbor: neighborPile },
+      rooms: { W1N1: empty, W2N1: fakeRoom("W2N1", { [FIND_DROPPED_RESOURCES]: [neighborPile] }) },
+      describeExits: (name: string) => (name === "W1N1" ? { "1": "W2N1" } : undefined)
+    });
+
+    const got = resolveTarget(creepIn(empty), { find: "dropped" });
+
+    expect(got).toBeNull();
+  });
+
+  it("skips a bordering room with no vision (not in Game.rooms) rather than throwing", () => {
+    const empty = fakeRoom("W1N1", {});
+    stubGame({
+      objects: {},
+      rooms: { W1N1: empty }, // W2N1 exists per describeExits but is unseen
+      describeExits: (name: string) => (name === "W1N1" ? { "1": "W2N1" } : undefined)
+    });
+
+    const got = resolveTarget(creepIn(empty), { find: "dropped", alsoAdjacentRooms: true });
+
+    expect(got).toBeNull();
+  });
+
+  it("pools a bordering room's container energy the same way as dropped piles", () => {
+    const empty = fakeRoom("W1N1", { [FIND_STRUCTURES]: [] });
+    const neighborContainer = fakeSite("cont1", { structureType: STRUCTURE_CONTAINER, used: 500, free: 0 });
+    stubGame({
+      objects: { cont1: neighborContainer },
+      rooms: {
+        W1N1: empty,
+        W2N1: fakeRoom("W2N1", { [FIND_STRUCTURES]: [neighborContainer] })
+      },
+      describeExits: (name: string) => (name === "W1N1" ? { "1": "W2N1" } : undefined)
+    });
+
+    const got = resolveTarget(creepIn(empty), {
+      find: "structure",
+      type: STRUCTURE_CONTAINER,
+      where: "hasEnergy",
+      alsoAdjacentRooms: true
+    });
+
+    expect((got as { id: string }).id).toBe("cont1");
+  });
+
+  it("resolves through the builder's real energySourceGroup shape (any + alsoAdjacentRooms) end to end", () => {
+    const empty = fakeRoom("W1N1", { [FIND_STRUCTURES]: [], [FIND_DROPPED_RESOURCES]: [] });
+    const neighborPile = { id: "neighbor", pos: { x: 5, y: 5 }, amount: 500 };
+    stubGame({
+      objects: { neighbor: neighborPile },
+      rooms: { W1N1: empty, W2N1: fakeRoom("W2N1", { [FIND_DROPPED_RESOURCES]: [neighborPile] }) },
+      describeExits: (name: string) => (name === "W1N1" ? { "1": "W2N1" } : undefined)
+    });
+
+    const got = resolveTarget(creepIn(empty), {
+      find: "any",
+      of: [
+        { find: "structure", type: [STRUCTURE_STORAGE, STRUCTURE_CONTAINER], where: "hasEnergy", alsoAdjacentRooms: true },
+        { find: "dropped", alsoAdjacentRooms: true }
+      ],
+      prefer: "nearest"
+    });
+
+    expect((got as { id: string }).id).toBe("neighbor");
   });
 });

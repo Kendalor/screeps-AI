@@ -28,31 +28,34 @@ unnecessarily.
 ## Which shard?
 
 Check `Memory.stats.cpu` / `cpuShard` on the account before assuming — a World
-account can have CPU allocated on multiple shards, but this account currently only
-runs on **shard0** (owns room **E28S4**, confirmed via `main-check.mjs rooms`); the
-other shards show empty room lists. All scripts below default their `shard` argument
-to `"shard0"` for that reason, but accept an override if the colony ever expands.
-Don't assume shard0 is still correct without checking `rooms` first if it's been a
-while — expansions change this.
+account can have CPU allocated on multiple shards. As of 2026-08-10 this account
+runs on **shard1**, owning rooms **W47N14** (home) and **W43N15** (colonize
+target); shard0's old colony (**E28S4**) was fully relocated away and shard0 now
+shows an empty room list. Prefer passing `shard1` explicitly on every script call
+below rather than trusting a hardcoded default — the account has already moved
+shards once (shard0 → shard1, 2026-08-09) and the scripts' own defaults can go
+stale exactly the way this note almost did. Re-confirm with `main-check.mjs rooms`
+first if it's been a while — expansions/relocations change this.
 
 ## Scripts (all pre-built, just run them)
 
-- **`node scripts/main-check.mjs status [shard=shard0]`** — signs in via token,
+- **`node scripts/main-check.mjs status [shard=shard1]`** — signs in via token,
   prints the shard's current game tick (World ticks are a single global counter in
   the tens of millions — nothing like the pserver's small per-instance tick count,
   don't be surprised by the magnitude), `Memory.stats.cpu`, and profiler summary.
   Cheapest, fastest first check — start here.
 - **`node scripts/main-check.mjs rooms`** — lists owned rooms and reservations per
-  shard (`{ shards: { shard0: ["E28S4"], shard1: [], ... } }`). Use this to confirm
-  which shard(s) actually have colonies before debugging a specific room.
+  shard (`{ shards: { shard0: [], shard1: ["W47N14", "W43N15"], ... } }`). Use this
+  to confirm which shard(s) actually have colonies before debugging a specific room
+  — the source of truth if this doc's shard note above ever goes stale again.
 - **`node scripts/main-check.mjs shards`** — raw `/api/game/shards/info`: each
   shard's recent tick durations, `cpuLimit` (0 means this account has no CPU bucket
-  there), room/user counts. Useful for "is shard0 actually the active one" sanity
+  there), room/user counts. Useful for "is shard1 actually the active one" sanity
   checks.
 - **`node scripts/main-check.mjs start` / `output`** — sends `Profiler.start()` /
   `Profiler.output()` via HTTP (fire-and-forget, doesn't show output — use
   `main-console.mjs` to actually read the result).
-- **`node scripts/main-console.mjs "<expression>" [listenSeconds=15] [shard=shard0]`**
+- **`node scripts/main-console.mjs "<expression>" [listenSeconds=15] [shard=shard1]`**
   — the *only* way to read back console output. Connects over the Screeps **socket**
   API, subscribes to the console channel, optionally sends `<expression>` scoped to
   `shard`, and prints every `[LOG]`/`[RESULT]` line for `listenSeconds`.
@@ -62,23 +65,53 @@ while — expansions change this.
   Omit the expression to just tail whatever the bot is already logging:
   `node scripts/main-console.mjs "" 20`
 
+  **Known issue (unconfirmed root cause, 2026-08-10)**: this socket path was
+  observed returning nothing at all — no `[LOG]`/`[RESULT]` lines, not even for a
+  trivial `"1+1"` expression sent with a 15s listen window — while the account's
+  active shard was still misidentified as shard0 (the real colony was on shard1).
+  Not yet re-tested against shard1 directly; if it's still silent there, the socket
+  wiring itself needs debugging (subscribe ack, auth timing) rather than assuming
+  it works. `main-check.mjs`'s HTTP-based memory reads are unaffected and remain
+  reliable regardless.
+
   **Shard caveat**: the console *channel* itself (`user:<id>/console`) is
   per-account, not per-shard — there is no way to filter received output by shard.
   Sending a command (`api.raw.user.console(expression, shard)`) IS shard-scoped, so
   if the account ever runs code on more than one shard, output from other shards'
   ongoing `console.log` calls will interleave with whatever you just sent. Currently
-  moot (only shard0 is active) but don't assume it stays that way.
+  moot (only shard1 is active) but don't assume it stays that way.
+- **`node scripts/get-memory-path.mjs "<dot.path>" [shard=shard1]`** — thin wrapper
+  around `api.raw.user.memory.get(path, shard)`, same underlying call
+  `main-check.mjs status` uses for `stats.cpu`/`profiler` but for an arbitrary path.
+  Use this for anything not already covered by `main-check.mjs`'s fixed fields, e.g.
+  `get-memory-path.mjs "colonies.W47N14.colonizing"` or a specific creep's memory
+  (`get-memory-path.mjs "creeps.<name>"`). Root path (`""`) does not work — the API
+  errors with "Incorrect memory path" for the whole-Memory case; always pass a real
+  dot-path. This was the reliable fallback for reading live state while
+  `main-console.mjs` was silently returning nothing (see known issue above).
+- **`node scripts/get-room-objects.mjs [shard=shard1] <roomName>`** — raw
+  `api.raw.game.roomObjects(room, shard)`: every creep/structure/source/etc
+  currently in a room, full object dump (creep body parts, store contents,
+  `_id`s, `memory_*` fields on NPC creeps). Useful for checking a specific
+  creep's live position/hits/fatigue without needing vision-dependent bot Memory,
+  or for confirming what's actually in a room (keeper lairs, hostiles) independent
+  of what the bot last scouted.
 
 ## In-game console commands (bot-defined, in `src/commands/console.ts`)
 
-Same command set as the local pserver — `setLogLevel(...)`, `debugCreep`/
-`undebugCreep`/`debugColony`/`undebugColony`/`clearDebug`/`resetDebug`,
-`Profiler.*` (only if the currently-deployed build was pushed with `PROFILE=1`,
-see below). See `debug-local`'s SKILL.md for the full behavioral notes on these
-(including which files each trace point covers — combat/defense/attack/reservation/
-mining decisions, not just spawn requests); they're identical code, just running
-against a different deployment. Send them scoped to a shard via `main-console.mjs`,
-e.g. `main-console.mjs 'debugCreep("Miner1")' 15 shard0`.
+Same command set as the local pserver — full reference, with what each command's
+output actually means, is in **`docs/console-commands.md`**; `help()` run live
+always lists whatever's currently registered if the doc ever drifts. Covers debug
+tracing (`setLogLevel`, `debugCreep`/`debugColony`/`clearDebug`/`resetDebug`),
+construction/spawn inspection (`buildPlan`, `remoteStatus`, `miningClaims`,
+`spawnLoad`), and operation targeting (`operationKinds`, `colonizeTargets`,
+`clearDrainTarget`, `removeOperation`) — plus `Profiler.*` (only if the
+currently-deployed build was pushed with `PROFILE=1`, see below). They're
+identical code to the pserver's, just running against a different deployment.
+Send them scoped to a shard via `main-console.mjs`, e.g.
+`main-console.mjs 'debugCreep("Miner1")' 15 shard1` or
+`main-console.mjs "buildPlan('W43N15')" 15 shard1`. (See the console script's own
+"known issue" note above if nothing comes back.)
 
 Same "real production colony" caution applies here as everywhere else in this
 file: `debugCreep`/`debugColony`/`clearDebug`/`resetDebug` are read-only-ish (they
@@ -103,8 +136,18 @@ Useful fields (same shape the bot itself defines, see `src/memory/schema.ts`):
 - `Memory.logLevel` — current log gate
 - `Memory.debugCreeps` / `Memory.debugColonies` — creeps/colonies currently opted
   into `debugCreep`/`debugColony` tracing (see above)
-- `Memory.empire.operations` — live operation state (confirmed present and
-  populated on this account's shard0 memory)
+- `Memory.colonies.<roomName>` — the actual per-colony memory root (remotes,
+  colonizing/attacking/draining targets, source/link state, etc — see
+  `src/memory/schema.ts`'s `ColonyMemory`). Confirmed populated on shard1 for both
+  `W47N14` and `W43N15`.
+- `Memory.empire.operations` — a DIFFERENT, older empire/operations-style memory
+  shape (flaglistener/scoutingManager/tradingOperation, no `Colony`/`colonizing`
+  concept). This was what a stale pre-`rewrite`-branch World deploy was still
+  running as of 2026-08-10 — if this key has content but `Memory.colonies` is
+  empty, that's a sign the deployed build predates the `rewrite` branch's
+  Colony/ColonyMemory architecture and needs a fresh `push-main`, not a shard
+  mixup. Don't assume this key is still meaningful without checking which build is
+  actually live first.
 
 ## Profiling a CPU problem end-to-end
 

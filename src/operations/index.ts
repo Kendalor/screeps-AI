@@ -71,14 +71,17 @@ export interface SpawnableOperationInfo {
 }
 
 /** Every Operation subclass that overrides `desiredCreeps()` — i.e. every kind that can end up
- * requesting a spawn — not just the ten unconditionally attached by operationsFor(). Attack, Colonize,
+ * requesting a spawn — not just the ten unconditionally attached by operationsFor(). Colonize, Attack,
  * Drain and Parade are flag/memory-triggered add-ons (see operations/index.ts's imports for where each
  * is actually attached: Colony's constructor for Attack/Colonize/Drain, paradeFlags.ts for Parade) and
  * deliberately excluded from operationsFor() itself, so this list has to be hand-kept in sync with the
- * Operation subclasses rather than derived from that array. */
+ * Operation subclasses rather than derived from that array. Defense is the one exception: it's always
+ * attached (below) AND flag-triggerable (a "defend"/"defend:<room>" flag adds a target to
+ * ColonyMemory.defending, pooled into the same Defense instance — see defense.ts/defendFlags.ts), so its
+ * `trigger` names both. */
 export const SPAWNABLE_OPERATIONS: readonly SpawnableOperationInfo[] = [
   { kind: "mining", trigger: "always" },
-  { kind: "defense", trigger: "always" },
+  { kind: "defense", trigger: "always (plus ColonyMemory.defending targets from a defend flag)" },
   { kind: "upgrading", trigger: "always" },
   { kind: "bootstrap", trigger: "always" },
   { kind: "building", trigger: "always" },

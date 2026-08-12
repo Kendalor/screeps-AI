@@ -1,5 +1,9 @@
 // Defense owns towers and safemode: attack hostiles, heal friendlies otherwise, safemode when towerless and invaded.
 // Goes through intents() not desiredCreeps(): tower fire is direct action that must run every tick, untiered.
+// Always attached (operationsFor(), unlike Attack/Colonize/Drain/Parade — see operations/index.ts), so a
+// flag-requested rescue of another room doesn't get its own operation class: a "defend"/"defend:<room>"
+// flag (defendFlags.ts) just adds a room to ColonyMemory.defending, which this pools alongside home/remote
+// hostiles into the same shared defender fleet (see roomsWithHostiles/openSponsoredTargets below).
 
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
@@ -27,23 +31,40 @@ const HOSTILES_PER_DEFENDER = 2;
 const MAX_DEFENDERS = 3; // hard ceiling — a bigger incursion than this needs the player's attention, not an ever-growing spawn queue
 
 // Every room currently holding a hostile — home first (already vision-covered every tick, and the room
-// most worth holding), then remotes nearest first. remoteSources' danger is vision-independent (cached
-// via RemoteMemory.dangerUntil, see remote-danger-until), so a defender still gets dispatched at an
-// invaded remote the colony has since lost direct vision of.
+// most worth holding), then remotes nearest first, then any flag-sponsored `defending` target still open
+// (see openSponsoredTargets below — a rescue of another colony's room, or any arbitrary room, requested
+// via a "defend"/"defend:<room>" flag and handed off through defendFlags.ts/addDefendTarget). remoteSources'
+// danger is vision-independent (cached via RemoteMemory.dangerUntil, see remote-danger-until), so a
+// defender still gets dispatched at an invaded remote the colony has since lost direct vision of.
 function roomsWithHostiles(colony: ColonySnapshot): string[] {
   const rooms: string[] = [];
   if (colony.hostiles.length > 0) rooms.push(colony.name);
   const remoteRooms = new Set(colony.remoteSources.filter(s => s.danger > 0).map(s => s.room));
   rooms.push(...[...remoteRooms].sort((a, b) => roomLinearDistance(colony.name, a) - roomLinearDistance(colony.name, b)));
+  rooms.push(...openSponsoredTargets(colony).sort((a, b) => roomLinearDistance(colony.name, a) - roomLinearDistance(colony.name, b)));
   return rooms;
 }
 
-// Total hostile count across every invaded room — home (live count) plus one nominal hostile per
-// invaded remote (remoteSources' danger is a 0/1 presence flag, not a headcount; a full count isn't
-// known without vision, so a defender is still requested for every remote that needs one).
+// Flag-sponsored defend targets (ColonyMemory.defending) not yet seen clear — the defensive equivalent of
+// Attack's openTargets. Vision-gated the same way roomCleared() is below: a target the colony has never
+// scouted must not read as already-clear just because no visibleRooms entry says otherwise.
+function openSponsoredTargets(colony: ColonySnapshot): string[] {
+  return colony.defending.filter(t => !roomCleared(colony, t));
+}
+
+// True once `room` has been seen this tick (someone in the empire has vision of it) with no hostiles left
+// — same rule Attack's roomCleared uses (see operations/attack.ts's header for why absence from
+// visibleRooms must never read as cleared).
+function roomCleared(colony: ColonySnapshot, room: string): boolean {
+  return colony.visibleRooms.find(r => r.room === room)?.hostileCount === 0;
+}
+
+// Total hostile count across every invaded room — home (live count) plus one nominal hostile per invaded
+// remote or open sponsored target (their danger/presence is a 0/1 flag, not a headcount; a full count
+// isn't known without vision, so a defender is still requested for every one that needs one).
 function totalThreat(colony: ColonySnapshot, invadedRooms: string[]): number {
-  const remoteCount = invadedRooms.filter(r => r !== colony.name).length;
-  return colony.hostiles.length + remoteCount;
+  const otherCount = invadedRooms.filter(r => r !== colony.name).length;
+  return colony.hostiles.length + otherCount;
 }
 
 // Keeps every live defender's room assignment pointed at a room that still has hostiles — reassigns only
@@ -63,9 +84,9 @@ function defendTargetRoomIntents(colony: ColonySnapshot, invadedRooms: string[])
 export class Defense extends Operation {
   public readonly kind = "defense";
 
-  // Only while hostiles are actually present somewhere (home or a remote) — a defender idling with
-  // nothing to fight is pure upkeep cost, so the request (and the creep) disappears the instant every
-  // invaded room clears.
+  // Only while hostiles are actually present somewhere (home, a remote, or an open sponsored target) — a
+  // defender idling with nothing to fight is pure upkeep cost, so the request (and the creep) disappears
+  // the instant every invaded room clears.
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
     const invadedRooms = roomsWithHostiles(colony);
     if (invadedRooms.length === 0) return [];
@@ -79,12 +100,21 @@ export class Defense extends Operation {
 
   // Direct tower action plus keeping every defender's cross-room assignment current.
   public override intents(colony: ColonySnapshot): Intent[] {
-    const out: Intent[] = defendTargetRoomIntents(colony, roomsWithHostiles(colony));
+    // Drop any flag-sponsored target that's been seen clear — the defensive equivalent of Attack's own
+    // cleared-target cleanup (see operations/attack.ts's intents()). Home/remote hostile rooms need no
+    // equivalent bookkeeping: they're derived fresh from live snapshot state every tick, not durable
+    // memory, so there's nothing to remove.
+    const cleared = colony.defending.filter(t => roomCleared(colony, t));
+    for (const target of cleared) log.debugRoom(colony.name, `defense: ${target} seen clear — dropping as a sponsored target`);
+    const out: Intent[] = [
+      ...cleared.map(target => ({ kind: "removeDefendTarget" as const, room: colony.name, target })),
+      ...defendTargetRoomIntents(colony, roomsWithHostiles(colony))
+    ];
     if (colony.hostiles.length > 0) {
       // Towerless and invaded: safemode is the only defence left, so it short-circuits the rest.
       if (colony.towers.length === 0 && colony.safeModeAvailable) {
         log.debugRoom(colony.name, "defense: towerless and invaded — triggering safe mode");
-        return [{ kind: "safeMode", room: colony.name }];
+        return [...out, { kind: "safeMode", room: colony.name }];
       }
       for (const tower of colony.towers) {
         const worthwhile = colony.hostiles.filter(h => worthShooting(colony, tower, h));

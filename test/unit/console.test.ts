@@ -98,7 +98,7 @@ describe("console: resetDebug", () => {
 
 describe("console: clearDrainTarget", () => {
   it("clears ColonyMemory.draining for the given room", () => {
-    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], draining: "W5N5" } };
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [], draining: "W5N5" } };
     const result = global.clearDrainTarget("W1N1");
     expect(Memory.colonies.W1N1.draining).toBeUndefined();
     expect(result).toMatch(/W1N1/);
@@ -107,6 +107,61 @@ describe("console: clearDrainTarget", () => {
   it("reports when the room has no colony memory yet", () => {
     Memory.colonies = {};
     const result = global.clearDrainTarget("W1N1");
+    expect(result).toMatch(/no colony/i);
+  });
+});
+
+describe("console: removeOperation", () => {
+  it("removes a colonize target from the given room", () => {
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: ["W2N5"], attacking: [], defending: [] } };
+    const result = global.removeOperation("colonize", "W1N1", "W2N5");
+    expect(Memory.colonies.W1N1.colonizing).toEqual([]);
+    expect(result).toMatch(/W2N5/);
+  });
+
+  it("removes an attack target from the given room", () => {
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: ["W3N3"], defending: [] } };
+    const result = global.removeOperation("attack", "W1N1", "W3N3");
+    expect(Memory.colonies.W1N1.attacking).toEqual([]);
+    expect(result).toMatch(/W3N3/);
+  });
+
+  it("removes a defend target from the given room", () => {
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: ["W3N3"] } };
+    const result = global.removeOperation("defend", "W1N1", "W3N3");
+    expect(Memory.colonies.W1N1.defending).toEqual([]);
+    expect(result).toMatch(/W3N3/);
+  });
+
+  it("clears a drain target without needing a target argument", () => {
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [], draining: "W5N5" } };
+    const result = global.removeOperation("drain", "W1N1");
+    expect(Memory.colonies.W1N1.draining).toBeUndefined();
+    expect(result).toMatch(/W1N1/);
+  });
+
+  it("clears a parade target without needing a target argument", () => {
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [], parading: { flag: "march", formation: "2x2" } } };
+    const result = global.removeOperation("parade", "W1N1");
+    expect(Memory.colonies.W1N1.parading).toBeUndefined();
+    expect(result).toMatch(/W1N1/);
+  });
+
+  it("reports a helpful error for an unknown kind", () => {
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] } };
+    const result = global.removeOperation("bogus", "W1N1");
+    expect(result).toMatch(/unknown operation kind/i);
+  });
+
+  it("reports when colonize/attack are called without a target", () => {
+    Memory.colonies = { W1N1: { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] } };
+    expect(global.removeOperation("colonize", "W1N1")).toMatch(/needs a target/i);
+    expect(global.removeOperation("attack", "W1N1")).toMatch(/needs a target/i);
+  });
+
+  it("reports when the room has no colony memory yet", () => {
+    Memory.colonies = {};
+    const result = global.removeOperation("colonize", "W1N1", "W2N5");
     expect(result).toMatch(/no colony/i);
   });
 });
@@ -120,6 +175,26 @@ describe("console: operationKinds", () => {
   });
 });
 
+describe("console: scanMarket", () => {
+  it("refreshes Memory.market and reports the priced resource count", () => {
+    (globalThis as Record<string, unknown>).Game = {
+      time: 12345,
+      market: {
+        getHistory: () => [
+          { resourceType: RESOURCE_ENERGY, date: "2026-08-01", transactions: 1, volume: 100, avgPrice: 1, stddevPrice: 0.1 },
+          { resourceType: RESOURCE_OXYGEN, date: "2026-08-01", transactions: 1, volume: 50, avgPrice: 5, stddevPrice: 0.5 }
+        ]
+      }
+    };
+
+    const result = global.scanMarket();
+
+    expect(Memory.market?.tick).toBe(12345);
+    expect(Memory.market?.prices[RESOURCE_ENERGY]).toEqual({ date: "2026-08-01", avgPrice: 1, stddevPrice: 0.1 });
+    expect(result).toMatch(/2 resources priced \(tick 12345\)/);
+  });
+});
+
 describe("console: help", () => {
   it("lists every registered command", () => {
     const text = global.help();
@@ -129,6 +204,7 @@ describe("console: help", () => {
     expect(text).toContain("debugColony");
     expect(text).toContain("clearDebug");
     expect(text).toContain("resetDebug");
+    expect(text).toContain("removeOperation");
     expect(text).toContain("help()");
   });
 

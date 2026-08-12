@@ -140,6 +140,11 @@ export interface SnapRemoteSource extends XY {
   // into container/road construction claims instead of re-deriving a path with the local-only cost-matrix
   // pather in layouts/roads.ts.
   route?: RemoteRouteTile[];
+  // Straight copy of RemoteSourceMemory.routeBuilt (see its doc there) — which route[] tiles are already
+  // confirmed built, index-aligned, surviving a vision gap in the tile's own room. building.ts's builtAt()
+  // reads this for a remote-route road claim instead of (only) live colony.remoteStructures, which is
+  // empty for a room the route merely transits through whenever nobody's standing in it right now.
+  routeBuilt?: string;
 }
 
 export interface SnapDrop extends XY {
@@ -298,6 +303,11 @@ export interface ColonySnapshot {
   // The combat equivalent of `colonizing` above, owned by attack.ts (ColonyMemory.attacking). Colony's
   // constructor reads this to attach a real Attack operation per listed target.
   attacking: string[];
+  // Target rooms this colony sponsors a defender for beyond its own home/remotes (ColonyMemory.defending),
+  // owned by defense.ts — Defense (already unconditionally attached, see operations/index.ts) pools these
+  // alongside home/remote hostiles rather than gaining a second operation class, since it's the same
+  // shared-defender-pool shape either way.
+  defending: string[];
   // The drain equivalent of `attacking`, but a scalar (ColonyMemory.draining) rather than a list — see
   // ColonyMemory.draining's doc for why exactly one drain target per colony is load-bearing. Owned by
   // drain.ts; Colony's constructor attaches a real Drain operation while this is set.
@@ -322,6 +332,14 @@ export interface ColonySnapshot {
   // of whatever it's actually fighting, not of hostiles back in its own room. Absent/empty for a room with
   // no vision this tick, same convention as hostileRoomTowers.
   hostileRoomUnits: Partial<Record<string, SnapUnit[]>>;
+  // Every road standing in a visible room, keyed by room name — same empire-wide/vision-gated population
+  // as hostileRoomTowers (any room with vision this tick), but roads rather than hostile towers. Exists
+  // for a remote route's TRANSIT rooms specifically: remoteStructures is only ever populated for a
+  // selected source's own room (see remoteRoomVision), so a room the route merely passes through (never
+  // mined itself) has no live structure data anywhere else in the snapshot. Mining.intents() reads this
+  // to confirm a route tile is actually built (see RemoteSourceMemory.routeBuilt's doc) even for a
+  // transit room. Absent/empty for a room with no vision this tick or no roads.
+  visibleRoomRoads: Partial<Record<string, XY[]>>;
   // A visible room's storage energy, keyed by room name — the storage-content equivalent of
   // hostileRoomTowers above, same empire-wide/vision-gated population (any room with vision this tick,
   // not scoped to this colony's own remotes). Absent for a room with no vision OR no storage structure —

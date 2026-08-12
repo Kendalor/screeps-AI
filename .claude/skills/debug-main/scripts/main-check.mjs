@@ -25,7 +25,7 @@ async function getApi() {
 
 const SHARDS = ['shard0', 'shard1', 'shard2', 'shard3', 'shardX'];
 
-async function cmdStatus(shard = 'shard0') {
+async function cmdStatus(shard = 'shard1') {
   const api = await getApi();
   const memory = await api.raw.user.memory.get('stats.cpu', shard).catch((e) => ({ error: e.message }));
   const profiler = await api.raw.user.memory.get('profiler', shard).catch((e) => ({ error: e.message }));
@@ -52,7 +52,7 @@ async function cmdShards() {
 async function cmdProfilerControl(action) {
   const api = await getApi();
   const expr = action === 'start' ? 'Profiler.start()' : 'Profiler.output()';
-  const shard = process.argv[3] || 'shard0';
+  const shard = process.argv[3] || 'shard1';
   await api.raw.user.console(expr, shard);
   console.log(`Sent: ${expr} (shard ${shard})`);
 }
@@ -62,7 +62,7 @@ const [, , cmd, arg1] = process.argv;
 try {
   switch (cmd) {
     case 'status':
-      await cmdStatus(arg1 || 'shard0');
+      await cmdStatus(arg1 || 'shard1');
       break;
     case 'rooms':
       await cmdRooms();

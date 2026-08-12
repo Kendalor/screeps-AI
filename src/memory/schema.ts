@@ -15,6 +15,9 @@ declare global {
     expansion: ExpansionMemory;
     stats: StatsMemory;
     metrics: Record<string, ColonyMetricsMemory>; // cross-tick harvest-rate window; everything else in a report is derived fresh
+    // Latest valid-day avgPrice/stddevPrice per resource, from Game.market.getHistory() — owned by
+    // empire/market.ts, refreshed every MARKET_SCAN_INTERVAL ticks (tier-3) or via scanMarket() console command.
+    market?: MarketMemory;
     // Console-editable player reputation (Memory.playerReputation["Foo"] = "hostile"), also written
     // automatically when we observe a player's creep attack us — see memory/reputation.ts's
     // recordHostileAction. Absent entries default to "neutral" (reputationOf), never assumed hostile.
@@ -180,6 +183,14 @@ export interface ColonyMemory {
   // handoff (addAttackTarget), read every tick by Colony's constructor to attach a real Attack operation
   // per listed target, removed (removeAttackTarget) once that room has vision and no hostile creeps left.
   attacking: string[];
+  // Target rooms this colony is sponsoring a defender for beyond its own home/remotes (a flag-requested
+  // rescue of another colony's room, or any arbitrary room), owned by defense.ts — the defensive
+  // equivalent of `attacking` above, same durable-memory-fact shape: written once by a flag handoff
+  // (addDefendTarget), read every tick by Defense.desiredCreeps/intents to pool a defender onto it
+  // alongside home/remote hostiles, removed (removeDefendTarget) once that room has vision and no
+  // hostile creeps left. Home and this colony's own remotes are never listed here — Defense already
+  // covers those unconditionally (see roomsWithHostiles); this is strictly for rooms outside that set.
+  defending: string[];
   // The single room this colony is currently draining (sponsoring a drain squad for), owned by drain.ts —
   // a scalar, unlike colonizing/attacking above: the PRD (#34/ADR 0006) fixes exactly one drain target per
   // colony at a time, which is also what lets squad membership be derived from `op` alone with no squadId
@@ -261,6 +272,19 @@ export interface RemoteSourceMemory {
   // join only ever reads ColonyMemory and never reaches into Memory.rooms directly — same reasoning
   // that already justifies caching `distance` here instead of re-deriving it from the source's record.
   route?: RemoteRouteTile[];
+  // One char per route[] tile ("1" = confirmed built, "0"/absent = not yet confirmed), index-aligned
+  // with route. A tile is confirmed the first time its room has live vision AND a road actually stands
+  // there — see mining.ts's structures(), which claims every route tile regardless of vision (a claim
+  // must survive a vision gap), but building.ts's builtAt() only trusts live colony.remoteStructures,
+  // which goes empty for any room with no creep in it right now (including a room the route merely
+  // transits through, never mined itself — remoteStructures is keyed off selected source rooms only).
+  // Without this, a transit-room road that's already built gets re-claimed and re-placed forever the
+  // instant nobody's standing in that room, permanently burning that tick's construction budget on a
+  // guaranteed ERR_INVALID_TARGET (confirmed live on W47N14 2026-08-11: an already-built W46N14 corridor
+  // ate all 20 remote placeSite slots, starving every actually-unbuilt remote road/container of a turn).
+  // Append-only, same rule containerId/spot follow: a road later destroyed is a Repair concern (reads
+  // live hits), not something this should silently forget and start re-placing over.
+  routeBuilt?: string;
 }
 
 // One tile of a cached home->remote-source path, tagged with the room it's in — a path can cross
@@ -355,6 +379,18 @@ export interface ScoutInfo {
   // backoff-retry shape as noPathFrom (NO_PATH_RETRY_AFTER) rather than a forever-cache, since towers can
   // be destroyed or the room can change hands.
   lethalAt?: number;
+  // A STRUCTURE_INVADER_CORE last seen standing in this room — absent means none was present at the
+  // last observation (`tick`). Unlike owner/hostile (controller-derived), a core sits independent of any
+  // controller, so this is its own field. `level` 0 is a plain remote-mining-room core (see
+  // mining/remoteSources.ts's INVADER_USERNAME reservation, remoteInvaderAttacks.ts clears these); 1-5
+  // is a Stronghold's fortified core (ramparted, deploys defenders — not a target this bot can clear,
+  // see remoteInvaderAttacks.ts's own doc). `ticksToDeploy` mirrors StructureInvaderCore.ticksToDeploy,
+  // present only before deployment. `collapseTicksRemaining` mirrors the core's own EFFECT_COLLAPSE_TIMER
+  // effect (RoomObject.effects — see docs.screeps.com/invaders.html), present only once deployed: the
+  // real, live decay countdown until the stronghold collapses. The two are mutually exclusive in
+  // practice (pre- vs post-deployment); both are simply whatever the last observation saw, each
+  // projectable forward from `tick` the same way.
+  invaderCore?: { level: number; ticksToDeploy?: number; collapseTicksRemaining?: number };
 }
 
 // The two topology-only colonization numbers for one room, plus the extra keeper minerals reachable if
@@ -412,4 +448,11 @@ export interface StatsMemory {
 // running total so a gap in vision self-heals instead of poisoning the average forever.
 export interface ColonyMetricsMemory {
   harvestSamples: { tick: number; sourceEnergy: number }[]; // oldest first, capped at HARVEST_WINDOW entries
+}
+
+export interface MarketMemory {
+  tick: number; // Game.time this snapshot was taken
+  // Latest day with valid price data per resource (days with no trades can carry null/NaN stats,
+  // which summarizeMarketHistory skips rather than recording).
+  prices: Partial<Record<MarketResourceConstant, { date: string; avgPrice: number; stddevPrice: number }>>;
 }

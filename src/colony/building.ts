@@ -18,11 +18,11 @@ const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
 
 // Cap open sites so a small pre-storage workforce finishes structures instead of smearing effort across the backlog.
-const FOCUS_SITE_CAP = 20;
+export const FOCUS_SITE_CAP = 20;
 // At most one container construction site open at a time: a container is a big single-creep haul, so opening a
 // second before the first is built just splits the builder's effort. Existing (built) containers don't count —
 // only concurrent container *sites*. Containers still reach one-per-source over time, one at a time.
-const MAX_CONTAINER_SITES = 1;
+export const MAX_CONTAINER_SITES = 1;
 // Roads are dead weight while the bunker is still going up; hold until the colony can afford paving
 // (RCL3 with all extensions built = 800 capacity). Mining's source-access roads are exempt — see wantedStructures.
 export const ROADS_FROM_ENERGY_CAPACITY = 800;
@@ -43,7 +43,7 @@ function typePriority(type: BuildableStructureConstant): number {
 
 // Room resolution for a claim: absent means the colony's own home room (every pre-existing producer —
 // bunker layout, controller path — is implicitly home and never sets this).
-function roomOf(p: PlacedStructure, colony: ColonySnapshot): string {
+export function roomOf(p: PlacedStructure, colony: ColonySnapshot): string {
   return p.room ?? colony.name;
 }
 
@@ -54,19 +54,32 @@ function roomOf(p: PlacedStructure, colony: ColonySnapshot): string {
 function structuresAt(colony: ColonySnapshot, room: string): readonly SnapStructure[] {
   return room === colony.name ? colony.structures : (colony.remoteStructures[room] ?? []);
 }
-function sitesAt(colony: ColonySnapshot, room: string): readonly SnapStructure[] {
+export function sitesAt(colony: ColonySnapshot, room: string): readonly SnapStructure[] {
   return room === colony.name ? colony.sites : (colony.remoteSites[room] ?? []);
 }
 
 // Genuinely built — not merely sited. This is what "is this source's group finished" gates on: a group
 // with an open site but nothing built yet must still hold back the next group, or two groups end up
 // building in parallel again, defeating the one-at-a-time point.
-function builtAt(colony: ColonySnapshot, p: PlacedStructure): boolean {
-  return structuresAt(colony, roomOf(p, colony)).some(sameSpot(p));
+//
+// A remote route road (room !== colony.name, sourceId set, type === road) additionally checks
+// RemoteSourceMemory.routeBuilt via colony.remoteSources — live structuresAt() alone only covers the
+// source's own room (colony.remoteStructures is never populated for a room the route merely transits
+// through), so a transit-room road with no creep currently standing in it would otherwise never read as
+// built and get re-claimed/re-placed forever (confirmed live on W47N14 2026-08-11: an already-built
+// W46N14 corridor kept failing ERR_INVALID_TARGET every throttle tick, burning the whole remote site
+// budget on tiles that were never actually missing).
+export function builtAt(colony: ColonySnapshot, p: PlacedStructure): boolean {
+  if (structuresAt(colony, roomOf(p, colony)).some(sameSpot(p))) return true;
+  if (p.type !== ROAD || p.sourceId === undefined) return false;
+  const source = colony.remoteSources.find(s => s.id === p.sourceId);
+  if (!source?.route) return false;
+  const index = source.route.findIndex(t => t.room === p.room && t.x === p.x && t.y === p.y);
+  return index >= 0 && source.routeBuilt?.[index] === "1";
 }
 
 // Built or sited — the dedup check before placing a new site (don't place on top of either).
-function existingAt(colony: ColonySnapshot, p: PlacedStructure): boolean {
+export function existingAt(colony: ColonySnapshot, p: PlacedStructure): boolean {
   return builtAt(colony, p) || sitesAt(colony, roomOf(p, colony)).some(sameSpot(p));
 }
 
@@ -75,7 +88,7 @@ function existingAt(colony: ColonySnapshot, p: PlacedStructure): boolean {
 // own claim no longer withholds itself for this (see mining.ts's structures()), so this is now the
 // only thing stopping a site from going up in a dangerous remote room; the home-room leg of the same
 // route is never affected, since roomOf() only reads this set for non-home placements.
-function unsafeRemoteRooms(colony: ColonySnapshot): Set<string> {
+export function unsafeRemoteRooms(colony: ColonySnapshot): Set<string> {
   const out = new Set<string>();
   for (const s of colony.remoteSources) {
     if (s.danger > 0 || s.reservedBy !== undefined) out.add(s.room);

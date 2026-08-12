@@ -70,13 +70,33 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
     const storage = Game.rooms[name].storage;
     if (storage) hostileRoomStorageEnergy[name] = storage.store.getUsedCapacity(RESOURCE_ENERGY);
   }
+  // Same empire-wide/vision-gated population as hostileRoomTowers above, but every ROAD rather than
+  // hostile tower — see ColonySnapshot.visibleRoomRoads' doc for why this exists (a remote route's
+  // transit rooms have no other live structure data anywhere in the snapshot).
+  const visibleRoomRoads: Partial<Record<string, XY[]>> = {};
+  for (const name in Game.rooms) {
+    const roads = Game.rooms[name]
+      .find(FIND_STRUCTURES)
+      .filter((s): s is StructureRoad => s.structureType === STRUCTURE_ROAD)
+      .map(r => ({ x: r.pos.x, y: r.pos.y }));
+    if (roads.length > 0) visibleRoomRoads[name] = roads;
+  }
 
   const colonies: ColonySnapshot[] = [];
   for (const name in Game.rooms) {
     const room = Game.rooms[name];
     if (!room.controller?.my) continue;
     colonies.push(
-      buildColonySnapshot(room, byColony[name] ?? [], Game.time, visibleRooms, hostileRoomTowers, hostileRoomUnits, hostileRoomStorageEnergy)
+      buildColonySnapshot(
+        room,
+        byColony[name] ?? [],
+        Game.time,
+        visibleRooms,
+        hostileRoomTowers,
+        hostileRoomUnits,
+        hostileRoomStorageEnergy,
+        visibleRoomRoads
+      )
     );
   }
   return { tick: Game.time, colonies };
@@ -111,13 +131,15 @@ function buildColonySnapshot(
   visibleRooms: VisibleRoom[],
   hostileRoomTowers: Partial<Record<string, SnapTower[]>>,
   hostileRoomUnits: Partial<Record<string, SnapUnit[]>>,
-  hostileRoomStorageEnergy: Partial<Record<string, number>>
+  hostileRoomStorageEnergy: Partial<Record<string, number>>,
+  visibleRoomRoads: Partial<Record<string, XY[]>>
 ): ColonySnapshot {
   const controller = room.controller!;
   const myCreeps = room.find(FIND_MY_CREEPS);
   const remotes = Memory.colonies[room.name]?.remotes ?? [];
   const colonizing = Memory.colonies[room.name]?.colonizing ?? [];
   const attacking = Memory.colonies[room.name]?.attacking ?? [];
+  const defending = Memory.colonies[room.name]?.defending ?? [];
   const draining = Memory.colonies[room.name]?.draining;
   const drainRoute = draining ? drainRouteTo(room.name, draining) : [];
   const parading = Memory.colonies[room.name]?.parading;
@@ -139,7 +161,7 @@ function buildColonySnapshot(
   // so the shared construction budget (colony/building.ts) can count a remote site even between the
   // ticks a creep gives it vision. Scoped to this colony's own rooms — Game.constructionSites is
   // empire-wide across every colony the player owns.
-  const ownRooms = new Set([room.name, ...remotes.map(r => r.room)]);
+  const ownRooms = ownRoomsFor(room.name, remotes);
   const ownSites = Object.values(Game.constructionSites).filter(s => ownRooms.has(s.pos.roomName));
   const siteSummary = ownSites.map(s => ({ room: s.pos.roomName, type: s.structureType }));
   return {
@@ -245,11 +267,13 @@ function buildColonySnapshot(
     visibleRooms,
     colonizing,
     attacking,
+    defending,
     draining,
     drainRoute,
     hostileRoomTowers,
     hostileRoomUnits,
     hostileRoomStorageEnergy,
+    visibleRoomRoads,
     drainRoomTerrain: drainTerrainFor(room.name, draining, drainRoute),
     drainRoomOccupancy: drainOccupancyFor(room.name, draining, drainRoute),
     parading,
@@ -301,15 +325,19 @@ function occupancyFor(rooms: ReadonlySet<string>): Partial<Record<string, Uint8A
   return out;
 }
 
-// Terrain for every room Drain might place a squad member in — `draining` itself plus every room on the
-// route to it (drainRoute already carries the full home->target path, so the staging room drainRoute's
-// own picker resolves is guaranteed to be included without recomputing which one that is here). Not
-// vision-gated (unlike hostileRoomTowers/hostileRoomStorageEnergy above): Game.map.getRoomTerrain reads
-// static map data for any room name, seen or not, so there's nothing to gate on. Small — a drain route
-// is a handful of rooms at most — and only computed while draining is actually set.
-function drainTerrainFor(draining: string | undefined, drainRoute: readonly { room: string }[]): Partial<Record<string, Uint8Array>> {
+// Terrain for every room Drain might place a squad member in — the HOME room (where the squad welds up and
+// marches out from), `draining` itself, plus every room on the route between. `home` MUST be passed
+// explicitly: drainRoute comes from Game.map.findRoute, which returns only the rooms to travel THROUGH and
+// omits the source room entirely — so the home room is not in drainRoute at all, and a squad still forming
+// up (or crossing back over) in the home room would otherwise read undefined terrain there, i.e. fail open
+// to "no walls." That blindness let the anchor settle onto a home-room WALL tile it thought was clear and
+// deadlock (confirmed live 2026-08-10, W5N3 drain squad frozen at (0,7) — a wall — because the home room
+// had no terrain entry). Not vision-gated (unlike hostileRoomTowers/hostileRoomStorageEnergy above):
+// Game.map.getRoomTerrain reads static map data for any room name, seen or not, so there's nothing to gate
+// on. Small — a drain route is a handful of rooms at most — and only computed while draining is actually set.
+function drainTerrainFor(home: string, draining: string | undefined, drainRoute: readonly { room: string }[]): Partial<Record<string, Uint8Array>> {
   if (!draining) return {};
-  const rooms = new Set([draining, ...drainRoute.map(r => r.room)]);
+  const rooms = new Set([home, draining, ...drainRoute.map(r => r.room)]);
   const out: Partial<Record<string, Uint8Array>> = {};
   for (const room of rooms) out[room] = walkablePixelsForRoom(room);
   return out;
@@ -331,9 +359,9 @@ function drainTerrainFor(draining: string | undefined, drainRoute: readonly { ro
 // (a squad's own STAGING room source sat directly in the formation's advance path near the room's far edge).
 // Exported for direct unit testing (see test/unit/snapshot/colony.test.ts) — buildColonySnapshot itself
 // needs a much larger Game/room stub than this one function's own behavior warrants.
-export function drainOccupancyFor(draining: string | undefined, drainRoute: readonly { room: string }[]): Partial<Record<string, Uint8Array>> {
+export function drainOccupancyFor(home: string, draining: string | undefined, drainRoute: readonly { room: string }[]): Partial<Record<string, Uint8Array>> {
   if (!draining) return {};
-  const rooms = new Set([draining, ...drainRoute.map(r => r.room)]);
+  const rooms = new Set([home, draining, ...drainRoute.map(r => r.room)]);
   const out: Partial<Record<string, Uint8Array>> = {};
   for (const roomName of rooms) {
     const room = Game.rooms[roomName];
@@ -388,6 +416,24 @@ function hasDamagedFriendly(room: Room): boolean {
 // Live facts about each selected remote room we currently have vision of (a creep is standing in it).
 // Rooms with no vision are simply absent, and buildRemoteSources falls back to memory/defaults for them.
 // This is the sole Game.* read for remote data — the join itself (buildRemoteSources) stays pure.
+// Every room this colony owns construction claims in: home, each selected remote's own room, and every
+// transit room a remote source's cached route crosses (RemoteSourceMemory.route). mining.ts claims a
+// remote source's whole road — including any pass-through room that was never itself picked as a remote,
+// e.g. the road threads through a room between home and the actual remote — so a site can exist there
+// too. Without the route rooms, that pass-through room's sites are invisible to siteSummary and no
+// builder is ever dispatched to it (roomsWithSites only ever reads siteSummary). Exported for direct unit
+// testing — buildColonySnapshot itself needs a much larger Game/room stub than this pure function warrants.
+export function ownRoomsFor(
+  home: string,
+  remotes: readonly { room: string; sources: { route?: readonly { room: string }[] }[] }[]
+): Set<string> {
+  return new Set([
+    home,
+    ...remotes.map(r => r.room),
+    ...remotes.flatMap(r => r.sources.flatMap(s => (s.route ?? []).map(t => t.room)))
+  ]);
+}
+
 // `me` is our username (the home controller's owner), so a reservation we placed reads as `reserved`.
 function remoteRoomVision(
   remotes: readonly { room: string; sources: { id: Id<Source> }[] }[],
@@ -480,7 +526,7 @@ function remoteEnergyFor(remotes: readonly { room: string }[]): SnapRemoteEnergy
 
 // Computed once per colony and cached in ColonyMemory.anchor — never recomputed once found.
 function resolveAnchor(room: Room): XY | null {
-  const mem = (Memory.colonies[room.name] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [] });
+  const mem = (Memory.colonies[room.name] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
   if (mem.anchor) return mem.anchor;
 
   const controller = room.controller!;
