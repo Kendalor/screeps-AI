@@ -1055,6 +1055,105 @@ describe("dangerCostMatrix without live vision (cached ScoutInfo.lairs)", () => 
   });
 });
 
+// Regression: a remote hauler's cross-room trip walked past this colony's own already-built remote-route
+// roads in a transit room with no live vision — dangerCostMatrix priced lairs there but never the route's
+// own road tiles, so a real road read as plain, unset (0) cost, no cheaper than cutting straight across
+// open terrain beside it. Fix: dangerCostMatrix now also takes `home` and prices any route tile this
+// colony has confirmed built (RemoteSourceMemory.route + routeBuilt) at REMOTE_ROAD_COST, the same as a
+// live-vision road reads via Traveler's own getStructureMatrix.
+describe("dangerCostMatrix without live vision (cached remote-route roads)", () => {
+  beforeEach(() => stubGame());
+
+  function fakeMatrix() {
+    const cells = new Map<string, number>();
+    return {
+      get: (x: number, y: number) => cells.get(`${x},${y}`) ?? 0,
+      set: (x: number, y: number, v: number) => cells.set(`${x},${y}`, v)
+    } as unknown as CostMatrix;
+  }
+
+  it("prices a confirmed-built remote-route tile cheap in an unvisioned transit room", () => {
+    (globalThis as { Game: { map: unknown } }).Game.map = { getRoomTerrain: () => ({ get: () => 0 }) };
+    (globalThis as { Memory: { colonies?: Record<string, unknown> } }).Memory.colonies = {
+      W1N1: {
+        remotes: [
+          {
+            room: "W2N1",
+            sources: [
+              {
+                id: "src1",
+                x: 10,
+                y: 10,
+                distance: 5,
+                route: [
+                  { room: "W1N1", x: 40, y: 25 },
+                  { room: "W1N2", x: 25, y: 1 },
+                  { room: "W1N2", x: 25, y: 2 }
+                ],
+                routeBuilt: "111"
+              }
+            ]
+          }
+        ]
+      }
+    };
+    const result = dangerCostMatrix(undefined, fakeMatrix(), "W1N2", "W1N1");
+    expect(result.get(25, 1)).toBe(1);
+    expect(result.get(25, 2)).toBe(1);
+    expect(result.get(10, 10)).toBe(0); // untouched tile elsewhere in the room
+  });
+
+  it("does not price a route tile that isn't confirmed built yet", () => {
+    (globalThis as { Game: { map: unknown } }).Game.map = { getRoomTerrain: () => ({ get: () => 0 }) };
+    (globalThis as { Memory: { colonies?: Record<string, unknown> } }).Memory.colonies = {
+      W1N1: {
+        remotes: [
+          {
+            room: "W2N1",
+            sources: [{ id: "src1", x: 10, y: 10, distance: 5, route: [{ room: "W1N2", x: 25, y: 1 }], routeBuilt: "0" }]
+          }
+        ]
+      }
+    };
+    const result = dangerCostMatrix(undefined, fakeMatrix(), "W1N2", "W1N1");
+    expect(result.get(25, 1)).toBe(0);
+  });
+
+  it("never prices a route tile onto real terrain wall", () => {
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      getRoomTerrain: () => ({ get: (x: number, y: number) => (x === 25 && y === 1 ? TERRAIN_MASK_WALL : 0) })
+    };
+    (globalThis as { Memory: { colonies?: Record<string, unknown> } }).Memory.colonies = {
+      W1N1: {
+        remotes: [
+          {
+            room: "W2N1",
+            sources: [{ id: "src1", x: 10, y: 10, distance: 5, route: [{ room: "W1N2", x: 25, y: 1 }], routeBuilt: "1" }]
+          }
+        ]
+      }
+    };
+    const result = dangerCostMatrix(undefined, fakeMatrix(), "W1N2", "W1N1");
+    expect(result.get(25, 1)).toBe(0);
+  });
+
+  it("is a no-op when no home is supplied (existing callers unaffected)", () => {
+    (globalThis as { Game: { map: unknown } }).Game.map = { getRoomTerrain: () => ({ get: () => 0 }) };
+    (globalThis as { Memory: { colonies?: Record<string, unknown> } }).Memory.colonies = {
+      W1N1: {
+        remotes: [
+          {
+            room: "W2N1",
+            sources: [{ id: "src1", x: 10, y: 10, distance: 5, route: [{ room: "W1N2", x: 25, y: 1 }], routeBuilt: "1" }]
+          }
+        ]
+      }
+    };
+    const result = dangerCostMatrix(undefined, fakeMatrix(), "W1N2");
+    expect(result.get(25, 1)).toBe(0);
+  });
+});
+
 // dangerRouteCallback used to add DANGEROUS_ROOM_HOPS to every unvisioned keeper room outright — see the
 // suite above for why that's gone. Confirms the room-level hop cost for a keeper room is now neutral (1),
 // same as any other room with no specific opinion attached, letting the real per-tile cost (dangerCostMatrix)

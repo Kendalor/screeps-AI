@@ -552,10 +552,17 @@ describe("actuator", () => {
 // FIND_* constant execute uses.
 function stubScoutRoom(
   name: string,
-  over: { sources?: number; mineral?: string; controller?: unknown; hostileStructures?: unknown[] } = {}
+  over: {
+    sources?: number;
+    mineral?: string;
+    controller?: unknown;
+    hostileStructures?: unknown[];
+    keeperLairs?: Array<{ x: number; y: number }>;
+  } = {}
 ): unknown {
   const sources = Array.from({ length: over.sources ?? 2 }, (_, i) => ({ id: `s${i}`, pos: { x: i, y: i } }));
   const minerals = over.mineral ? [{ mineralType: over.mineral }] : [];
+  const lairs = (over.keeperLairs ?? []).map(l => ({ pos: l, structureType: STRUCTURE_KEEPER_LAIR }));
   return {
     name,
     controller: over.controller,
@@ -566,7 +573,9 @@ function stubScoutRoom(
           ? minerals
           : type === FIND_HOSTILE_STRUCTURES
             ? over.hostileStructures ?? []
-            : []
+            : type === FIND_STRUCTURES
+              ? lairs
+              : []
   };
 }
 
@@ -588,6 +597,47 @@ describe("actuator — scouting", () => {
       mineral: RESOURCE_OXYGEN,
       hostile: false
     });
+  });
+
+  it("records keeper lair positions the first time a keeper room is scouted", () => {
+    const room = stubScoutRoom("W46N14", { sources: 1, keeperLairs: [{ x: 32, y: 4 }, { x: 15, y: 17 }] });
+    stubGame({ time: 500, rooms: { W46N14: room } });
+    (globalThis as Record<string, unknown>).Memory = { rooms: {} };
+
+    execute([{ kind: "recordScout", room: "W46N14" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { lairs?: unknown } }> } }).Memory.rooms
+      .W46N14;
+    expect(mem.scouted?.lairs).toEqual([
+      { x: 32, y: 4 },
+      { x: 15, y: 17 }
+    ]);
+  });
+
+  // Regression: `lairs` was added to ScoutInfo after `sources` already existed on every previously-scouted
+  // room's record. Gating the lairs write on the SAME staticKnown flag as sources (`previous?.sources !==
+  // undefined`) meant a room scouted before this field existed could never gain it — staticKnown reads true
+  // forever (sources is already cached), so the `: previous.lairs` fallback ran on every subsequent
+  // re-observation and previous.lairs stayed undefined since the old record never had it. Confirmed live on
+  // W46N14: re-scouted many times after the fix shipped, `lairs` never appeared. Lairs must be captured on
+  // its own first-ever-seen check, independent of whatever staticKnown says about sources/mineral/anchor.
+  it("backfills lairs on a room whose sources were already cached before the lairs field existed", () => {
+    const room = stubScoutRoom("W46N14", { sources: 1, keeperLairs: [{ x: 32, y: 4 }] });
+    stubGame({ time: 500, rooms: { W46N14: room } });
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: {
+        W46N14: {
+          // Pre-fix record: sources/mineral/type already cached, no `lairs` key at all.
+          scouted: { tick: 10, type: "keeper", sources: [{ id: "s0", x: 0, y: 0 }], hostile: false }
+        }
+      }
+    };
+
+    execute([{ kind: "recordScout", room: "W46N14" }]);
+
+    const mem = (globalThis as { Memory: { rooms: Record<string, { scouted?: { lairs?: unknown } }> } }).Memory.rooms
+      .W46N14;
+    expect(mem.scouted?.lairs).toEqual([{ x: 32, y: 4 }]);
   });
 
   it("marks a room hostile when its controller is owned by someone else", () => {

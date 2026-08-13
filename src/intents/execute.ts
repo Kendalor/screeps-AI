@@ -427,11 +427,17 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
   const sources = staticKnown ? previous.sources : room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y }));
   const anchorChecked = staticKnown ? previous.anchorChecked ?? false : c !== undefined;
   const anchor = staticKnown ? previous.anchor : resolveScoutedAnchor(room, c, sources);
-  const lairs = staticKnown
-    ? previous.lairs
-    : room
-        .find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_KEEPER_LAIR })
-        .map(s => ({ x: s.pos.x, y: s.pos.y }));
+  // Deliberately gated on its OWN presence, not `staticKnown` (which is `sources !== undefined`) — this
+  // field was added after `sources` already existed on every previously-scouted room's ScoutInfo, so
+  // reusing `staticKnown` here would permanently skip the first-ever write for any such room: staticKnown
+  // is already true (sources is already cached), so the `: previous.lairs` branch would run forever and
+  // previous.lairs would stay undefined since it never existed on the old record to begin with. Confirmed
+  // live: W46N14 was scouted long before this field existed, so its ScoutInfo never gained `lairs` despite
+  // being re-observed on every visit. Once a room DOES have `lairs` cached, it's just as static as sources
+  // (a keeper lair never moves/respawns elsewhere), so `previous.lairs` is still reused from then on.
+  const lairs =
+    previous?.lairs ??
+    room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_KEEPER_LAIR }).map(s => ({ x: s.pos.x, y: s.pos.y }));
   // A STRUCTURE_INVADER_CORE sits independent of any controller (see ScoutInfo.invaderCore's doc), so
   // it needs its own live find rather than piggybacking on the owner/reservation read above. Re-found
   // every observation, active or passive, unlike the static sources/mineral/anchor fields above â€” a

@@ -10,6 +10,8 @@ function transportCreep(over: {
   inRange?: boolean;
   name?: string;
   pos?: { x: number; y: number };
+  /** Defaults to memory.home, like room.name below — set explicitly for a remote-room test. */
+  roomName?: string;
   /** Candidate objects (each needs a `pos: {x,y}`) findInRange filters by real range, keyed by FIND_* constant. */
   nearby?: Partial<Record<number, { pos: { x: number; y: number } }[]>>;
 }): {
@@ -32,6 +34,7 @@ function transportCreep(over: {
     pos: {
       x: over.pos?.x ?? 25,
       y: over.pos?.y ?? 25,
+      roomName: over.roomName ?? over.memory.home,
       inRangeTo: () => over.inRange ?? true,
       getRangeTo: (x: number, y: number) => Math.max(Math.abs((over.pos?.x ?? 25) - x), Math.abs((over.pos?.y ?? 25) - y)),
       findClosestByPath: (list: object[]) => list[0] ?? null,
@@ -43,7 +46,7 @@ function transportCreep(over: {
       // file exercises the actual road-eviction path (that's roadAvoidance.test.ts's job).
       lookFor: () => []
     },
-    room: { name: over.memory.home, find: () => [] },
+    room: { name: over.roomName ?? over.memory.home, find: () => [] },
     withdraw: () => {
       calls.withdraw++;
       return OK;
@@ -643,5 +646,132 @@ describe("runTransport", () => {
     runTransport(creep);
 
     expect(calls.transfer).toBe(1);
+  });
+
+  // Regression: a remote-hauling creep's cross-room legs used to re-derive a path from scratch via a
+  // live, danger-aware PathFinder.search every tick — blind to any road in a room without current vision
+  // (see interpreter.ts's dangerCostMatrix). mining/pickRemotes' resolvePathToSource already computed and
+  // cached the real anchor->source path once (RemoteSourceMemory.route), the exact path road construction
+  // is claimed against — remoteRoute.ts now walks that directly instead. These stub a route through a
+  // transit room (W2N1) the creep currently occupies, with no Game.rooms entry for it (no live vision),
+  // and assert travelTo is aimed at the route's own next tile rather than the raw anchor/target position.
+  describe("remote-route following (cross-room legs)", () => {
+    const remoteMemory = {
+      W1N1: {
+        remotes: [
+          {
+            room: "W3N1",
+            sources: [
+              {
+                id: "src1",
+                x: 10,
+                y: 10,
+                distance: 30,
+                route: [
+                  { room: "W1N1", x: 45, y: 25 },
+                  { room: "W2N1", x: 3, y: 25 },
+                  { room: "W2N1", x: 2, y: 25 },
+                  { room: "W2N1", x: 1, y: 25 },
+                  { room: "W3N1", x: 48, y: 25 },
+                  { room: "W3N1", x: 11, y: 10 } // container tile
+                ],
+                routeBuilt: "111111"
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    it("travelHome follows the route toward home instead of the raw anchor position", () => {
+      stubGame({});
+      (Memory as unknown as { colonies: typeof remoteMemory }).colonies = remoteMemory;
+      const { creep, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: { current: { kind: "travelHome", resource: RESOURCE_ENERGY, amount: 80 } }
+        },
+        used: 80,
+        free: 0,
+        pos: { x: 3, y: 25 },
+        roomName: "W2N1"
+      });
+
+      runTransport(creep);
+
+      // Nearest route tile to (3,25) in W2N1 is index 1 itself; walking "home" steps to index 0 (W1N1
+      // 45,25) — NOT the bunker anchor/room-centre a blind dangerAvoidanceOptions search would aim at.
+      expect(travelTargets).toEqual([{ x: 45, y: 25 }]);
+    });
+
+    it("a pickup leg follows the route toward the source instead of the target's raw position", () => {
+      const container = { id: "cont1", pos: { x: 11, y: 10, roomName: "W3N1" }, structureType: STRUCTURE_CONTAINER, store: {} };
+      stubGame({ objects: { cont1: container } });
+      (Memory as unknown as { colonies: typeof remoteMemory }).colonies = remoteMemory;
+      const { creep, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: {
+            current: { kind: "pickup", from: { kind: "structure", id: "cont1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 }
+          }
+        },
+        free: 50,
+        pos: { x: 2, y: 25 },
+        roomName: "W2N1",
+        inRange: false
+      });
+
+      runTransport(creep);
+
+      // Nearest tile to (2,25) is index 2; walking "source" steps to index 3 (W2N1 1,25) — one tile
+      // further along the corridor, not a straight line toward the container's raw (11,10) in W3N1.
+      expect(travelTargets).toEqual([{ x: 1, y: 25 }]);
+    });
+
+    it("merges onto the route when the creep starts off of it, rather than requiring exact placement", () => {
+      stubGame({});
+      (Memory as unknown as { colonies: typeof remoteMemory }).colonies = remoteMemory;
+      const { creep, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: { current: { kind: "travelHome", resource: RESOURCE_ENERGY, amount: 80 } }
+        },
+        used: 80,
+        free: 0,
+        pos: { x: 40, y: 40 }, // well off the route's own tiles in W2N1
+        roomName: "W2N1"
+      });
+
+      runTransport(creep);
+
+      // Merges onto the NEAREST route tile in this room (index 0, W2N1 3,25 — closer to (40,40) than the
+      // other two W2N1 tiles) rather than jumping straight to the next tile along the corridor; only once
+      // actually within ON_ROUTE_RANGE of a tile does travel advance past it.
+      expect(travelTargets).toEqual([{ x: 3, y: 25 }]);
+    });
+
+    it("falls back to normal danger-aware travel in a room the cached route never passes through", () => {
+      stubGame({});
+      (Memory as unknown as { colonies: typeof remoteMemory }).colonies = remoteMemory;
+      const { creep, travelTargets } = transportCreep({
+        memory: {
+          role: "transport",
+          home: "W1N1",
+          logistics: { current: { kind: "travelHome", resource: RESOURCE_ENERGY, amount: 80 } }
+        },
+        used: 80,
+        free: 0,
+        pos: { x: 25, y: 25 },
+        roomName: "W9N9" // not on this source's cached route at all
+      });
+
+      runTransport(creep);
+
+      // No route tile found for W9N9 — falls back to homeRoomWaypoint's room-centre default.
+      expect(travelTargets).toEqual([{ x: 25, y: 25 }]);
+    });
   });
 });

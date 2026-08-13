@@ -11,6 +11,7 @@ import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import { transferTo, withdrawOrPickup } from "./actions";
 import { dangerAvoidanceOptions } from "./interpreter";
+import { nextRouteStep, remoteRouteFor } from "./remoteRoute";
 import { stepOffRoad } from "./roadAvoidance";
 
 const PARK_RADIUS = 3; // "near the bunker" — anywhere within this range of the anchor counts as parked
@@ -108,6 +109,19 @@ function consumerFull(target: RoomObject, resource: ResourceConstant): boolean {
 function homeRoomWaypoint(creep: Creep): RoomPosition {
   const anchor = typeof Memory !== "undefined" ? Memory.colonies?.[creep.memory.home]?.anchor : undefined;
   return anchor ? new RoomPosition(anchor.x, anchor.y, creep.memory.home) : new RoomPosition(25, 25, creep.memory.home);
+}
+
+// The next tile to travel toward along a remote source's own precomputed route (see remoteRoute.ts),
+// instead of a live PathFinder guess at the raw target — undefined whenever the creep isn't currently in
+// any room the route passes through (home-room legs, or a remote this colony has no route cached for
+// yet), letting the caller fall straight back to a plain travelTo/dangerAvoidanceOptions with no extra
+// cost on the common case. `toward` is which end of the route this leg is walking: "source" for an
+// outbound pickup leg, "home" for the inbound travelHome/deliver leg.
+function remoteWaypoint(creep: Creep, toward: "source" | "home"): RoomPosition | undefined {
+  if (creep.room.name === creep.memory.home) return undefined; // no route tile lives in the home room itself
+  const route = remoteRouteFor(creep.memory.home, creep.pos);
+  const step = nextRouteStep(creep.pos, route, toward);
+  return step ? new RoomPosition(step.x, step.y, step.room) : undefined;
 }
 
 function resolveNode(creep: Creep, ref: NodeRef): RoomObject | null {
@@ -267,6 +281,14 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
         return;
       }
     }
+    // Prefer the real, already-built remote route over a fresh live PathFinder guess (see remoteRoute.ts)
+    // — undefined whenever this room isn't on any cached route (a colony with no remotes yet, or a room
+    // outside of them), falling straight through to the danger-aware search below exactly as before.
+    const via = remoteWaypoint(creep, "home");
+    if (via) {
+      creep.travelTo(via, { range: 0 });
+      return;
+    }
     // Danger-aware the same way moveToRoom's avoidDanger step is (see dangerAvoidanceOptions's doc):
     // this is a genuine cross-room trip, unlike the withdraw/deliver legs below which are usually a
     // same-room walk to an already-resolved target — a plain travelTo here had no route awareness at
@@ -302,9 +324,15 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
   const travelOptions = creep.room.name === creep.memory.home && target.pos.roomName === creep.memory.home
     ? undefined
     : dangerAvoidanceOptions(creep.memory.home);
+  // A pickup leg walks OUT toward the source end of the route; a deliver leg walks IN toward home — same
+  // remote-route preference travelHome above gets, applied to the withdraw/deliver legs too (see
+  // remoteWaypoint's doc). undefined (no cached route here) falls through to travelOptions exactly as
+  // before — actOnResolved only substitutes the travel destination, the arrival/action check below still
+  // reads the real target.
+  const travelVia = remoteWaypoint(creep, task.kind === "pickup" ? "source" : "home");
 
   if (task.kind === "pickup") {
-    const result = withdrawOrPickup(creep, target, task.resource, true, travelOptions);
+    const result = withdrawOrPickup(creep, target, task.resource, true, travelOptions, travelVia);
     // Advance once this pickup can make no further progress here: the creep filled up, OR the provider
     // is now empty (a partial container/pile that didn't fill the creep). Without the drained-provider
     // check a chain would re-withdraw from an empty source forever, since it's not idle and so never
@@ -335,6 +363,6 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
   // slow-draining builder/upgrader forever, AND lets a multi-dropoff chain flow sink->sink: each leg
   // fires once and advances to the next. `didAct` is true only when it acted in range; false means it
   // merely traveled toward the target this tick.
-  const result = transferTo(creep, target, task.resource, true, travelOptions);
+  const result = transferTo(creep, target, task.resource, true, travelOptions, travelVia);
   if (result.didAct) advanceOrPark(creep);
 }, "transport:runTransport");

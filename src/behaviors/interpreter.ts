@@ -246,6 +246,44 @@ function dangerSourcesIn(room: Room): RoomPosition[] {
   ];
 }
 
+// Cost given to a remote-route tile (see remoteRouteRoadsIn's doc) confirmed built, in a room with no
+// live vision. Below FLEE_PLAIN_COST-style defaults/Traveler's own plainCost (2, see traveler.ts's
+// findTravelPath) so PathFinder actually prefers it, matching the real in-game 2:1 road speed the
+// colony built that road for in the first place — same cost Traveler's own getStructureMatrix gives a
+// LIVE-vision road (addStructuresToMatrix's roadCost argument, called with 1).
+const REMOTE_ROAD_COST = 1;
+
+// A remote hauler's route regularly transits rooms with no permanent vision (nothing stationed there,
+// just passed through) — Game.rooms[roomName] is undefined for those, so applyDangerToMatrix's terrain
+// scan below never runs and the matrix stays a blank 0-cost grid there except for cached lair tiles.
+// PathFinder still falls back to plainCost/swampCost on every unset tile (see the docs.screeps.com
+// quote below applyDangerToMatrix), so terrain itself is still respected — but a REAL, ALREADY-BUILT
+// road through that room reads as ordinary plain cost, giving PathFinder no reason to prefer it over a
+// straight line elsewhere in the room. Confirmed live: a remote hauler's cross-room trips walked past
+// this colony's own constructed remote-route roads in transit rooms with no live vision, since nothing
+// had ever priced those tiles cheaper than the terrain around them. mining.ts's RemoteSourceMemory.route
+// (every tile of the home->source path, tagged by room) plus routeBuilt (which of those tiles are
+// confirmed actually built, one char per route[] index — see schema.ts's own doc on why a claim must
+// survive a vision gap) is exactly the durable, vision-independent record dangerCostMatrix's lair cache
+// already established the pattern for; this reuses it instead of inventing a second cache.
+function remoteRouteRoadsIn(home: string | undefined, roomName: string): { x: number; y: number }[] {
+  if (!home) return [];
+  const remotes = typeof Memory !== "undefined" ? Memory.colonies?.[home]?.remotes : undefined;
+  if (!remotes) return [];
+  const tiles: { x: number; y: number }[] = [];
+  for (const remote of remotes) {
+    for (const source of remote.sources) {
+      const route = source.route;
+      const built = source.routeBuilt;
+      if (!route || !built) continue;
+      for (let i = 0; i < route.length; i++) {
+        if (route[i].room === roomName && built[i] === "1") tiles.push({ x: route[i].x, y: route[i].y });
+      }
+    }
+  }
+  return tiles;
+}
+
 // Penalizes tiles near source keeper lairs and hostile-owned creeps so an unarmed traveller (a scout)
 // detours around them instead of pathing straight through a keeper's kill zone. A friendly/neutral
 // player's creep (isDangerous false) is left unpenalized — only reputation-flagged owners and NPC
@@ -257,14 +295,21 @@ function dangerSourcesIn(room: Room): RoomPosition[] {
 // falling back to dangerRouteCallback's old blanket "avoid the whole room" verdict. Terrain is free for
 // any room name via Game.map.getRoomTerrain, vision or not. A keeper room never scouted yet still falls
 // through to the plain no-op (nothing cached to price), same as before this existed.
-export function dangerCostMatrix(room: Room | undefined, matrix: CostMatrix, roomName?: string): CostMatrix {
+//
+// `home` (optional, new) additionally prices this colony's own known remote-route roads into an
+// unvisioned transit room (see remoteRouteRoadsIn) — every existing caller that doesn't pass it keeps
+// the prior lair-only behavior unchanged.
+export function dangerCostMatrix(room: Room | undefined, matrix: CostMatrix, roomName?: string, home?: string): CostMatrix {
   if (room) {
     return applyDangerToMatrix(matrix, room.getTerrain(), dangerSourcesIn(room));
   }
   if (!roomName) return matrix;
+  const terrain = Game.map.getRoomTerrain(roomName);
+  for (const tile of remoteRouteRoadsIn(home, roomName)) {
+    if (terrain.get(tile.x, tile.y) !== TERRAIN_MASK_WALL) matrix.set(tile.x, tile.y, REMOTE_ROAD_COST);
+  }
   const lairs = Memory.rooms?.[roomName]?.scouted?.lairs;
   if (!lairs || lairs.length === 0) return matrix;
-  const terrain = Game.map.getRoomTerrain(roomName);
   const dangers = lairs.map(l => new RoomPosition(l.x, l.y, roomName));
   return applyDangerToMatrix(matrix, terrain, dangers);
 }
@@ -371,7 +416,7 @@ export function dangerRouteCallback(home: string, roomName: string): number {
 export function dangerAvoidanceOptions(home: string): TravelToOptions {
   return {
     useFindRoute: true,
-    roomCallback: (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix, roomName),
+    roomCallback: (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix, roomName, home),
     routeCallback: (roomName: string) => dangerRouteCallback(home, roomName),
     dangerCheck: dangerNearby
   };
@@ -791,6 +836,28 @@ function attackStep(creep: Creep, spec: TargetSpec, locked: Id<_HasId> | undefin
   // accept Structure just as well as Creep, so it shares this same logic, keyed off the ACTOR's body
   // (unchanged), never the target's.
   const hostile = target as Creep | Structure;
+
+  // Every branch below (kiting, closing in, approaching firing range) assumes hostile.pos is a point
+  // INSIDE creep.room — true for a freshly-resolved find:"hostile" target (targets.ts's findCandidates
+  // only searches creep.room), but not for a locked target: validLock re-checks a "hostile" lock purely
+  // via Game.getObjectById, with no same-room requirement, so a lock taken while fighting in one room
+  // survives the creep being pushed/retreating back into another. clampInterior(hostile.pos,
+  // creep.room.name) then silently reinterprets the hostile's foreign-room x/y as coordinates in the
+  // creep's OWN room, and maxRooms:1 confines the search there — producing a real but meaningless
+  // in-room destination instead of a failed/cross-room path. Confirmed live: a defender locked onto an
+  // invader in a different room crept toward clampInterior's bogus same-room point for hundreds of
+  // ticks. A plain, uncapped travelTo is the correct behavior once the target is provably elsewhere —
+  // none of the in-room bait/border tactics below apply to a hop that must cross a border anyway.
+  if (hostile.pos.roomName !== creep.room.name) {
+    if (creep.pos.inRangeTo(hostile.pos, 1)) {
+      creep.attack(hostile);
+      return { acted: true, didAct: true, target: hostile.id };
+    }
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(hostile.pos, { range: creep.getActiveBodyparts(RANGED_ATTACK) > 0 ? RANGED_ATTACK_RANGE : 1 });
+    return { acted: true, didAct: false, target: hostile.id };
+  }
+
   const ranged = creep.getActiveBodyparts(RANGED_ATTACK) > 0;
 
   if (!ranged) {
