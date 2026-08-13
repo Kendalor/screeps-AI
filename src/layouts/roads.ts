@@ -1,5 +1,13 @@
 // Cost-matrix construction + road pathing for connecting a stamped bunker (stamp.ts) to sources
-// and the controller. Pure/unit-testable — no Game access.
+// and the controller. Road-building (sourceRoadPath/controllerRoadPath/controllerContainerPath) is
+// pure/unit-testable — no Game access, via the hand-rolled findPath below. pathDistance/
+// pathDistanceAndStand (the logistics allocator's hot-path distance queries — see logistics/allocate.ts)
+// instead call the real PathFinder.search: they're invoked O(idle creeps x providers/consumers) times
+// per tick, and the engine's native search is far cheaper per call than even a fast JS A* at that volume
+// — confirmed live (2026-08-13) as the dominant cause of intermittent operations-tier CPU spikes.
+// Testable the same way src/lib/squadPath.ts is: test/constants.ts's stubPathFinderSingleRoom() runs a
+// real Dijkstra over whatever CostMatrix the roomCallback below builds, so wall-awareness is still
+// genuinely exercised in unit tests, not mocked away.
 
 import type { XY } from "../lib/geometry";
 import type { PlacedStructure } from "./stamp";
@@ -116,24 +124,53 @@ export interface RoadPathResult {
   structurePos: XY;
 }
 
+// Builds a real PathFinder.CostMatrix from a RoadCostMatrix's costs, for handing to PathFinder.search's
+// roomCallback — the engine's own matrix type, not this module's plain get/set stand-in for it.
+function toPathFinderMatrix(cm: RoadCostMatrix): CostMatrix {
+  const matrix = new PathFinder.CostMatrix();
+  for (let x = 0; x < 50; x++) {
+    for (let y = 0; y < 50; y++) {
+      const cost = cm.get(x, y);
+      if (cost !== 0) matrix.set(x, y, cost);
+    }
+  }
+  return matrix;
+}
+
 // Real walkable-tile distance from `from` to within `range` of `to` — terrain/structure-aware, unlike
-// a Chebyshev/linear-distance guess. Same A* this module already uses for road planning, repurposed as
-// a plain distance query. Infinity when `to` is unreachable (e.g. walled off), so callers can treat it
-// like a missing candidate rather than special-casing an empty path.
-export function pathDistance(from: XY, to: XY, range: number, cm: RoadCostMatrix): number {
-  const path = findPath(from, to, range, cm);
-  return path.length === 0 ? Infinity : path.length - 1;
+// a Chebyshev/linear-distance guess. Backed by the engine's own PathFinder.search (see this file's
+// header for why, unlike road-building below, this doesn't use the hand-rolled findPath), restricted to
+// one room via maxRooms. `room` must be the REAL room both positions live in (every real caller only
+// ever compares distances within one colony's home room) — confirmed live (2026-08-13) that a fake
+// placeholder room name breaks PathFinder.search against the real engine (silently very slow/wrong),
+// even though it's invisible to the unit-test stub, which doesn't validate room existence.
+// Infinity when `to` is unreachable (e.g. walled off), so callers can treat it like a missing candidate
+// rather than special-casing an empty path.
+export function pathDistance(from: XY, to: XY, range: number, cm: RoadCostMatrix, room: string): number {
+  const result = PathFinder.search(
+    new RoomPosition(from.x, from.y, room),
+    { pos: new RoomPosition(to.x, to.y, room), range },
+    { maxRooms: 1, plainCost: PLAIN_COST, swampCost: PLAIN_COST, roomCallback: () => toPathFinderMatrix(cm) }
+  );
+  if (result.incomplete && result.path.length === 0) return Infinity;
+  return result.path.length;
 }
 
 // Same query as pathDistance, but also returns the actual tile the path stops on — the tile within
-// `range` of `to` that findPath's A* halted at, i.e. where a creep doing this walk would really be
+// `range` of `to` that PathFinder.search halted at, i.e. where a creep doing this walk would really be
 // standing, NOT `to` itself. At PICKUP_RANGE (1) a creep withdrawing/transferring/delivering never
 // stands on the structure it's acting on, so chaining a next leg from `to` instead of this stand tile
-// misjudges the following hop by up to `range` tiles. `null` when `to` is unreachable.
-export function pathDistanceAndStand(from: XY, to: XY, range: number, cm: RoadCostMatrix): { distance: number; stand: XY } | null {
-  const path = findPath(from, to, range, cm);
-  if (path.length === 0) return null;
-  return { distance: path.length - 1, stand: path[path.length - 1] };
+// misjudges the following hop by up to `range` tiles. `null` when `to` is unreachable. `room`: see
+// pathDistance's doc — must be the real room, not a placeholder.
+export function pathDistanceAndStand(from: XY, to: XY, range: number, cm: RoadCostMatrix, room: string): { distance: number; stand: XY } | null {
+  const result = PathFinder.search(
+    new RoomPosition(from.x, from.y, room),
+    { pos: new RoomPosition(to.x, to.y, room), range },
+    { maxRooms: 1, plainCost: PLAIN_COST, swampCost: PLAIN_COST, roomCallback: () => toPathFinderMatrix(cm) }
+  );
+  if (result.incomplete && result.path.length === 0) return null;
+  const last = result.path[result.path.length - 1] ?? from;
+  return { distance: result.path.length, stand: { x: last.x, y: last.y } };
 }
 
 function roadPathTo(anchor: XY, target: XY, range: number, costMatrix: RoadCostMatrix): RoadPathResult {

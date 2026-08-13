@@ -1,14 +1,22 @@
 // Mirrors supply.test.ts's structure — the smallest existing operation test. Every case constructs the
 // operation directly and hands it a snapshot: no Game mock, no Colony.
+// Logistics.intents() runs planLogistics -> allocate(), whose distance queries now go through real
+// PathFinder.search (see layouts/roads.ts's header) — stubPathFinderSingleRoom() wires that up.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
 import GOAL_JSON from "../../../src/layouts/Base_2.json";
 import type { GoalLayout } from "../../../src/layouts/sync";
 import { colonySnap, containerAt, linkAt, sinkAt, snapCreep, snapCreeps } from "../../fixtures";
 import { bodyCost } from "../../../src/spawn/body";
+import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
 
 const logistics = new Logistics("W1N1");
+
+beforeEach(() => {
+  clearTiles();
+  stubPathFinderSingleRoom();
+});
 
 describe("Logistics.desiredCreeps", () => {
   // A fresh colony has no containers/drops and no spawn deficit — nothing for a transport creep to

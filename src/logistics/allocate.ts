@@ -69,7 +69,12 @@ export function allocate(
   // logistics/index.ts) so every pickNearestFillingProvider call this tick reuses the same matrix
   // instead of rebuilding it per creep. Defaults to an all-open matrix (no walls/structures) so callers
   // that don't care about obstacles — most existing tests — get plain walkable-distance behavior.
-  costMatrix: RoadCostMatrix = new RoadCostMatrix()
+  costMatrix: RoadCostMatrix = new RoadCostMatrix(),
+  // The real room every position/costMatrix cell here lives in — required by pathDistance's
+  // PathFinder.search (see layouts/roads.ts's doc: a placeholder name breaks against the real engine).
+  // Defaulted only so existing room-agnostic tests (most of allocate.test.ts, which never care about
+  // walls) don't all need updating; any test that DOES care about real terrain passes its own.
+  room = "W1N1"
 ): Record<Id<Creep>, LogisticsTask> {
   const out: Record<Id<Creep>, LogisticsTask> = {};
   // Mutable across this whole call so two loaded creeps in the same tick don't both dump into storage
@@ -104,7 +109,7 @@ export function allocate(
         out[creep.id] = { kind: "travelHome", resource: RESOURCE_ENERGY, amount: creep.storeEnergy };
         continue;
       }
-      const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, creep.storeEnergy, creep, costMatrix);
+      const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, creep.storeEnergy, creep, costMatrix, room);
       const delivered = delivers.reduce((sum, d) => sum + d.amount, 0);
       const leftover = creep.storeEnergy - delivered;
       // No live consumer wanted (all of) what this creep carries: dump the rest into storage rather
@@ -131,7 +136,7 @@ export function allocate(
     const fillTarget = Math.min(capacity, wantOpen);
     if (fillTarget <= 0) continue;
 
-    const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget, creep, costMatrix);
+    const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget, creep, costMatrix, room);
     if (pickups.length === 0) continue;
     const loaded = pickups.reduce((sum, p) => sum + p.amount, 0);
 
@@ -154,7 +159,7 @@ export function allocate(
     // the LAST pickup's position (where the creep will actually be once loaded), not its current spot —
     // falls back to the creep's own position when the last pickup has none (a remote source).
     const lastPickupPos = pickups[pickups.length - 1]?.pos ?? creep;
-    const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, loaded, lastPickupPos, costMatrix);
+    const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, loaded, lastPickupPos, costMatrix, room);
 
     // Head pickup carries the first deliver's consumer as its `to` so foldReserved can read *a*
     // destination off `current`; the full per-consumer accounting lives in the deliver legs it walks.
@@ -179,7 +184,7 @@ export function allocate(
     if (free <= 0) continue;
 
     const provider =
-      pickNearestFillingProvider(providers, providerRemaining, RESOURCE_ENERGY, creep, free, costMatrix, isDecaying) ??
+      pickNearestFillingProvider(providers, providerRemaining, RESOURCE_ENERGY, creep, free, costMatrix, room, isDecaying) ??
       pickLargestDecayingProvider(providers, providerRemaining);
     if (!provider) continue;
 
@@ -208,13 +213,15 @@ function buildPickupChain(
   resource: ResourceConstant,
   fillTarget: number,
   from: XY,
-  costMatrix: RoadCostMatrix
+  costMatrix: RoadCostMatrix,
+  room: string
 ): { ref: NodeRef; amount: number; remote?: boolean; pos: XY | null }[] {
   const out: { ref: NodeRef; amount: number; remote?: boolean; pos: XY | null }[] = [];
   let need = fillTarget;
   while (need > 0) {
     const provider =
-      pickNearestFillingProvider(providers, remaining, resource, from, need, costMatrix) ?? pickLargestProvider(providers, remaining, resource);
+      pickNearestFillingProvider(providers, remaining, resource, from, need, costMatrix, room) ??
+      pickLargestProvider(providers, remaining, resource);
     if (!provider) break;
     const key = refKey(provider.ref);
     const take = Math.min(need, remaining.get(key) ?? 0);
@@ -243,6 +250,7 @@ function pickNearestFillingProvider(
   from: XY,
   need: number,
   costMatrix: RoadCostMatrix,
+  room: string,
   filter?: (ref: NodeRef) => boolean
 ): Provider | undefined {
   let best: Provider | undefined;
@@ -252,7 +260,7 @@ function pickNearestFillingProvider(
     if (filter && !filter(p.ref)) continue;
     const left = remaining.get(refKey(p.ref)) ?? 0;
     if (left < need) continue;
-    const d = p.remote ? (p.remoteDistance ?? Infinity) : p.pos ? pathDistance(from, p.pos, PICKUP_RANGE, costMatrix) : Infinity;
+    const d = p.remote ? (p.remoteDistance ?? Infinity) : p.pos ? pathDistance(from, p.pos, PICKUP_RANGE, costMatrix, room) : Infinity;
     if (d < bestDistance) {
       best = p;
       bestDistance = d;
@@ -290,7 +298,8 @@ function buildDeliverChain(
   resource: ResourceConstant,
   available: number,
   from?: XY,
-  costMatrix?: RoadCostMatrix
+  costMatrix?: RoadCostMatrix,
+  room?: string
 ): { ref: NodeRef; amount: number }[] {
   const out: { ref: NodeRef; amount: number }[] = [];
   let left = available;
@@ -312,7 +321,7 @@ function buildDeliverChain(
     const remainingInTier = new Set(pool);
     let hasStop = out.length > 0; // a higher-priority tier may have already placed a stop this call
     while (remainingInTier.size > 0 && left > 0) {
-      const picked = cursor && costMatrix ? nearestConsumer(remainingInTier, cursor, costMatrix) : undefined;
+      const picked = cursor && costMatrix && room ? nearestConsumer(remainingInTier, cursor, costMatrix, room) : undefined;
       const next = picked?.consumer ?? remainingInTier.values().next().value;
       if (!next) break;
       // Once the chain has a stop, don't let it leap clear across the room for the next one — see
@@ -344,11 +353,16 @@ function buildDeliverChain(
 // the consumer's own position. A consumer with no position (a creep sink, or a storage struct that
 // hasn't been placed yet) sorts last, not first, so a positioned sink is always preferred when one's
 // available; ties keep iteration order.
-function nearestConsumer(pool: ReadonlySet<Consumer>, from: XY, costMatrix: RoadCostMatrix): { consumer: Consumer; distance: number; stand: XY } | undefined {
+function nearestConsumer(
+  pool: ReadonlySet<Consumer>,
+  from: XY,
+  costMatrix: RoadCostMatrix,
+  room: string
+): { consumer: Consumer; distance: number; stand: XY } | undefined {
   let best: { consumer: Consumer; distance: number; stand: XY } | undefined;
   for (const c of pool) {
     if (!c.pos) continue;
-    const found = pathDistanceAndStand(from, c.pos, PICKUP_RANGE, costMatrix);
+    const found = pathDistanceAndStand(from, c.pos, PICKUP_RANGE, costMatrix, room);
     if (found && found.distance < (best?.distance ?? Infinity)) {
       best = { consumer: c, distance: found.distance, stand: found.stand };
     }

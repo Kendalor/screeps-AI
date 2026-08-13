@@ -85,7 +85,9 @@ function planSupply(colony: ColonySnapshot, costMatrix: RoadCostMatrix): { plan:
   const reserved = foldReserved(supplyCreeps);
   const idle = supplyCreeps.filter(isIdle);
   const assignments =
-    idle.length === 0 ? {} : allocate(supplyProviders(colony), supplyConsumers(colony), idle, reserved, null, costMatrix);
+    idle.length === 0
+      ? {}
+      : allocate(supplyProviders(colony), supplyConsumers(colony), idle, reserved, null, costMatrix, colony.name);
   foldPlan(reserved, assignments);
   return { plan: { assignments }, reserved };
 }
@@ -119,7 +121,8 @@ export const planLogistics = wrapFn(function planLogistics(colony: ColonySnapsho
     idle,
     reserved,
     storageOverflow(colony),
-    costMatrix
+    costMatrix,
+    colony.name
   );
   return { assignments: { ...supplyPlan.assignments, ...assignments } };
 }, "planning:planLogistics");

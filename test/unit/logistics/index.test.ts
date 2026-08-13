@@ -1,9 +1,17 @@
 // planLogistics is thin (wires graph + allocate + reserved-folding), so one integration-style case per
 // behavior is enough — the interesting logic already has its own unit tests in graph/allocate.
+// allocate() now runs distance queries via real PathFinder.search (see layouts/roads.ts's header), so
+// every case here needs stubPathFinderSingleRoom() — same as allocate.test.ts.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { planLogistics } from "../../../src/logistics";
 import { colonySnap, containerAt, remoteEnergyAt, sinkAt, snapCreep } from "../../fixtures";
+import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
+
+beforeEach(() => {
+  clearTiles();
+  stubPathFinderSingleRoom();
+});
 
 describe("planLogistics", () => {
   it("assigns one idle transport creep given one provider and one consumer", () => {

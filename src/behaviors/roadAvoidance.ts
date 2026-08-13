@@ -23,7 +23,6 @@ function moverNearby(pos: RoomPosition, self: Creep): boolean {
       if (found) return true;
     }
   }
-  if (Memory.debugMetrics) console.log(`ROADAVOID_MARKER_v2 ${self.name} no mover found near ${pos.x},${pos.y}`);
   return false;
 }
 
