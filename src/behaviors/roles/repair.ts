@@ -1,4 +1,4 @@
-import { affordableSets } from "../../spawn/body";
+import { affordableSets, bodyCost } from "../../spawn/body";
 import { REPAIRABLE } from "../../lib/repairable";
 import type { BodyContext, Step } from "../types";
 import { Role } from "./role";
@@ -12,10 +12,14 @@ import { Role } from "./role";
 // which is correct — the ratio is about travel speed, not about whether this repairer's own job exists.
 const BASE_BODY: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE];
 // 2:1 weight:MOVE once every route is paved, matching builder/upgrader's own road-speed convention.
-const BASE_BODY_ROADS: BodyPartConstant[] = [WORK, WORK, CARRY, MOVE];
+// Needs two MOVE: WORK+WORK+CARRY is 3 weight parts, and a single MOVE (3:1) still fatigues on a road.
+const BASE_BODY_ROADS: BodyPartConstant[] = [WORK, WORK, CARRY, MOVE, MOVE];
 
 function repairBody(energy: number, roads = false): BodyPartConstant[] {
-  const set = roads ? BASE_BODY_ROADS : BASE_BODY;
+  // BASE_BODY_ROADS costs more than BASE_BODY (350 vs 250) — below that, affordableSets' min:1 floor
+  // would hand back a body costing more than energy (unspawnable). Fall back to the cheaper off-road
+  // set so a repairer is always spawnable down to RCL1's 300-energy cap, roads or not.
+  const set = roads && energy >= bodyCost(BASE_BODY_ROADS) ? BASE_BODY_ROADS : BASE_BODY;
   const sets = affordableSets(energy, set, 1, 6);
   let body: BodyPartConstant[] = [];
   for (let i = 0; i < sets; i++) {

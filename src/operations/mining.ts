@@ -497,10 +497,17 @@ export class Mining extends Operation {
     if (cached && cached.fingerprint === fingerprint) return cached.routes;
 
     // Containers/roads/ramparts are walkable, so a planned road is preferred — the reason two
-    // operations share one route instead of laying parallel ones.
+    // operations share one route instead of laying parallel ones. Home-room only: `planned` also
+    // carries remote-route claims (room set to the remote room), and buildCostMatrix/RoadCostMatrix
+    // index purely by (x,y) with no notion of room — an unfiltered remote claim whose coordinates
+    // happen to coincide with a home-room tile would silently overwrite that tile's real terrain cost
+    // (e.g. turning a home-room WALL into a cheap ROAD_COST tile because the same (x,y) is legitimately
+    // a road in some other room), letting A* "tunnel" straight through it. Confirmed live on W47N14
+    // 2026-08-13 via upgrading.ts's identical bug: a W47N15 remote-route road claim at (30,24)/(29,25)
+    // leaked into the home room's cost matrix and let the controller-approach path cross a real wall.
     const costMatrix = buildCostMatrix({
       terrain: colony.terrain,
-      structures: [...colony.structures, ...planned]
+      structures: [...colony.structures, ...planned.filter(p => (p.room ?? colony.name) === colony.name)]
     });
 
     const routes = new Map<SnapSource, RoadPathResult>();

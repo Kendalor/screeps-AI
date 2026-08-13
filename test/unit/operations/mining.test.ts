@@ -619,6 +619,32 @@ describe("Mining.structures", () => {
     expect(containerOf(withPlan)).toEqual(containerOf(mining.structures(built, planned)));
   });
 
+  // Confirmed live on W47N14 2026-08-13: a Mining remote-route road claim (room set to the REMOTE room)
+  // shared (x,y) with a real HOME-room wall tile. buildCostMatrix/RoadCostMatrix index purely by (x,y)
+  // with no room concept, so sourceRoutes' unfiltered `planned` let that remote claim mark the home-room
+  // wall as a cheap ROAD_COST tile — the local source's own access road then "tunneled" straight through
+  // it. `planned` must be filtered to home-room entries before it can influence this room's cost matrix.
+  it("never routes a local source's road across a home-room wall, even when a remote claim shares the wall's coordinates", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const terrain = openTerrain();
+    const wallX = 15;
+    const wallY = 10; // sits on the straight-line path between anchor and source
+    terrain[wallX * 50 + wallY] = 0;
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800, terrain });
+
+    // A remote route's road claim at the exact same (x,y), tagged to a different room — must not leak in.
+    const poisonedPlanned = [
+      ...plannedAt(anchor, 3, [source]),
+      { x: wallX, y: wallY, room: "W2N1", type: "road" as const }
+    ];
+
+    const claims = mining.structures(snap, poisonedPlanned);
+    const roads = claims.filter(c => c.type === "road" && c.sourceId === source.id);
+    expect(roads.length).toBeGreaterThan(0);
+    expect(roads.some(r => r.x === wallX && r.y === wallY)).toBe(false);
+  });
+
   // sourceRoutes (the cost-matrix + PathFinder search behind structures()/intents()) is cached at
   // module scope, keyed on anchor/RCL/structures/planned/sources/terrain — fields that don't affect
   // the route (tick, energy, live creeps) must never perturb the cached result, and a genuine

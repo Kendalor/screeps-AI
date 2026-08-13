@@ -171,6 +171,13 @@ export function buildCostMatrix(room: RoomFixture): RoadCostMatrix {
     }
   }
   for (const s of room.structures) {
+    // A road claim can never make a real wall tile walkable — Screeps refuses a road construction site
+    // on a wall in the first place, so a "road" entry landing there is always bogus input (e.g. a
+    // caller accidentally mixing in a claim from a different room whose coordinates happen to collide
+    // with this room's — confirmed live on W47N14 2026-08-13, where a remote-route road claim leaked
+    // into the home room's structures list this way and let A* "tunnel" straight through a wall). Wall
+    // terrain wins over any structure entry, road included.
+    if (room.terrain[s.x * 50 + s.y] === 0) continue;
     if (s.type === "road") {
       cm.set(s.x, s.y, ROAD_COST);
     } else if (!WALKABLE_STRUCTURES.has(s.type)) {

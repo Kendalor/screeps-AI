@@ -57,6 +57,21 @@ describe("buildCostMatrix", () => {
 
     expect(cm.get(12, 12)).toBe(255);
   });
+
+  // A road can never legitimately stand on a wall — Screeps refuses the construction site outright — so
+  // a "road" structure entry at a wall tile is always bogus input, not a real claim to trust. Confirmed
+  // live on W47N14 2026-08-13: a remote-room road claim leaked into the home room's structures list
+  // (same (x,y), different room — see operations/mining.ts and operations/upgrading.ts's now-fixed
+  // room filter) and, before this guard existed, turned a real wall into a cheap ROAD_COST tile, letting
+  // A* "tunnel" straight through it.
+  it("never lets a road claim override wall terrain — wall wins even over a claimed road", () => {
+    const terrain = openTerrain();
+    terrain[12 * 50 + 12] = 0; // wall
+
+    const cm = buildCostMatrix({ terrain, structures: [{ x: 12, y: 12, type: "road" }] });
+
+    expect(cm.get(12, 12)).toBe(255);
+  });
 });
 
 describe("sourceRoadPath", () => {

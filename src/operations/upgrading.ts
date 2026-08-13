@@ -143,7 +143,11 @@ export class Upgrading extends Operation {
     // construction site. Confirmed live on W47N14 2026-08-13: the entire controller-approach road runs
     // along the same corridor Mining's W47N15 remote route uses, and every one of Upgrading's 16 road
     // claims for it were silently dropped — 13 of those tiles are genuinely unbuilt but never got sited.
-    const takenType = new Map(planned.map(p => [`${p.x},${p.y}`, p.type]));
+    //
+    // Home-room only: every claim this method makes is implicitly home-room (never sets `room`), so a
+    // remote claim sharing (x,y) with one of them is a coincidence, not the same tile — must not affect
+    // this dedup either way (see route()'s identical filter on the cost matrix, same live incident).
+    const takenType = new Map(planned.filter(p => (p.room ?? colony.name) === colony.name).map(p => [`${p.x},${p.y}`, p.type]));
     const out: PlacedStructure[] = [];
     const claim = (p: PlacedStructure): void => {
       const key = `${p.x},${p.y}`;
@@ -233,12 +237,21 @@ export class Upgrading extends Operation {
         Math.max(Math.abs(l.x - colony.controller.x), Math.abs(l.y - colony.controller.y)) <= upgraderConfig.controllerLinkRange
     );
     const structures = colony.structures.filter(s => s.id !== controllerLink?.id);
+    // Home-room only: `planned` also carries remote-route claims (room set to the remote room), and
+    // buildCostMatrix/RoadCostMatrix index purely by (x,y) with no notion of room — an unfiltered remote
+    // claim whose coordinates happen to coincide with a home-room tile would silently overwrite that
+    // tile's real terrain cost (e.g. turning a home-room WALL into a cheap ROAD_COST tile because the
+    // same (x,y) is legitimately a road in some other room), letting A* "tunnel" straight through it.
+    // Confirmed live on W47N14 2026-08-13: a W47N15 remote-route road claim at (30,24)/(29,25) leaked
+    // into the home room's cost matrix and let the controller-approach path cross a real wall there.
     const costMatrix = buildCostMatrix({
       terrain: colony.terrain,
-      structures: [...structures, ...planned]
+      structures: [...structures, ...planned.filter(p => (p.room ?? colony.name) === colony.name)]
     });
 
-    const taken = new Set(planned.map(p => `${p.x},${p.y}`));
+    // Home-room only, same reasoning as the cost matrix above: a remote claim sharing (x,y) with a
+    // home-room endpoint must not falsely block it.
+    const taken = new Set(planned.filter(p => (p.room ?? colony.name) === colony.name).map(p => `${p.x},${p.y}`));
     // The A* endpoint can land on a tile the bunker's own road grid already claims — cheap to path
     // through (ROAD_COST), so nothing steers the search away from ending there. A container can share
     // a tile with a road in Screeps, but the claim still needs to win that tile, and a link can't stack

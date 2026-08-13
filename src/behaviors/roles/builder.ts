@@ -1,5 +1,5 @@
 import { affordableSets, bodyCost } from "../../spawn/body";
-import type { Step } from "../types";
+import type { BodyContext, Step } from "../types";
 import { Role } from "./role";
 
 // At a 300-capacity room, use a 2-CARRY body (WORK,CARRY,CARRY,MOVE,MOVE = 300) instead of the
@@ -7,15 +7,18 @@ import { Role } from "./role";
 // ~6% faster to full RCL3 build-out, slightly less energy wasted, no reliable downside.
 const B_300_BODY: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE]; // 300
 // From 350 the base gains a third MOVE (WORK,CARRY,CARRY,MOVE,MOVE,MOVE = 350), then extends by
-// WORK,MOVE sets — each set keeps the body move-balanced while adding build throughput.
+// WORK,CARRY,MOVE sets — 1:1 weight:MOVE, same as the base, so extending never dilutes the ratio.
 const B_350_BODY: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE, MOVE]; // 350
-const EXT_SET: BodyPartConstant[] = [WORK,CARRY, MOVE]; // 200
-// Cap the total body at 1200 energy: 350 base + 5 WORK,MOVE sets (5*150 = 750) = 1100, the most sets
-// that fit under 1200. A sixth set would cost 1250, so the body tops out at 16 parts / 1100 energy.
+// Off-road default: 1 MOVE per weight part (WORK+CARRY) so a builder never fatigues working an
+// unpaved remote route or a home leg not yet built — same convention as repair.ts/hauler.ts.
+const EXT_SET: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE]; // 250
+// 2:1 weight:MOVE once every route is paved (ctx.roads), matching repair/upgrader's road-speed set.
+const EXT_SET_ROADS: BodyPartConstant[] = [WORK, CARRY, MOVE]; // 200
+// Cap the total body at 1200 energy — the most extension sets that fit under that budget.
 const MAX_BODY_COST = 1200;
-const MAX_EXT_SETS = Math.floor((MAX_BODY_COST - bodyCost(B_350_BODY)) / bodyCost(EXT_SET)); // 5
+const MAX_EXT_SETS = Math.floor((MAX_BODY_COST - bodyCost(B_350_BODY)) / bodyCost(EXT_SET_ROADS));
 
-function builderBody(energy: number): BodyPartConstant[] {
+function builderBody(energy: number, roads = false): BodyPartConstant[] {
   if (energy < 350) {
     if (energy >= 300) return [...B_300_BODY];
     const BASE_BODY = [WORK, WORK, CARRY, MOVE];
@@ -26,11 +29,12 @@ function builderBody(energy: number): BodyPartConstant[] {
     }
     return body;
   }
+  const extSet = roads ? EXT_SET_ROADS : EXT_SET;
   const extEnergy = energy - bodyCost(B_350_BODY);
-  const extSets = affordableSets(extEnergy, EXT_SET, 0, MAX_EXT_SETS);
+  const extSets = affordableSets(extEnergy, extSet, 0, MAX_EXT_SETS);
   let body: BodyPartConstant[] = [...B_350_BODY];
   for (let i = 0; i < extSets; i++) {
-    body = body.concat(EXT_SET);
+    body = body.concat(extSet);
   }
   return body;
 }
@@ -40,8 +44,8 @@ export class Builder extends Role {
   static override readonly doNotBlockRoads = true;
   // Once every WORK part is destroyed this body can't build or harvest at all — see Role.retreatPart.
   static override readonly retreatPart = WORK;
-  static override body(energy: number): BodyPartConstant[] {
-    return builderBody(energy);
+  static override body(energy: number, ctx?: BodyContext): BodyPartConstant[] {
+    return builderBody(energy, ctx?.roads);
   }
   // Refill from the nearest of drop / storage / container in one step; self-harvest is the slow last
   // resort. Deliberately NOT from haulers: a builder draining a hauler mid-run steals the energy the

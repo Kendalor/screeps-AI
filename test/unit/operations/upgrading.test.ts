@@ -209,6 +209,20 @@ describe("Upgrading.structures — controller container + road", () => {
     }
   });
 
+  // Every claim structures() makes is implicitly home-room. A DIFFERENT-type claim at the same (x,y)
+  // but tagged to a different room is a coincidence, not the same tile, and must not block anything —
+  // the dedup map needs the same home-room filter route()'s cost matrix now has (see the wall test below).
+  it("ignores a same-coordinate claim from a different room when deduping, even with a different type", () => {
+    const claimed = upgrading.structures(gated());
+    const remoteConflict = claimed.map(c => ({ x: c.x, y: c.y, type: "extension" as const, room: "W2N1" }));
+
+    const second = upgrading.structures(gated(), remoteConflict);
+    const roads = second.filter(s => s.type === "road");
+    const homeRoads = claimed.filter(s => s.type === "road");
+    expect(roads).toHaveLength(homeRoads.length);
+    for (const r of homeRoads) expect(roads).toContainEqual(r);
+  });
+
   // A live bug: the bunker's own road grid is seeded into `planned` before any operation runs (see
   // claimsOf), unconditionally — not capacity-gated the way built roads are. If controllerContainerPath's
   // A* happens to terminate on a tile that grid already claims as a road, the naive claim silently
@@ -247,6 +261,27 @@ describe("Upgrading.structures — controller container + road", () => {
     // Every road tile still comes out as this operation's own claim, not silently dropped.
     expect(roadsWithCorridor).toHaveLength(roads.length);
     for (const r of roads) expect(roadsWithCorridor).toContainEqual(r);
+  });
+
+  // Confirmed live on W47N14 2026-08-13: a Mining remote-route road claim (room set to the REMOTE room)
+  // shared (x,y) with a real home-room wall tile. buildCostMatrix/RoadCostMatrix index purely by (x,y)
+  // with no room concept, so route()'s unfiltered `planned` let that remote claim mark the home-room
+  // wall as a cheap ROAD_COST tile — the controller-approach A* then happily "tunneled" straight through
+  // it. planned must be filtered to home-room entries before it can influence this room's cost matrix.
+  it("never routes its road across a home-room wall, even when a remote claim shares the wall's coordinates", () => {
+    const terrain = new Uint8Array(2500).fill(1); // all walkable
+    const wallX = anchor.x - 5;
+    const wallY = anchor.y + 8; // sits between storage and the controller on the straight-line path
+    terrain[wallX * 50 + wallY] = 0; // a real home-room wall
+
+    // A remote route's road claim at the exact same (x,y), tagged to a different room — must not leak in.
+    const poisonedPlanned = [{ x: wallX, y: wallY, room: "W2N1", type: "road" as const }];
+
+    const claimed = upgrading.structures(gated({ terrain }), poisonedPlanned);
+    const roads = claimed.filter(s => s.type === "road");
+
+    expect(roads.length).toBeGreaterThan(0);
+    expect(roads.some(r => r.x === wallX && r.y === wallY)).toBe(false);
   });
 });
 
