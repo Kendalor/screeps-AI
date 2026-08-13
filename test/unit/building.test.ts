@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
 import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
 import { colony } from "../../src/colony";
-import type { BuildingCountRow } from "../../src/colony/building";
-import { wantedStructures } from "../../src/colony/building";
+import type { BuildingPlanEntry } from "../../src/colony/building";
+import { claimsOf, wantedStructures } from "../../src/colony/building";
 import { colonySnap, remoteSourceAt, snapCreep, sourceAt } from "../fixtures";
 import { Mining } from "../../src/operations/mining";
 import { buildableAtRcl } from "../../src/layouts/goal";
@@ -893,37 +893,39 @@ describe("idle-builder repurposing", () => {
   });
 });
 
-// The metrics panel's ENTIRE "Buildings" data source is ColonyMemory.buildingCounts, written by
-// planBuilding (colony/building.ts) as a side effect of building() — never computed by metrics.ts itself
-// (colony/index.ts's metrics() just reads Memory.colonies[name].buildingCounts ?? []). These tests stub a
-// global Memory (same pattern as the "cross-tick cache" describe block below) and drive the real
-// colony(...).building() call, so they exercise the actual write path rather than a helper's own
-// isolated computation.
-describe("ColonyMemory.buildingCounts (metrics panel source, written by building())", () => {
+// The metrics panel's ENTIRE "Buildings" data source is ColonyMemory.buildingPlan, written by
+// planBuilding (colony/building.ts) as a side effect of building() — never computed or re-derived by any
+// reader. Critically, this must be the FINAL, fully-gated positional plan (same list placeAndDemolish
+// itself places sites from — gateSourceGroups, gateRoads' adjacency gate, substituteBlockedCapped, exit
+// tiles via the goal layout), not a cheaper re-derivation: a hand-rolled reimplementation of "what does
+// the plan want" (e.g. replaying buildableAtRcl+stampLayout alone) silently drifts from the real answer
+// the moment one of those gates applies — confirmed live 2026-08-13 when an ad-hoc missing-roads report
+// built that way reported tiles as missing that gateRoads' adjacency gate correctly excludes. These tests
+// stub a global Memory (same pattern as the "cross-tick cache" describe block below) and drive the real
+// colony(...).building() call, so they exercise the actual write path against the actual gated output,
+// not an isolated helper's approximation of it.
+describe("ColonyMemory.buildingPlan (metrics panel source, written by building())", () => {
   const anchor = { x: 25, y: 25 };
 
-  function stubMemory(name: string): { colonies: Record<string, { buildingCounts?: BuildingCountRow[] }> } {
+  function stubMemory(name: string): { colonies: Record<string, { buildingPlan?: BuildingPlanEntry[] }> } {
     const mem = { colonies: { [name]: {} } };
     (globalThis as unknown as { Memory: typeof mem }).Memory = mem;
     return mem;
   }
 
-  it("writes built vs targeted per bunker-layout type at the current RCL", () => {
+  it("caches every entry with its full position (type, x, y, room) and resolved built status", () => {
     const mem = stubMemory("W1N1");
     colony(colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [] })).building();
 
-    const rows = mem.colonies.W1N1.buildingCounts!;
-    const extension = rows.find(r => r.type === "extension");
-    expect(extension).toBeDefined();
-    expect(extension!.built).toBe(0);
-    expect(extension!.targeted).toBeGreaterThan(0);
+    const plan = mem.colonies.W1N1.buildingPlan!;
+    expect(plan.length).toBeGreaterThan(0);
+    const extension = plan.find(p => p.type === "extension")!;
+    expect(extension).toMatchObject({ room: "W1N1", built: false });
+    expect(typeof extension.x).toBe("number");
+    expect(typeof extension.y).toBe("number");
   });
 
-  it("counts a built bunker structure against its type's target", () => {
-    const targetMem = stubMemory("W1N1");
-    colony(colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [] })).building();
-    const targetCount = targetMem.colonies.W1N1.buildingCounts!.find(r => r.type === "extension")!.targeted;
-
+  it("resolves built:true for a structure that's actually standing, via the real builtAt predicate", () => {
     const mem = stubMemory("W1N1");
     const oneBuilt = colonySnap({
       anchor,
@@ -932,41 +934,47 @@ describe("ColonyMemory.buildingCounts (metrics panel source, written by building
       sites: []
     });
     colony(oneBuilt).building();
-    const row = mem.colonies.W1N1.buildingCounts!.find(r => r.type === "extension")!;
-    expect(row).toEqual({ type: "extension", built: 1, targeted: targetCount });
+    const plan = mem.colonies.W1N1.buildingPlan!;
+    expect(plan.filter(p => p.type === "extension" && p.built)).toHaveLength(1);
+    expect(plan.filter(p => p.type === "extension" && !p.built).length).toBeGreaterThan(0);
   });
 
-  it("includes an operation's claimed structures (e.g. a remote container) in both built and targeted", () => {
-    const before = stubMemory("W1N1");
+  it("includes an operation's claimed structures (e.g. a remote container) with their sourceId", () => {
+    const mem = stubMemory("W1N1");
     const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, structures: [], sites: [] });
-    const claimed = minedStructures(snap);
+    // The real claimed set building() uses — every default operation's structures(), not just Mining's —
+    // so this matches writeBuildingPlan's own claimsOf(colony, operations) call exactly.
+    const claimed = claimsOf(snap, colony(snap).operations);
     expect(claimed.some(p => p.type === "container")).toBe(true);
     colony(snap).building();
-    const beforeRow = before.colonies.W1N1.buildingCounts!.find(r => r.type === "container")!;
-    expect(beforeRow.built).toBe(0);
-    expect(beforeRow.targeted).toBeGreaterThan(0);
 
-    const after = stubMemory("W1N1");
-    const built = claimed.filter(p => p.type === "container").map(p => ({ x: p.x, y: p.y, type: p.type }));
-    const withContainer = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, structures: built, sites: [] });
-    colony(withContainer).building();
-    const afterRow = after.colonies.W1N1.buildingCounts!.find(r => r.type === "container")!;
-    expect(afterRow.built).toBe(built.length);
-    expect(afterRow.targeted).toBe(beforeRow.targeted);
+    const plan = mem.colonies.W1N1.buildingPlan!;
+    const containers = plan.filter(p => p.type === "container");
+    expect(containers.length).toBe(claimed.filter(p => p.type === "container").length);
+    // Mining's source containers carry a sourceId; Upgrading's own controller-container claim (also
+    // present here, below linkRcl) legitimately doesn't — so at least one, not every, container has one.
+    expect(containers.some(c => c.sourceId !== undefined)).toBe(true);
+    expect(containers.every(c => !c.built)).toBe(true);
   });
 
-  it("orders the most-remaining type first", () => {
+  it("excludes a bunker road that isn't adjacent to any served structure yet (gateRoads' own gate), matching wantedStructures exactly", () => {
     const mem = stubMemory("W1N1");
-    colony(colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [] })).building();
-    // Every row here starts at built:0, so remaining === targeted; the sort must be non-increasing by it.
-    const remaining = mem.colonies.W1N1.buildingCounts!.map(r => r.targeted - r.built);
-    expect(remaining).toEqual([...remaining].sort((a, b) => b - a));
+    const snap = colonySnap({ anchor, controllerLevel: 2, energyCapacity: 800, structures: [], sites: [] });
+    colony(snap).building();
+
+    const plan = mem.colonies.W1N1.buildingPlan!;
+    const planRoads = new Set(plan.filter(p => p.type === "road").map(p => `${p.x},${p.y}`));
+    // Same claimed set writeBuildingPlan itself derives — not an empty array — or this test would just be
+    // re-proving the earlier bug (comparing against a DIFFERENT, easier claimed set than the real one).
+    const claimed = claimsOf(snap, colony(snap).operations);
+    const realRoads = new Set(wantedStructures(snap, claimed, false).filter(p => p.type === "road").map(p => `${p.x},${p.y}`));
+    expect(planRoads).toEqual(realRoads);
   });
 
   it("does not write (or crash) when the colony has no anchor yet", () => {
     const mem = stubMemory("W1N1");
     colony(colonySnap({ anchor: null, controllerLevel: 1, structures: [], sites: [] })).building();
-    expect(mem.colonies.W1N1.buildingCounts).toBeUndefined();
+    expect(mem.colonies.W1N1.buildingPlan).toBeUndefined();
   });
 });
 

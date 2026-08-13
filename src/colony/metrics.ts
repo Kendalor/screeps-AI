@@ -3,7 +3,6 @@
 // Harvest rate is the one stored exception — see harvestRate() for why a window, not a running total.
 
 import { roleDef } from "../behaviors/roles";
-import type { BuildingCountRow } from "./building";
 import { needsRepair, REPAIRABLE } from "../lib/repairable";
 import type { RoleName } from "../memory/schema";
 import type { ColonyMetricsMemory } from "../memory/schema";
@@ -141,11 +140,14 @@ function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[], targets: 
     .sort((a, b) => (roleDef(b.role)?.priority ?? -Infinity) - (roleDef(a.role)?.priority ?? -Infinity) || a.role.localeCompare(b.role));
 }
 
-// Metrics is read-only + math: the built/targeted counts themselves are computed and owned by
-// colony/building.ts's buildingCounts (the same module that governs placement, so the panel can never
-// disagree with what's actually being built) — this just is BuildingCountRow, kept as a distinct exported
-// type so metrics.ts's own consumers (metricsVisual.ts) don't reach into building.ts directly.
-export type BuildingRow = BuildingCountRow;
+/** One structure type's build progress: how many stand versus how many the current plan targets. Computed
+ * and owned by colony/building.ts (the module that governs placement, so the panel can never disagree
+ * with what's actually being built) — see buildingRowsFromPlan and ColonyMemory.buildingPlan's own doc. */
+export interface BuildingRow {
+  type: BuildableStructureConstant;
+  built: number;
+  targeted: number;
+}
 
 /**
  * Two views of repairable decay, both in hits, over the same REPAIRABLE type set (walls/ramparts
@@ -231,7 +233,8 @@ export function collectMetrics(
     tick: snapshot.tick,
     census: censusFor(snapshot, requests, roleTargets),
     operations: operationNames,
-    // Computed and owned by colony/building.ts's buildingCounts, not here — see BuildingRow's own doc.
+    // Computed and owned by colony/building.ts (buildingRowsFromPlan over ColonyMemory.buildingPlan),
+    // not here — see BuildingRow's own doc.
     buildings,
     energy: {
       available: snapshot.energyAvailable,

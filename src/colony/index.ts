@@ -11,7 +11,7 @@ import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { log } from "../lib/log";
 import type { PlacedStructure } from "../layouts/stamp";
-import { claimsOf, planBuilding, repurposeIdleBuilders } from "./building";
+import { buildingRowsFromPlan, claimsOf, planBuilding, repurposeIdleBuilders } from "./building";
 import { collectMetrics } from "./metrics";
 import { visualize } from "./metricsVisual";
 
@@ -144,12 +144,13 @@ export class Colony {
    */
   public metrics(cpu?: Readonly<Record<string, number>>): Intent[] {
     const mem = (Memory.metrics[this.name] ??= { harvestSamples: [] });
-    // Read-only: building()/planBuilding is the sole owner of construction governance and writes this
-    // cache itself once per its own interval:100 cadence (see ColonyMemory.buildingCounts' own doc) — the
-    // metrics panel just displays whatever it last wrote, the same relationship it already has with
-    // hasOutstandingConstruction's own cache. Absent (colony's first tick, or no anchor yet) reads as an
-    // empty panel row rather than computing anything itself.
-    const buildings = Memory.colonies[this.name]?.buildingCounts ?? [];
+    // Read-only + math: building()/planBuilding is the sole owner of construction governance and writes
+    // the FINAL, fully-gated plan itself once per its own interval:100 cadence (see
+    // ColonyMemory.buildingPlan's own doc) — the metrics panel only ever aggregates that cached plan into
+    // per-type counts (buildingRowsFromPlan, a cheap linear pass), the same relationship it already has
+    // with hasOutstandingConstruction's own cache. Absent (colony's first tick, or no anchor yet) reads as
+    // an empty panel row rather than computing or re-deriving anything itself.
+    const buildings = buildingRowsFromPlan(Memory.colonies[this.name]?.buildingPlan ?? []);
     const requests = this.requests();
     const report = collectMetrics(
       this.snapshot,

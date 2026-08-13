@@ -249,13 +249,31 @@ function dangerSourcesIn(room: Room): RoomPosition[] {
 // Penalizes tiles near source keeper lairs and hostile-owned creeps so an unarmed traveller (a scout)
 // detours around them instead of pathing straight through a keeper's kill zone. A friendly/neutral
 // player's creep (isDangerous false) is left unpenalized — only reputation-flagged owners and NPC
-// keepers count as "danger" here (see memory/reputation.ts). Traveler's roomCallback fires for every room
-// PathFinder considers, vision or not — a room with no vision has nothing to penalize, so this is a no-op
-// there (the matrix is returned unchanged) rather than a special case.
-export function dangerCostMatrix(room: Room | undefined, matrix: CostMatrix): CostMatrix {
-  if (!room) return matrix;
-  const terrain = room.getTerrain();
-  const dangers = dangerSourcesIn(room);
+// keepers count as "danger" here (see memory/reputation.ts).
+//
+// Without live vision (`room` undefined) hostile creeps can never be known, but a keeper room's lairs
+// are static and cached on ScoutInfo.lairs (see execute.ts's observeRoom) the moment the room is ever
+// scouted — so a previously-seen keeper room still gets real tile-level lair avoidance here instead of
+// falling back to dangerRouteCallback's old blanket "avoid the whole room" verdict. Terrain is free for
+// any room name via Game.map.getRoomTerrain, vision or not. A keeper room never scouted yet still falls
+// through to the plain no-op (nothing cached to price), same as before this existed.
+export function dangerCostMatrix(room: Room | undefined, matrix: CostMatrix, roomName?: string): CostMatrix {
+  if (room) {
+    return applyDangerToMatrix(matrix, room.getTerrain(), dangerSourcesIn(room));
+  }
+  if (!roomName) return matrix;
+  const lairs = Memory.rooms?.[roomName]?.scouted?.lairs;
+  if (!lairs || lairs.length === 0) return matrix;
+  const terrain = Game.map.getRoomTerrain(roomName);
+  const dangers = lairs.map(l => new RoomPosition(l.x, l.y, roomName));
+  return applyDangerToMatrix(matrix, terrain, dangers);
+}
+
+function applyDangerToMatrix(
+  matrix: CostMatrix,
+  terrain: RoomTerrain,
+  dangers: RoomPosition[]
+): CostMatrix {
   for (const pos of dangers) {
     for (let x = pos.x - DANGER_RADIUS; x <= pos.x + DANGER_RADIUS; x++) {
       for (let y = pos.y - DANGER_RADIUS; y <= pos.y + DANGER_RADIUS; y++) {
@@ -320,19 +338,17 @@ const DANGEROUS_ROOM_HOPS = 50;
 // is still worth a detour-cost crossing since the scout usually survives to reach whatever's beyond it; a
 // lethal one never does, so routing through is pure loss rather than a discouraged-but-viable option.
 //
-// Also inflates an unvisioned source-keeper room the same way. A keeper room has no controller, so
-// ScoutInfo.owner (controller owner/reserver only, see execute.ts's observeRoom) is never "Source Keeper"
-// no matter what — isDangerous(info?.owner) alone can never catch one. This mirrors the SK check
-// Traveler's own findRoute has built in (traveler.ts's findRoute, gated the same way on !Game.rooms[roomName]
-// — "SK rooms are avoided when there is no vision in the room, harvested-from SK rooms are allowed") —
-// that check never runs here because this callback already returns a defined number for every room,
-// which short-circuits Traveler's own routeCallback before it reaches its SK branch. Confirmed live: a
-// remote hauler/miner routed straight through source-keeper rooms W44N15/W44N16 instead of the built,
-// vision-held road route through W42N15/W42N16, since both looked like equally cheap cost-1 hops to
-// findRoute. Live vision (a miner/guard actually stationed in the room) is trusted the same way Traveler's
-// own check trusts it — once vision confirms exactly where the lairs/guardians are, dangerCostMatrix
-// prices the room precisely tile-by-tile instead, so this stops adding a redundant blanket detour cost
-// on top for a room the colony already actively holds.
+// A source-keeper room is deliberately NOT blanket-penalized here, unlike a reputation-flagged-hostile
+// room. It used to be (DANGEROUS_ROOM_HOPS on every unvisioned keeper room, since a keeper room has no
+// controller so ScoutInfo.owner/isDangerous(info?.owner) can never catch one) — confirmed live that this
+// caused a remote hauler/miner to route around a fully-built, previously-scouted SK-room road (through
+// W44N15/W44N16) via a longer detour, purely because the SK room lacked THIS-TICK vision. dangerCostMatrix
+// now prices a keeper room's lair tiles precisely from ScoutInfo.lairs the moment it's ever been scouted
+// (see that function's doc) — real vision only makes that costing more precise (also catches hostile
+// creeps), it's no longer the on/off switch for whether the room is usable at all. A keeper room never
+// scouted yet has no lairs cached and no per-tile cost either, so it's priced as an ordinary room (1) —
+// same as any other room this callback has no specific opinion about; PathFinder's own summed tile cost
+// through the (uncosted, in that one case) room is the only signal, same as it always was for a normal room.
 export function dangerRouteCallback(home: string, roomName: string): number {
   const info = Memory.rooms?.[roomName]?.scouted;
   const noPathAt = info?.noPathFrom?.[home];
@@ -343,7 +359,6 @@ export function dangerRouteCallback(home: string, roomName: string): number {
   // hasFortifiedInvaderCore's doc for why a level-0 core doesn't trigger this.
   if (hasFortifiedInvaderCore(info, Game.time)) return Infinity;
   if (isDangerous(info?.owner)) return DANGEROUS_ROOM_HOPS;
-  if (roomType(roomName) === "keeper" && !Game.rooms[roomName]) return DANGEROUS_ROOM_HOPS;
   return 1;
 }
 
@@ -356,7 +371,7 @@ export function dangerRouteCallback(home: string, roomName: string): number {
 export function dangerAvoidanceOptions(home: string): TravelToOptions {
   return {
     useFindRoute: true,
-    roomCallback: (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix),
+    roomCallback: (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix, roomName),
     routeCallback: (roomName: string) => dangerRouteCallback(home, roomName),
     dangerCheck: dangerNearby
   };
@@ -947,12 +962,52 @@ function nearestArmedThreat(creep: Creep): Creep | undefined {
 // offset. maxRooms:2 on the caller's travelTo mirrors the old cross-one-border allowance. threat is a
 // plain {x,y} (the hostile is always in the fleeing creep's own room — nearestArmedThreat's room.find
 // guarantees that — so `from`'s roomName covers both ends; no need to carry the hostile's own roomName).
+const FLEE_PLAIN_COST = 2;
+const FLEE_SWAMP_COST = 10;
+// Priced above plain (see FLEE_PLAIN_COST) so the flee flood steers off roads even though they're
+// nominally 2:1 — confirmed live: a fleeing hauler kept picking the road out of a source pocket because
+// it was the cheapest-cost tile by the engine's own move-speed accounting, and that road ran it straight
+// along the open lane a pursuing hostile could match speed on and eventually corner it against terrain at
+// the far end. A discouraged-but-not-impassable cost (still cheaper than swamp) still lets a flee path use
+// a road when it's genuinely the only way out, just never merely because it's fractionally faster.
+const FLEE_ROAD_COST = FLEE_PLAIN_COST + 1;
+
+// Terrain + road costs for a flee search, since PathFinder.search only auto-applies plainCost/swampCost
+// when no roomCallback is given at all — supplying one (needed to price roads and mark obstacles
+// impassable) means seeding terrain into the matrix ourselves, or every tile silently reads back as free.
+// Deliberately not lib/traveler.ts's Traveler.addStructuresToMatrix: importing that class triggers its
+// module-level Creep.prototype.travelTo monkeypatch, which several of this suite's minimal creep/Game
+// stubs don't provide a real Creep global for.
+function fleeCostMatrix(roomName: string): CostMatrix {
+  const matrix = new PathFinder.CostMatrix();
+  const terrain = Game.map.getRoomTerrain(roomName);
+  for (let x = 0; x < 50; x++) {
+    for (let y = 0; y < 50; y++) {
+      const t = terrain.get(x, y);
+      if (t === TERRAIN_MASK_WALL) continue; // 0xff default already impassable; leave it
+      matrix.set(x, y, t === TERRAIN_MASK_SWAMP ? FLEE_SWAMP_COST : FLEE_PLAIN_COST);
+    }
+  }
+  const room = Game.rooms[roomName];
+  if (!room) return matrix;
+  for (const s of room.find(FIND_STRUCTURES)) {
+    if (s.structureType === STRUCTURE_ROAD) {
+      matrix.set(s.pos.x, s.pos.y, FLEE_ROAD_COST);
+    } else if (s.structureType === STRUCTURE_RAMPART) {
+      if (!(s as StructureRampart).my && !(s as StructureRampart).isPublic) matrix.set(s.pos.x, s.pos.y, 0xff);
+    } else if ((OBSTACLE_OBJECT_TYPES as readonly string[]).includes(s.structureType)) {
+      matrix.set(s.pos.x, s.pos.y, 0xff);
+    }
+  }
+  return matrix;
+}
+
 function fleeSpotAcrossRooms(from: RoomPosition, threat: { x: number; y: number }): RoomPosition | undefined {
   const threatPos = new RoomPosition(threat.x, threat.y, from.roomName);
   const result = PathFinder.search(
     from,
     { pos: threatPos, range: FLEE_RADIUS + 1 },
-    { flee: true, maxRooms: 2, plainCost: 2, swampCost: 10 }
+    { flee: true, maxRooms: 2, roomCallback: fleeCostMatrix }
   );
   const dest = result.path[result.path.length - 1];
   return dest && !dest.isEqualTo(from) ? dest : undefined;

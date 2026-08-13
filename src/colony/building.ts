@@ -147,22 +147,39 @@ export function planBuilding(colony: ColonySnapshot, operations: Operation[]): I
   if (!colony.anchor) return [];
   // Polled once and threaded through, so placement and demolition can't disagree about what was claimed this tick.
   const claimed = claimsOf(colony, operations);
-  writeBuildingCounts(colony, claimed);
+  writeBuildingPlan(colony, claimed);
   return placeAndDemolish(colony, claimed);
 }
 
-// Metrics is read-only + math over what building() (the actual construction governor) already computed —
-// see buildingRows' own doc. This is the write side: called once per planBuilding's own `interval:100`
-// cadence (kernel/tick.ts), never per-tick, so metrics() can read a cached array with zero computation
-// instead of re-deriving it (and paying wantedStructures' full positional cost) on every one of those 100
-// ticks. typeof-guarded like hasOutstandingConstruction's own Memory write, for the same reason: plain-
-// object unit-test fixtures for this module don't stub a global Memory.
-function writeBuildingCounts(colony: ColonySnapshot, claimed: PlacedStructure[]): void {
+// The FINAL, fully-gated plan — exactly wantedStructures' own output (gateSourceGroups, adjacency-gated
+// roads via gateRoads, substituteBlockedCapped, sort — every constraint placeAndDemolish itself respects),
+// not a cheaper re-derivation. This is the write side of ColonyMemory.buildingPlan: called once per
+// planBuilding's own `interval:100` cadence (kernel/tick.ts), never per-tick, so every OTHER reader
+// (metrics' built/targeted counts, a live "what's missing and where" report) reads the real plan a cache
+// hit away instead of either paying wantedStructures' full cost itself or — the mistake this replaced —
+// reimplementing gateRoads/exit-tile/adjacency/substitution logic by hand and getting a different, wrong
+// answer. Caching happens here, in the one module that owns this logic, for exactly that reason: any
+// consumer that reached for its own approximation of "what does the plan want" would drift from what
+// placeAndDemolish is actually doing the moment one of those filters changed.
+//
+// `targeted` is the UNTHROTTLED plan (wantedStructures' `throttleGroups: false`) — see that function's own
+// doc: every remote group's full target, not just the one group placeAndDemolish is working through this
+// firing, or a finished group would read as built-with-no-target the moment gateSourceGroups moves on.
+// typeof-guarded like hasOutstandingConstruction's own Memory write, for the same reason: plain-object
+// unit-test fixtures for this module don't stub a global Memory.
+function writeBuildingPlan(colony: ColonySnapshot, claimed: PlacedStructure[]): void {
   if (typeof Memory === "undefined") return;
   const mem = Memory.colonies[colony.name];
   if (!mem) return;
   const targeted = wantedStructures(colony, claimed, false);
-  mem.buildingCounts = buildingRows(colony, targeted);
+  mem.buildingPlan = targeted.map(p => ({
+    type: p.type,
+    x: p.x,
+    y: p.y,
+    room: roomOf(p, colony),
+    sourceId: p.sourceId,
+    built: builtAt(colony, p)
+  }));
 }
 
 // Gathered sequentially, not flatMap: each operation paths around the layout and around siblings' plans already claimed,
@@ -417,35 +434,33 @@ function bunkerBacklogRemains(colony: ColonySnapshot): boolean {
   return false;
 }
 
-export interface BuildingCountRow {
+// One entry in the cached FINAL plan (ColonyMemory.buildingPlan) — the exact list placeAndDemolish places
+// construction sites from, with each entry's own built/not-yet-built status already resolved via builtAt
+// at write time. `built` is a snapshot of that one write tick, same staleness rule the rest of the cache
+// has (accurate as of the last `interval:100` firing, not live). `room`/`sourceId` mirror PlacedStructure's
+// own fields (roomOf's resolved room, not the raw possibly-absent one) so a consumer never has to re-derive
+// them or re-import roomOf.
+export interface BuildingPlanEntry {
   type: BuildableStructureConstant;
-  built: number;
-  targeted: number;
+  x: number;
+  y: number;
+  room: string;
+  sourceId?: Id<Source>;
+  built: boolean;
 }
 
-// Per-type {built, targeted} across the WHOLE plan (bunker layout + every operation claim, e.g. remote
-// routes) — the metrics panel's "Buildings" row source. Positional (built via builtAt against the real
-// `targeted` plan, same as the arbiter's own placement decision), NOT count-only — this is the governance
-// layer (planBuilding/building(), see its own doc), the one place that's supposed to know exact positions,
-// so there is no correctness reason to avoid the real plan here the way there was for the panel to avoid
-// it. What changed is WHO calls this and HOW OFTEN: planBuilding now calls it once per its own natural
-// `interval:100` cadence (kernel/tick.ts) and writes the result to ColonyMemory.buildingCounts — metrics()
-// (colony/index.ts) only ever READS that cached array, never calls this function or wantedStructures
-// itself. Confirmed live (2026-08-13 CPU profiling): wantedStructures was costing ~691us/call every tick
-// purely because metrics() called it fresh every tick for this same number — moving the same computation
-// to run once per 100 ticks, at the one place that already governs construction, removes ~100x the calls
-// without changing what's computed or reintroducing any of the count-vs-position tradeoffs a purely
-// count-based rewrite would have needed to make.
-//
-// `targeted` is the UNTHROTTLED plan (wantedStructures' `throttleGroups: false`) — same reasoning that
-// branch's own doc gives: every remote group's full target, not just the one group currently being
-// placed, or a finished group would read as built-with-no-target the moment gateSourceGroups moves on.
-function buildingRows(colony: ColonySnapshot, targeted: readonly PlacedStructure[]): BuildingCountRow[] {
+// Per-type {built, targeted} — cheap math (one linear pass, no gating logic) over the already-fully-gated
+// ColonyMemory.buildingPlan cache, for the metrics panel's "Buildings" row. This is what "metrics is
+// read-only + math" means concretely: aggregating an already-governed positional list, never recomputing
+// or reapproximating the gating (gateRoads adjacency, substituteBlockedCapped, exit tiles, source-group
+// throttling) that only wantedStructures itself may decide — see writeBuildingPlan's own doc for why that
+// distinction matters.
+export function buildingRowsFromPlan(plan: readonly BuildingPlanEntry[]): { type: BuildableStructureConstant; built: number; targeted: number }[] {
   const targetBy: Partial<Record<BuildableStructureConstant, number>> = {};
   const builtBy: Partial<Record<BuildableStructureConstant, number>> = {};
-  for (const p of targeted) {
+  for (const p of plan) {
     targetBy[p.type] = (targetBy[p.type] ?? 0) + 1;
-    if (builtAt(colony, p)) builtBy[p.type] = (builtBy[p.type] ?? 0) + 1;
+    if (p.built) builtBy[p.type] = (builtBy[p.type] ?? 0) + 1;
   }
 
   const types = new Set<BuildableStructureConstant>(Object.keys(targetBy) as BuildableStructureConstant[]);

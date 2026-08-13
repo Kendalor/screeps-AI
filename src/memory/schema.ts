@@ -237,14 +237,21 @@ export interface ColonyMemory {
   // doc for the exact invalidation rule. Absent means never cached yet (first tick, or a colony that's
   // never reached this path).
   outstandingConstructionCache?: { fingerprint: string; value: boolean };
-  // Governed by colony/building.ts's planBuilding — the metrics panel's ENTIRE "Buildings" data source
-  // (colony/index.ts's metrics()). Written once per planBuilding's own interval:100 cadence (kernel/
-  // tick.ts), never computed by metrics itself: metrics is read-only + math over whatever the capability
-  // that actually owns construction governance already produced, the same relationship
+  // Governed by colony/building.ts's planBuilding — the FINAL, fully-gated construction plan (the same
+  // list placeAndDemolish itself places construction sites from: gateSourceGroups, gateRoads' adjacency
+  // gate, substituteBlockedCapped, exit-tile exclusion via the goal layout, everything), with each entry's
+  // built/not-yet-built status resolved at write time. This is what the metrics panel's "Buildings" counts
+  // are computed from (colony/index.ts's metrics(), via building.ts's buildingRowsFromPlan) and what any
+  // other "what's missing and where" consumer should read too — NOT a hand-rolled re-derivation, which
+  // silently drifts from the real answer the moment one of those gates changes (confirmed: an earlier
+  // ad-hoc script that only replayed buildableAtRcl+stampLayout missed the adjacency/exit-tile/substitution
+  // gating entirely and reported wrong tiles as missing). Written once per planBuilding's own interval:100
+  // cadence (kernel/tick.ts), never recomputed by a reader: metrics is read-only + math over whatever the
+  // capability that actually owns construction governance already produced, the same relationship
   // outstandingConstructionCache above has to hasOutstandingConstruction. Absent only on a colony's first
   // tick before planBuilding has run once, or a colony with no anchor yet (planBuilding returns before
   // writing — see its own early-out).
-  buildingCounts?: { type: BuildableStructureConstant; built: number; targeted: number }[];
+  buildingPlan?: { type: BuildableStructureConstant; x: number; y: number; room: string; sourceId?: Id<Source>; built: boolean }[];
 }
 
 // A squad's persisted anchor tile — see ColonyMemory.drainAnchor/paradeAnchor's doc for the full rationale
@@ -350,6 +357,11 @@ export interface ScoutInfo {
   // forever after like `sources`/`mineral`. The headline input for expansion: a room with no anchor
   // can never be colonized.
   anchor?: XY;
+  // Every STRUCTURE_KEEPER_LAIR position in this room, if it's a keeper room — static like `sources`,
+  // computed once and kept forever. Lets dangerCostMatrix (behaviors/interpreter.ts) price a keeper
+  // room's tiles for real even with no live vision, instead of the room-level routeCallback treating
+  // every unvisioned keeper room as a single opaque blob to avoid outright.
+  lairs?: XY[];
   // Whether resolveScoutedAnchor has actually run for this room (true even when it found no fit).
   // Without this, `anchor === undefined` is ambiguous between "no controller, never attempted" and
   // "has a controller, terrain rejected every candidate" — a colonization picker needs to tell those

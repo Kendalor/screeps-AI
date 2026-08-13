@@ -427,6 +427,11 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
   const sources = staticKnown ? previous.sources : room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y }));
   const anchorChecked = staticKnown ? previous.anchorChecked ?? false : c !== undefined;
   const anchor = staticKnown ? previous.anchor : resolveScoutedAnchor(room, c, sources);
+  const lairs = staticKnown
+    ? previous.lairs
+    : room
+        .find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_KEEPER_LAIR })
+        .map(s => ({ x: s.pos.x, y: s.pos.y }));
   // A STRUCTURE_INVADER_CORE sits independent of any controller (see ScoutInfo.invaderCore's doc), so
   // it needs its own live find rather than piggybacking on the owner/reservation read above. Re-found
   // every observation, active or passive, unlike the static sources/mineral/anchor fields above â€” a
@@ -448,6 +453,7 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
     ...(owner ? { owner } : {}),
     ...(anchor ? { anchor } : {}),
     ...(anchorChecked ? { anchorChecked } : {}),
+    ...(lairs && lairs.length > 0 ? { lairs } : {}),
     ...(invaderCore
       ? {
           invaderCore: {

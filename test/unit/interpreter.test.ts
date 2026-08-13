@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { advanceRoute, canCoFire, firstRunnableStep, nextStep, runStep, type CreepState } from "../../src/behaviors/interpreter";
+import {
+  advanceRoute,
+  canCoFire,
+  dangerCostMatrix,
+  dangerRouteCallback,
+  firstRunnableStep,
+  nextStep,
+  runStep,
+  type CreepState
+} from "../../src/behaviors/interpreter";
 import type { Step } from "../../src/behaviors/types";
 import { clearTiles, stubTile } from "../constants";
 import { stubGame } from "../helpers";
@@ -990,6 +999,87 @@ describe("moveToRoom's roomCallback (dangerCostMatrix) never overwrites real ter
     };
     const result = roomCallback("W1N1", fakeMatrix());
     expect(result.get(27, 25)).toBeGreaterThan(0);
+  });
+});
+
+// Regression: a remote hauler routed AROUND a fully-built, previously-scouted road through a source-keeper
+// room (W47N14 -> W46N14 -> W46N13 live on shard1) even though the room had no live vision on most ticks —
+// dangerRouteCallback used to price every unvisioned keeper room at DANGEROUS_ROOM_HOPS regardless of
+// whether it had ever been scouted, so findRoute always preferred a longer detour through a room that
+// merely happened to have a live creep standing in it. Fix: cache lair positions on ScoutInfo.lairs the
+// first time a keeper room IS scouted (execute.ts's observeRoom), and let dangerCostMatrix build a real
+// per-tile CostMatrix from that cache + free-for-any-room Game.map.getRoomTerrain, so PathFinder can find
+// an actual route around the lairs instead of routeCallback avoiding the whole room as an opaque blob.
+describe("dangerCostMatrix without live vision (cached ScoutInfo.lairs)", () => {
+  beforeEach(() => stubGame());
+
+  function fakeMatrix() {
+    const cells = new Map<string, number>();
+    return {
+      get: (x: number, y: number) => cells.get(`${x},${y}`) ?? 0,
+      set: (x: number, y: number, v: number) => cells.set(`${x},${y}`, v)
+    } as unknown as CostMatrix;
+  }
+
+  it("prices tiles near a cached lair even with no Game.rooms entry for that room", () => {
+    (globalThis as { Game: { map: unknown } }).Game.map = { getRoomTerrain: () => ({ get: () => 0 }) };
+    (globalThis as { Memory: { rooms?: Record<string, { scouted?: unknown }> } }).Memory.rooms = {
+      W46N14: { scouted: { lairs: [{ x: 25, y: 25 }] } }
+    };
+    const result = dangerCostMatrix(undefined, fakeMatrix(), "W46N14");
+    expect(result.get(27, 25)).toBeGreaterThan(0); // within DANGER_RADIUS of the cached lair
+    expect(result.get(40, 25)).toBe(0); // well outside DANGER_RADIUS
+  });
+
+  it("still leaves a real terrain wall near a cached lair untouched (impassable, not a cheap detour cost)", () => {
+    (globalThis as { Game: { map: unknown } }).Game.map = {
+      getRoomTerrain: () => ({ get: (x: number, y: number) => (x === 27 && y === 25 ? TERRAIN_MASK_WALL : 0) })
+    };
+    (globalThis as { Memory: { rooms?: Record<string, { scouted?: unknown }> } }).Memory.rooms = {
+      W46N14: { scouted: { lairs: [{ x: 25, y: 25 }] } }
+    };
+    const result = dangerCostMatrix(undefined, fakeMatrix(), "W46N14");
+    expect(result.get(27, 25)).toBe(0);
+  });
+
+  it("is a no-op for an unscouted keeper room (nothing cached yet)", () => {
+    (globalThis as { Game: { map: unknown } }).Game.map = { getRoomTerrain: () => ({ get: () => 0 }) };
+    (globalThis as { Memory: { rooms?: Record<string, { scouted?: unknown }> } }).Memory.rooms = {};
+    const result = dangerCostMatrix(undefined, fakeMatrix(), "W46N14");
+    expect(result.get(25, 25)).toBe(0);
+  });
+
+  it("is a no-op with no roomName supplied at all (existing callers unaffected)", () => {
+    const result = dangerCostMatrix(undefined, fakeMatrix());
+    expect(result.get(25, 25)).toBe(0);
+  });
+});
+
+// dangerRouteCallback used to add DANGEROUS_ROOM_HOPS to every unvisioned keeper room outright — see the
+// suite above for why that's gone. Confirms the room-level hop cost for a keeper room is now neutral (1),
+// same as any other room with no specific opinion attached, letting the real per-tile cost (dangerCostMatrix)
+// be the only signal PathFinder's route comparison actually uses.
+describe("dangerRouteCallback no longer blanket-penalizes an unvisioned keeper room", () => {
+  beforeEach(() => stubGame());
+
+  it("prices an unvisioned, never-scouted keeper room the same neutral 1 as an ordinary room", () => {
+    (globalThis as { Memory: { rooms?: Record<string, unknown> } }).Memory.rooms = {};
+    expect(dangerRouteCallback("W47N14", "W46N14")).toBe(1);
+  });
+
+  it("prices a previously-scouted keeper room with cached lairs the same neutral 1", () => {
+    (globalThis as { Memory: { rooms?: Record<string, { scouted?: unknown }> } }).Memory.rooms = {
+      W46N14: { scouted: { type: "keeper", lairs: [{ x: 25, y: 25 }], sources: [], hostile: false } }
+    };
+    expect(dangerRouteCallback("W47N14", "W46N14")).toBe(1);
+  });
+
+  it("still inflates a keeper room whose owner/reservation is separately reputation-flagged hostile", () => {
+    (globalThis as { Memory: { rooms?: Record<string, { scouted?: unknown }> } }).Memory.rooms = {
+      W46N14: { scouted: { type: "keeper", owner: "Invader", sources: [], hostile: true } }
+    };
+    // "Invader" is reputation-flagged dangerous regardless of room type — unrelated to the keeper-room fix.
+    expect(dangerRouteCallback("W47N14", "W46N14")).toBeGreaterThan(1);
   });
 });
 
