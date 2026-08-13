@@ -276,6 +276,20 @@ const DANGEROUS_ROOM_HOPS = 50;
 // died there every single generation, never actually reaching its real destination. A merely-hostile room
 // is still worth a detour-cost crossing since the scout usually survives to reach whatever's beyond it; a
 // lethal one never does, so routing through is pure loss rather than a discouraged-but-viable option.
+//
+// Also inflates an unvisioned source-keeper room the same way. A keeper room has no controller, so
+// ScoutInfo.owner (controller owner/reserver only, see execute.ts's observeRoom) is never "Source Keeper"
+// no matter what — isDangerous(info?.owner) alone can never catch one. This mirrors the SK check
+// Traveler's own findRoute has built in (traveler.ts's findRoute, gated the same way on !Game.rooms[roomName]
+// — "SK rooms are avoided when there is no vision in the room, harvested-from SK rooms are allowed") —
+// that check never runs here because this callback already returns a defined number for every room,
+// which short-circuits Traveler's own routeCallback before it reaches its SK branch. Confirmed live: a
+// remote hauler/miner routed straight through source-keeper rooms W44N15/W44N16 instead of the built,
+// vision-held road route through W42N15/W42N16, since both looked like equally cheap cost-1 hops to
+// findRoute. Live vision (a miner/guard actually stationed in the room) is trusted the same way Traveler's
+// own check trusts it — once vision confirms exactly where the lairs/guardians are, dangerCostMatrix
+// prices the room precisely tile-by-tile instead, so this stops adding a redundant blanket detour cost
+// on top for a room the colony already actively holds.
 export function dangerRouteCallback(home: string, roomName: string): number {
   const info = Memory.rooms?.[roomName]?.scouted;
   const noPathAt = info?.noPathFrom?.[home];
@@ -285,7 +299,9 @@ export function dangerRouteCallback(home: string, roomName: string): number {
   // transit hop as a proven-lethal room — same reasoning as the lethalAt check above, see
   // hasFortifiedInvaderCore's doc for why a level-0 core doesn't trigger this.
   if (hasFortifiedInvaderCore(info, Game.time)) return Infinity;
-  return isDangerous(info?.owner) ? DANGEROUS_ROOM_HOPS : 1;
+  if (isDangerous(info?.owner)) return DANGEROUS_ROOM_HOPS;
+  if (roomType(roomName) === "keeper" && !Game.rooms[roomName]) return DANGEROUS_ROOM_HOPS;
+  return 1;
 }
 
 // The same danger-avoidance bundle moveToRoom passes to Traveler below (useFindRoute/roomCallback/
