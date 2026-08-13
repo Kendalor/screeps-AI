@@ -30,9 +30,7 @@ interface SystemBase {
 /** Whether the loop runs this once for the empire or once per colony. */
 export interface ColonySystem extends SystemBase {
   scope: "colony";
-  // `isFirst`: true for exactly one colony per tick, in iteration order — lets a system (metrics' CPU
-  // block) show empire-wide data once instead of repeating it on every colony's panel.
-  run(colony: Colony, isFirst: boolean): Intent[];
+  run(colony: Colony): Intent[];
 }
 
 export interface EmpireSystem extends SystemBase {
@@ -58,9 +56,10 @@ export const SYSTEMS: System[] = [
   { name: "workforce", tier: 2, scope: "colony", run: c => c.maintainWorkforce() },
   { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() },
   // Tier 3 but every tick, so the panel and harvest-rate window stay live rather than sampled. CPU is
-  // empire-wide and last-tick's (this tick's own total isn't known until after it finishes), so it's
-  // shown on only the first colony's panel rather than repeated on every room.
-  { name: "metrics", tier: 3, scope: "colony", run: (c, isFirst) => c.metrics(isFirst ? Memory.stats?.cpu : undefined) },
+  // empire-wide and last-tick's (this tick's own total isn't known until after it finishes); shown on
+  // every colony's panel so it's visible regardless of which room's iteration order happens to land
+  // first — see docs, this used to be gated to one colony chosen by Game.rooms' incidental key order.
+  { name: "metrics", tier: 3, scope: "colony", run: c => c.metrics(Memory.stats?.cpu) },
   // Automatic colonize target selection — a luxury, CPU-pressure-skippable unlike the flag path
   // (runColonizeFlags, below), since missing one ~5000-tick firing under load just means trying again the
   // next time it comes around, not silently losing a manually-placed request. AUTO_PICK_INTERVAL is its
@@ -121,7 +120,7 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
     if (sys.scope === "empire") {
       runGuarded(sys.name, () => execute(sys.run(world)));
     } else {
-      world.colonies.forEach((c, i) => runGuarded(sys.name, () => execute(sys.run(c, i === 0))));
+      world.colonies.forEach(c => runGuarded(sys.name, () => execute(sys.run(c))));
     }
     stats.record(sys.name, Game.cpu.getUsed() - before);
   }

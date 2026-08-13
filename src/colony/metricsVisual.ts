@@ -177,7 +177,7 @@ export function debugPanelOps(m: ColonyMetrics): VisualOp[] {
 }
 
 /** The full render: the report's panel(s) as a single roomVisual intent for its room. `cpu` is last
- * tick's Memory.stats.cpu breakdown — empire-wide, so pass it for one colony only (the panel picks). */
+ * tick's Memory.stats.cpu breakdown — empire-wide, shown on every colony's panel. */
 export function visualize(m: ColonyMetrics, cpu?: Readonly<Record<string, number>>): Intent {
   return { kind: "roomVisual", room: m.room, ops: [...panelOps(m, cpu), ...debugPanelOps(m)] };
 }

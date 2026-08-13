@@ -124,8 +124,7 @@ export class Colony {
   /**
    * Collects metrics and returns the roomVisual intent that paints the panel; the only stateful
    * capability (harvest-rate window in Memory). `cpu` is last tick's empire-wide Memory.stats.cpu
-   * breakdown — pass it for exactly one colony per tick (the caller picks) so the block isn't repeated
-   * on every room's panel.
+   * breakdown, shown on every colony's panel so it's visible regardless of which room you're viewing.
    */
   public metrics(cpu?: Readonly<Record<string, number>>): Intent[] {
     const mem = (Memory.metrics[this.name] ??= { harvestSamples: [] });
