@@ -357,11 +357,6 @@ export interface ScoutInfo {
   // forever after like `sources`/`mineral`. The headline input for expansion: a room with no anchor
   // can never be colonized.
   anchor?: XY;
-  // Every STRUCTURE_KEEPER_LAIR position in this room, if it's a keeper room — static like `sources`,
-  // computed once and kept forever. Lets dangerCostMatrix (behaviors/interpreter.ts) price a keeper
-  // room's tiles for real even with no live vision, instead of the room-level routeCallback treating
-  // every unvisioned keeper room as a single opaque blob to avoid outright.
-  lairs?: XY[];
   // Whether resolveScoutedAnchor has actually run for this room (true even when it found no fit).
   // Without this, `anchor === undefined` is ambiguous between "no controller, never attempted" and
   // "has a controller, terrain rejected every candidate" — a colonization picker needs to tell those

@@ -15,13 +15,7 @@ export function actOnResolved(
   // (no behavior change there), used by transport.ts's logistics executor to opt a cross-room pickup/
   // deliver leg into the same keeper/hostile-avoidance routing moveToRoom's avoidDanger step gets (see
   // interpreter.ts's dangerAvoidanceOptions doc) — that executor has no moveToRoom step of its own.
-  travelOptions?: TravelToOptions,
-  // A waypoint to travel TOWARD instead of `target.pos` while still out of range — the arrival/action
-  // check above is still judged against the real `target`, this only substitutes what travelTo aims at.
-  // Used by transport.ts to walk a remote-hauling leg along RemoteSourceMemory's own precomputed
-  // home<->source route (see behaviors/remoteRoute.ts) instead of a fresh live PathFinder guess toward
-  // the target's raw position — undefined for every existing caller (no behavior change there).
-  travelVia?: RoomPosition
+  travelOptions?: TravelToOptions
 ): StepResult {
   if (creep.pos.inRangeTo(target as { pos: RoomPosition }, range)) {
     action(target);
@@ -30,7 +24,7 @@ export function actOnResolved(
   // Out of range: a co-fired bonus step must not travel (see runStep's allowTravel doc) — resolving a
   // target it can't reach this tick counts as not having acted at all.
   if (!allowTravel) return { acted: false, didAct: false };
-  creep.travelTo(travelVia ?? (target as { pos: RoomPosition }), travelOptions);
+  creep.travelTo(target as { pos: RoomPosition }, travelOptions);
   return { acted: true, didAct: false, target: (target as unknown as { id: Id<_HasId> }).id };
 }
 
@@ -44,8 +38,7 @@ export function withdrawOrPickup(
   target: RoomObject,
   resource: ResourceConstant,
   allowTravel = true,
-  travelOptions?: TravelToOptions,
-  travelVia?: RoomPosition
+  travelOptions?: TravelToOptions
 ): StepResult {
   return actOnResolved(
     creep,
@@ -56,8 +49,7 @@ export function withdrawOrPickup(
         : creep.withdraw(t as Structure & { store: StoreDefinition }, resource),
     1,
     allowTravel,
-    travelOptions,
-    travelVia
+    travelOptions
   );
 }
 
@@ -66,8 +58,7 @@ export function transferTo(
   target: RoomObject,
   resource: ResourceConstant,
   allowTravel = true,
-  travelOptions?: TravelToOptions,
-  travelVia?: RoomPosition
+  travelOptions?: TravelToOptions
 ): StepResult {
-  return actOnResolved(creep, target, t => creep.transfer(t as Structure & { store: StoreDefinition }, resource), 1, allowTravel, travelOptions, travelVia);
+  return actOnResolved(creep, target, t => creep.transfer(t as Structure & { store: StoreDefinition }, resource), 1, allowTravel, travelOptions);
 }
