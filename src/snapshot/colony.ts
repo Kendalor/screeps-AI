@@ -22,27 +22,35 @@ import type {
 export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): EmpireSnapshot {
   // One pass over all creeps -> grouped by home colony.
   const byColony = censusByColony(Object.values(Game.creeps).map(snapCreep));
-  // Shared across colonies: every room with vision this tick, regardless of which colony (if any) owns it.
-  const visibleRooms: VisibleRoom[] = Object.keys(Game.rooms).map(name => {
+  // Every room-scoped, vision-gated field below (visibleRooms, hostileRoomTowers, hostileRoomUnits,
+  // hostileRoomStorageEnergy, visibleRoomRoads) used to be its own separate `for (const name in
+  // Game.rooms)` loop, each re-running its own room.find(...) — up to 3 FIND_HOSTILE_STRUCTURES/
+  // FIND_HOSTILE_CREEPS/FIND_STRUCTURES calls per visible room per tick for no new information, since
+  // every one of these fields is keyed off the exact same room set. Merged into one pass: each room's
+  // hostile structures/creeps/structures are fetched once and reused across all five fields. Confirmed
+  // live (2026-08-13 CPU profiling) this was a real, if secondary, empire-wide cost — scales with every
+  // visible room (owned + remotes + scout transit), not just owned colonies.
+  const visibleRooms: VisibleRoom[] = [];
+  const hostileRoomTowers: Partial<Record<string, SnapTower[]>> = {};
+  const hostileRoomUnits: Partial<Record<string, SnapUnit[]>> = {};
+  const hostileRoomStorageEnergy: Partial<Record<string, number>> = {};
+  const visibleRoomRoads: Partial<Record<string, XY[]>> = {};
+  for (const name in Game.rooms) {
     const r = Game.rooms[name];
-    const invaderCore = r
-      .find(FIND_HOSTILE_STRUCTURES)
-      .find((s): s is StructureInvaderCore => s.structureType === STRUCTURE_INVADER_CORE);
-    return {
+    const hostileStructures = r.find(FIND_HOSTILE_STRUCTURES);
+    const hostileCreeps = r.find(FIND_HOSTILE_CREEPS);
+    const invaderCore = hostileStructures.find((s): s is StructureInvaderCore => s.structureType === STRUCTURE_INVADER_CORE);
+    visibleRooms.push({
       room: name,
       info: Memory.rooms?.[name]?.scouted,
-      hostileCount: r.find(FIND_HOSTILE_CREEPS).length + r.find(FIND_HOSTILE_STRUCTURES).length,
+      hostileCount: hostileCreeps.length + hostileStructures.length,
       ...(invaderCore ? { invaderCoreLevel: invaderCore.level } : {})
-    };
-  });
-  // Also shared across colonies, same "any room's vision is empire-wide" reasoning as visibleRooms above:
-  // a hostile room's own towers, for whichever colony's Drain operation is currently targeting it (or not
-  // — this is unconditional on any colony's `draining`, just like visibleRooms is unconditional on
-  // `attacking`/`colonizing`). Only rooms actually holding a hostile tower get an entry.
-  const hostileRoomTowers: Partial<Record<string, SnapTower[]>> = {};
-  for (const name in Game.rooms) {
-    const towers = Game.rooms[name]
-      .find(FIND_HOSTILE_STRUCTURES)
+    });
+
+    // Empire-wide/vision-gated, same "any room's vision is empire-wide" reasoning throughout: whichever
+    // colony's Drain operation (or squad) is currently targeting/passing through this room (or not — all
+    // of these are unconditional on any colony's `draining`/`attacking`/`colonizing`) gets to read it.
+    const towers = hostileStructures
       .filter((s): s is StructureTower => s.structureType === STRUCTURE_TOWER)
       .map(t => ({
         id: t.id,
@@ -52,33 +60,24 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
         storeCapacity: t.store.getCapacity(RESOURCE_ENERGY)
       }));
     if (towers.length > 0) hostileRoomTowers[name] = towers;
-  }
-  // Same empire-wide/vision-gated population as hostileRoomTowers above, but every hostile CREEP rather
-  // than tower — the target-room composition data a squad needs to face/react to threats it's actually
-  // fighting (ColonySnapshot.hostileRoomUnits' doc). Reuses snapUnit so a hostile's boosted parts read the
-  // same way an ally's do.
-  const hostileRoomUnits: Partial<Record<string, SnapUnit[]>> = {};
-  for (const name in Game.rooms) {
-    const units = Game.rooms[name].find(FIND_HOSTILE_CREEPS).map(snapUnit);
+
+    // The target-room composition data a squad needs to face/react to threats it's actually fighting
+    // (ColonySnapshot.hostileRoomUnits' doc). Reuses snapUnit so a hostile's boosted parts read the same
+    // way an ally's do.
+    const units = hostileCreeps.map(snapUnit);
     if (units.length > 0) hostileRoomUnits[name] = units;
-  }
-  // Same empire-wide/vision-gated population as hostileRoomTowers above, but the room's storage contents
-  // rather than its towers — Drain's snapshot history (#40) samples both. Only rooms with vision AND an
-  // actual storage structure get an entry (undefined for either).
-  const hostileRoomStorageEnergy: Partial<Record<string, number>> = {};
-  for (const name in Game.rooms) {
-    const storage = Game.rooms[name].storage;
+
+    // The room's storage contents — Drain's snapshot history (#40) samples both this and towers above.
+    // Only rooms with vision AND an actual storage structure get an entry (undefined for either).
+    const storage = r.storage;
     if (storage) hostileRoomStorageEnergy[name] = storage.store.getUsedCapacity(RESOURCE_ENERGY);
-  }
-  // Same empire-wide/vision-gated population as hostileRoomTowers above, but every ROAD rather than
-  // hostile tower — see ColonySnapshot.visibleRoomRoads' doc for why this exists (a remote route's
-  // transit rooms have no other live structure data anywhere in the snapshot).
-  const visibleRoomRoads: Partial<Record<string, XY[]>> = {};
-  for (const name in Game.rooms) {
-    const roads = Game.rooms[name]
+
+    // Every ROAD in the room — see ColonySnapshot.visibleRoomRoads' doc for why this exists (a remote
+    // route's transit rooms have no other live structure data anywhere in the snapshot).
+    const roads = r
       .find(FIND_STRUCTURES)
       .filter((s): s is StructureRoad => s.structureType === STRUCTURE_ROAD)
-      .map(r => ({ x: r.pos.x, y: r.pos.y }));
+      .map(road => ({ x: road.pos.x, y: road.pos.y }));
     if (roads.length > 0) visibleRoomRoads[name] = roads;
   }
 

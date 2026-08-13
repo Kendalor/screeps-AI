@@ -288,7 +288,7 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us
 
   // Skip straight to a step with something to do, rather than wasting a tick on one already complete on arrival.
-  let step = firstRunnableStep(def.steps, task.step, storeOf(creep));
+  let step = firstRunnableStep(def.steps, task.step, storeOf(creep), creep);
   if (step !== task.step) task.target = undefined; // lock belonged to the skipped step
 
   // Opportunistic en-route pickup: only while *travelling* to collect — the runnable step gathers and

@@ -227,6 +227,24 @@ export interface ColonyMemory {
   // The parade squad's persisted anchor — identical rule to drainAnchor, owned by operations/parade.ts,
   // written via setParadeAnchor.
   paradeAnchor?: SquadAnchorMemory;
+  // Cross-tick cache of hasOutstandingConstruction's own answer (colony/building.ts), owned by that
+  // function alone. Construction sites aren't placed every tick (placeAndDemolish is throttled to
+  // interval:100 — see kernel/tick.ts) and a site doesn't finish building every tick either (real
+  // builder-tick progress, not a per-tick event this code controls) — so recomputing "is anything still
+  // missing" from scratch every tick a colony's own site queue happens to be empty was pure waste once
+  // the answer settles to false. `fingerprint` is every cheap-to-read count that can flip the answer
+  // (structures/sites/siteSummary lengths, RCL, energy capacity) — see hasOutstandingConstruction's own
+  // doc for the exact invalidation rule. Absent means never cached yet (first tick, or a colony that's
+  // never reached this path).
+  outstandingConstructionCache?: { fingerprint: string; value: boolean };
+  // Governed by colony/building.ts's planBuilding — the metrics panel's ENTIRE "Buildings" data source
+  // (colony/index.ts's metrics()). Written once per planBuilding's own interval:100 cadence (kernel/
+  // tick.ts), never computed by metrics itself: metrics is read-only + math over whatever the capability
+  // that actually owns construction governance already produced, the same relationship
+  // outstandingConstructionCache above has to hasOutstandingConstruction. Absent only on a colony's first
+  // tick before planBuilding has run once, or a colony with no anchor yet (planBuilding returns before
+  // writing — see its own early-out).
+  buildingCounts?: { type: BuildableStructureConstant; built: number; targeted: number }[];
 }
 
 // A squad's persisted anchor tile — see ColonyMemory.drainAnchor/paradeAnchor's doc for the full rationale

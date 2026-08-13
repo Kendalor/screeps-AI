@@ -75,11 +75,54 @@ export function nextStep(steps: Step[], s: CreepState): number {
   return s.step;
 }
 
+// A "move"-kind step's memory-backed destination, read the same way moveToRoom/moveToPos themselves
+// resolve it — undefined means the step is a standing no-op this tick (e.g. a local miner's moveToRoom
+// with no targetRoom set). Pure Memory reads only, no Game.* lookups, so this stays as cheap as the
+// store-only checks the rest of firstRunnableStep already does; deliberately NOT reused for arrival
+// detection (creep.room.name===dest) or route advancement, which still only happen inside moveToRoom
+// itself — this only answers "is there anywhere configured to move toward at all."
+function moveStepDestination(step: Step, creep: Creep): unknown {
+  if (step.do === "moveToRoom") {
+    return step.to === "scoutTarget"
+      ? creep.memory.scoutTarget
+      : step.to === "targetRoom"
+        ? creep.memory.targetRoom
+        : step.to === "buildTargetRoom"
+          ? creep.memory.buildTargetRoom
+          : step.to === "repairTargetRoom"
+            ? creep.memory.repairTargetRoom
+            : step.to === "defendTargetRoom"
+              ? creep.memory.defendTargetRoom
+              : step.to === "attackTargetRoom"
+                ? creep.memory.attackTargetRoom
+                : step.room;
+  }
+  if (step.do === "moveToPos") return creep.memory[step.to];
+  return undefined;
+}
+
+// A "move"-kind step with a memory-backed destination that's currently unset — moveToRoom/moveToPos are
+// no-ops without one (see their own doc), but isComplete alone can never see that ("move" kind never
+// self-completes on store state, only via targetGone, which only a real runStep call sets). Without this,
+// firstRunnableStep's pre-filter always reports a no-destination moveToRoom as "runnable", forcing
+// runOne's retry loop to spend a full runStep call confirming what was knowable from Memory alone.
+// Confirmed live (2026-08-13 CPU profiling): every LOCAL miner's step table opens with
+// `{ do: "moveToRoom", to: "targetRoom" }`, which never has a destination (only remote miners set
+// targetRoom) — so every local miner burned one wasted interpreter:runStep call on this every single
+// tick, unconditionally, forever. Scout/paradeMember/settler and any other "move"-kind-first role with a
+// sometimes-unset memory field get the same fix for free. `creep` is optional so a caller with no real
+// Creep (e.g. a pure step-table test harness) simply skips this extra check rather than crashing —
+// falling back to the pre-existing "always runnable" behavior for move-kind steps.
+function isStandingNoOp(step: Step, creep: Creep | undefined): boolean {
+  return !!creep && (step.do === "moveToRoom" || step.do === "moveToPos") && moveStepDestination(step, creep) === undefined;
+}
+
 // Skips a step landed on mid-tick that's already complete (e.g. arriving at "upgrade" right after "transfer" emptied the store).
 // targetGone is never set here — that reflects a resolution attempt this step hasn't made yet.
-export function firstRunnableStep(steps: Step[], from: number, store: { free: number; used: number }): number {
+export function firstRunnableStep(steps: Step[], from: number, store: { free: number; used: number }, creep?: Creep): number {
   for (let i = 0; i < steps.length; i++) {
     const idx = (from + i) % steps.length;
+    if (isStandingNoOp(steps[idx], creep)) continue;
     if (!isComplete(steps[idx], { step: idx, ...store, targetGone: false, didAct: false })) return idx;
   }
   return from;

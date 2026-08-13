@@ -165,11 +165,24 @@ function advanceOrPark(creep: Creep): void {
 // before drops: a container doesn't decay, so it's the safer bet over a pile another creep might grab
 // first. `range` comes from topoffRange (scales with remaining trip distance) — this is a nearby-spot
 // grab, not a room-wide hunt.
+//
+// Picks by straight-line range (getRangeTo), not findClosestByPath — same trade-off sweep.ts's
+// pickSweepPile already makes for the same kind of short-radius opportunistic detour (range here tops
+// out at TOPOFF_RANGE_MAX=5, comparable to sweep's SWEEP_RADIUS=2). This runs unconditionally on EVERY
+// travelHome tick with spare capacity (confirmed live 2026-08-13 CPU profiling: transport:runTransport
+// was the single most expensive per-call creep function), so a PathFinder search here is paid every tick
+// of a whole cross-room trip, not once. At this radius a path-blocked tile being materially nearer by
+// path than by range is rare and low-stakes even when it happens — the caller re-checks live every tick
+// (by design, see transport.test.ts's "detours for a nearby topoff" tests), so a suboptimal pick this
+// tick is corrected or superseded next tick, never a stuck/wrong-forever state.
 function findLiveTopoff(creep: Creep, exclude: Id<_HasId> | undefined, range: number): Resource | Tombstone | Ruin | StructureContainer | undefined {
+  const nearest = <T extends { pos: RoomPosition }>(items: T[]): T | undefined =>
+    items.sort((a, b) => creep.pos.getRangeTo(a.pos) - creep.pos.getRangeTo(b.pos))[0];
+
   const containers = creep.pos
     .findInRange(FIND_STRUCTURES, range, { filter: s => s.structureType === STRUCTURE_CONTAINER })
     .filter((c): c is StructureContainer => (c as StructureContainer).id !== exclude && (c as StructureContainer).store.getUsedCapacity(RESOURCE_ENERGY) >= TOPOFF_WORTHWHILE_FLOOR);
-  if (containers.length > 0) return creep.pos.findClosestByPath(containers) ?? containers[0];
+  if (containers.length > 0) return nearest(containers);
 
   const drops = creep.pos
     .findInRange(FIND_DROPPED_RESOURCES, range)
@@ -183,7 +196,7 @@ function findLiveTopoff(creep: Creep, exclude: Id<_HasId> | undefined, range: nu
 
   const piles: (Resource | Tombstone | Ruin)[] = [...drops, ...tombs, ...ruins];
   if (piles.length === 0) return undefined;
-  return creep.pos.findClosestByPath(piles) ?? piles[0];
+  return nearest(piles);
 }
 
 function nodeRefFor(obj: Resource | Tombstone | Ruin | StructureContainer): NodeRef {

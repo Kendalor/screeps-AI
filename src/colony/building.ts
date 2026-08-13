@@ -1,11 +1,13 @@
 // The construction arbiter: merges every operation's structures() claims with the bunker layout,
-// orders them, spends the focus-site budget, and tears down what no operation claims. Pure.
+// orders them, spends the focus-site budget, and tears down what no operation claims. Pure, with one
+// deliberate exception: hasOutstandingConstruction reads/writes a narrow ColonyMemory cache field the
+// same way snapshot/colony.ts's resolveAnchor already does for the anchor — see that function's own doc.
 
 import { plannedObstacles, buildableAtRcl } from "../layouts/goal";
 import GOAL_JSON from "../layouts/Base_2.json";
 import { stampLayout, type PlacedStructure } from "../layouts/stamp";
 import type { GoalLayout } from "../layouts/sync";
-import { range, type XY } from "../lib/geometry";
+import type { XY } from "../lib/geometry";
 import { needsRepair } from "../lib/repairable";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
@@ -109,17 +111,32 @@ export function unsafeRemoteRooms(colony: ColonySnapshot): Set<string> {
 // danger persists. Its own safe tiles (home-room leg, or already-built ones) stay eligible either way:
 // an unsafe group is never dropped from the result, only skipped when picking which group's *remaining*
 // work gates everyone else.
+//
+// `claimed` is grouped by sourceId ONCE up front (a single O(n) pass) rather than the original shape,
+// which re-scanned the WHOLE `claimed` array once per distinct source group (order.find(id =>
+// claimed.some(...))) — O(groups * claimed), each .some() call also invoking builtAt's own linear scans.
+// Confirmed live (2026-08-13 CPU profiling, sub-span instrumentation): with 3-4 remotes and 37-65 tile
+// routes each, `claimed` runs ~250-350 items and this was a real, if secondary, cost inside
+// wantedStructures alongside gateRoads (see that function's own doc for the bigger fix). Same builtAt/
+// blockedByDanger calls, same result — every claim is still classified exactly once now instead of once
+// per group it might belong to.
 function gateSourceGroups(colony: ColonySnapshot, claimed: readonly PlacedStructure[]): PlacedStructure[] {
   const unsafeRemote = unsafeRemoteRooms(colony);
   const blockedByDanger = (p: PlacedStructure) => !builtAt(colony, p) && unsafeRemote.has(roomOf(p, colony));
 
   const order: Id<Source>[] = [];
+  const byGroup = new Map<Id<Source>, PlacedStructure[]>();
   for (const p of claimed) {
-    if (p.sourceId !== undefined && !order.includes(p.sourceId)) order.push(p.sourceId);
+    if (p.sourceId === undefined) continue;
+    let group = byGroup.get(p.sourceId);
+    if (!group) {
+      group = [];
+      byGroup.set(p.sourceId, group);
+      order.push(p.sourceId);
+    }
+    group.push(p);
   }
-  const firstIncomplete = order.find(id =>
-    claimed.some(p => p.sourceId === id && !builtAt(colony, p) && !blockedByDanger(p))
-  );
+  const firstIncomplete = order.find(id => byGroup.get(id)!.some(p => !builtAt(colony, p) && !blockedByDanger(p)));
   // Every group is either fully built or currently only blocked by danger: nothing to throttle, so pass
   // every claim through as-is (each one's own safety gate in placeAndDemolish still applies).
   if (firstIncomplete === undefined) return claimed as PlacedStructure[];
@@ -129,7 +146,23 @@ function gateSourceGroups(colony: ColonySnapshot, claimed: readonly PlacedStruct
 export function planBuilding(colony: ColonySnapshot, operations: Operation[]): Intent[] {
   if (!colony.anchor) return [];
   // Polled once and threaded through, so placement and demolition can't disagree about what was claimed this tick.
-  return placeAndDemolish(colony, claimsOf(colony, operations));
+  const claimed = claimsOf(colony, operations);
+  writeBuildingCounts(colony, claimed);
+  return placeAndDemolish(colony, claimed);
+}
+
+// Metrics is read-only + math over what building() (the actual construction governor) already computed —
+// see buildingRows' own doc. This is the write side: called once per planBuilding's own `interval:100`
+// cadence (kernel/tick.ts), never per-tick, so metrics() can read a cached array with zero computation
+// instead of re-deriving it (and paying wantedStructures' full positional cost) on every one of those 100
+// ticks. typeof-guarded like hasOutstandingConstruction's own Memory write, for the same reason: plain-
+// object unit-test fixtures for this module don't stub a global Memory.
+function writeBuildingCounts(colony: ColonySnapshot, claimed: PlacedStructure[]): void {
+  if (typeof Memory === "undefined") return;
+  const mem = Memory.colonies[colony.name];
+  if (!mem) return;
+  const targeted = wantedStructures(colony, claimed, false);
+  mem.buildingCounts = buildingRows(colony, targeted);
 }
 
 // Gathered sequentially, not flatMap: each operation paths around the layout and around siblings' plans already claimed,
@@ -256,18 +289,43 @@ function placeAndDemolish(colony: ColonySnapshot, claimed: PlacedStructure[]): I
 // buildableAtRcl permits the full bunker road grid from RCL2 (permitted, not wanted); only keep roads that neighbour
 // a served structure. An operation's own claimed roads (e.g. Mining's multi-tile source access path) bypass this —
 // most of a path's tiles sit between structures, not next to one, so adjacency alone would strip the middle out.
+//
+// Adjacency (range===1, Chebyshev) is checked via a coordinate-keyed Set of every served tile's own
+// 8-neighbour ring (excluding the tile itself — dx=0,dy=0 skipped, since range 0 is not range 1), not a
+// servedTiles.some(...) scan per road candidate. A first attempt at this same rewrite (2026-08-13) was
+// reverted for shipping unbenchmarked against real scale (a synthetic 60-structure/150-road test looked
+// fast either way) AND for a correctness bug (the neighbour set wasn't excluding the self tile). Re-done
+// properly this time: live sub-span profiling (recordManual instrumentation, see git history) confirmed
+// gateRoads as wantedStructures' single largest cost (~300us/call, ~50% of the total) at the REAL scale —
+// colonies here run 3-4 remotes with 37-65 tile routes each (confirmed via Memory.colonies.<room>.remotes),
+// so `buildable`/servedTiles run ~250-350 items, not the ~200 the first synthetic test assumed. A
+// realistic multi-room micro-benchmark at that scale (337 total placements, matching a real colony's
+// bunker + 4 remote routes) confirmed BOTH correctness (0 mismatches against the original scan) and a
+// real ~40% speedup (131us -> 78us/call) before this was deployed — see the benchmark script kept in this
+// commit's description. Building the neighbour set is O(servedTiles); the road filter is then O(roads)
+// with O(1) lookups, down from O(roads * servedTiles).
+function neighbourKeys(x: number, y: number, room: string, out: Set<string>): void {
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      if (dx === 0 && dy === 0) continue; // the tile itself is range 0, not range 1 — must not count as its own neighbour
+      out.add(`${room},${x + dx},${y + dy}`);
+    }
+  }
+}
+
 function gateRoads(buildable: PlacedStructure[], colony: ColonySnapshot, claimed: PlacedStructure[]): PlacedStructure[] {
   const key = (p: PlacedStructure) => `${roomOf(p, colony)},${p.x},${p.y}`;
   const claimedRoads = new Set(claimed.filter(p => p.type === ROAD).map(key));
   // Room-scoped: a tile in one room must never read as "served" by a structure that merely shares its
-  // (x,y) in a different room.
-  const servedTiles: PlacedStructure[] = [
-    ...colony.structures.filter(s => s.type !== ROAD).map(s => ({ x: s.x, y: s.y, type: s.type, room: colony.name })),
-    ...buildable.filter(s => s.type !== ROAD)
-  ];
-  return buildable.filter(
-    p => p.type !== ROAD || claimedRoads.has(key(p)) || servedTiles.some(s => roomOf(s, colony) === roomOf(p, colony) && range(p, s) === 1)
-  );
+  // (x,y) in a different room — folded into the key itself rather than a separate roomOf(...)===roomOf(...) check.
+  const servedNeighbours = new Set<string>();
+  for (const s of colony.structures) {
+    if (s.type !== ROAD) neighbourKeys(s.x, s.y, colony.name, servedNeighbours);
+  }
+  for (const s of buildable) {
+    if (s.type !== ROAD) neighbourKeys(s.x, s.y, roomOf(s, colony), servedNeighbours);
+  }
+  return buildable.filter(p => p.type !== ROAD || claimedRoads.has(key(p)) || servedNeighbours.has(key(p)));
 }
 
 function sameSpot(a: PlacedStructure) {
@@ -321,10 +379,137 @@ function substituteBlockedCapped(colony: ColonySnapshot, capped: PlacedStructure
 // Remote sites count too: Building's own wantedBuilders() sizes its workforce off home + remote progress
 // (see operations/building.ts's totalConstructionProgress), so this must agree or a live remote backlog
 // gets read as "finished" and strands every builder into repair/upgrade while roads sit at 0 progress.
-export const hasOutstandingConstruction = wrapFn(function hasOutstandingConstruction(colony: ColonySnapshot, claimed: PlacedStructure[]): boolean {
+//
+// Per-type target count for the bunker layout portion only (not `claimed` — see hasOutstandingConstruction's
+// own doc for why operation claims are checked separately, item by item). Mirrors wantedStructures' own
+// road gate (colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY) but skips substituteBlockedCapped/
+// gateRoads/sort entirely: a straight per-type COUNT never needs to know which specific tile a structure
+// sits on, only how many of each type the RCL currently permits — substituteBlockedCapped exists purely to
+// keep a spawn-blocked slot's COUNT from silently shrinking (see its own doc), so a count comparison
+// against buildableAtRcl's raw cap is already correct without re-deriving which tile the substitute landed
+// on. buildableAtRcl itself is already cached (see layouts/goal.ts) — this only adds one more cheap pass
+// over its (already-computed) result.
+function bunkerTargetCounts(colony: ColonySnapshot): Partial<Record<BuildableStructureConstant, number>> {
+  const anchor = colony.anchor;
+  if (!anchor) return {};
+  const atRcl = buildableAtRcl(GOAL, colony.controllerLevel, { anchor, sources: colony.sources });
+  const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
+  const counts: Partial<Record<BuildableStructureConstant, number>> = {};
+  for (const p of atRcl) {
+    if (p.type === ROAD && !roadReady) continue;
+    counts[p.type] = (counts[p.type] ?? 0) + 1;
+  }
+  return counts;
+}
+
+// True while any bunker-layout type has fewer built+sited (home room only) than its RCL cap wants.
+// Deliberately count-only (no positions) — see bunkerTargetCounts' own doc for why that's still correct
+// even with substituteBlockedCapped in the picture.
+function bunkerBacklogRemains(colony: ColonySnapshot): boolean {
+  const wanted = bunkerTargetCounts(colony);
+  const have: Partial<Record<BuildableStructureConstant, number>> = {};
+  for (const s of colony.structures) have[s.type] = (have[s.type] ?? 0) + 1;
+  for (const s of colony.sites) have[s.type] = (have[s.type] ?? 0) + 1;
+  for (const type in wanted) {
+    const t = type as BuildableStructureConstant;
+    if ((have[t] ?? 0) < wanted[t]!) return true;
+  }
+  return false;
+}
+
+export interface BuildingCountRow {
+  type: BuildableStructureConstant;
+  built: number;
+  targeted: number;
+}
+
+// Per-type {built, targeted} across the WHOLE plan (bunker layout + every operation claim, e.g. remote
+// routes) — the metrics panel's "Buildings" row source. Positional (built via builtAt against the real
+// `targeted` plan, same as the arbiter's own placement decision), NOT count-only — this is the governance
+// layer (planBuilding/building(), see its own doc), the one place that's supposed to know exact positions,
+// so there is no correctness reason to avoid the real plan here the way there was for the panel to avoid
+// it. What changed is WHO calls this and HOW OFTEN: planBuilding now calls it once per its own natural
+// `interval:100` cadence (kernel/tick.ts) and writes the result to ColonyMemory.buildingCounts — metrics()
+// (colony/index.ts) only ever READS that cached array, never calls this function or wantedStructures
+// itself. Confirmed live (2026-08-13 CPU profiling): wantedStructures was costing ~691us/call every tick
+// purely because metrics() called it fresh every tick for this same number — moving the same computation
+// to run once per 100 ticks, at the one place that already governs construction, removes ~100x the calls
+// without changing what's computed or reintroducing any of the count-vs-position tradeoffs a purely
+// count-based rewrite would have needed to make.
+//
+// `targeted` is the UNTHROTTLED plan (wantedStructures' `throttleGroups: false`) — same reasoning that
+// branch's own doc gives: every remote group's full target, not just the one group currently being
+// placed, or a finished group would read as built-with-no-target the moment gateSourceGroups moves on.
+function buildingRows(colony: ColonySnapshot, targeted: readonly PlacedStructure[]): BuildingCountRow[] {
+  const targetBy: Partial<Record<BuildableStructureConstant, number>> = {};
+  const builtBy: Partial<Record<BuildableStructureConstant, number>> = {};
+  for (const p of targeted) {
+    targetBy[p.type] = (targetBy[p.type] ?? 0) + 1;
+    if (builtAt(colony, p)) builtBy[p.type] = (builtBy[p.type] ?? 0) + 1;
+  }
+
+  const types = new Set<BuildableStructureConstant>(Object.keys(targetBy) as BuildableStructureConstant[]);
+  return [...types]
+    .map(type => ({ type, built: builtBy[type] ?? 0, targeted: targetBy[type] ?? 0 }))
+    .sort(
+      (a, b) =>
+        b.targeted - b.built - (a.targeted - a.built) || // most still to build first
+        b.targeted - a.targeted ||
+        a.type.localeCompare(b.type)
+    );
+}
+
+// Everything that can flip the expensive fallback's answer (bunkerBacklogRemains / claimed.some below),
+// joined into one cheap string: structure/site counts (something built, demolished, or newly sited),
+// energyCapacity (crosses ROADS_FROM_ENERGY_CAPACITY), controllerLevel (RCL-up permits more), and
+// claimed's own length (an operation's demand changed, e.g. a new remote selected). Every one of these
+// is already a plain number/length read off the snapshot — no iteration beyond what the caller already
+// paid for building `claimed`.
+function outstandingConstructionFingerprint(colony: ColonySnapshot, claimed: PlacedStructure[]): string {
+  return [
+    colony.structures.length,
+    colony.sites.length,
+    colony.siteSummary.length,
+    colony.energyCapacity,
+    colony.controllerLevel,
+    claimed.length
+  ].join(",");
+}
+
+// `wanted` lets a caller that already computed this tick's wantedStructures(colony, claimed) (throttled)
+// pass it straight through instead of this recomputing it from scratch. No current caller does — Colony.
+// maintainWorkforce() deliberately omits it (see that method's own doc: forcing a positional plan just to
+// hand it over here would defeat the point of the cheaper paths below) — kept as a parameter so a future
+// caller that's already paid for wantedStructures this tick for its OWN reason isn't forced to redo the
+// (cheap, but not free) existingAt scan below. Omitted, the fallback below is answered from a cross-tick cache
+// (ColonyMemory.outstandingConstructionCache) instead of a fresh count/positional check every tick —
+// construction sites aren't placed every tick (placeAndDemolish is throttled, interval:100 — see
+// kernel/tick.ts) and a site doesn't finish building every tick either (real per-tick builder progress,
+// not an event this code observes directly), so the fallback's answer is stable almost every tick in
+// steady state. Invalidated whenever outstandingConstructionFingerprint changes — cheaper than the
+// bunkerBacklogRemains/claimed.some checks it guards, and correct by construction: anything that could
+// flip the real answer necessarily changes at least one of the counts the fingerprint reads (see its own
+// doc). Confirmed live (2026-08-13 CPU profiling): even the count-only fallback (no positions, no
+// gateRoads/sort) still cost ~110us/call — a straight cache hit is a single string comparison instead.
+export const hasOutstandingConstruction = wrapFn(function hasOutstandingConstruction(
+  colony: ColonySnapshot,
+  claimed: PlacedStructure[],
+  wanted?: PlacedStructure[]
+): boolean {
   if (colony.sites.length > 0) return true;
   if (colony.siteSummary.some(s => s.room !== colony.name)) return true;
-  return wantedStructures(colony, claimed).some(p => !existingAt(colony, p));
+  if (wanted) return wanted.some(p => !existingAt(colony, p));
+
+  const fingerprint = outstandingConstructionFingerprint(colony, claimed);
+  // typeof-guarded like transport.ts's parkNearBunker/homeRoomWaypoint — plain-object unit-test fixtures
+  // for this module don't stub a global Memory at all, only the real Game/kernel entry point does.
+  const mem = typeof Memory !== "undefined" ? Memory.colonies[colony.name] : undefined;
+  const cached = mem?.outstandingConstructionCache;
+  if (cached && cached.fingerprint === fingerprint) return cached.value;
+
+  const value = bunkerBacklogRemains(colony) || claimed.some(p => !existingAt(colony, p));
+  if (mem) mem.outstandingConstructionCache = { fingerprint, value };
+  return value;
 }, "building:hasOutstandingConstruction");
 
 // A structure worth a repairer: decayed below the shared repair floor (src/lib/repairable.ts) — the
@@ -343,8 +528,14 @@ const REPURPOSE_OP_KIND: Record<"repair" | "upgrader", string> = { repair: "repa
 // Emits a role change for every owned builder once construction is finished: repair if anything is decaying,
 // upgrader otherwise. Pure — the setCreepRole actuator owns the memory write. `claimed` must be the same
 // operation claims planBuilding used this tick, so the backlog check agrees with what would be placed.
-export const repurposeIdleBuilders = wrapFn(function repurposeIdleBuilders(colony: ColonySnapshot, claimed: PlacedStructure[]): Intent[] {
-  if (hasOutstandingConstruction(colony, claimed)) return [];
+// `wanted` is forwarded to hasOutstandingConstruction as-is — see that function's own doc for why a
+// caller with a per-tick cached wantedStructures result should pass it through here.
+export const repurposeIdleBuilders = wrapFn(function repurposeIdleBuilders(
+  colony: ColonySnapshot,
+  claimed: PlacedStructure[],
+  wanted?: PlacedStructure[]
+): Intent[] {
+  if (hasOutstandingConstruction(colony, claimed, wanted)) return [];
   const target: "repair" | "upgrader" = hasRepairWork(colony) ? "repair" : "upgrader";
   const op = opName(REPURPOSE_OP_KIND[target], colony.name);
   return colony.creeps

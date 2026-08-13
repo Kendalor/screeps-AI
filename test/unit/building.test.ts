@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Intent } from "../../src/intents/types";
 import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
 import { colony } from "../../src/colony";
+import type { BuildingCountRow } from "../../src/colony/building";
 import { wantedStructures } from "../../src/colony/building";
 import { colonySnap, remoteSourceAt, snapCreep, sourceAt } from "../fixtures";
 import { Mining } from "../../src/operations/mining";
@@ -776,6 +777,27 @@ describe("idle-builder repurposing", () => {
     expect(snap.maintainWorkforce()).toEqual([]);
   });
 
+  // hasOutstandingConstruction's fast path checks the bunker layout by COUNT, but falls back to checking
+  // `claimed` (operation claims — remote routes etc.) item by item, since those aren't RCL-capped/
+  // substituted the same way (see that function's own doc). A bunker-complete colony with an unbuilt
+  // remote container must still read as having outstanding construction.
+  it("does NOT convert while a remote operation claim (e.g. a mining container) is still unbuilt", () => {
+    const route = [
+      { room: "W1N1", x: 26, y: 25 },
+      { room: "W2N1", x: 0, y: 25 },
+      { room: "W2N1", x: 1, y: 25 }
+    ];
+    const source = remoteSourceAt(2, 25, "W2N1", { route });
+    // energyCapacity must clear Mining's own structuresFromEnergyCapacity gate (550) or it claims
+    // nothing at all regardless of the remote source being selected — see mining.ts's structures().
+    const snap = colony({
+      ...finishedColony({ energyCapacity: 800, remoteSources: [source], remoteStructures: { W2N1: [] } }),
+      creeps: [snapCreep("builder")]
+    });
+
+    expect(snap.maintainWorkforce()).toEqual([]);
+  });
+
   it("ignores a structure that is damaged but still above the repair floor (converts to upgrader)", () => {
     const finished = finishedColony();
     // 90% hits — damaged, but not past the 0.8 repair floor.
@@ -787,6 +809,164 @@ describe("idle-builder repurposing", () => {
     const changes = roleChanges(snap.maintainWorkforce());
     expect(changes).toHaveLength(1);
     expect(changes[0].role).toBe("upgrader");
+  });
+
+  // hasOutstandingConstruction's fast path (src/colony/building.ts) answers this with a per-type COUNT
+  // comparison, not positions — deliberately correct even though substituteBlockedCapped exists to swap a
+  // spawn-blocked slot for a different same-type tile elsewhere in the full RCL8 goal (see that function's
+  // own doc): the count never needs to know WHICH tile satisfies the cap, only that enough of the type
+  // exist. This proves that holds — a spawn squatting on one wanted extension tile, with the RCL's full
+  // extension count otherwise satisfied by a substitute placement, must still read as finished.
+  it("converts an idle builder when a spawn blocks one wanted extension tile but the count is satisfied by a substitute", () => {
+    const finished = finishedColony();
+    const extensionSlot = finished.structures.find(s => s.type === "extension")!;
+    // Swap that one extension for a spawn on the same tile, and add a real extension at a tile the RCL2
+    // goal doesn't itself list — the same shape substituteBlockedCapped's own replacement would produce.
+    const withBlockerAndSubstitute: SnapStructure[] = [
+      ...finished.structures.filter(s => s !== extensionSlot),
+      { x: extensionSlot.x, y: extensionSlot.y, type: "spawn" },
+      { x: extensionSlot.x + 5, y: extensionSlot.y + 5, type: "extension" }
+    ];
+    const snap = colony({ ...finished, structures: withBlockerAndSubstitute, creeps: [snapCreep("builder")] });
+
+    const changes = roleChanges(snap.maintainWorkforce());
+    expect(changes).toHaveLength(1);
+    expect(changes[0].role).toBe("upgrader");
+  });
+
+  // Same setup, but WITHOUT the substitute extension — the count genuinely falls short by one, so
+  // construction must still read as outstanding (the builder must NOT convert).
+  it("does NOT convert when a spawn blocks a wanted extension tile with no substitute built", () => {
+    const finished = finishedColony();
+    const extensionSlot = finished.structures.find(s => s.type === "extension")!;
+    const withBlockerOnly: SnapStructure[] = [
+      ...finished.structures.filter(s => s !== extensionSlot),
+      { x: extensionSlot.x, y: extensionSlot.y, type: "spawn" }
+    ];
+    const snap = colony({ ...finished, structures: withBlockerOnly, creeps: [snapCreep("builder")] });
+
+    expect(snap.maintainWorkforce()).toEqual([]);
+  });
+
+  // hasOutstandingConstruction's expensive fallback (bunkerBacklogRemains + claimed.some) is cached
+  // cross-tick in ColonyMemory.outstandingConstructionCache, keyed by a fingerprint of everything that
+  // could change the real answer (see outstandingConstructionFingerprint's own doc). These two tests
+  // prove the cache is actually consulted, not just present and unused: a deliberately WRONG cached
+  // value under a MATCHING fingerprint must win (proving a real cache hit occurs), while the same wrong
+  // value under a fingerprint that no longer matches must be ignored and recomputed correctly.
+  describe("cross-tick cache", () => {
+    const unfinished = colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [], creeps: [snapCreep("builder")] });
+
+    function fingerprintFor(snap: ColonySnapshot): string {
+      // Mirrors outstandingConstructionFingerprint's own join exactly — claimed is empty for this
+      // RCL2/no-remotes fixture (Mining's own gate needs energyCapacity>=550, not met here — see the
+      // remote-claim test above), matching what maintainWorkforce's real call site passes.
+      return [snap.structures.length, snap.sites.length, snap.siteSummary.length, snap.energyCapacity, snap.controllerLevel, 0].join(",");
+    }
+
+    it("uses a cached value when the fingerprint still matches, even if the cached value is stale/wrong", () => {
+      (globalThis as unknown as { Memory: { colonies: Record<string, unknown> } }).Memory = {
+        colonies: {
+          W1N1: { outstandingConstructionCache: { fingerprint: fingerprintFor(unfinished), value: false } }
+        }
+      };
+      const snap = colony(unfinished);
+
+      // The real backlog is genuinely non-empty (an RCL2 room with zero structures) — a fresh
+      // computation would say "outstanding" and never convert. The cache says otherwise; if it's
+      // actually being read, that wrong answer wins and the builder converts.
+      const changes = snap.maintainWorkforce();
+      expect(changes).not.toEqual([]);
+    });
+
+    it("ignores a cached value once the fingerprint no longer matches (recomputes correctly)", () => {
+      (globalThis as unknown as { Memory: { colonies: Record<string, unknown> } }).Memory = {
+        colonies: {
+          // A fingerprint from a DIFFERENT colony state (structures.length off by one) — must not match.
+          W1N1: { outstandingConstructionCache: { fingerprint: "999,0,0,300,2,0", value: false } }
+        }
+      };
+      const snap = colony(unfinished);
+
+      expect(snap.maintainWorkforce()).toEqual([]);
+    });
+  });
+});
+
+// The metrics panel's ENTIRE "Buildings" data source is ColonyMemory.buildingCounts, written by
+// planBuilding (colony/building.ts) as a side effect of building() — never computed by metrics.ts itself
+// (colony/index.ts's metrics() just reads Memory.colonies[name].buildingCounts ?? []). These tests stub a
+// global Memory (same pattern as the "cross-tick cache" describe block below) and drive the real
+// colony(...).building() call, so they exercise the actual write path rather than a helper's own
+// isolated computation.
+describe("ColonyMemory.buildingCounts (metrics panel source, written by building())", () => {
+  const anchor = { x: 25, y: 25 };
+
+  function stubMemory(name: string): { colonies: Record<string, { buildingCounts?: BuildingCountRow[] }> } {
+    const mem = { colonies: { [name]: {} } };
+    (globalThis as unknown as { Memory: typeof mem }).Memory = mem;
+    return mem;
+  }
+
+  it("writes built vs targeted per bunker-layout type at the current RCL", () => {
+    const mem = stubMemory("W1N1");
+    colony(colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [] })).building();
+
+    const rows = mem.colonies.W1N1.buildingCounts!;
+    const extension = rows.find(r => r.type === "extension");
+    expect(extension).toBeDefined();
+    expect(extension!.built).toBe(0);
+    expect(extension!.targeted).toBeGreaterThan(0);
+  });
+
+  it("counts a built bunker structure against its type's target", () => {
+    const targetMem = stubMemory("W1N1");
+    colony(colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [] })).building();
+    const targetCount = targetMem.colonies.W1N1.buildingCounts!.find(r => r.type === "extension")!.targeted;
+
+    const mem = stubMemory("W1N1");
+    const oneBuilt = colonySnap({
+      anchor,
+      controllerLevel: 2,
+      structures: allNonRoadStructuresAt(anchor, 2).filter(s => s.type === "extension").slice(0, 1),
+      sites: []
+    });
+    colony(oneBuilt).building();
+    const row = mem.colonies.W1N1.buildingCounts!.find(r => r.type === "extension")!;
+    expect(row).toEqual({ type: "extension", built: 1, targeted: targetCount });
+  });
+
+  it("includes an operation's claimed structures (e.g. a remote container) in both built and targeted", () => {
+    const before = stubMemory("W1N1");
+    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, structures: [], sites: [] });
+    const claimed = minedStructures(snap);
+    expect(claimed.some(p => p.type === "container")).toBe(true);
+    colony(snap).building();
+    const beforeRow = before.colonies.W1N1.buildingCounts!.find(r => r.type === "container")!;
+    expect(beforeRow.built).toBe(0);
+    expect(beforeRow.targeted).toBeGreaterThan(0);
+
+    const after = stubMemory("W1N1");
+    const built = claimed.filter(p => p.type === "container").map(p => ({ x: p.x, y: p.y, type: p.type }));
+    const withContainer = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, structures: built, sites: [] });
+    colony(withContainer).building();
+    const afterRow = after.colonies.W1N1.buildingCounts!.find(r => r.type === "container")!;
+    expect(afterRow.built).toBe(built.length);
+    expect(afterRow.targeted).toBe(beforeRow.targeted);
+  });
+
+  it("orders the most-remaining type first", () => {
+    const mem = stubMemory("W1N1");
+    colony(colonySnap({ anchor, controllerLevel: 2, structures: [], sites: [] })).building();
+    // Every row here starts at built:0, so remaining === targeted; the sort must be non-increasing by it.
+    const remaining = mem.colonies.W1N1.buildingCounts!.map(r => r.targeted - r.built);
+    expect(remaining).toEqual([...remaining].sort((a, b) => b - a));
+  });
+
+  it("does not write (or crash) when the colony has no anchor yet", () => {
+    const mem = stubMemory("W1N1");
+    colony(colonySnap({ anchor: null, controllerLevel: 1, structures: [], sites: [] })).building();
+    expect(mem.colonies.W1N1.buildingCounts).toBeUndefined();
   });
 });
 

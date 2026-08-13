@@ -10,7 +10,8 @@ import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { log } from "../lib/log";
-import { claimsOf, planBuilding, repurposeIdleBuilders, wantedStructures } from "./building";
+import type { PlacedStructure } from "../layouts/stamp";
+import { claimsOf, planBuilding, repurposeIdleBuilders } from "./building";
 import { collectMetrics } from "./metrics";
 import { visualize } from "./metricsVisual";
 
@@ -24,6 +25,18 @@ export class Colony {
   // that doesn't override roleTargets() (its default implementation calls desiredCreeps() itself) —
   // all against the same unchanged snapshot, so every call after the first was pure waste.
   private cachedRequests: CreepRequest[] | undefined;
+
+  // Same reasoning as cachedRequests above: claims() is called every tick by maintainWorkforce() AND
+  // metrics() (both un-throttled SYSTEMS entries — see kernel/tick.ts), plus again by building() every
+  // 100th tick — all against the same unchanged snapshot/operations for the whole tick. Confirmed live
+  // (2026-08-13 CPU profiling): claimsOf was firing ~1.75x/colony/tick, each call re-running every
+  // operation's structures() (stampLayout + geometry) for no new information.
+  private cachedClaims: PlacedStructure[] | undefined;
+
+  /** This tick's operation structure claims (bunker layout + every operation's own structures()). */
+  private claims(): PlacedStructure[] {
+    return (this.cachedClaims ??= claimsOf(this.snapshot, this.operations));
+  }
 
   // `allSnapshots`: every colony's snapshot this tick, so an active Colonize target that has itself
   // become a real Colony (controller claimed) can be looked up for its own energyCapacity — see
@@ -116,9 +129,12 @@ export class Colony {
    * else upgraders. Runs every tick (unlike building(), which is throttled) so a builder converts promptly
    * rather than drop-mining for up to an interval before the next placement pass. Reuses building()'s own
    * operation claims so the "is construction finished" check can't disagree with what would be placed.
+   * Deliberately does NOT pass a pre-computed `wanted` — hasOutstandingConstruction's own count-only fast
+   * path (src/colony/building.ts) answers "is anything still missing" far more cheaply than a full
+   * wantedStructures call would, and forcing one here just to hand it over would defeat that entirely.
    */
   public maintainWorkforce(): Intent[] {
-    return repurposeIdleBuilders(this.snapshot, claimsOf(this.snapshot, this.operations));
+    return repurposeIdleBuilders(this.snapshot, this.claims());
   }
 
   /**
@@ -128,16 +144,18 @@ export class Colony {
    */
   public metrics(cpu?: Readonly<Record<string, number>>): Intent[] {
     const mem = (Memory.metrics[this.name] ??= { harvestSamples: [] });
-    // Ungated (throttleGroups: false): the panel wants the full plan across every remote source group,
-    // not just the one building() is currently placing — otherwise a finished group's structures would
-    // count as built with no target left to compare against.
-    const targeted = wantedStructures(this.snapshot, claimsOf(this.snapshot, this.operations), false);
+    // Read-only: building()/planBuilding is the sole owner of construction governance and writes this
+    // cache itself once per its own interval:100 cadence (see ColonyMemory.buildingCounts' own doc) — the
+    // metrics panel just displays whatever it last wrote, the same relationship it already has with
+    // hasOutstandingConstruction's own cache. Absent (colony's first tick, or no anchor yet) reads as an
+    // empty panel row rather than computing anything itself.
+    const buildings = Memory.colonies[this.name]?.buildingCounts ?? [];
     const requests = this.requests();
     const report = collectMetrics(
       this.snapshot,
       requests,
       this.operations.map(op => op.name),
-      targeted,
+      buildings,
       mem,
       // Passing the already-computed requests through so roleTargets' default doesn't call
       // desiredCreeps() a second time — see the comment on Operation.roleTargets.

@@ -3,8 +3,7 @@
 // Harvest rate is the one stored exception — see harvestRate() for why a window, not a running total.
 
 import { roleDef } from "../behaviors/roles";
-import { builtAt } from "./building";
-import type { PlacedStructure } from "../layouts/stamp";
+import type { BuildingCountRow } from "./building";
 import { needsRepair, REPAIRABLE } from "../lib/repairable";
 import type { RoleName } from "../memory/schema";
 import type { ColonyMetricsMemory } from "../memory/schema";
@@ -23,13 +22,6 @@ export interface CensusRow {
   role: RoleName;
   current: number;
   desired: number;
-}
-
-/** One structure type's build progress: how many stand versus how many the current-RCL plan targets. */
-export interface BuildingRow {
-  type: BuildableStructureConstant;
-  built: number;
-  targeted: number;
 }
 
 /** One remote room's repair upkeep, for the debug panel's per-room breakdown (see repairRemainingFor). */
@@ -149,42 +141,11 @@ function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[], targets: 
     .sort((a, b) => (roleDef(b.role)?.priority ?? -Infinity) - (roleDef(a.role)?.priority ?? -Infinity) || a.role.localeCompare(b.role));
 }
 
-// Built vs. targeted per structure type; a type appears if either count is > 0. Sorted most-remaining first.
-//
-// `built` is derived from `targeted` via `isBuilt` (colony/building.ts's builtAt), not from a raw
-// live-structures list: a remote room's structures only populate for a tick it's actually visible (see
-// snapshot/colony.ts), so counting live structures directly would undercount a route road the moment
-// its room drops out of vision, even though it's genuinely standing — the same problem builtAt's own
-// routeBuilt fallback exists to solve for placement. A structure genuinely built but not part of any
-// current target (e.g. torn down from the goal) has nothing to be counted against and is intentionally
-// omitted from `built`, matching what the panel is meant to show (progress toward the current plan).
-export function buildingsFor(
-  targeted: readonly PlacedStructure[],
-  isBuilt: (p: PlacedStructure) => boolean
-): BuildingRow[] {
-  const targetBy = countByType(targeted);
-  const builtBy: Partial<Record<BuildableStructureConstant, number>> = {};
-  for (const p of targeted) {
-    if (isBuilt(p)) builtBy[p.type] = (builtBy[p.type] ?? 0) + 1;
-  }
-
-  const types = new Set<BuildableStructureConstant>(Object.keys(targetBy) as BuildableStructureConstant[]);
-
-  return [...types]
-    .map(type => ({ type, built: builtBy[type] ?? 0, targeted: targetBy[type] ?? 0 }))
-    .sort(
-      (a, b) =>
-        b.targeted - b.built - (a.targeted - a.built) || // most still to build first
-        b.targeted - a.targeted ||
-        a.type.localeCompare(b.type)
-    );
-}
-
-function countByType(structures: readonly { type: BuildableStructureConstant }[]): Partial<Record<BuildableStructureConstant, number>> {
-  const counts: Partial<Record<BuildableStructureConstant, number>> = {};
-  for (const s of structures) counts[s.type] = (counts[s.type] ?? 0) + 1;
-  return counts;
-}
+// Metrics is read-only + math: the built/targeted counts themselves are computed and owned by
+// colony/building.ts's buildingCounts (the same module that governs placement, so the panel can never
+// disagree with what's actually being built) — this just is BuildingCountRow, kept as a distinct exported
+// type so metrics.ts's own consumers (metricsVisual.ts) don't reach into building.ts directly.
+export type BuildingRow = BuildingCountRow;
 
 /**
  * Two views of repairable decay, both in hits, over the same REPAIRABLE type set (walls/ramparts
@@ -260,7 +221,7 @@ export function collectMetrics(
   snapshot: ColonySnapshot,
   requests: CreepRequest[],
   operationNames: string[],
-  targeted: readonly PlacedStructure[],
+  buildings: BuildingRow[],
   mem: ColonyMetricsMemory,
   roleTargets: RoleTarget[] = [],
   debugMetrics = false
@@ -270,9 +231,8 @@ export function collectMetrics(
     tick: snapshot.tick,
     census: censusFor(snapshot, requests, roleTargets),
     operations: operationNames,
-    // isBuilt uses builtAt's vision-independent routeBuilt fallback for remote route roads, so a road
-    // in a currently-unseen transit room still counts as built instead of undercounting (see buildingsFor).
-    buildings: buildingsFor(targeted, p => builtAt(snapshot, p)),
+    // Computed and owned by colony/building.ts's buildingCounts, not here — see BuildingRow's own doc.
+    buildings,
     energy: {
       available: snapshot.energyAvailable,
       capacity: snapshot.energyCapacity,
