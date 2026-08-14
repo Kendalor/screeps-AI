@@ -1,0 +1,629 @@
+// Drain sends a fixed 4-creep squad (1 drainAttacker + 3 drainHealer) at a single target room
+// (ColonyMemory.draining, snapshot.draining) — see docs/adr/0006-drain-energy-operation.md and (for the
+// movement redesign) docs/adr/0007-squad-movement.md. Constructed directly here (new Drain("W1N1")), same
+// as Attack/Defense's test convention: no Game mock, no Colony. Movement/action are now the Squad entity's
+// pure seam (squadState -> planSquadMove, actionPlanner -> planSquadActions), NOT per-creep
+// setSquadTargetPos intents — so the movement tests assert on squadState/squadGoal/planDrainActions.
+
+import { beforeEach, describe, expect, it } from "vitest";
+import { Drain, pickStagingRoom, planDrainActions } from "../../../src/operations/drain";
+import { planSquadActions, planSquadMove } from "../../../src/lib/squad";
+import { DRAIN_ATTACKER_MIN_COST } from "../../../src/behaviors/roles/drainAttacker";
+import { DRAIN_HEALER_MIN_COST } from "../../../src/behaviors/roles/drainHealer";
+import { range } from "../../../src/lib/geometry";
+import { clearSquadMatrixCache } from "../../../src/lib/squadCostMatrix";
+import { NO_OCCUPANCY } from "../../../src/lib/squadPath";
+import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
+import { colonySnap, snapCreep, towerAt, visibleRoom } from "../../fixtures";
+
+beforeEach(() => {
+  clearTiles();
+  clearSquadMatrixCache();
+  stubPathFinderSingleRoom();
+});
+
+const drain = new Drain("W1N1");
+
+const DRAIN_AFFORDABLE = { energyCapacity: DRAIN_ATTACKER_MIN_COST + 3 * DRAIN_HEALER_MIN_COST };
+const requestsByRole = (requests: { memory: { role: string } }[], role: string) => requests.filter(r => r.memory.role === role);
+
+const STAGING_ROUTE = [
+  { room: "W1N3", hostile: true },
+  { room: "W1N5", hostile: false }, // staging room
+  { room: "W2N1", hostile: true }
+];
+
+function openTerrain(): Uint8Array {
+  return new Uint8Array(2500).fill(1);
+}
+// drainRoomTerrain covering the target + staging room, all walkable.
+const OPEN_TERRAIN = { W2N1: openTerrain(), W1N5: openTerrain() };
+
+// A full squad fixture: 1 drainAttacker + 3 drainHealer sharing drain.name, positioned in `room`.
+function squad(over: { room?: string; x?: number; y?: number; attacker?: Partial<Parameters<typeof snapCreep>[1]>; healers?: Partial<Parameters<typeof snapCreep>[1]>[] } = {}) {
+  const room = over.room ?? "W2N1";
+  // Default to a tight 2x2 block at (25,25) so squadState reports assembled+in-formation.
+  const tiles = [
+    { x: 25, y: 25 },
+    { x: 26, y: 25 },
+    { x: 25, y: 26 },
+    { x: 26, y: 26 }
+  ];
+  const attacker = snapCreep("drainAttacker", { room, x: tiles[0].x, y: tiles[0].y, memory: { op: drain.name }, ...over.attacker });
+  const healers = [0, 1, 2].map(i =>
+    snapCreep("drainHealer", { room, x: tiles[i + 1].x, y: tiles[i + 1].y, memory: { op: drain.name }, ...(over.healers?.[i] ?? {}) })
+  );
+  return [attacker, ...healers];
+}
+
+describe("Drain.desiredCreeps", () => {
+  it("requests 1 attacker and 3 healers when draining is set and nothing is owned yet", () => {
+    const snap = colonySnap({ ...DRAIN_AFFORDABLE, draining: "W2N1" });
+    const requests = drain.desiredCreeps(snap);
+    expect(requestsByRole(requests, "drainAttacker")).toHaveLength(1);
+    expect(requestsByRole(requests, "drainHealer")).toHaveLength(3);
+    for (const r of requests) expect(r.memory.op).toBe("drain:W1N1");
+  });
+
+  it("requests nothing when draining is unset", () => {
+    const snap = colonySnap({ ...DRAIN_AFFORDABLE, draining: undefined });
+    expect(drain.desiredCreeps(snap)).toEqual([]);
+  });
+
+  it("tops up only the missing healers once the attacker and some healers are already owned", () => {
+    const snap = colonySnap({
+      ...DRAIN_AFFORDABLE,
+      draining: "W2N1",
+      creeps: [
+        snapCreep("drainAttacker", { memory: { op: "drain:W1N1" } }),
+        snapCreep("drainHealer", { memory: { op: "drain:W1N1" } })
+      ]
+    });
+    const requests = drain.desiredCreeps(snap);
+    expect(requestsByRole(requests, "drainAttacker")).toHaveLength(0);
+    expect(requestsByRole(requests, "drainHealer")).toHaveLength(2);
+  });
+
+  it("requests nothing once the full 1 attacker + 3 healer composition is already owned", () => {
+    const snap = colonySnap({
+      ...DRAIN_AFFORDABLE,
+      draining: "W2N1",
+      creeps: [
+        snapCreep("drainAttacker", { memory: { op: "drain:W1N1" } }),
+        snapCreep("drainHealer", { memory: { op: "drain:W1N1" } }),
+        snapCreep("drainHealer", { memory: { op: "drain:W1N1" } }),
+        snapCreep("drainHealer", { memory: { op: "drain:W1N1" } })
+      ]
+    });
+    expect(drain.desiredCreeps(snap)).toEqual([]);
+  });
+
+  // #39: a squad short by exactly 1 requests exactly that 1 back (death and expiry share one path).
+  it("requests exactly the 1 missing healer when the squad is short by one (below full strength, not zero)", () => {
+    const snap = colonySnap({
+      ...DRAIN_AFFORDABLE,
+      draining: "W2N1",
+      creeps: [
+        snapCreep("drainAttacker", { memory: { op: "drain:W1N1" } }),
+        snapCreep("drainHealer", { memory: { op: "drain:W1N1" } }),
+        snapCreep("drainHealer", { memory: { op: "drain:W1N1" } })
+      ]
+    });
+    const requests = drain.desiredCreeps(snap);
+    expect(requestsByRole(requests, "drainAttacker")).toHaveLength(0);
+    expect(requestsByRole(requests, "drainHealer")).toHaveLength(1);
+  });
+});
+
+describe("Drain.squadState assembly gate (ADR 0007 requirement 2: rally is independent, no squad yet)", () => {
+  it("reports no squad (undefined) while the squad isn't fully assembled — members rally via their own step tables", () => {
+    // Only the attacker and one healer are alive, both still travelling from home (not in staging).
+    const snap = colonySnap({
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      creeps: [
+        snapCreep("drainAttacker", { room: "W1N1", memory: { op: "drain:W1N1" } }),
+        snapCreep("drainHealer", { room: "W1N1", memory: { op: "drain:W1N1" } })
+      ]
+    });
+    expect(drain.squadState(snap)).toBeUndefined();
+  });
+
+  it("steers every unsquadded member toward the staging room's center via drainRallyPos (the rally)", () => {
+    // A concrete TILE, not a room name (moveToPos + drainRallyPos, not moveToRoom + attackTargetRoom) — a
+    // room-membership-only destination let two stragglers each converging on "whichever room the OTHER one
+    // currently stands in" chase each other back and forth across a border forever (confirmed live).
+    const snap = colonySnap({
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      creeps: [
+        snapCreep("drainAttacker", { room: "W1N1", memory: { op: "drain:W1N1" } }),
+        snapCreep("drainHealer", { room: "W1N1", memory: { op: "drain:W1N1" } })
+      ]
+    });
+    const intents = drain.intents(snap);
+    const rallyIntents = intents.filter(i => i.kind === "setDrainRallyPos");
+    expect(rallyIntents).toHaveLength(2);
+    for (const i of rallyIntents) expect((i as { pos: { x: number; y: number; room: string } }).pos).toEqual({ x: 25, y: 25, room: "W1N5" });
+  });
+
+  it("reports no squad while a fully-alive squad is still gathering in staging (not yet physically together)", () => {
+    const members = squad({ room: "W1N5" });
+    members[3] = { ...members[3], room: "W1N3" }; // one healer not yet in staging
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    expect(drain.squadState(snap)).toBeUndefined();
+  });
+});
+
+describe("Drain.squadState + squadGoal advance/retreat", () => {
+  it("reports an assembled squad (with the attacker as anchor) once all 4 are together in staging", () => {
+    // No ColonyMemory.drainAnchor set yet (first-ever assembly) — squadState falls back to deriving the
+    // anchor from the live attacker's own tile (anchorTile), the same value intents() would seed this tick.
+    const members = squad({ room: "W1N5" });
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const state = drain.squadState(snap);
+    expect(state).toBeDefined();
+    expect(state!.members).toHaveLength(4);
+    // The anchor slot is the attacker's tile.
+    expect(state!.anchor).toEqual({ x: 25, y: 25, room: "W1N5" });
+  });
+
+  it("reads the PERSISTED anchor once one is stored, ignoring the live attacker's own (possibly different) position", () => {
+    // The attacker's live tile has since drifted from the persisted anchor (e.g. a combat shove) — steady
+    // state must read colony.drainAnchor directly, never fall back to re-deriving from the live creep.
+    const members = squad({ room: "W1N5" });
+    const snap = colonySnap({
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      creeps: members,
+      drainAnchor: { x: 10, y: 10, room: "W1N5" }
+    });
+    const state = drain.squadState(snap);
+    expect(state!.anchor).toEqual({ x: 10, y: 10, room: "W1N5" });
+  });
+
+  it("intents() seeds ColonyMemory.drainAnchor the tick a squad first exists with nothing persisted yet", () => {
+    const members = squad({ room: "W1N5" });
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const intents = drain.intents(snap);
+    const setAnchor = intents.find(i => i.kind === "setDrainAnchor");
+    expect(setAnchor).toBeDefined();
+    expect((setAnchor as { anchor: { x: number; y: number; room: string } }).anchor).toEqual({ x: 25, y: 25, room: "W1N5" });
+  });
+
+  it("intents() does NOT re-seed drainAnchor once one is already persisted", () => {
+    const members = squad({ room: "W1N5" });
+    const snap = colonySnap({
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      creeps: members,
+      drainAnchor: { x: 10, y: 10, room: "W1N5" }
+    });
+    const intents = drain.intents(snap);
+    expect(intents.some(i => i.kind === "setDrainAnchor")).toBe(false);
+  });
+
+  it("aims the squad goal into the target room when no towers threaten it", () => {
+    const members = squad({ room: "W2N1" });
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const goal = drain.squadGoal(snap);
+    expect(goal!.room).toBe("W2N1"); // advancing into the target room
+  });
+
+  it("aims the squad goal back at the staging room when projected tower damage exceeds heal output", () => {
+    // A tower at (25,25); healers with the fixture default body (0 HEAL parts) heal for 0 — outgunned.
+    const members = squad({ room: "W2N1" });
+    // Move the block off-center so the next advance tile is a real step toward the tower.
+    const shifted = members.map(m => ({ ...m, x: m.x, y: m.y + 5 }));
+    const snap = colonySnap({
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      hostileRoomTowers: { W2N1: [towerAt(25, 25)] },
+      creeps: shifted
+    });
+    const goal = drain.squadGoal(snap);
+    expect(goal!.room).toBe("W1N5"); // retreating toward staging
+  });
+
+  it("aims into the target room when the squad's heal output covers the projected tower damage", () => {
+    const HEAL_BODY = Array(20).fill(HEAL).concat(Array(20).fill(MOVE));
+    const members = squad({ room: "W2N1", healers: [{ body: HEAL_BODY }, { body: HEAL_BODY }, { body: HEAL_BODY }] });
+    const snap = colonySnap({
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      hostileRoomTowers: { W2N1: [towerAt(25, 25)] },
+      creeps: members
+    });
+    const goal = drain.squadGoal(snap);
+    expect(goal!.room).toBe("W2N1"); // advancing — heal covers the damage
+  });
+
+  it("aims back at staging while any squad member is below full HP, even with zero towers visible", () => {
+    const members = squad({ room: "W2N1" });
+    members[0] = { ...members[0], hits: 500, hitsMax: 1000 }; // attacker hurt
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const goal = drain.squadGoal(snap);
+    expect(goal!.room).toBe("W1N5"); // retreat to heal up
+  });
+
+  it("reports the anchor as the attacker's own live tile regardless of which direction the goal lies", () => {
+    // The squad's LIVE positions form a tight 2x2 at anchor (27,26) — attacker(27,26),
+    // healers(28,26)/(27,27)/(28,27) — while the goal (25,25 in the SAME room) lies to the upper-LEFT of
+    // that anchor. There is no facing concept to disagree about anymore (lib/formation.ts's module
+    // header): the anchor is simply the attacker's own tile, full stop, independent of travel direction.
+    const members = squad({
+      room: "W2N1",
+      attacker: { x: 27, y: 26 },
+      healers: [{ x: 28, y: 26 }, { x: 27, y: 27 }, { x: 28, y: 27 }]
+    });
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const state = drain.squadState(snap);
+    expect(state).toBeDefined();
+    expect(state!.anchor).toEqual({ x: 27, y: 26, room: "W2N1" });
+  });
+});
+
+describe("Drain squad movement keeps the whole formation in lockstep (planSquadMove)", () => {
+  it("moves every member at most one tile toward the goal, staying a mutual-range-1 block", () => {
+    const members = squad({ room: "W2N1" });
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const state = drain.squadState(snap)!;
+    const goal = drain.squadGoal(snap)!;
+    const { moves } = planSquadMove(state, goal, drain.terrain(snap), 0);
+    expect(moves).toHaveLength(4);
+    // every member steps at most one tile...
+    for (const m of state.members) {
+      const move = moves.find(mv => mv.creep === m.id)!;
+      expect(range({ x: m.x, y: m.y }, move.to)).toBeLessThanOrEqual(1);
+    }
+    // ...and the destinations remain a tight block.
+    const dests = moves.map(mv => mv.to);
+    for (let i = 0; i < dests.length; i++)
+      for (let j = 0; j < dests.length; j++) if (i !== j) expect(range(dests[i], dests[j])).toBeLessThanOrEqual(1);
+  });
+
+  it("holds and reforms (does not advance) when a follower has fallen out of formation", () => {
+    const members = squad({ room: "W2N1" });
+    members[3] = { ...members[3], x: 35, y: 35 }; // a healer far out of formation
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    const state = drain.squadState(snap)!;
+    const goal = drain.squadGoal(snap)!;
+    const { moves } = planSquadMove(state, goal, drain.terrain(snap), 0);
+    // The anchor (attacker) holds on its own slot tile — the block reforms before advancing.
+    const anchorMove = moves.find(m => m.creep === members[0].id)!;
+    expect({ x: anchorMove.to.x, y: anchorMove.to.y }).toEqual({ x: 25, y: 25 });
+  });
+
+  it("Drain.planMove keeps a tight, already-advancing block welded over many ticks", () => {
+    // Regression guard for planMove's reform-vs-advance branch check: it must compare the members' CURRENT
+    // positions against the CURRENT anchor's slots (state.anchor), never the plan's returned (next-tick)
+    // anchor — comparing against the next anchor's slots mid-advance previously caused the reform-bias
+    // branch to override planSquadMove's own same-index advanceOnto matching every tick, which (depending
+    // on the exact reassignment nearestFittingAnchor/reformAssignment produced) could strand a member
+    // oscillating in place instead of ever advancing — confirmed live via the real-engine border-crossing
+    // integration test (test/integration/drain-squad-border-crossing.test.ts), which is this bug's
+    // authoritative regression coverage (a real single-tile-walk, cross-room scenario this synthetic
+    // teleport-style unit test can't fully reproduce on its own).
+    let members = squad({ room: "W2N1" }); // tight 2x2 at (25,25)
+    const snap0 = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members });
+    let state = drain.squadState(snap0)!;
+    const goal = { x: 5, y: 5, room: "W2N1" };
+
+    for (let tick = 0; tick < 20; tick++) {
+      const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: members, drainAnchor: state.anchor });
+      state = drain.squadState(snap)!;
+      const plan = drain.planMove(state, goal, snap, drain.terrain(snap), tick, NO_OCCUPANCY);
+      // Every tick, every pair of members must stay within range 1 — the mutual-range-1 welded contract.
+      for (let i = 0; i < plan.moves.length; i++) {
+        for (let j = 0; j < plan.moves.length; j++) {
+          if (i === j) continue;
+          expect(range(plan.moves[i].to, plan.moves[j].to), `not welded at tick ${tick}`).toBeLessThanOrEqual(1);
+        }
+      }
+      const byId = new Map(plan.moves.map(m => [m.creep, m.to]));
+      members = members.map(m => {
+        const to = byId.get(m.id);
+        return to ? { ...m, x: to.x, y: to.y, room: to.room } : m;
+      });
+      state = { ...state, anchor: plan.anchor };
+    }
+  });
+});
+
+describe("Drain.squadState border-straddle stability (live bug: squad flickers at a room border)", () => {
+  // Reproduces a live oscillation: a tight 2x2 crossing a border legitimately has 2 members in the old
+  // room and 2 in the new room for a tile or two (straddling, not broken — see squadBorderCrossing.test.ts).
+  // The original bug: squadState re-derived membership from live position fresh every tick (first same-room
+  // equality, then world-coordinate range), and on an exact 2-2 room split whatever tie-break or borderline
+  // read applied could differ tick to tick even with IDENTICAL positions, silently dropping the straddling
+  // half out of `members`. Membership is now STATEFUL (CreepMemory.squadJoined, written once via
+  // setSquadJoined and never re-derived), so these tests exercise the write path directly via
+  // drain.intents(), not just squadState's read-side bootstrap fallback.
+  const STRADDLE_ROUTE = [
+    { room: "W1N5", hostile: false },
+    { room: "W2N1", hostile: false },
+    { room: "W1N1", hostile: false }
+  ];
+  const STRADDLE_TERRAIN = { W2N1: openTerrain(), W1N1: openTerrain() };
+
+  it("reports a stable 4-member squad when the tight block straddles a border 2-2, regardless of squad array order (bootstrap: nobody joined yet)", () => {
+    // Attacker + 1 healer still in W2N1 at x=49 (old room, right at the border); 2 healers already in W1N1
+    // at x=0 (new room) — a genuinely tight, welded 2x2 straddling the border (world-coordinate mutual range
+    // 1 — W2N1's x=49 is adjacent to W1N1's x=0), RIGHT-facing (crossing eastward). None of them have joined
+    // yet (fresh assembly, first tick underway) — squadState's bootstrap fallback (`joined.length === 0` ->
+    // the whole squad) must not depend on squad array order either.
+    const attacker = snapCreep("drainAttacker", { room: "W2N1", x: 49, y: 25, memory: { op: "drain:W1N1" } });
+    const healerOld = snapCreep("drainHealer", { room: "W2N1", x: 49, y: 26, memory: { op: "drain:W1N1" } });
+    const healerNew1 = snapCreep("drainHealer", { room: "W1N1", x: 0, y: 25, memory: { op: "drain:W1N1" } });
+    const healerNew2 = snapCreep("drainHealer", { room: "W1N1", x: 0, y: 26, memory: { op: "drain:W1N1" } });
+
+    const orderings = [
+      [attacker, healerOld, healerNew1, healerNew2],
+      [attacker, healerNew1, healerNew2, healerOld]
+    ];
+
+    const results = orderings.map(creeps => {
+      const snap = colonySnap({ draining: "W1N1", drainRoute: STRADDLE_ROUTE, drainRoomTerrain: STRADDLE_TERRAIN, creeps });
+      return drain.squadState(snap);
+    });
+
+    for (const state of results) {
+      expect(state).toBeDefined();
+      expect(state!.members).toHaveLength(4);
+    }
+
+    // anchor.x/y/room must all come from the SAME reference creep (the attacker) in one read, so the anchor
+    // is byte-identical across both array orderings even on this exact 2-2 split.
+    const [anchorA, anchorB] = results.map(s => s!.anchor);
+    expect(anchorA, "anchor differed by squad array order alone").toEqual(anchorB);
+    expect(anchorA).toEqual({ x: attacker.x, y: attacker.y, room: attacker.room });
+  });
+
+  it("derives anchor.room from the ATTACKER's own room, never a majority vote across the squad (handoff open issue #1)", () => {
+    // The actual live-observed failure mode: the attacker crosses the border ALONE (jumps from W2N1(49,y)
+    // to W1N1(0,y) — a real one-tile move across an exit) while the other 3 members are still back in
+    // W2N1, not yet caught up. A majority-vote anchorRoom (mostCommonRoom, the pre-Step-4 code) would pick
+    // W2N1 (3 of 4 members) even though the attacker's OWN x/y are already W1N1's local coordinates —
+    // producing exactly the nonsensical hybrid anchor the handoff describes: `{x:0, y:8, room:"W2N1"}`
+    // where (0, y) is actually the attacker's real position in W1N1, not a valid W2N1 tile at all. Fixed:
+    // anchorTile reads x, y, AND room off the attacker alone, so this mismatch can't occur by construction.
+    const attacker = snapCreep("drainAttacker", {
+      room: "W1N1",
+      x: 0,
+      y: 25,
+      memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" }
+    });
+    const healers = [
+      snapCreep("drainHealer", { room: "W2N1", x: 49, y: 24, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } }),
+      snapCreep("drainHealer", { room: "W2N1", x: 49, y: 25, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } }),
+      snapCreep("drainHealer", { room: "W2N1", x: 49, y: 26, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } })
+    ];
+    const snap = colonySnap({
+      draining: "W1N1",
+      drainRoute: STRADDLE_ROUTE,
+      drainRoomTerrain: STRADDLE_TERRAIN,
+      creeps: [attacker, ...healers]
+    });
+
+    const state = drain.squadState(snap)!;
+    expect(state).toBeDefined();
+    // The anchor's room must be the ATTACKER's own room (W1N1) — never W2N1, which a 3-of-4 majority vote
+    // over the wider squad would have picked despite the attacker's x/y already being W1N1 coordinates.
+    expect(state.anchor).toEqual({ x: attacker.x, y: attacker.y, room: "W1N1" });
+  });
+
+  it("keeps a straddling member joined once CreepMemory.squadJoined is set, across repeated calls with unchanged positions", () => {
+    // Same 2-2 straddle, but now all 4 already carry squadJoined: "drain:W1N1" (as intents() would have written on
+    // an earlier tick) — the genuinely stateful case, not the bootstrap fallback. Called 5 times in a row
+    // with nothing changing: a real per-tick read of persisted state must be idempotent regardless of which
+    // room each member's position happens to resolve to right now.
+    const attacker = snapCreep("drainAttacker", { room: "W2N1", x: 49, y: 25, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const healerOld = snapCreep("drainHealer", { room: "W2N1", x: 49, y: 26, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const healerNew1 = snapCreep("drainHealer", { room: "W1N1", x: 0, y: 25, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const healerNew2 = snapCreep("drainHealer", { room: "W1N1", x: 0, y: 26, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const creeps = [attacker, healerOld, healerNew1, healerNew2];
+    const snap = colonySnap({ draining: "W1N1", drainRoute: STRADDLE_ROUTE, drainRoomTerrain: STRADDLE_TERRAIN, creeps });
+
+    const memberCounts = Array.from({ length: 5 }, () => drain.squadState(snap)?.members.length);
+    for (const n of memberCounts) expect(n, `member counts across repeated ticks: ${memberCounts.join(",")}`).toBe(4);
+  });
+
+  it("does NOT join a replacement still outside formation range, even mid-straddle", () => {
+    // 3 already-joined members straddling the border, plus a 4th (a fresh replacement) still several tiles
+    // away in the OLD room, not yet caught up — intents() must not mark it joined until it's actually
+    // within the formation's footprint of the live anchor, straddle or not.
+    const attacker = snapCreep("drainAttacker", { room: "W2N1", x: 49, y: 25, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const healerOld = snapCreep("drainHealer", { room: "W2N1", x: 49, y: 26, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const healerNew1 = snapCreep("drainHealer", { room: "W1N1", x: 0, y: 25, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const straggler = snapCreep("drainHealer", { room: "W2N1", x: 40, y: 25, memory: { op: "drain:W1N1" } }); // far behind, unjoined
+    const creeps = [attacker, healerOld, healerNew1, straggler];
+    const snap = colonySnap({ draining: "W1N1", drainRoute: STRADDLE_ROUTE, drainRoomTerrain: STRADDLE_TERRAIN, creeps });
+
+    const state = drain.squadState(snap)!;
+    expect(state.members).toHaveLength(3);
+    expect(state.members.some(m => m.id === straggler.id)).toBe(false);
+
+    const intents = drain.intents(snap);
+    expect(intents.some(i => i.kind === "setSquadJoined" && i.creep === straggler.id)).toBe(false);
+  });
+
+  it("DOES join a replacement once it's within formation range of the already-joined block", () => {
+    // Same shape as the previous test, but the 4th member has now closed the distance to right next to the
+    // already-joined trio — squadState must include it in members THIS tick, and intents() must emit the
+    // setSquadJoined write that persists it.
+    const attacker = snapCreep("drainAttacker", { room: "W2N1", x: 49, y: 25, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const healerOld = snapCreep("drainHealer", { room: "W2N1", x: 49, y: 26, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const healerNew1 = snapCreep("drainHealer", { room: "W1N1", x: 0, y: 25, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const catchingUp = snapCreep("drainHealer", { room: "W2N1", x: 48, y: 26, memory: { op: "drain:W1N1" } }); // adjacent, unjoined
+    const creeps = [attacker, healerOld, healerNew1, catchingUp];
+    const snap = colonySnap({ draining: "W1N1", drainRoute: STRADDLE_ROUTE, drainRoomTerrain: STRADDLE_TERRAIN, creeps });
+
+    const state = drain.squadState(snap)!;
+    expect(state.members).toHaveLength(4);
+    expect(state.members.some(m => m.id === catchingUp.id)).toBe(true);
+
+    const intents = drain.intents(snap);
+    expect(intents.some(i => i.kind === "setSquadJoined" && i.creep === catchingUp.id)).toBe(true);
+  });
+
+  // "crosses a room border end to end without ever flickering members in/out of the plan tick to tick" —
+  // MOVED to test/integration/drain-squad.test.ts. This test drove planSquadMove across a REAL W2N1/W1N1
+  // border over 30 ticks, exercising PathFinder's own cross-room stitching — per the cached-pathfinder
+  // plan's hard constraint (docs/squad-movement-cached-pathfinder-plan.md), cross-room routing correctness
+  // must be verified against the real engine, not a hand-rolled single-room test stub
+  // (stubPathFinderSingleRoom, test/constants.ts, deliberately throws rather than fake cross-room stitch).
+
+  it("clears squadJoined off every member once the squad dissolves (draining unset)", () => {
+    // Membership must never outlive the thing that granted it — a leftover creep from a stopped drain must
+    // not carry stale squadJoined state into whatever it does next (see CreepMemory.squadJoined's doc).
+    const attacker = snapCreep("drainAttacker", { room: "W2N1", x: 49, y: 25, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const healer = snapCreep("drainHealer", { room: "W2N1", x: 49, y: 26, memory: { op: "drain:W1N1", squadJoined: "drain:W1N1" } });
+    const unjoined = snapCreep("drainHealer", { room: "W1N5", memory: { op: "drain:W1N1" } }); // never joined — no spurious clear
+    const creeps = [attacker, healer, unjoined];
+    const snap = colonySnap({ draining: undefined, drainRoute: STRADDLE_ROUTE, drainRoomTerrain: STRADDLE_TERRAIN, creeps });
+
+    const intents = drain.intents(snap);
+    const clears = intents.filter(i => i.kind === "clearSquadJoined").map(i => (i as { creep: Id<Creep> }).creep);
+    expect(clears.sort()).toEqual([attacker.id, healer.id].sort());
+  });
+});
+
+describe("Drain loss handling (#39): degraded formation, no attacker", () => {
+  it("still forms a squad and moves the survivors when the attacker (anchor slot) is dead", () => {
+    // 3 healers, no attacker — a degraded formation. squadState still reports a squad (anchor slot vacant),
+    // and planSquadMove still produces a lockstep move per survivor (ADR 0007: retreat as-is, vacant slot).
+    const healers = [
+      snapCreep("drainHealer", { room: "W2N1", x: 26, y: 25, memory: { op: "drain:W1N1" } }),
+      snapCreep("drainHealer", { room: "W2N1", x: 25, y: 26, memory: { op: "drain:W1N1" } }),
+      snapCreep("drainHealer", { room: "W2N1", x: 26, y: 26, memory: { op: "drain:W1N1" } })
+    ];
+    // Underway (in the target room, not staging) so the squad machinery engages for the degraded survivors.
+    const snap = colonySnap({ draining: "W2N1", drainRoute: STAGING_ROUTE, drainRoomTerrain: OPEN_TERRAIN, creeps: healers });
+    const state = drain.squadState(snap);
+    expect(state).toBeDefined();
+    expect(state!.members).toHaveLength(3);
+    const { moves } = planSquadMove(state!, drain.squadGoal(snap)!, drain.terrain(snap), 0);
+    expect(moves).toHaveLength(3); // only the survivors get moves; the vacant anchor slot needs nobody
+  });
+});
+
+describe("planDrainActions (Drain's plugged-in action content)", () => {
+  it("targets a tower with the attacker and the most-damaged squadmate with each healer", () => {
+    const attacker = snapCreep("drainAttacker", { room: "W2N1", x: 25, y: 25, memory: { op: "drain:W1N1" } });
+    const healers = [
+      snapCreep("drainHealer", { room: "W2N1", x: 26, y: 25, hits: 500, hitsMax: 500, memory: { op: "drain:W1N1" } }),
+      snapCreep("drainHealer", { room: "W2N1", x: 25, y: 26, hits: 100, hitsMax: 500, memory: { op: "drain:W1N1" } }), // most damaged
+      snapCreep("drainHealer", { room: "W2N1", x: 26, y: 26, hits: 500, hitsMax: 500, memory: { op: "drain:W1N1" } })
+    ];
+    const state = {
+      members: [attacker, ...healers],
+      formation: [] as never[],
+      anchor: { x: 25, y: 25, room: "W2N1" }
+    };
+    const snap = colonySnap({ name: "W1N1", draining: "W2N1", hostileRoomTowers: { W2N1: [towerAt(25, 25, "tower_a")] } });
+    const actions = planSquadActions(state, snap, planDrainActions);
+    expect(actions.get(attacker.id)).toEqual({ do: "attack", target: "tower_a" });
+    for (const h of healers) expect(actions.get(h.id)).toEqual({ do: "heal", target: healers[1].id });
+  });
+
+  it("falls back to the most threatening hostile for the attacker when no tower is present", () => {
+    const attacker = snapCreep("drainAttacker", { room: "W2N1", x: 25, y: 25, memory: { op: "drain:W1N1" } });
+    const state = {
+      members: [attacker],
+      formation: [] as never[],
+      anchor: { x: 25, y: 25, room: "W2N1" }
+    };
+    // colony.hostiles carries the snapshot's hostile creeps; the more-armed one is picked.
+    const snap = colonySnap({
+      name: "W1N1",
+      draining: "W2N1",
+      hostiles: [
+        { id: "unarmed" as Id<Creep>, x: 1, y: 1, hits: 100, hitsMax: 100, healParts: 0, attackParts: 0, rangedAttackParts: 0, toughReduction: 1 },
+        { id: "armed" as Id<Creep>, x: 2, y: 2, hits: 100, hitsMax: 100, healParts: 0, attackParts: 5, rangedAttackParts: 0, toughReduction: 1 }
+      ]
+    });
+    const actions = planSquadActions(state, snap, planDrainActions);
+    expect(actions.get(attacker.id)).toEqual({ do: "attack", target: "armed" });
+  });
+});
+
+describe("Drain.intents drainHistory sample (#40)", () => {
+  it("records a sample (tick, tower energy, storage energy) when the target room is visible", () => {
+    const members = squad({ room: "W2N1" });
+    const snap = colonySnap({
+      tick: 123,
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      hostileRoomTowers: { W2N1: [towerAt(25, 25, "t1", 400), towerAt(10, 10, "t2", 200)] },
+      hostileRoomStorageEnergy: { W2N1: 5000 },
+      visibleRooms: [visibleRoom("W2N1")],
+      creeps: members
+    });
+    const intents = drain.intents(snap);
+    expect(intents).toContainEqual({
+      kind: "recordDrainSample",
+      room: "W1N1",
+      target: "W2N1",
+      tick: 123,
+      towerEnergy: 600,
+      storageEnergy: 5000
+    });
+  });
+
+  it("records no sample (a gap, not a zero-filled entry) on a tick without vision of the target room", () => {
+    const members = squad({ room: "W2N1" });
+    const snap = colonySnap({
+      tick: 124,
+      draining: "W2N1",
+      drainRoute: STAGING_ROUTE,
+      drainRoomTerrain: OPEN_TERRAIN,
+      hostileRoomTowers: { W2N1: [towerAt(25, 25, "t1", 400)] },
+      hostileRoomStorageEnergy: { W2N1: 5000 },
+      visibleRooms: [],
+      creeps: members
+    });
+    const intents = drain.intents(snap);
+    expect(intents.some(i => i.kind === "recordDrainSample")).toBe(false);
+  });
+});
+
+describe("pickStagingRoom", () => {
+  it("picks the first non-hostile room along the route", () => {
+    expect(
+      pickStagingRoom([
+        { room: "W2N1", hostile: true },
+        { room: "W3N1", hostile: false },
+        { room: "W4N1", hostile: true }
+      ])
+    ).toBe("W3N1");
+  });
+
+  it("treats an unscouted room (hostile: false, the fixture default) as safe", () => {
+    expect(
+      pickStagingRoom([
+        { room: "W2N1", hostile: true },
+        { room: "W3N1", hostile: false }
+      ])
+    ).toBe("W3N1");
+  });
+
+  it("returns undefined when every room along the route is hostile", () => {
+    expect(
+      pickStagingRoom([
+        { room: "W2N1", hostile: true },
+        { room: "W3N1", hostile: true }
+      ])
+    ).toBeUndefined();
+  });
+
+  it("returns undefined for an empty route", () => {
+    expect(pickStagingRoom([])).toBeUndefined();
+  });
+});

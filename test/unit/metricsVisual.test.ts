@@ -1,0 +1,379 @@
+import { describe, expect, it } from "vitest";
+import type { ColonyMetrics } from "../../src/colony/metrics";
+import { debugPanelOps, panelOps, visualize } from "../../src/colony/metricsVisual";
+import type { VisualOp } from "../../src/intents/types";
+
+function metrics(over: Partial<ColonyMetrics> = {}): ColonyMetrics {
+  return {
+    room: "W1N1",
+    tick: 100,
+    census: [],
+    operations: [],
+    buildings: [],
+    energy: { available: 300, capacity: 300, storage: 0, dropped: 0, remoteEnergy: 0, harvestPerTick: undefined },
+    controller: { level: 1, progress: 0, progressTotal: 0 },
+    construction: { remaining: 0, remoteRemaining: 0 },
+    repair: { decay: 0, actionable: 0, remoteDecay: 0, remoteActionable: 0 },
+    safeMode: { active: 0, count: 0, available: false },
+    spawns: { total: 1, busy: 0, parts: 0, capacity: 500, load: 0 },
+    ...over
+  };
+}
+
+const texts = (ops: VisualOp[]): string[] =>
+  ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text").map(o => o.text);
+
+// The whole panel joined, for substring assertions that don't care about line splits.
+const joined = (ops: VisualOp[]): string => texts(ops).join("\n");
+
+describe("metricsVisual: structure", () => {
+  it("emits only text ops (no rects) and every one has a y that increases", () => {
+    const ops = panelOps(metrics({ census: [{ role: "miner", current: 1, desired: 2 }] }));
+    const ys = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text").map(o => o.y);
+    for (let i = 1; i < ys.length; i++) expect(ys[i]).toBeGreaterThan(ys[i - 1]);
+  });
+
+  it("headers the panel with room, RCL and tick", () => {
+    const ops = panelOps(metrics({ room: "W7N7", tick: 4242, controller: { level: 5, progress: 0, progressTotal: 0 } }));
+    expect(joined(ops)).toContain("W7N7");
+    expect(joined(ops)).toContain("RCL 5");
+    expect(joined(ops)).toContain("4242");
+  });
+});
+
+describe("metricsVisual: census", () => {
+  it("renders each role as current/desired", () => {
+    const ops = panelOps(metrics({ census: [{ role: "miner", current: 1, desired: 3 }] }));
+    expect(joined(ops)).toContain("miner");
+    expect(joined(ops)).toContain("1/3");
+  });
+
+  it("shows a placeholder when there are no creeps", () => {
+    const ops = panelOps(metrics({ census: [] }));
+    expect(joined(ops).toLowerCase()).toContain("no creeps");
+  });
+
+  it("colours an understaffed role differently from a met one", () => {
+    const ops = panelOps(
+      metrics({
+        census: [
+          { role: "miner", current: 1, desired: 2 }, // short
+          { role: "hauler", current: 2, desired: 2 } // met
+        ]
+      })
+    );
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const miner = textOps.find(o => o.text.includes("miner"))!;
+    const hauler = textOps.find(o => o.text.includes("hauler"))!;
+    expect(miner.color).not.toBe(hauler.color);
+  });
+
+  it("renders a surplus as current over a lower target (e.g. 5/0)", () => {
+    const ops = panelOps(metrics({ census: [{ role: "builder", current: 5, desired: 0 }] }));
+    expect(joined(ops)).toContain("5/0");
+  });
+
+  it("colours a surplus role like a met one, not like an understaffed one", () => {
+    const ops = panelOps(
+      metrics({
+        census: [
+          { role: "builder", current: 5, desired: 0 }, // surplus
+          { role: "miner", current: 1, desired: 2 }, // short
+          { role: "hauler", current: 2, desired: 2 } // met
+        ]
+      })
+    );
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const builder = textOps.find(o => o.text.includes("builder"))!;
+    const miner = textOps.find(o => o.text.includes("miner"))!;
+    const hauler = textOps.find(o => o.text.includes("hauler"))!;
+    expect(builder.color).toBe(hauler.color); // both satisfied (current >= desired)
+    expect(builder.color).not.toBe(miner.color); // short role differs
+  });
+});
+
+describe("metricsVisual: buildings", () => {
+  it("renders each type as built/targeted", () => {
+    const ops = panelOps(metrics({ buildings: [{ type: "extension", built: 2, targeted: 5 }] }));
+    expect(joined(ops)).toContain("extension");
+    expect(joined(ops)).toContain("2/5");
+  });
+
+  it("colours an incomplete type differently from a finished one", () => {
+    const ops = panelOps(
+      metrics({
+        buildings: [
+          { type: "extension", built: 2, targeted: 5 }, // incomplete
+          { type: "tower", built: 1, targeted: 1 } // done
+        ]
+      })
+    );
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const ext = textOps.find(o => o.text.includes("extension"))!;
+    const tower = textOps.find(o => o.text.includes("tower"))!;
+    expect(ext.color).not.toBe(tower.color);
+  });
+
+  it("shows a placeholder when nothing is planned", () => {
+    const ops = panelOps(metrics({ buildings: [] }));
+    expect(joined(ops).toLowerCase()).toContain("none planned");
+  });
+});
+
+describe("metricsVisual: energy", () => {
+  it("shows storage, dropped and spawn energy with separators", () => {
+    const ops = panelOps(
+      metrics({ energy: { available: 250, capacity: 550, storage: 120_000, dropped: 340, remoteEnergy: 0, harvestPerTick: 6 } })
+    );
+    const all = joined(ops);
+    expect(all).toContain("120,000");
+    expect(all).toContain("340");
+    expect(all).toContain("250/550");
+  });
+
+  it("shows remote energy when there is any", () => {
+    const ops = panelOps(
+      metrics({ energy: { available: 0, capacity: 0, storage: 0, dropped: 0, remoteEnergy: 2_500, harvestPerTick: undefined } })
+    );
+    expect(joined(ops)).toContain("remote     2,500");
+  });
+
+  it("omits the remote energy line when there is none", () => {
+    const ops = panelOps(metrics());
+    expect(joined(ops).toLowerCase()).not.toContain("remote");
+  });
+
+  it("shows a dash for harvest rate before it is known", () => {
+    const ops = panelOps(
+      metrics({ energy: { available: 0, capacity: 0, storage: 0, dropped: 0, remoteEnergy: 0, harvestPerTick: undefined } })
+    );
+    expect(joined(ops)).toMatch(/harvest\/t\s+—/);
+  });
+
+  it("shows harvest rate to one decimal once known", () => {
+    const ops = panelOps(
+      metrics({ energy: { available: 0, capacity: 0, storage: 0, dropped: 0, remoteEnergy: 0, harvestPerTick: 6.04 } })
+    );
+    expect(joined(ops)).toContain("6.0");
+  });
+});
+
+describe("metricsVisual: progress", () => {
+  it("shows controller progress over total in compact k/m form", () => {
+    const ops = panelOps(metrics({ controller: { level: 3, progress: 24_000, progressTotal: 350_000 } }));
+    expect(joined(ops)).toContain("controller 24k/350k");
+  });
+
+  it("uses one decimal and m for a mega-scale total", () => {
+    const ops = panelOps(metrics({ controller: { level: 7, progress: 1_200_000, progressTotal: 5_400_000 } }));
+    expect(joined(ops)).toContain("1.2m/5.4m");
+  });
+
+  it("shows construction work left with its energy in brackets", () => {
+    const ops = panelOps(metrics({ construction: { remaining: 8_000, remoteRemaining: 0 } }));
+    expect(joined(ops)).toContain("8,000 left [8,000e]");
+  });
+
+  it("shows remote construction work left as an additional line", () => {
+    const ops = panelOps(metrics({ construction: { remaining: 0, remoteRemaining: 2_000 } }));
+    expect(joined(ops)).toContain("2,000 left [2,000e]");
+  });
+
+  it("omits the remote construction line when there is none", () => {
+    const ops = panelOps(metrics({ construction: { remaining: 8_000, remoteRemaining: 0 } }));
+    const lines = joined(ops).split("\n").filter(l => l.includes("left"));
+    expect(lines).toHaveLength(1);
+  });
+
+  it("omits the repair line when nothing has decayed at all", () => {
+    const ops = panelOps(metrics({ repair: { decay: 0, actionable: 0, remoteDecay: 0, remoteActionable: 0 } }));
+    expect(joined(ops)).not.toMatch(/repair/i);
+  });
+
+  it("shows decayed hits before anything reaches the repair floor, with no energy call-out", () => {
+    const ops = panelOps(metrics({ repair: { decay: 8_500, actionable: 0, remoteDecay: 0, remoteActionable: 0 } }));
+    const all = joined(ops);
+    expect(all).toContain("8.5k hits"); // compact k/m form
+    expect(all).not.toContain("to fix"); // nothing actionable -> no energy figure
+  });
+
+  it("renders decay dim while nothing is actionable", () => {
+    const ops = panelOps(metrics({ repair: { decay: 500, actionable: 0, remoteDecay: 0, remoteActionable: 0 } }));
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const dim = textOps.find(o => o.text.includes("storage"))!; // a known-DIM energy detail line
+    const repair = textOps.find(o => o.text.includes("repair"))!;
+    expect(repair.color).toBe(dim.color);
+  });
+
+  it("flags actionable repair in warn colour with the fixable hits and their energy (hits/100)", () => {
+    const ops = panelOps(metrics({ repair: { decay: 14_000, actionable: 12_000, remoteDecay: 0, remoteActionable: 0 } }));
+    const all = joined(ops);
+    expect(all).toContain("14k hits"); // total decay leads the line, compact form
+    // 12,000 actionable -> "12k"; energy = 12,000 / REPAIR_POWER (100) = 120.
+    expect(all).toContain("12k to fix [120e]");
+    const repair = ops
+      .filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text")
+      .find(o => o.text.includes("repair"))!;
+    const census = panelOps(metrics({ census: [{ role: "miner", current: 1, desired: 2 }] }))
+      .filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text")
+      .find(o => o.text.includes("miner"))!; // a known-WARN row
+    expect(repair.color).toBe(census.color);
+  });
+
+  it("shows remote decay as an additional line, independent of the home repair line", () => {
+    const ops = panelOps(metrics({ repair: { decay: 0, actionable: 0, remoteDecay: 3_000, remoteActionable: 1_000 } }));
+    const all = joined(ops);
+    expect(all).toContain("3k hits");
+    expect(all).toContain("1k to fix [10e]"); // 1,000 / REPAIR_POWER (100) = 10
+  });
+});
+
+describe("metricsVisual: safe mode", () => {
+  it("flags an active safe mode with its remaining ticks", () => {
+    const ops = panelOps(metrics({ safeMode: { active: 5000, count: 1, available: false } }));
+    expect(joined(ops)).toContain("ACTIVE");
+    expect(joined(ops)).toContain("5000");
+  });
+
+  it("shows the banked count when not active", () => {
+    const ops = panelOps(metrics({ safeMode: { active: 0, count: 3, available: true } }));
+    expect(joined(ops)).toContain("3 banked");
+  });
+});
+
+describe("metricsVisual: spawns", () => {
+  it("renders parts alive over capacity and utilisation as a percentage", () => {
+    const ops = panelOps(metrics({ spawns: { total: 1, busy: 0, parts: 50, capacity: 500, load: 0.1 } }));
+    const all = joined(ops);
+    expect(all).toContain("50/500 parts");
+    expect(all).toContain("10%");
+  });
+
+  it("flags an over-committed colony (load >= 1) in the warn colour", () => {
+    const over = panelOps(metrics({ spawns: { total: 1, busy: 1, parts: 600, capacity: 500, load: 1.2 } }));
+    const under = panelOps(metrics({ spawns: { total: 1, busy: 0, parts: 50, capacity: 500, load: 0.1 } }));
+    const utilColor = (ops: VisualOp[]) =>
+      ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text").find(o => o.text.includes("util"))!.color;
+    expect(utilColor(over)).not.toBe(utilColor(under));
+  });
+});
+
+describe("metricsVisual: operations", () => {
+  it("lists every operation name", () => {
+    const ops = panelOps(metrics({ operations: ["mining:W1N1", "defense:W1N1"] }));
+    expect(joined(ops)).toContain("mining:W1N1");
+    expect(joined(ops)).toContain("defense:W1N1");
+  });
+});
+
+describe("metricsVisual: intent", () => {
+  it("wraps the panel in a roomVisual intent for the report's room", () => {
+    const intent = visualize(metrics({ room: "W3N3" }));
+    expect(intent.kind).toBe("roomVisual");
+    if (intent.kind !== "roomVisual") throw new Error("unreachable");
+    expect(intent.room).toBe("W3N3");
+    expect(intent.ops.length).toBeGreaterThan(0);
+  });
+});
+
+describe("metricsVisual: debug panel", () => {
+  it("renders nothing when debug is absent (toggle off)", () => {
+    const ops = debugPanelOps(metrics());
+    expect(ops).toEqual([]);
+  });
+
+  it("right-aligns every line", () => {
+    const ops = debugPanelOps(metrics({ debug: { remoteRepair: [], remoteSources: [] } }));
+    for (const o of ops) {
+      if (o.op === "text") expect(o.align).toBe("right");
+    }
+  });
+
+  it("shows a placeholder when nothing has decayed and no remotes are selected", () => {
+    const ops = debugPanelOps(metrics({ debug: { remoteRepair: [], remoteSources: [] } }));
+    const all = joined(ops).toLowerCase();
+    expect(all).toContain("none");
+    expect(all).toContain("none selected");
+  });
+
+  it("lists remote repair per room with its hit total", () => {
+    const ops = debugPanelOps(
+      metrics({
+        debug: {
+          remoteRepair: [
+            { room: "W2N1", decay: 4_000, actionable: 4_000 },
+            { room: "W3N1", decay: 100, actionable: 0 }
+          ],
+          remoteSources: []
+        }
+      })
+    );
+    const all = joined(ops);
+    expect(all).toContain("W2N1");
+    expect(all).toContain("4k hits");
+    expect(all).toContain("actionable");
+    expect(all).toContain("W3N1");
+    expect(all).toContain("100 hits");
+  });
+
+  it("colours actionable remote repair differently from decay-only", () => {
+    const ops = debugPanelOps(
+      metrics({
+        debug: {
+          remoteRepair: [
+            { room: "W2N1", decay: 4_000, actionable: 4_000 },
+            { room: "W3N1", decay: 100, actionable: 0 }
+          ],
+          remoteSources: []
+        }
+      })
+    );
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const w2 = textOps.find(o => o.text.includes("W2N1"))!;
+    const w3 = textOps.find(o => o.text.includes("W3N1"))!;
+    expect(w2.color).not.toBe(w3.color);
+  });
+
+  it("lists every remote source with its reservation/danger status", () => {
+    const ops = debugPanelOps(
+      metrics({
+        debug: {
+          remoteRepair: [],
+          remoteSources: [
+            { room: "W2N1", reserved: true, danger: false },
+            { room: "W3N1", reserved: false, danger: false },
+            { room: "W4N1", reserved: false, danger: true }
+          ]
+        }
+      })
+    );
+    const all = joined(ops);
+    expect(all).toContain("W2N1  reserved");
+    expect(all).toContain("W3N1  unreserved");
+    expect(all).toContain("W4N1  danger");
+  });
+
+  it("colours a dangerous remote source distinctly from a merely unreserved one", () => {
+    const ops = debugPanelOps(
+      metrics({
+        debug: {
+          remoteRepair: [],
+          remoteSources: [
+            { room: "W3N1", reserved: false, danger: false },
+            { room: "W4N1", reserved: false, danger: true }
+          ]
+        }
+      })
+    );
+    const textOps = ops.filter((o): o is Extract<VisualOp, { op: "text" }> => o.op === "text");
+    const unreserved = textOps.find(o => o.text.includes("W3N1"))!;
+    const danger = textOps.find(o => o.text.includes("W4N1"))!;
+    expect(unreserved.color).not.toBe(danger.color);
+  });
+
+  it("is included in visualize()'s intent ops when debug is set", () => {
+    const intent = visualize(metrics({ room: "W3N3", debug: { remoteRepair: [], remoteSources: [] } }));
+    if (intent.kind !== "roomVisual") throw new Error("unreachable");
+    expect(joined(intent.ops).toLowerCase()).toContain("debug");
+  });
+});

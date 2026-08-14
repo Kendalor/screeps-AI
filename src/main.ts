@@ -1,54 +1,26 @@
-import { EmpireManager } from "empire/EmpireManager";
-import { Bunker } from "empire/operations/Operations/roomPlanner/Bunker";
-//import { ErrorMapper } from "utils/ErrorMapper";
-import { Logger } from "utils/Logger";
-import { MemoryUtil } from "empire/memory/MemoryUtils";
-//import { defineProtos } from "utils/prototypes/prototypes";
-import { Traveler } from "utils/traveler/Traveler";
-//import { defineRoomVisualProto } from "utils/prototypes/visual";
+// Loop entry. Importing lib/traveler installs the Creep.prototype.travelTo used by the interpreter.
 
+import "./lib/traveler";
+import { tick } from "./kernel/tick";
+import { stats } from "./kernel/stats";
+import { installConsoleCommands } from "./commands/console";
+import { initProfiler } from "./lib/profiler";
+import { loadMemory } from "./memory/cache";
+import { migrateMemory } from "./memory/migrate";
 
-//defineRoomVisualProto();
-//defineProtos();
-console.log("Did run Import of protoypes");
-// When compiling TS to JS and bundling with rollup, the line numbers and file names in error messages change
-// This utility uses source maps to get the line numbers and file names of the original, TS source code
+declare const __PROFILER_ENABLED__: boolean;
 
+installConsoleCommands(); // module scope: survives global resets same as the traveler prototype install
 
-Creep.prototype.travelTo = function(destination: RoomPosition|{pos: RoomPosition}, options?: TravelToOptions) {
-  return Traveler.travelTo(this, destination, options);
-};
+// The wrapFn()/profileClass() calls sprinkled at individual declaration sites (empire/creeps.ts,
+// behaviors/interpreter.ts, operations/index.ts, etc.) self-gate on __PROFILER_ENABLED__ and
+// dead-code-eliminate in every build except `PROFILE=1 npm run push-pserver:profile`
+// (rollup.config.mjs). Only the console CLI itself needs a central, gated call site.
+if (__PROFILER_ENABLED__) global.Profiler = initProfiler();
 
-global.logger = new Logger("WARNING");
-
-function main(): void {
-
-  MemoryUtil.load();
-
-  if(!global.Empire) {
-    delete (global as any).Empire;
-    global.Empire = new EmpireManager();
-
-  } else {
-    global.Empire.init();
-    global.Empire.run();
-    global.Empire.destroy();
-  }
-
-  for (const name in Memory.creeps) {
-    if (!(name in Game.creeps)) {
-      delete Memory.creeps[name];
-    }
-  }
-
-
-
-
+export function loop(): void {
+  loadMemory();
+  migrateMemory();
+  stats.reset();
+  tick();
 }
-
-
-export const loop = () => {
-
-
-  main();
-};

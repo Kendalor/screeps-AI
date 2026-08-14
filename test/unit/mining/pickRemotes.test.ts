@@ -1,0 +1,674 @@
+import { afterEach, describe, it, expect } from "vitest";
+import { pickRemotes as pickRemotesRaw } from "../../../src/mining/pickRemotes";
+import { scoutTarget, scouted } from "../../fixtures";
+
+// A home state that comfortably affords miners/claimers and has ample spawn headroom (5 spawns' worth
+// of capacity, 0 load), so gates 2 and 3 pass and only the economics/nearest-first ranking is under test
+// unless a case overrides it.
+function homeState(over: Partial<Parameters<typeof pickRemotesRaw>[0]["home"]> = {}) {
+  return {
+    name: "W1N1",
+    storage: { x: 25, y: 25 },
+    energyCapacity: 800,
+    spawnLoad: 0,
+    spawnCapacity: 5 * 500,
+    localLoadParts: 0,
+    ...over
+  };
+}
+
+// Defaults to today's append-only mode (reevaluate: false), no sibling-colony exclusions, and no prior
+// eviction strikes, so existing tests don't all need to spell any of them out; tests exercising the
+// periodic full re-rank pass `reevaluate: true` explicitly, the sibling-collision tests pass
+// `excludedSourceIds` explicitly, and the hysteresis tests pass `strikes` explicitly. Returns just the
+// selected RemoteMemory[] (not the full { remotes, strikes } result) — this file's existing assertions
+// all read the selection directly; the hysteresis-specific describe block below calls pickRemotesRaw
+// directly instead, since it needs the returned strikes too.
+function pickRemotes(
+  input: Omit<Parameters<typeof pickRemotesRaw>[0], "reevaluate" | "excludedSourceIds" | "strikes"> &
+    Partial<Pick<Parameters<typeof pickRemotesRaw>[0], "reevaluate" | "excludedSourceIds" | "strikes">>
+) {
+  return pickRemotesRaw({ reevaluate: false, excludedSourceIds: new Set(), strikes: {}, ...input }).remotes;
+}
+
+describe("pickRemotes", () => {
+  it("selects an adjacent scouted room's near source", () => {
+    // A scouted neighbour with two sources near the room centre — both profitable at ~1 room out.
+    const candidates = [
+      scoutTarget("W2N1", scouted({ sources: [{ id: "s_near" as Id<Source>, x: 25, y: 25 }] }))
+    ];
+    const remotes = pickRemotes({ candidates, home: homeState(), currentlySelected: [] });
+    expect(remotes).toHaveLength(1);
+    expect(remotes[0].room).toBe("W2N1");
+    expect(remotes[0].sources.map(s => s.id)).toEqual(["s_near"]);
+  });
+
+  it("selects nothing when energyCapacity can't afford a useful miner", () => {
+    const candidates = [scoutTarget("W2N1", scouted())];
+    expect(
+      pickRemotes({ candidates, home: homeState({ energyCapacity: 300 }), currentlySelected: [] })
+    ).toEqual([]);
+  });
+
+  it("selects nothing when the spawn is already at or past the load ceiling", () => {
+    const candidates = [scoutTarget("W2N1", scouted())];
+    expect(
+      pickRemotes({ candidates, home: homeState({ spawnLoad: 0.85 }), currentlySelected: [] })
+    ).toEqual([]);
+  });
+
+  it("selects nothing when there's no spawn capacity at all", () => {
+    const candidates = [scoutTarget("W2N1", scouted())];
+    expect(
+      pickRemotes({ candidates, home: homeState({ spawnCapacity: 0 }), currentlySelected: [] })
+    ).toEqual([]);
+  });
+
+  it("skips a candidate whose added load would push spawn load past the ceiling", () => {
+    const candidates = [
+      scoutTarget("W2N1", scouted({ sources: [{ id: "s_near" as Id<Source>, x: 25, y: 25 }] }))
+    ];
+    // A tiny spawnCapacity (one bare miner body already costs more than the remaining budget) means even
+    // a single profitable, near source can't be afforded without breaching MAX_SPAWN_LOAD.
+    const remotes = pickRemotes({
+      candidates,
+      home: homeState({ spawnLoad: 0.8, spawnCapacity: 10 }),
+      currentlySelected: []
+    });
+    expect(remotes).toEqual([]);
+  });
+
+  it("append-only leaves an already-over-budget colony's selection untouched (freeze, not prune)", () => {
+    // Real scenario: a colony already carrying more remotes than its spawn can sustain (spawnLoad well
+    // past MAX_SPAWN_LOAD from committed sources' live creeps/requests). The frequent append-only pass
+    // must not touch the existing selection at all — no growth (already covered above) AND no shrink;
+    // pruning back under the ceiling is reevaluate's job only (see the next test).
+    const candidates = [scoutTarget("W2N1", scouted({ sources: [{ id: "new" as Id<Source>, x: 25, y: 25 }] }))];
+    const alreadyHave = ["kept1", "kept2"] as Id<Source>[];
+    // currentlySelected sources aren't in `candidates` here (no scouted info for their room), matching
+    // how a real re-poll only re-derives from scoutTargets — append-only's `kept` filter preserves them
+    // by id regardless, so this still exercises the freeze path faithfully.
+    const remotes = pickRemotes({
+      candidates,
+      home: homeState({ spawnLoad: 1.5 }),
+      currentlySelected: alreadyHave
+    });
+    expect(remotes).toEqual([]); // gate 3 bails before even reaching `kept`/`fresh` — nothing changes
+  });
+
+  it("reevaluate prunes an over-budget colony's selection back toward the ceiling, farthest first — once eviction hysteresis's grace period elapses", () => {
+    // 3 already-selected sources, priced so all 3 together exceed a deliberately small total budget but
+    // the 2 nearest fit within it — reevaluate must charge every survivor (not just new ones) against the
+    // budget and drop the farthest until back under it, since this is the only mechanism that can ever
+    // shed an over-budget colony's load. Eviction hysteresis (see pickRemotes.ts's EVICTION_STRIKES_THRESHOLD)
+    // means this doesn't happen on the very first pass any more — "far" is protected for its first couple
+    // of misses, so this drives 3 consecutive reevaluate calls (threading each pass's returned strikes into
+    // the next, exactly as mining.ts's remoteSelection does via ColonyMemory.remoteStrikes) to actually
+    // observe the eviction landing once the grace period runs out.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: [
+          { id: "near" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } }, // distance 1, cheap
+          { id: "mid" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(5) } }, // distance 5
+          { id: "far" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(200) } } // distance 200, priciest
+        ]
+      })
+    );
+    const alreadyHave = ["near", "mid", "far"] as Id<Source>[];
+
+    let strikes: Record<Id<Source>, number> = {};
+    let reevaluated: ReturnType<typeof pickRemotesRaw>["remotes"] = [];
+    for (let pass = 0; pass < 3; pass++) {
+      const result = pickRemotesRaw({
+        candidates: [packed],
+        // spawnCapacity small enough that all 3 sources' combined load parts overshoot MAX_SPAWN_LOAD *
+        // spawnCapacity, but near+mid together still fit. localLoadParts stays at homeState()'s default
+        // (0) here — the budget is charged purely against spawnCapacity, isolating the nearest-first
+        // eviction behavior from the local-load-netting case covered separately below.
+        home: homeState({ spawnLoad: 0, spawnCapacity: 40 }),
+        currentlySelected: alreadyHave,
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes
+      });
+      reevaluated = result.remotes;
+      strikes = result.strikes;
+    }
+    const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("near");
+    expect(ids).not.toContain("far"); // the farthest/priciest is the one shed to fit the budget
+  });
+
+  it("reevaluate nets local load out of the budget, evicting even a source that fits its own estimate — once eviction hysteresis's grace period elapses", () => {
+    // near+mid together cost well under MAX_SPAWN_LOAD * spawnCapacity on their own load-parts estimate
+    // alone (same fixture as the test above), but a big localLoadParts (local roles' real cost — the
+    // thing this test exists to cover) eats most of the ceiling first. Reevaluate must net that out
+    // before pricing candidates, or it would keep sources whose own estimate "fits" a budget that never
+    // accounted for what local roles already consume — the actual bug this fixes: a colony whose local
+    // load alone was already near the ceiling kept "fitting" a full remote fleet under cheap per-source
+    // pricing, even though real total load had already passed 100%. Same multi-pass hysteresis threading
+    // as the test above — a single pass now only protects "mid", it doesn't drop it outright.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: [
+          { id: "near" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } },
+          { id: "mid" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(5) } }
+        ]
+      })
+    );
+    const alreadyHave = ["near", "mid"] as Id<Source>[];
+
+    let strikes: Record<Id<Source>, number> = {};
+    let reevaluated: ReturnType<typeof pickRemotesRaw>["remotes"] = [];
+    for (let pass = 0; pass < 3; pass++) {
+      const result = pickRemotesRaw({
+        candidates: [packed],
+        // near costs 23 load parts, mid also 23 (both round up to the same small hauler headcount at
+        // these distances). Ceiling is 0.65*100=65; localLoadParts (35) eats most of it, leaving a budget
+        // of 65-35=30 — enough for near (23) alone but not near+mid (46) together.
+        home: homeState({ spawnLoad: 0, spawnCapacity: 100, localLoadParts: 35 }),
+        currentlySelected: alreadyHave,
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes
+      });
+      reevaluated = result.remotes;
+      strikes = result.strikes;
+    }
+    const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("near");
+    expect(ids).not.toContain("mid");
+  });
+
+  it("never mines the home room even if it appears as a candidate", () => {
+    const candidates = [scoutTarget("W1N1", scouted()), scoutTarget("W2N1", scouted())];
+    const rooms = pickRemotes({ candidates, home: homeState(), currentlySelected: [] }).map(r => r.room);
+    expect(rooms).not.toContain("W1N1");
+  });
+
+  it("skips unscouted candidates (no source data to decide on)", () => {
+    const candidates = [scoutTarget("W2N1") /* no info */];
+    expect(pickRemotes({ candidates, home: homeState(), currentlySelected: [] })).toEqual([]);
+  });
+
+  it("ranks nearer rooms before farther ones, but only commits one new room per call", () => {
+    const near = scoutTarget("W2N1", scouted({ sources: [{ id: "near" as Id<Source>, x: 25, y: 25 }] }));
+    const far = scoutTarget("W3N1", scouted({ sources: [{ id: "far" as Id<Source>, x: 25, y: 25 }] }));
+    // Pass far first to prove ordering is by distance, not input order.
+    const rooms = pickRemotes({ candidates: [far, near], home: homeState(), currentlySelected: [] }).map(
+      r => r.room
+    );
+    expect(rooms).toEqual(["W2N1"]); // nearest wins the single room slot this call; "far" waits its turn
+  });
+
+  it("trusts the candidate's own room-graph distance instead of re-deriving it from room names", () => {
+    // A room only connects N/S/E/W, so a diagonal neighbour is a real 2 hops away even though its name
+    // alone (e.g. via Game.map.getRoomLinearDistance) would suggest 1. pickRemotes must rank by whatever
+    // scoutGraph.ts's BFS actually measured (ScoutCandidate.distance), not recompute from the room names.
+    const trueNeighbour = {
+      room: "W2N1",
+      distance: 1,
+      type: "normal" as const,
+      info: scouted({ sources: [{ id: "straight" as Id<Source>, x: 25, y: 25 }] })
+    };
+    const diagonal = {
+      room: "W2N2",
+      distance: 2, // real BFS hop count for a room only reachable via two crossings
+      type: "normal" as const,
+      info: scouted({ sources: [{ id: "diagonal" as Id<Source>, x: 25, y: 25 }] })
+    };
+    const rooms = pickRemotes({
+      candidates: [diagonal, trueNeighbour],
+      home: homeState(),
+      currentlySelected: []
+    }).map(r => r.room);
+    expect(rooms).toEqual(["W2N1"]); // the true (1-hop) neighbour wins the single slot, not the diagonal one
+  });
+
+  it("commits every worthwhile source in a newly-selected room together, not one at a time", () => {
+    // One adjacent room packed with many profitable sources, none yet selected: all of them are added,
+    // since entering the room (scouting, eventual reservation) is a one-time cost paid regardless of how
+    // many of its sources get mined — capped only by the overall source ceiling below.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({ sources: Array.from({ length: 4 }, (_, i) => ({ id: `s${i}` as Id<Source>, x: 25, y: 25 })) })
+    );
+    const selected = pickRemotes({ candidates: [packed], home: homeState(), currentlySelected: [] });
+    const total = selected.reduce((n, r) => n + r.sources.length, 0);
+    expect(total).toBe(4);
+  });
+
+  it("caps a newly-committed room's sources at the overall ceiling, not the room's full source count", () => {
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({ sources: Array.from({ length: 12 }, (_, i) => ({ id: `s${i}` as Id<Source>, x: 25, y: 25 })) })
+    );
+    const selected = pickRemotes({ candidates: [packed], home: homeState(), currentlySelected: [] });
+    const total = selected.reduce((n, r) => n + r.sources.length, 0);
+    expect(total).toBe(6); // MAX_REMOTE_SOURCES — the room has 12 worthwhile sources but the cap is 6
+  });
+
+  it("keeps previously-selected sources and adds the next new room's sources, up to the overall cap", () => {
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({ sources: Array.from({ length: 12 }, (_, i) => ({ id: `s${i}` as Id<Source>, x: 25, y: 25 })) })
+    );
+    const alreadyHave = ["s0", "s1", "s2", "s3", "s4"] as Id<Source>[];
+    const selected = pickRemotes({ candidates: [packed], home: homeState(), currentlySelected: alreadyHave });
+    const ids = selected.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toHaveLength(6); // MAX_REMOTE_SOURCES — the 5 kept plus one more from the same room
+    for (const id of alreadyHave) expect(ids).toContain(id);
+  });
+
+  it("adds a same-room sibling of an already-selected source even though a farther room got in first", () => {
+    // Reproduces a real selection artifact: room W2N1 has two sources, only the farther one (within the
+    // room) got selected on an earlier call, and a farther ROOM (W3N1) is already committed too. Once
+    // W2N1 is already a selected room, its nearer sibling source should join it — it must not need to wait
+    // behind W3N1 as if it were an unrelated, never-before-seen room competing for the single new-room slot.
+    const w2n1 = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: [
+          { id: "w2n1_far" as Id<Source>, x: 25, y: 40 }, // farther from centre, already selected
+          { id: "w2n1_near" as Id<Source>, x: 25, y: 30 } // nearer, not yet selected
+        ]
+      })
+    );
+    const w3n1 = scoutTarget("W3N1", scouted({ sources: [{ id: "w3n1_src" as Id<Source>, x: 25, y: 25 }] }));
+    const alreadyHave = ["w2n1_far", "w3n1_src"] as Id<Source>[];
+    const selected = pickRemotes({
+      candidates: [w2n1, w3n1],
+      home: homeState(),
+      currentlySelected: alreadyHave
+    });
+    const ids = selected.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("w2n1_near");
+  });
+
+  it("excludes a candidate farther than MAX_REMOTE_HOPS even when otherwise near/profitable", () => {
+    // A source placed at the room's dead centre so its tile-inset distance is tiny — profitable and
+    // "near" by raw tile math — but the room itself is beyond the hop cap, which must win regardless.
+    const tooFar = scoutTarget("W5N1", scouted({ sources: [{ id: "far_room" as Id<Source>, x: 25, y: 25 }] }));
+    const rooms = pickRemotes({ candidates: [tooFar], home: homeState(), currentlySelected: [] });
+    expect(rooms).toEqual([]);
+  });
+
+  it("excludes a room owned/reserved by another player, even if otherwise the nearest/cheapest", () => {
+    const hostileRoom = scoutTarget(
+      "W2N1",
+      scouted({ owner: "Enemy", hostile: true, sources: [{ id: "enemy_src" as Id<Source>, x: 25, y: 25 }] })
+    );
+    const rooms = pickRemotes({ candidates: [hostileRoom], home: homeState(), currentlySelected: [] });
+    expect(rooms).toEqual([]);
+  });
+
+  it("still allows a room reserved by the Invader NPC (not marked hostile) to be selected", () => {
+    // observeRoom (execute.ts) never sets `hostile` for an Invader-core reservation — that's treated as
+    // temporary/contestable, not a real-player claim (see remoteInvaderAttacks.ts). Selection stays open;
+    // Mining/Reservation's own reservedBy gate is what actually withholds staffing from it.
+    const invaderRoom = scoutTarget(
+      "W2N1",
+      scouted({ owner: "Invader", hostile: false, sources: [{ id: "invader_src" as Id<Source>, x: 25, y: 25 } ] })
+    );
+    const rooms = pickRemotes({ candidates: [invaderRoom], home: homeState(), currentlySelected: [] });
+    const ids = rooms.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toContain("invader_src");
+  });
+
+  it("excludes a source already claimed by another colony this tick", () => {
+    const candidates = [
+      scoutTarget("W2N1", scouted({ sources: [{ id: "shared_src" as Id<Source>, x: 25, y: 25 }] }))
+    ];
+    const rooms = pickRemotes({
+      candidates,
+      home: homeState(),
+      currentlySelected: [],
+      excludedSourceIds: new Set(["shared_src" as Id<Source>])
+    });
+    expect(rooms).toEqual([]);
+  });
+
+  it("prices and ranks by a candidate's cached real path distance instead of the tile-inset estimate", () => {
+    // Two rooms at the same room-graph hop distance, so remoteDistanceEstimate would rank them purely by
+    // tile inset (both sources sit at the same in-room position, so the estimate would tie them and fall
+    // back to input order). A real cached path makes W3N1's source the true nearest despite that tie.
+    const withEstimateOnly = scoutTarget(
+      "W2N1",
+      scouted({ sources: [{ id: "estimate_only" as Id<Source>, x: 25, y: 25 }] })
+    );
+    const withRealPath = scoutTarget(
+      "W3N1",
+      scouted({
+        sources: [{ id: "real_path" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } }] // real length 1, tiny
+      })
+    );
+    const rooms = pickRemotes({
+      candidates: [withEstimateOnly, withRealPath],
+      home: homeState(),
+      currentlySelected: []
+    }).map(r => r.room);
+    expect(rooms).toEqual(["W3N1"]); // real_path's cached distance (1) beats the estimate, wins the slot
+  });
+
+  it("full re-evaluation can evict a previously-selected source in favor of a newly-better one", () => {
+    // 6 previously-selected sources already fill the cap, all with a costly cached real distance — a
+    // farther room only just discovered, but with a much cheaper cached distance, must be able to bump
+    // the single worst of them out on a full re-rank. Without reevaluate, all 6 are kept unconditionally
+    // (append-only) and "better" would have to wait for its own new-room slot instead of ever displacing
+    // one of them.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: Array.from({ length: 6 }, (_, i) => ({
+          id: `worse${i}` as Id<Source>,
+          x: 25,
+          y: 25,
+          paths: { W1N1: "1".repeat(80) } // costly real distance, still profitable but the weakest link
+        }))
+      })
+    );
+    const better = scoutTarget(
+      "W3N1",
+      scouted({ sources: [{ id: "better" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1" } }] }) // real distance 1
+    );
+    const alreadyHave = Array.from({ length: 6 }, (_, i) => `worse${i}`) as Id<Source>[];
+
+    // Without reevaluate: all 6 "worse" sources are kept unconditionally; "better" can't get in at all
+    // since the cap is already full and only kept sources are preserved in append-only mode.
+    const appendOnly = pickRemotes({ candidates: [packed, better], home: homeState(), currentlySelected: alreadyHave });
+    const appendOnlyIds = appendOnly.flatMap(r => r.sources.map(s => s.id));
+    expect(appendOnlyIds).toHaveLength(6);
+    expect(appendOnlyIds).not.toContain("better");
+
+    // With reevaluate: everything competes on equal footing; "better"'s real distance of 1 beats every
+    // "worse" source's real distance of 80, so it displaces the worst of them — once eviction hysteresis's
+    // grace period elapses (see pickRemotes.ts's EVICTION_STRIKES_THRESHOLD), which takes several
+    // consecutive reevaluate passes, not just one; threading each pass's strikes into the next mirrors
+    // what mining.ts's remoteSelection actually does via ColonyMemory.remoteStrikes.
+    let strikes: Record<Id<Source>, number> = {};
+    let reevaluated: ReturnType<typeof pickRemotesRaw>["remotes"] = [];
+    for (let pass = 0; pass < 3; pass++) {
+      const result = pickRemotesRaw({
+        candidates: [packed, better],
+        home: homeState(),
+        currentlySelected: alreadyHave,
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes
+      });
+      reevaluated = result.remotes;
+      strikes = result.strikes;
+    }
+    const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
+    expect(ids).toHaveLength(6);
+    expect(ids).toContain("better");
+  });
+
+  it("reevaluate finishes a nearer room's 2nd source rather than jumping to a 2nd room's nearest, when budget only fits 2", () => {
+    // Two 2-source rooms with interleaved distances: room A's sources at 50/70, room B's at 51/71. A flat
+    // nearest-source sort (A@50, B@51, A@70, B@71) would greedily admit "one from each room" (A@50 + B@51)
+    // under a budget that only fits 2 sources — paying two full claimer shares (one per room, since each
+    // room ends up with only 1 mined source) instead of finishing room A (A@50 + A@70, ONE shared claimer).
+    // Within a real room's bounds (max ~48 tiles between two sources) finishing the nearer room is always
+    // the higher-value combination — see pickRemotes.ts's sort comment for the swept proof — so the budget
+    // must land on A@50+A@70, not A@50+B@51.
+    const roomA = scoutTarget(
+      "W2N1",
+      scouted({
+        sources: [
+          { id: "a_near" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(50) } }, // distance 50
+          { id: "a_far" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(70) } } // distance 70
+        ]
+      })
+    );
+    const roomB = scoutTarget(
+      "W3N1",
+      scouted({
+        sources: [
+          { id: "b_near" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(51) } }, // distance 51
+          { id: "b_far" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(71) } } // distance 71
+        ]
+      })
+    );
+    const alreadyHave = ["a_near", "a_far", "b_near", "b_far"] as Id<Source>[];
+
+    // energyCapacity raised so a reserved-rate remote miner (6 WORK) is affordable; at these distances each
+    // candidate's own load-parts estimate is identical (43 — same hauler headcount rounds up the same way),
+    // isolating the room-vs-room ordering question from unrelated body-sizing effects. spawnCapacity sized
+    // (0.65 * 154 ≈ 100) so the budget covers exactly 2 sources' worth of load (86) but not 3 (129). All
+    // 4 already-selected sources miss the cut on the very first pass (only 2 fit), so eviction hysteresis
+    // protects all of them for their first couple of misses — same multi-pass threading as the tests
+    // above, needed here to observe the actual steady-state room-vs-room pruning this test is about.
+    const home = homeState({ energyCapacity: 1800, spawnLoad: 0, spawnCapacity: 154, localLoadParts: 0 });
+    let strikes: Record<Id<Source>, number> = {};
+    let reevaluated: ReturnType<typeof pickRemotesRaw>["remotes"] = [];
+    for (let pass = 0; pass < 3; pass++) {
+      const result = pickRemotesRaw({
+        candidates: [roomA, roomB],
+        home,
+        currentlySelected: alreadyHave,
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes
+      });
+      reevaluated = result.remotes;
+      strikes = result.strikes;
+    }
+    const ids = reevaluated.flatMap(r => r.sources.map(s => s.id));
+
+    expect(ids).toContain("a_near");
+    expect(ids).toContain("a_far"); // room A is finished, not just its nearer member
+    expect(ids).not.toContain("b_near"); // room B doesn't get to cherry-pick its nearest over A's 2nd source
+    expect(reevaluated.length).toBe(1); // only ONE room's claimer cost is ever paid, not two
+  });
+
+  it("never drops an already-selected source even past the cap on re-rank", () => {
+    // 6 already selected (at the cap); a nearer never-selected candidate shows up too. The existing 6
+    // must all survive — the cap bounds new additions, not previously committed sources.
+    const packed = scoutTarget(
+      "W2N1",
+      scouted({ sources: Array.from({ length: 7 }, (_, i) => ({ id: `s${i}` as Id<Source>, x: 25, y: 25 })) })
+    );
+    const alreadyHave = ["s1", "s2", "s3", "s4", "s5", "s6"] as Id<Source>[];
+    const selected = pickRemotes({ candidates: [packed], home: homeState(), currentlySelected: alreadyHave });
+    const ids = selected.flatMap(r => r.sources.map(s => s.id));
+    for (const id of alreadyHave) expect(ids).toContain(id);
+    expect(ids).toHaveLength(6); // at the overall cap already: no room for "s0" this call
+  });
+
+  // Eviction hysteresis: a previously-selected source that misses the reevaluate cut is protected for
+  // EVICTION_STRIKES_THRESHOLD - 1 consecutive misses before it's actually dropped — an already-built
+  // claim (roads, container) is a sunk cost that shouldn't unwind on a single noisy pass. See
+  // pickRemotes.ts's EVICTION_STRIKES_THRESHOLD and its reevaluate branch. These call pickRemotesRaw
+  // directly (not the local `pickRemotes` wrapper) since they need the returned strikes back.
+  describe("eviction hysteresis", () => {
+    // One source ("kept") always makes the cut on its own merits; "squeezed" is the incumbent whose
+    // slot the budget can't afford once "better" (a much cheaper new candidate) is in the mix — the
+    // scenario every case below re-runs across multiple reevaluate passes.
+    const squeezedId = "squeezed" as Id<Source>;
+    const betterId = "better" as Id<Source>;
+    function scenario() {
+      const squeezed = scoutTarget(
+        "W2N1",
+        scouted({ sources: [{ id: squeezedId, x: 25, y: 25, paths: { W1N1: "1".repeat(80) } }] })
+      );
+      const better = scoutTarget(
+        "W3N1",
+        scouted({ sources: [{ id: betterId, x: 25, y: 25, paths: { W1N1: "1" } }] })
+      );
+      // spawnCapacity sized so only ONE of the two sources' load parts fit the budget — a genuine,
+      // ongoing squeeze across every pass, not a one-off fluke that resolves itself.
+      const home = homeState({ spawnLoad: 0, spawnCapacity: 40 });
+      return { candidates: [squeezed, better], home };
+    }
+
+    it("protects a squeezed incumbent on the first miss instead of dropping it immediately", () => {
+      const { candidates, home } = scenario();
+      const result = pickRemotesRaw({
+        candidates,
+        home,
+        currentlySelected: [squeezedId],
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes: {}
+      });
+      const ids = result.remotes.flatMap(r => r.sources.map(s => s.id));
+      expect(ids).toContain(squeezedId); // protected — one bad pass isn't enough to evict
+      expect(result.strikes[squeezedId]).toBe(1); // strike recorded for next pass to consult
+    });
+
+    it("increments strikes on each consecutive miss while still within the grace period", () => {
+      const { candidates, home } = scenario();
+      const pass1 = pickRemotesRaw({
+        candidates,
+        home,
+        currentlySelected: [squeezedId],
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes: {}
+      });
+      const pass2 = pickRemotesRaw({
+        candidates,
+        home,
+        currentlySelected: [squeezedId],
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes: pass1.strikes
+      });
+      expect(pass1.strikes[squeezedId]).toBe(1);
+      expect(pass2.strikes[squeezedId]).toBe(2);
+      expect(pass2.remotes.flatMap(r => r.sources.map(s => s.id))).toContain(squeezedId);
+    });
+
+    it("actually evicts once strikes reach EVICTION_STRIKES_THRESHOLD, never before", () => {
+      const { candidates, home } = scenario();
+      let strikes: Record<Id<Source>, number> = {};
+      let ids: Id<Source>[] = [];
+      // EVICTION_STRIKES_THRESHOLD is 3: passes 1-2 must still protect; pass 3 must evict.
+      for (let pass = 1; pass <= 3; pass++) {
+        const result = pickRemotesRaw({
+          candidates,
+          home,
+          currentlySelected: [squeezedId],
+          reevaluate: true,
+          excludedSourceIds: new Set(),
+          strikes
+        });
+        ids = result.remotes.flatMap(r => r.sources.map(s => s.id));
+        strikes = result.strikes;
+        if (pass < 3) expect(ids).toContain(squeezedId);
+      }
+      expect(ids).not.toContain(squeezedId);
+      expect(ids).toContain(betterId);
+    });
+
+    it("resets strikes to 0 once a protected source cleanly makes the cut again on its own merits", () => {
+      const { candidates, home } = scenario();
+      const pass1 = pickRemotesRaw({
+        candidates,
+        home,
+        currentlySelected: [squeezedId],
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes: {}
+      });
+      expect(pass1.strikes[squeezedId]).toBe(1);
+
+      // Budget opens up wide enough for both sources on the next pass — "squeezed" now makes the cut
+      // cleanly, not merely on borrowed time, so its strike count should clear rather than carry over.
+      const pass2 = pickRemotesRaw({
+        candidates,
+        home: homeState({ spawnLoad: 0, spawnCapacity: 5000 }),
+        currentlySelected: [squeezedId],
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes: pass1.strikes
+      });
+      expect(pass2.remotes.flatMap(r => r.sources.map(s => s.id))).toContain(squeezedId);
+      expect(pass2.strikes[squeezedId] ?? 0).toBe(0);
+    });
+
+    it("never grows the selection past MAX_REMOTE_SOURCES even while protecting incumbents", () => {
+      // 6 incumbents already fill the cap; a much cheaper 7th candidate is also worthwhile. Protecting
+      // all 6 squeezed incumbents on the same pass "better" is admitted must not push the total to 7 —
+      // the cap always wins; "better" (a brand-new admission, no sunk cost yet) is the one bumped.
+      const incumbentIds = Array.from({ length: 6 }, (_, i) => `incumbent${i}` as Id<Source>);
+      const packed = scoutTarget(
+        "W2N1",
+        scouted({ sources: incumbentIds.map(id => ({ id, x: 25, y: 25, paths: { W1N1: "1".repeat(80) } })) })
+      );
+      const better = scoutTarget(
+        "W3N1",
+        scouted({ sources: [{ id: betterId, x: 25, y: 25, paths: { W1N1: "1" } }] })
+      );
+
+      const result = pickRemotesRaw({
+        candidates: [packed, better],
+        home: homeState({ spawnLoad: 0.5, spawnCapacity: 500 }),
+        currentlySelected: incumbentIds,
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes: {}
+      });
+      const ids = result.remotes.flatMap(r => r.sources.map(s => s.id));
+      expect(ids.length).toBeLessThanOrEqual(6);
+      expect(ids).not.toContain(betterId);
+      for (const id of incumbentIds) expect(ids).toContain(id);
+    });
+
+    it("append-only pass never evicts and carries strikes forward unchanged", () => {
+      const { candidates, home } = scenario();
+      const priorStrikes: Record<Id<Source>, number> = { [squeezedId]: 2 };
+      const result = pickRemotesRaw({
+        candidates,
+        home,
+        currentlySelected: [squeezedId],
+        reevaluate: false,
+        excludedSourceIds: new Set(),
+        strikes: priorStrikes
+      });
+      // Append-only preserves every already-selected source unconditionally (today's existing behavior),
+      // and since it made no eviction decision at all, its strike count is neither reset nor incremented.
+      expect(result.remotes.flatMap(r => r.sources.map(s => s.id))).toContain(squeezedId);
+      expect(result.strikes[squeezedId]).toBe(2);
+    });
+
+    it("prunes a strike entry once its source is no longer selected at all", () => {
+      // A source with a stale strike entry that ISN'T in currentlySelected any more (fully evicted, or
+      // just never re-selected) must not linger in the returned strikes map forever.
+      const { candidates, home } = scenario();
+      const staleStrikes: Record<Id<Source>, number> = { [squeezedId]: 2, ["gone" as Id<Source>]: 1 };
+      const result = pickRemotesRaw({
+        candidates,
+        home,
+        currentlySelected: [squeezedId], // "gone" is NOT selected any more
+        reevaluate: true,
+        excludedSourceIds: new Set(),
+        strikes: staleStrikes
+      });
+      expect(result.strikes).not.toHaveProperty("gone");
+    });
+  });
+
+  // Memory.debugDisableRemoteMining — an empire-wide kill switch (see its doc in memory/schema.ts) so a
+  // scenario can isolate a colony's spawn economics from a competing remote-mining fleet.
+  describe("Memory.debugDisableRemoteMining", () => {
+    afterEach(() => {
+      (globalThis as { Memory?: unknown }).Memory = undefined;
+    });
+
+    it("selects nothing at all while the flag is set, even with an otherwise-perfect candidate", () => {
+      (globalThis as { Memory?: { debugDisableRemoteMining?: boolean } }).Memory = { debugDisableRemoteMining: true };
+      const candidates = [scoutTarget("W2N1", scouted({ sources: [{ id: "s" as Id<Source>, x: 25, y: 25 }] }))];
+      expect(pickRemotes({ candidates, home: homeState(), currentlySelected: [] })).toEqual([]);
+    });
+
+    it("selects normally when the flag is absent", () => {
+      (globalThis as { Memory?: { debugDisableRemoteMining?: boolean } }).Memory = {};
+      const candidates = [scoutTarget("W2N1", scouted({ sources: [{ id: "s" as Id<Source>, x: 25, y: 25 }] }))];
+      expect(pickRemotes({ candidates, home: homeState(), currentlySelected: [] })).toHaveLength(1);
+    });
+  });
+});

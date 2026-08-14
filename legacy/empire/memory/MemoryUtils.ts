@@ -31,7 +31,7 @@ export class MemoryUtil {
             memory[memName]= _.clone(defaults);
         }
         if(deep){
-            _,defaultsDeep(memory[memName],defaults);
+            _.defaultsDeep(memory[memName],defaults);
         } else {
             _.defaults(memory[memName],defaults);
         }

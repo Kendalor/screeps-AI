@@ -1,0 +1,96 @@
+// Is a remote source worth mining, and is a remote room worth reserving? Pure energy accounting over
+// plain numbers — no Game.*, no snapshot mocking, same testable shape as the scout target picker.
+//
+// All rates are energy/tick so they compose by addition. A source is worth mining when its harvest
+// yield beats the summed upkeep of the miner, the return haul, and the road+container it needs. All
+// constants come from the game's BODYPART_COST / *_DECAY / CREEP_LIFE_TIME etc. — never hardcoded here,
+// so a server with tweaked constants reprices correctly. A claimer amortizes over CREEP_CLAIM_LIFE_TIME
+// instead — a CLAIM part shortens a creep's life to 600 ticks, not the usual 1500.
+
+import type { SnapRemoteSource } from "../snapshot/types";
+
+export interface EconomyContext {
+  minerBodyCost: number; // energy to spawn the miner staffing one remote source
+  claimerBodyCost: number; // energy to spawn one claimer (reserves a whole room)
+}
+
+// Energy a single source yields per tick: reserved rooms regen twice as fast as neutral ones. Exported
+// so Logistics' fleet sizing (src/logistics/fleet.ts) prices a remote source's income off the same
+// regen-cap formula as the profitability check here, instead of re-deriving it from the raw constants.
+export function grossHarvest(reserved: boolean): number {
+  const capacity = reserved ? SOURCE_ENERGY_CAPACITY : SOURCE_ENERGY_NEUTRAL_CAPACITY;
+  return capacity / ENERGY_REGEN_TIME; // reserved => 10/tick, unreserved => 5/tick
+}
+
+// A body's spawn cost spread over its life is its steady-state energy/tick upkeep.
+function amortize(bodyCost: number): number {
+  return bodyCost / CREEP_LIFE_TIME;
+}
+
+// A CLAIM part shortens a creep's life to CREEP_CLAIM_LIFE_TIME (600), not the usual CREEP_LIFE_TIME
+// (1500) — a claimer must be replaced 2.5x more often, so its upkeep needs its own amortization horizon.
+// Exported so pickRemotes can price each source's fair share of its room's claimer upkeep at selection
+// time (see below) instead of only checking reservation as a separate, later, room-level decision.
+export function amortizeClaimer(bodyCost: number): number {
+  return bodyCost / CREEP_CLAIM_LIFE_TIME;
+}
+
+// CARRY parts needed to keep `yieldPerTick` energy flowing over a round trip of `distance` tiles, priced
+// as CARRY+MOVE pairs amortized over their life. Round trip is 2*distance ticks (there and back); the
+// energy accumulated in that window must fit the carried capacity.
+function haulUpkeep(yieldPerTick: number, distance: number): number {
+  const roundTripTicks = 2 * distance;
+  const energyInFlight = yieldPerTick * roundTripTicks;
+  const carryParts = Math.ceil(energyInFlight / CARRY_CAPACITY);
+  const pairCost = BODYPART_COST[CARRY] + BODYPART_COST[MOVE]; // one CARRY needs one MOVE to stay at road speed
+  return amortize(carryParts * pairCost);
+}
+
+// Decay of the road (one segment per tile home->source) plus the drop container, converted to the energy
+// it costs to repair that decay. REPAIR_POWER hits are restored per energy spent.
+function roadContainerUpkeep(distance: number): number {
+  const roadDecayPerTile = ROAD_DECAY_AMOUNT / ROAD_DECAY_TIME; // hits/tick per road tile
+  const containerDecay = CONTAINER_DECAY / CONTAINER_DECAY_TIME; // hits/tick (remote = unowned interval)
+  const hitsPerTick = roadDecayPerTile * distance + containerDecay;
+  return hitsPerTick / REPAIR_POWER; // energy/tick to keep them repaired
+}
+
+// Per-source net energy/tick. Positive => worth mining at all. Negative => the haul/upkeep swamps it.
+// Takes just the two fields the formula actually uses (not the whole SnapRemoteSource) so callers pricing
+// a hypothetical/synthetic source — pickRemotes' own-merit pass, remotePotentialTable's precomputed table
+// — don't need to pad out unrelated fields (room, openTiles, danger) just to satisfy the type.
+//
+// grossOverride lets a caller price a source whose yield isn't the normal reserved/unreserved binary —
+// today only a keeper source (SOURCE_ENERGY_KEEPER_CAPACITY/ENERGY_REGEN_TIME, ~13.33/tick), which is
+// neither reserved nor unreserved since keeper rooms have no reservation mechanic at all. `reserved` is
+// still required in that case (grossHarvest is skipped, but nothing else about the shape changes).
+export function netEnergy(
+  source: Pick<SnapRemoteSource, "distance" | "reserved">,
+  ctx: EconomyContext,
+  grossOverride?: number
+): number {
+  const gross = grossOverride ?? grossHarvest(source.reserved);
+  return gross - amortize(ctx.minerBodyCost) - haulUpkeep(gross, source.distance) - roadContainerUpkeep(source.distance);
+}
+
+// Per-ROOM: is reserving worth it? Reserving lifts every mined source in the room from 5 to 10/tick — a
+// marginal +5/tick each. Worth it when the summed marginal gain beats one claimer's upkeep. So a room
+// with two mined sources justifies a claimer more easily than one with a single source.
+export function worthReserving(roomSources: readonly SnapRemoteSource[], ctx: EconomyContext): boolean {
+  const marginalPerSource = grossHarvest(true) - grossHarvest(false); // +5/tick
+  const marginalGain = marginalPerSource * roomSources.length;
+  return marginalGain > amortizeClaimer(ctx.claimerBodyCost);
+}
+
+// Concrete costs for the default RCL2 bodies, so tests and the selector share one baseline. A remote
+// miner is the saturating body from behaviors/roles/miner.ts (6 WORK + 1 CARRY + 3 MOVE — SOURCE_SATURATING_WORK,
+// kept in sync there, not re-derived here). A claimer is 2x (CLAIM + MOVE) — the mandatory floor (see
+// claimer.ts's MIN_CLAIM_SETS): a single CLAIM only ever nets zero against the controller's own 1/tick
+// decay while parked, so it banks no buffer and reservation free-falls to 0 across every spawn/travel gap
+// between a claimer dying and its replacement arriving. Pricing the claimer at the (cheaper,
+// non-functional) 1-CLAIM floor would understate the real cost this economics module is supposed to gate on.
+export function defaultEconomyContext(): EconomyContext {
+  const minerBodyCost = 6 * BODYPART_COST[WORK] + BODYPART_COST[CARRY] + 3 * BODYPART_COST[MOVE];
+  const claimerBodyCost = 2 * (BODYPART_COST[CLAIM] + BODYPART_COST[MOVE]);
+  return { minerBodyCost, claimerBodyCost };
+}
