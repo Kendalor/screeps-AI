@@ -3,8 +3,8 @@
 // directly and hands it a snapshot: no Game mock, no Colony.
 
 import { describe, expect, it } from "vitest";
-import GOAL_JSON from "../../../src/layouts/Base_2.json";
-import type { GoalLayout } from "../../../src/layouts/sync";
+import GOAL_JSON from "../../../src/construction/Base_2.json";
+import type { GoalLayout } from "../../../src/construction/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { Upgrading } from "../../../src/operations/upgrading";
 import { colonySnap, containerAt, dropAt, linkAt, snapCreeps, structureAt } from "../../fixtures";

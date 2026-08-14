@@ -74,7 +74,7 @@ describe("bodyContext hasContainer", () => {
 // tile, and — right next to the anchor — a tile the bunker layout claims for a spawn), so transporters
 // stayed stuck at the off-road 1:1 ratio forever, even with every genuine road built.
 describe("bodyContext roads (allRemoteRoutesBuilt)", () => {
-  const anchor = { x: 37, y: 8 }; // matches layouts/Base_2.json's anchor-relative spawn at (-1,-1) -> (36,7)
+  const anchor = { x: 37, y: 8 }; // matches construction/Base_2.json's anchor-relative spawn at (-1,-1) -> (36,7)
 
   it("is false with no remote source selected yet", () => {
     expect(bodyContext(colonySnap({ anchor, controllerLevel: 7 })).roads).toBe(false);

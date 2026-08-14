@@ -3,10 +3,10 @@
 // deliberate exception: hasOutstandingConstruction reads/writes a narrow ColonyMemory cache field the
 // same way snapshot/colony.ts's resolveAnchor already does for the anchor — see that function's own doc.
 
-import { plannedObstacles, buildableAtRcl } from "../layouts/goal";
-import GOAL_JSON from "../layouts/Base_2.json";
-import { stampLayout, type PlacedStructure } from "../layouts/stamp";
-import type { GoalLayout } from "../layouts/sync";
+import { plannedObstacles, buildableAtRcl } from "./goal";
+import GOAL_JSON from "./Base_2.json";
+import { stampLayout, type PlacedStructure } from "./stamp";
+import type { GoalLayout } from "./sync";
 import type { XY } from "../lib/geometry";
 import { needsRepair } from "../lib/repairable";
 import { log } from "../lib/log";
@@ -86,7 +86,7 @@ export function existingAt(colony: ColonySnapshot, p: PlacedStructure): boolean 
 }
 
 // Remote rooms currently unsafe to place a site or send a builder into — same definition as
-// operations/building.ts's unsafeRemoteRooms (danger or a reservation held by someone else). Mining's
+// operations/construction.ts's unsafeRemoteRooms (danger or a reservation held by someone else). Mining's
 // own claim no longer withholds itself for this (see mining.ts's structures()), so this is now the
 // only thing stopping a site from going up in a dangerous remote room; the home-room leg of the same
 // route is never affected, since roomOf() only reads this set for non-home placements.
@@ -222,7 +222,7 @@ export const wantedStructures = wrapFn(function wantedStructures(
   // in. Filtered here, not in stampLayout itself: pathing callers (e.g. Mining's sourceRoutes cost
   // matrix) need the layout's raw shape to route AROUND a blocked tile, not have it silently vanish
   // from their obstacle set. `claimed` is never filtered by this — every operation already derives its
-  // own claims from a terrain-aware A*/PathFinder search (see layouts/roads.ts's buildCostMatrix), so a
+  // own claims from a terrain-aware A*/PathFinder search (see roadPathing.ts's buildCostMatrix), so a
   // claimed tile can never legitimately be a wall.
   //
   // This was latent, not newly introduced: Game.map.getRoomTerrain('W45N17').get(8,15) ===
@@ -422,7 +422,7 @@ function substituteBlockedCapped(colony: ColonySnapshot, capped: PlacedStructure
 // anything left to build" signal, and it stays non-empty across those between-placement gaps.
 //
 // Remote sites count too: Building's own wantedBuilders() sizes its workforce off home + remote progress
-// (see operations/building.ts's totalConstructionProgress), so this must agree or a live remote backlog
+// (see operations/construction.ts's totalConstructionProgress), so this must agree or a live remote backlog
 // gets read as "finished" and strands every builder into repair/upgrade while roads sit at 0 progress.
 //
 // Per-type target count for the bunker layout portion only (not `claimed` — see hasOutstandingConstruction's
@@ -432,7 +432,7 @@ function substituteBlockedCapped(colony: ColonySnapshot, capped: PlacedStructure
 // sits on, only how many of each type the RCL currently permits — substituteBlockedCapped exists purely to
 // keep a spawn-blocked slot's COUNT from silently shrinking (see its own doc), so a count comparison
 // against buildableAtRcl's raw cap is already correct without re-deriving which tile the substitute landed
-// on. buildableAtRcl itself is already cached (see layouts/goal.ts) — this only adds one more cheap pass
+// on. buildableAtRcl itself is already cached (see goal.ts) — this only adds one more cheap pass
 // over its (already-computed) result.
 function bunkerTargetCounts(colony: ColonySnapshot): Partial<Record<BuildableStructureConstant, number>> {
   const anchor = colony.anchor;

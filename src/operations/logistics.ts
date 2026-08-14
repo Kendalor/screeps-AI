@@ -17,8 +17,8 @@
 
 import { orderBody } from "../spawn/body";
 import type { Intent } from "../intents/types";
-import GOAL_JSON from "../layouts/Base_2.json";
-import type { GoalLayout } from "../layouts/sync";
+import GOAL_JSON from "../construction/Base_2.json";
+import type { GoalLayout } from "../construction/sync";
 import { planLogistics } from "../logistics";
 import { providers } from "../logistics/graph";
 import { harvestIncome, haulDistance, wantedTransportHeadcount } from "../logistics/fleet";

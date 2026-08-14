@@ -5,11 +5,11 @@
 // Every case constructs the operation directly and hands it a snapshot: no Game mock, no Colony.
 
 import { describe, expect, it } from "vitest";
-import GOAL_JSON from "../../../src/layouts/Base_2.json";
-import { buildCostMatrix, sourceRoadPath } from "../../../src/layouts/roads";
-import { plannedObstacles } from "../../../src/layouts/goal";
-import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
-import type { GoalLayout } from "../../../src/layouts/sync";
+import GOAL_JSON from "../../../src/construction/Base_2.json";
+import { buildCostMatrix, sourceRoadPath } from "../../../src/construction/roadPathing";
+import { plannedObstacles } from "../../../src/construction/goal";
+import { stampLayout, type PlacedStructure } from "../../../src/construction/stamp";
+import type { GoalLayout } from "../../../src/construction/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { roleDef } from "../../../src/behaviors/roles";
 import { REMOTE_MINER_PRIORITY } from "../../../src/behaviors/roles/miner";
@@ -556,7 +556,7 @@ describe("Mining.structures", () => {
     expect(roads).not.toContainEqual({ x: route.structurePos.x, y: route.structurePos.y, type: "road" });
   });
 
-  // Placement priority within a type falls back to claim order (see colony/building.ts's stable sort),
+  // Placement priority within a type falls back to claim order (see construction/planner.ts's stable sort),
   // so the order roads are claimed in is the order their sites get placed in. Claiming source-outward
   // means a builder paves the tiles nearest the source first, not the ones next to the anchor.
   it("claims road tiles source-outward, nearest the container first", () => {
@@ -708,7 +708,7 @@ describe("Mining.structures", () => {
 });
 
 // A remote route reuses the already-computed cross-room PathFinder path cached on the source (see
-// remote-mining-progress/construction plan) instead of layouts/roads.ts's local-only cost matrix, and
+// remote-mining-progress/construction plan) instead of construction/roadPathing.ts's local-only cost matrix, and
 // only claims while the remote room actually has vision this tick.
 describe("Mining.structures — remote sources", () => {
   const anchor = { x: 10, y: 10 };
@@ -778,7 +778,7 @@ describe("Mining.structures — remote sources", () => {
     expect(mining.structures(snap)).toEqual([]);
   });
 
-  // Danger/reservedBy no longer withholds the claim (see colony/building.ts's unsafeRemoteRooms, which
+  // Danger/reservedBy no longer withholds the claim (see construction/planner.ts's unsafeRemoteRooms, which
   // now separately stops a site actually going up or a builder being dispatched into the room): dropping
   // the claim here demolished the whole route, home-room leg included, the instant danger/reservation
   // flickered on for even one tick — see mining.ts's structures() comment for the full incident.

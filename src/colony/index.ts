@@ -10,8 +10,8 @@ import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { log } from "../lib/log";
-import type { PlacedStructure } from "../layouts/stamp";
-import { buildingRowsFromPlan, claimsOf, planBuilding, repurposeIdleBuilders } from "./building";
+import type { PlacedStructure } from "../construction/stamp";
+import { buildingRowsFromPlan, claimsOf, planBuilding, repurposeIdleBuilders } from "../construction/planner";
 import { collectMetrics } from "./metrics";
 import { visualize } from "./metricsVisual";
 
@@ -130,7 +130,7 @@ export class Colony {
    * rather than drop-mining for up to an interval before the next placement pass. Reuses building()'s own
    * operation claims so the "is construction finished" check can't disagree with what would be placed.
    * Deliberately does NOT pass a pre-computed `wanted` — hasOutstandingConstruction's own count-only fast
-   * path (src/colony/building.ts) answers "is anything still missing" far more cheaply than a full
+   * path (src/construction/planner.ts) answers "is anything still missing" far more cheaply than a full
    * wantedStructures call would, and forcing one here just to hand it over would defeat that entirely.
    */
   public maintainWorkforce(): Intent[] {

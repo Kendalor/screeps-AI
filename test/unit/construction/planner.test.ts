@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { Intent } from "../../src/intents/types";
-import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
-import { colony } from "../../src/colony";
-import type { BuildingPlanEntry } from "../../src/colony/building";
-import { claimsOf, wantedStructures } from "../../src/colony/building";
-import { colonySnap, openTerrain, remoteSourceAt, snapCreep, sourceAt } from "../fixtures";
-import { Mining } from "../../src/operations/mining";
-import { buildableAtRcl } from "../../src/layouts/goal";
-import { stampLayout, type PlacedStructure } from "../../src/layouts/stamp";
-import type { GoalLayout } from "../../src/layouts/sync";
-import GOAL_JSON from "../../src/layouts/Base_2.json";
-import type { XY } from "../../src/lib/geometry";
+import type { Intent } from "../../../src/intents/types";
+import type { ColonySnapshot, SnapStructure } from "../../../src/snapshot/types";
+import { colony } from "../../../src/colony";
+import type { BuildingPlanEntry } from "../../../src/construction/planner";
+import { claimsOf, wantedStructures } from "../../../src/construction/planner";
+import { colonySnap, openTerrain, remoteSourceAt, snapCreep, sourceAt } from "../../fixtures";
+import { Mining } from "../../../src/operations/mining";
+import { buildableAtRcl } from "../../../src/construction/goal";
+import { stampLayout, type PlacedStructure } from "../../../src/construction/stamp";
+import type { GoalLayout } from "../../../src/construction/sync";
+import GOAL_JSON from "../../../src/construction/Base_2.json";
+import type { XY } from "../../../src/lib/geometry";
 
 // What the colony's Mining operation claims — the same call planBuilding makes, so these tests
 // assert the arbiter merges real operation demand rather than a re-stated copy of it.
@@ -847,7 +847,7 @@ describe("idle-builder repurposing", () => {
     expect(changes[0].role).toBe("upgrader");
   });
 
-  // hasOutstandingConstruction's fast path (src/colony/building.ts) answers this with a per-type COUNT
+  // hasOutstandingConstruction's fast path (src/construction/planner.ts) answers this with a per-type COUNT
   // comparison, not positions — deliberately correct even though substituteBlockedCapped exists to swap a
   // spawn-blocked slot for a different same-type tile elsewhere in the full RCL8 goal (see that function's
   // own doc): the count never needs to know WHICH tile satisfies the cap, only that enough of the type
@@ -930,7 +930,7 @@ describe("idle-builder repurposing", () => {
 });
 
 // The metrics panel's ENTIRE "Buildings" data source is ColonyMemory.buildingPlan, written by
-// planBuilding (colony/building.ts) as a side effect of building() — never computed or re-derived by any
+// planBuilding (construction/planner.ts) as a side effect of building() — never computed or re-derived by any
 // reader. Critically, this must be the FINAL, fully-gated positional plan (same list placeAndDemolish
 // itself places sites from — gateSourceGroups, gateRoads' adjacency gate, substituteBlockedCapped, exit
 // tiles via the goal layout), not a cheaper re-derivation: a hand-rolled reimplementation of "what does

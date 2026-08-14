@@ -9,13 +9,13 @@ import { pickRemotes } from "../mining/pickRemotes";
 import { remoteSourceLoadParts } from "../mining/load";
 import { PARTS_PER_SPAWN } from "../colony/metrics";
 import type { Intent } from "../intents/types";
-import GOAL_JSON from "../layouts/Base_2.json";
-import { plannedObstacles } from "../layouts/goal";
-import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../layouts/roads";
+import GOAL_JSON from "../construction/Base_2.json";
+import { plannedObstacles } from "../construction/goal";
+import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../construction/roadPathing";
 import { log } from "../lib/log";
 import { isExitTile } from "../lib/remotePath";
-import { stampLayout, type PlacedStructure } from "../layouts/stamp";
-import type { GoalLayout } from "../layouts/sync";
+import { stampLayout, type PlacedStructure } from "../construction/stamp";
+import type { GoalLayout } from "../construction/sync";
 import type { BodyContext } from "../behaviors/types";
 import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
@@ -288,7 +288,7 @@ export class Mining extends Operation {
     }
 
     // Remote routes reuse the already-computed cross-room PathFinder path (see resolveRemoteRoom in
-    // intents/execute.ts) instead of layouts/roads.ts's local-only cost matrix, which has no notion of
+    // intents/execute.ts) instead of construction/roadPathing.ts's local-only cost matrix, which has no notion of
     // leaving the room at all. The container claim needs to know what's already built at that tile
     // (colony.remoteStructures), which only exists while the remote room actually has vision this tick —
     // but the road tiles are claimed regardless of remote vision. A route's home-room leg in particular

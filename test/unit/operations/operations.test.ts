@@ -4,17 +4,17 @@
 
 import { describe, expect, it } from "vitest";
 import { colony, type Colony } from "../../../src/colony";
-import { planBuilding, wantedStructures } from "../../../src/colony/building";
+import { planBuilding, wantedStructures } from "../../../src/construction/planner";
 import { planSpawning } from "../../../src/empire/spawning";
 import { Operation } from "../../../src/operations/operation";
 import type { ColonySnapshot, SnapStructure } from "../../../src/snapshot/types";
 import type { CreepRequest } from "../../../src/spawn/request";
-import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
-import { buildableAtRcl, plannedObstacles } from "../../../src/layouts/goal";
+import { stampLayout, type PlacedStructure } from "../../../src/construction/stamp";
+import { buildableAtRcl, plannedObstacles } from "../../../src/construction/goal";
 import { Mining } from "../../../src/operations/mining";
 import { Bootstrap } from "../../../src/operations/bootstrap";
-import type { GoalLayout } from "../../../src/layouts/sync";
-import GOAL_JSON from "../../../src/layouts/Base_2.json";
+import type { GoalLayout } from "../../../src/construction/sync";
+import GOAL_JSON from "../../../src/construction/Base_2.json";
 import { colonySnap, roomDistance, snapCreeps, sourceAt, spawn } from "../../fixtures";
 
 // A stand-in operation, so these assert the framework rather than Mining's formulas.

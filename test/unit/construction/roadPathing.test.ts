@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildCostMatrix, controllerRoadPath, sourceRoadPath } from "../../src/layouts/roads";
-import type { XY } from "../../src/lib/geometry";
+import { buildCostMatrix, controllerRoadPath, sourceRoadPath } from "../../../src/construction/roadPathing";
+import type { XY } from "../../../src/lib/geometry";
 
 function openTerrain(): Uint8Array {
   return new Uint8Array(2500).fill(1); // all walkable

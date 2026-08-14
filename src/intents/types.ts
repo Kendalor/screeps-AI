@@ -25,7 +25,7 @@ export type Intent =
   // cleared to undefined: Operation.owned()'s op-less fallback treats an unstamped creep as ownable by
   // *every* operation, so every operation with no roleTargets override would double-count it.
   | { kind: "setCreepRole"; creep: Id<Creep>; role: RoleName; op: string }
-  // A builder's cross-room construction assignment — picked by operations/building.ts off siteSummary
+  // A builder's cross-room construction assignment — picked by operations/construction.ts off siteSummary
   // (already vision-independent, room-name-only distance ranking), so unlike setScoutTarget the room is
   // resolved in the planner itself; execute.ts just writes it. See CreepMemory.buildTargetRoom.
   | { kind: "setBuildTargetRoom"; creep: Id<Creep>; room: string }

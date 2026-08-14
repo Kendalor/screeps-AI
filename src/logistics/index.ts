@@ -5,7 +5,8 @@
 // double-book the same node; there is deliberately no separate supply-only entry point (Supply the
 // operation has no logistics planning of its own, see operations/supply.ts).
 
-import { buildCostMatrix, type RoadCostMatrix } from "../layouts/roads";
+import { buildCostMatrix } from "../construction/roadPathing";
+import type { RoadCostMatrix } from "../lib/pathing";
 import { wrapFn } from "../lib/profiler";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { allocate, emptyReserved, refKey, type ReservedAmounts } from "./allocate";
@@ -94,7 +95,7 @@ function planSupply(colony: ColonySnapshot, costMatrix: RoadCostMatrix): { plan:
 
 export const planLogistics = wrapFn(function planLogistics(colony: ColonySnapshot): LogisticsPlan {
   // Built once per tick and reused across every idle creep's pickup search below — same terrain/
-  // structure snapshot data the layouts/roads.ts road-planning callers already build a matrix from, so
+  // structure snapshot data the construction/roadPathing.ts road-planning callers already build a matrix from, so
   // this is no extra Game access, just the same cost matrix asked for repeatedly in one place instead
   // of once per creep.
   const costMatrix = buildCostMatrix({ terrain: colony.terrain, structures: colony.structures });

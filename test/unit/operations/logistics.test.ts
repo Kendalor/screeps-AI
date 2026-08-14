@@ -1,12 +1,12 @@
 // Mirrors supply.test.ts's structure — the smallest existing operation test. Every case constructs the
 // operation directly and hands it a snapshot: no Game mock, no Colony.
 // Logistics.intents() runs planLogistics -> allocate(), whose distance queries now go through real
-// PathFinder.search (see layouts/roads.ts's header) — stubPathFinderSingleRoom() wires that up.
+// PathFinder.search (see lib/pathing.ts's header) — stubPathFinderSingleRoom() wires that up.
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
-import GOAL_JSON from "../../../src/layouts/Base_2.json";
-import type { GoalLayout } from "../../../src/layouts/sync";
+import GOAL_JSON from "../../../src/construction/Base_2.json";
+import type { GoalLayout } from "../../../src/construction/sync";
 import { colonySnap, containerAt, linkAt, sinkAt, snapCreep, snapCreeps } from "../../fixtures";
 import { bodyCost } from "../../../src/spawn/body";
 import { clearTiles, stubPathFinderSingleRoom } from "../../constants";

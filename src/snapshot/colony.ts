@@ -1,7 +1,7 @@
 // Builds snapshots from Game state — the only place planners' input touches the live API.
 
 import { openHarvestTiles } from "../behaviors/targets";
-import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
+import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../construction/stamp";
 import { ATTACK_BOOST_MULTIPLIER, HEAL_BOOST_MULTIPLIER, RANGED_ATTACK_BOOST_MULTIPLIER, TOUGH_BOOST_MULTIPLIER } from "../lib/combat";
 import type { XY } from "../lib/geometry";
 import { wrapFn } from "../lib/profiler";
@@ -157,7 +157,7 @@ function buildColonySnapshot(
     remoteReservedBy[roomName] = live.reservedBy;
   }
   // Vision-independent: an owned site exists regardless of whether we currently see the room it's in,
-  // so the shared construction budget (colony/building.ts) can count a remote site even between the
+  // so the shared construction budget (construction/planner.ts) can count a remote site even between the
   // ticks a creep gives it vision. Scoped to this colony's own rooms — Game.constructionSites is
   // empire-wide across every colony the player owns.
   const ownRooms = ownRoomsFor(room.name, remotes);

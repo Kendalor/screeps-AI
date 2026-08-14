@@ -138,7 +138,7 @@ export interface SnapRemoteSource extends XY {
   // The cached home->source path (see RemoteSourceMemory.route), room-tagged tile by tile. Absent until
   // resolveRemoteRoom has computed it at least once (e.g. selected but no anchor yet). Mining turns this
   // into container/road construction claims instead of re-deriving a path with the local-only cost-matrix
-  // pather in layouts/roads.ts.
+  // pather in construction/roadPathing.ts.
   route?: RemoteRouteTile[];
   // Straight copy of RemoteSourceMemory.routeBuilt (see its doc there) — which route[] tiles are already
   // confirmed built, index-aligned, surviving a vision gap in the tile's own room. building.ts's builtAt()

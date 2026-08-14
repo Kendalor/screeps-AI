@@ -56,7 +56,7 @@ declare global {
     scoutTarget?: string; // room a scout is assigned to reach; cleared by moveToRoom on arrival
     targetRoom?: string; // a remote worker's permanent destination room (its source's room); NOT cleared on arrival, unlike scoutTarget
     // A builder's current cross-room construction assignment (home or a remote room with outstanding
-    // sites), owned by operations/building.ts. Not cleared on arrival like scoutTarget: the builder keeps
+    // sites), owned by operations/construction.ts. Not cleared on arrival like scoutTarget: the builder keeps
     // working sites in this room until Building reassigns it once the room's backlog clears.
     buildTargetRoom?: string;
     // The repairer equivalent of buildTargetRoom: a repair creep's current cross-room upkeep assignment
@@ -227,7 +227,7 @@ export interface ColonyMemory {
   // The parade squad's persisted anchor — identical rule to drainAnchor, owned by operations/parade.ts,
   // written via setParadeAnchor.
   paradeAnchor?: SquadAnchorMemory;
-  // Cross-tick cache of hasOutstandingConstruction's own answer (colony/building.ts), owned by that
+  // Cross-tick cache of hasOutstandingConstruction's own answer (construction/planner.ts), owned by that
   // function alone. Construction sites aren't placed every tick (placeAndDemolish is throttled to
   // interval:100 — see kernel/tick.ts) and a site doesn't finish building every tick either (real
   // builder-tick progress, not a per-tick event this code controls) — so recomputing "is anything still
@@ -237,7 +237,7 @@ export interface ColonyMemory {
   // doc for the exact invalidation rule. Absent means never cached yet (first tick, or a colony that's
   // never reached this path).
   outstandingConstructionCache?: { fingerprint: string; value: boolean };
-  // Governed by colony/building.ts's planBuilding — the FINAL, fully-gated construction plan (the same
+  // Governed by construction/planner.ts's planBuilding — the FINAL, fully-gated construction plan (the same
   // list placeAndDemolish itself places construction sites from: gateSourceGroups, gateRoads' adjacency
   // gate, substituteBlockedCapped, exit-tile exclusion via the goal layout, everything), with each entry's
   // built/not-yet-built status resolved at write time. This is what the metrics panel's "Buildings" counts
@@ -352,7 +352,7 @@ export interface ScoutInfo {
   // observeRoom for the exact derivation. An Invader-core reservation leaves this false: that's treated
   // as temporary/contestable (remoteInvaderAttacks.ts), not a permanent avoid signal like a player claim.
   hostile: boolean;
-  // Best bunker anchor for this room, if one fits (see layouts/stamp.ts) — normal rooms with a
+  // Best bunker anchor for this room, if one fits (see construction/stamp.ts) — normal rooms with a
   // controller only. Computed once from terrain+controller+sources, which never change, and kept
   // forever after like `sources`/`mineral`. The headline input for expansion: a room with no anchor
   // can never be colonized.

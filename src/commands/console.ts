@@ -27,7 +27,7 @@ import {
   wantedStructures,
   FOCUS_SITE_CAP,
   MAX_CONTAINER_SITES
-} from "../colony/building";
+} from "../construction/planner";
 
 const VALID: LogLevel[] = ["error", "warn", "info"];
 

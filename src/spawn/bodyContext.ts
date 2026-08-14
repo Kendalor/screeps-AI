@@ -2,10 +2,10 @@
 // reconstructing a workforce (integration seeding) sizes bodies exactly as the requesters would.
 
 import type { BodyContext } from "../behaviors/types";
-import { plannedObstacles } from "../layouts/goal";
-import GOAL_JSON from "../layouts/Base_2.json";
-import { stampLayout } from "../layouts/stamp";
-import type { GoalLayout } from "../layouts/sync";
+import { plannedObstacles } from "../construction/goal";
+import GOAL_JSON from "../construction/Base_2.json";
+import { stampLayout } from "../construction/stamp";
+import type { GoalLayout } from "../construction/sync";
 import { isRoadEligible } from "../lib/remotePath";
 import type { ColonySnapshot } from "../snapshot/types";
 

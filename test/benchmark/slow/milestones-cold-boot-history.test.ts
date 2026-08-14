@@ -30,7 +30,7 @@
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { CONTROLLER_LEVELS } from "@screeps/common/lib/constants";
-import { claimsOf, wantedStructures } from "../../../src/colony/building";
+import { claimsOf, wantedStructures } from "../../../src/construction/planner";
 import type { RoleName } from "../../../src/memory/schema";
 import { operationsFor } from "../../../src/operations";
 import {

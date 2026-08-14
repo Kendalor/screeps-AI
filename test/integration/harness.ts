@@ -12,10 +12,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { ScreepsServer, TerrainMatrix } from "screeps-server-mockup";
 import { CONTROLLER_LEVELS, COLOR_WHITE, EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY } from "@screeps/common/lib/constants";
-import goalLayout from "../../src/layouts/Base_2.json";
-import { buildableAtRcl } from "../../src/layouts/goal";
-import { findAnchorCandidates, pickAnchor, stampLayout } from "../../src/layouts/stamp";
-import type { GoalLayout } from "../../src/layouts/sync";
+import goalLayout from "../../src/construction/Base_2.json";
+import { buildableAtRcl } from "../../src/construction/goal";
+import { findAnchorCandidates, pickAnchor, stampLayout } from "../../src/construction/stamp";
+import type { GoalLayout } from "../../src/construction/sync";
 import type { XY } from "../../src/lib/geometry";
 import type { ColonySnapshot } from "../../src/snapshot/types";
 import { EnergyMetrics, observeTick, type RawObj } from "./energyMetrics";
@@ -415,7 +415,7 @@ export class BootedColony {
       .map(o => ({ x: o.x, y: o.y, id: o._id as Id<Source> }));
   }
 
-  // 1 = walkable, 0 = wall, indexed [x*50+y] — the form layouts/roads and layouts/stamp expect.
+  // 1 = walkable, 0 = wall, indexed [x*50+y] — the form construction/roadPathing and construction/stamp expect.
   async terrain(): Promise<Uint8Array> {
     const matrix = await this.server.world.getTerrain(this.room);
     const grid = new Uint8Array(2500);

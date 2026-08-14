@@ -141,7 +141,7 @@ function censusFor(snapshot: ColonySnapshot, requests: CreepRequest[], targets: 
 }
 
 /** One structure type's build progress: how many stand versus how many the current plan targets. Computed
- * and owned by colony/building.ts (the module that governs placement, so the panel can never disagree
+ * and owned by construction/planner.ts (the module that governs placement, so the panel can never disagree
  * with what's actually being built) — see buildingRowsFromPlan and ColonyMemory.buildingPlan's own doc. */
 export interface BuildingRow {
   type: BuildableStructureConstant;
@@ -233,7 +233,7 @@ export function collectMetrics(
     tick: snapshot.tick,
     census: censusFor(snapshot, requests, roleTargets),
     operations: operationNames,
-    // Computed and owned by colony/building.ts (buildingRowsFromPlan over ColonyMemory.buildingPlan),
+    // Computed and owned by construction/planner.ts (buildingRowsFromPlan over ColonyMemory.buildingPlan),
     // not here — see BuildingRow's own doc.
     buildings,
     energy: {

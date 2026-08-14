@@ -4,16 +4,16 @@
 import { roleDef } from "../behaviors/roles";
 import { bodyContext } from "../spawn/bodyContext";
 import { countPart } from "../spawn/body";
-import GOAL_JSON from "../layouts/Base_2.json";
-import { plannedObstacles } from "../layouts/goal";
-import { buildCostMatrix, controllerContainerPath, type RoadPathResult } from "../layouts/roads";
-import { stampLayout, type PlacedStructure } from "../layouts/stamp";
-import type { GoalLayout } from "../layouts/sync";
+import GOAL_JSON from "../construction/Base_2.json";
+import { plannedObstacles } from "../construction/goal";
+import { buildCostMatrix, controllerContainerPath, type RoadPathResult } from "../construction/roadPathing";
+import { stampLayout, type PlacedStructure } from "../construction/stamp";
+import type { GoalLayout } from "../construction/sync";
 import type { Intent } from "../intents/types";
 import type { XY } from "../lib/geometry";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
-import { incomePerTick, sustainableBuildWork } from "./building";
+import { incomePerTick, sustainableBuildWork } from "./construction";
 import { Operation, type RoleTarget } from "./operation";
 
 const upgraderConfig = {
@@ -36,7 +36,7 @@ const upgraderConfig = {
   // linkRcl swap (container -> link) for the source side.
   linkRcl: 5,
   // Same range structures()' own controllerContainerPath targets (UPGRADE_CONTAINER_RANGE in
-  // layouts/roads.ts) and graph.ts's controller-container consumer check — kept as its own constant
+  // construction/roadPathing.ts) and graph.ts's controller-container consumer check — kept as its own constant
   // here since intents() below detects the built link by proximity, not by matching structures()'
   // exact A*-derived tile (see the controller-link detection doc comment on intents()).
   controllerLinkRange: 1
@@ -171,7 +171,7 @@ export class Upgrading extends Operation {
    * structures()' own A*-derived tile: a link built before the current pathing code, or one nudged aside
    * by a later road/obstacle change, can legitimately sit one tile off from where a fresh route would
    * land today — proximity is the same tolerance graph.ts's controller-container consumer check and
-   * layouts/roads.ts's controllerContainerPath already use for "is this near enough to the controller."
+   * construction/roadPathing.ts's controllerContainerPath already use for "is this near enough to the controller."
    */
   public override intents(colony: ColonySnapshot): Intent[] {
     if (colony.controllerLevel < upgraderConfig.linkRcl) return [];

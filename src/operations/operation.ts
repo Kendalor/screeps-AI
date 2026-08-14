@@ -6,7 +6,7 @@ import { orderBody } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
-import type { PlacedStructure } from "../layouts/stamp";
+import type { PlacedStructure } from "../construction/stamp";
 import type { RoleName } from "../memory/schema";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { fillTo, opName, type CreepRequest } from "../spawn/request";

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { flattenGoal, type PlannerLayout } from "../../src/layouts/sync";
+import { flattenGoal, type PlannerLayout } from "../../../src/construction/sync";
 
 describe("flattenGoal", () => {
   it("re-anchors absolute planner coords to anchor-relative around the terminal/storage midpoint", () => {
@@ -102,11 +102,11 @@ describe("flattenGoal", () => {
 });
 
 describe("generated goal layouts", () => {
-  const sourceDir = join(__dirname, "../../src/layouts/source");
-  const generatedDir = join(__dirname, "../../src/layouts");
+  const sourceDir = join(__dirname, "../../../src/construction/source");
+  const generatedDir = join(__dirname, "../../../src/construction");
   const goalName = (f: string) => f.replace(/-rcl\d+\.json$/i, ".json");
 
-  it("stay in sync with src/layouts/source/*.json (run `npm run sync-layouts` after editing)", () => {
+  it("stay in sync with src/construction/source/*.json (run `npm run sync-layouts` after editing)", () => {
     const sourceFiles = readdirSync(sourceDir).filter(f => f.endsWith(".json"));
     expect(sourceFiles.length).toBeGreaterThan(0);
 

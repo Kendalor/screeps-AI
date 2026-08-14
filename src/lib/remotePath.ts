@@ -36,7 +36,7 @@ export function isRoadEligible(
 // duplicated as a constant so preferredTileCost can undercut it deliberately rather than by coincidence.
 const PLAIN_COST = 2;
 // Cheaper than PLAIN_COST so PathFinder is pulled onto a tile another already-resolved source's route
-// picked, the same way layouts/roads.ts's buildCostMatrix prices a planned local road below bare terrain.
+// picked, the same way construction/roadPathing.ts's buildCostMatrix prices a planned local road below bare terrain.
 const PREFERRED_TILE_COST = 1;
 
 // How long a "no route found" result is trusted before retrying — bounds the negative cache below

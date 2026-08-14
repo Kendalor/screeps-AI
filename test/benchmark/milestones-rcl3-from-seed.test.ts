@@ -12,8 +12,8 @@
 // Runs in the harness's default room (bunker terrain, spawn on layout's own spawn tile).
 
 import { afterAll, beforeAll, expect, test } from "vitest";
-import type { PlacedStructure } from "../../src/layouts/stamp";
-import { claimsOf, wantedStructures } from "../../src/colony/building";
+import type { PlacedStructure } from "../../src/construction/stamp";
+import { claimsOf, wantedStructures } from "../../src/construction/planner";
 import { operationsFor } from "../../src/operations";
 import { assertNoRegression, ECONOMY_SPEC, economyOf, recordBenchmark, reportBenchmark } from "./benchmarks";
 import { EnergyMetrics } from "../integration/energyMetrics";
