@@ -107,7 +107,7 @@ type-only (`MineralConstant`, no id/position/amount/regen) and has exactly one r
 flags it as the extension point ("extend this once that capability is built"). This is unrelated to (and
 must not be confused with) `ScoutInfo.mineral`, a separate type used by the empire-wide colonization
 picker for *scouted* rooms' mineral types (`src/empire/pickColonyTargets.ts`,
-`src/mining/colonizationPotential.ts`) — M0 does not touch that.
+`src/mining/summarizeNeighborhoodPotential.ts`) — M0 does not touch that.
 
 M0 spans four layers, in dependency order:
 1. **Snapshot**: widen mineral state from a bare type to full per-tick facts.

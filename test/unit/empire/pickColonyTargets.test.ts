@@ -13,7 +13,7 @@ import {
   MIN_COLONY_SOURCES
 } from "../../../src/empire/pickColonyTargets";
 import { COLONIZER_COST } from "../../../src/behaviors/roles/colonizer";
-import { NEW_MINERAL_BONUS } from "../../../src/mining/colonizePotentialScore";
+import { NEW_MINERAL_BONUS } from "../../../src/mining/rankColonizeCandidate";
 import { testEmpire, colonySnap } from "../../fixtures";
 import { stubGame } from "../../helpers";
 import type { ColonizationPotential, ScoutInfo } from "../../../src/memory/schema";

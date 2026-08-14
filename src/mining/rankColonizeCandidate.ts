@@ -1,11 +1,11 @@
 // Combines a candidate room's ColonizationPotential (pure map-topology energy value, see
-// colonizationPotential.ts) with a flat mineral-access bonus into the single comparable number
+// summarizeNeighborhoodPotential.ts) with a flat mineral-access bonus into the single comparable number
 // pickColonyTargets ranks candidates by. Pure — no Game.*, no Memory reads; every input is passed in.
 
 import type { ColonizationPotential } from "../memory/schema";
 
 // Flat bonus per distinct mineral type the empire doesn't already have access to. No real market/lab
-// pricing model exists yet (see colonizationPotential.ts's own note on keeperMinerals being
+// pricing model exists yet (see summarizeNeighborhoodPotential.ts's own note on keeperMinerals being
 // informational-only) — this is a deliberately crude, tunable placeholder that lets minerals move the
 // ranking without pretending a precision the rest of the economy can't back up yet.
 export const NEW_MINERAL_BONUS = 5;

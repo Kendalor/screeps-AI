@@ -131,7 +131,7 @@ export class Scouting extends Operation {
 
   // Emits recordPotential for every scouted, anchor-viable, unowned room in range that hasn't had its
   // colonization potential computed yet — the pure map-topology score cached on ScoutInfo.potential (see
-  // memory/schema.ts's doc, and colonizationPotential.ts's summarizePotential). Gated on anchor being
+  // memory/schema.ts's doc, and summarizeNeighborhoodPotential.ts's summarizePotential). Gated on anchor being
   // present (not just anchorChecked): a room with no bunker fit can never be colonized regardless of its
   // neighborhood, so scoring it would be wasted BFS. execute.ts owns the actual describeExits walk and the
   // "is the whole neighborhood scouted yet" readiness check — this planner only decides WHICH rooms are

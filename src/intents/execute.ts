@@ -6,7 +6,7 @@ import { recordManual, wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
 import { NO_PATH_RETRY_AFTER, remoteRouteTileKey, resolvePathToSource } from "../lib/remotePath";
 import { findAnchorCandidates, pickAnchor, walkablePixelsForRoom } from "../layouts/stamp";
-import { neighborhoodFullyScouted, summarizePotential } from "../mining/colonizationPotential";
+import { neighborhoodFullyScouted, summarizePotential } from "../mining/summarizeNeighborhoodPotential";
 import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
 import { INVADER_USERNAME } from "../mining/remoteSources";
 import { isDangerous } from "../memory/reputation";
