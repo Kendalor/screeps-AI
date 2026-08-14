@@ -10,9 +10,14 @@
 // wrong for a colonize target, which can be a different sector/behind a closed border. The real caller
 // wires in a Game.map.findRoute-based distance (Infinity on ERR_NO_PATH), matching execute.ts's own
 // nearestScoutCandidate convention, so "unreachable" here is a genuine no-route result, not a cheap guess.
+//
+// The affordability/nearest/tie-break core is sponsor.ts's shared pickSponsor — this file only adds the
+// GCL room-budget gate no other sponsor picker needs (see that file's header for why the five sponsor
+// pickers share one core instead of each reimplementing it).
 
 import type { Colony } from "../colony";
 import { COLONIZER_COST } from "../behaviors/roles/colonizer";
+import { pickSponsor } from "./sponsor";
 import type { RoomDistance } from "./spawning";
 
 export interface ColonizeSponsorResult {
@@ -51,18 +56,5 @@ export function pickColonizeSponsor(
   if (colonies.length === 0) return { reason: "no colonies" };
   if (!gclRoomBudgetOk(colonies, gclLevel)) return { reason: "gclLimitReached" };
 
-  const affordable = colonies.filter(c => c.snapshot.energyCapacity >= COLONIZER_COST);
-  if (affordable.length === 0) return { reason: "unaffordable" };
-
-  let best: Colony | undefined;
-  let bestDist = Infinity;
-  for (const c of affordable) {
-    const d = roomDistance(c.name, target);
-    if (d < bestDist || (d === bestDist && best !== undefined && c.name.localeCompare(best.name) < 0)) {
-      best = c;
-      bestDist = d;
-    }
-  }
-  if (!best || !Number.isFinite(bestDist)) return { reason: "unreachable" };
-  return { colony: best };
+  return pickSponsor(colonies, target, COLONIZER_COST, roomDistance);
 }
