@@ -71,6 +71,27 @@ energy/tick and a WORK part harvests 2/tick, so 5 WORK is exact saturation and t
 colony deliberately provisions slightly above it to cover travel and replacement gaps.
 _Avoid_: max harvest, full mining
 
+**Mineral**:
+A room's one fixed-type deposit (`Mineral.mineralType`), mined by an extractor and a
+dedicated MineralMiner rather than a Miner — unlike a Source, it is singular per room
+and yields on a cooldown-gated burst, not a continuous regen curve. Distinct from
+`ScoutInfo.mineral`, which is scouting data about a *candidate* room's mineral type,
+not a mineable deposit.
+_Avoid_: mineral source (a Mineral is not a Source and doesn't share its abstraction)
+
+**MineralMiner**:
+The role that parks at a room's Mineral deposit and harvests it, mirroring Miner's
+shape (parks, doesn't transport) but with its own body sizing and step pipeline —
+Miner's constants are tuned to a Source's continuous regen rate and don't transfer.
+_Avoid_: extending Miner directly, mineral harvester
+
+**Assigned mineral**:
+The specific Mineral deposit a MineralMiner belongs to, carried in its memory the
+same way a Miner's assignment names its source. Disambiguates across rooms once
+remote/keeper-room mineral mining exists, even though a single owned room only ever
+has one mineral to be near.
+_Avoid_: mineral target
+
 ### Spawn scheduling
 
 **Request**:

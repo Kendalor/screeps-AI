@@ -255,11 +255,19 @@ export class Mining extends Operation {
     // read as permanently incomplete (nothing ever confirms routeBuilt there either). Confirmed live on
     // W47N14 2026-08-12: the W46N13 route's very first home-room hop, (41,12), coincides exactly with a
     // bunker-grid road tile and silently vanished from every plan, budget, and routeBuilt check as a result.
+    //
+    // A source's container/link claim (`type`) beats a same-tile bunker-grid road: a container is
+    // walkable, so nothing is lost by building it where the grid wanted plain road, and dropping the
+    // claim instead left the source with NO structure at all — the container silently vanished from
+    // every plan/budget with nothing to demolish or retry, since the road it lost to was never actually
+    // built there either (`planned` is the bunker's WANTED layout, not what's built). Confirmed live on
+    // W45N17 2026-08-14: source structurePos (8,14) coincides with a Base_2.json road (order 47),
+    // permanently starving that source of a container while its sibling source built fine.
     const takenType = new Map(planned.map(p => [`${p.room ?? colony.name},${p.x},${p.y}`, p.type]));
     const claim = (p: PlacedStructure): void => {
       const key = `${p.room ?? colony.name},${p.x},${p.y}`;
       const existing = takenType.get(key);
-      if (existing !== undefined && existing !== p.type) return;
+      if (existing !== undefined && existing !== p.type && !(p.type === type && existing === ROAD)) return;
       takenType.set(key, p.type);
       out.push(p);
     };

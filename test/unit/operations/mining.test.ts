@@ -596,6 +596,25 @@ describe("Mining.structures", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  // Confirmed live on W45N17 2026-08-14: a source's own structurePos (container/link tile) can
+  // coincide with a tile the bunker grid wants as plain road (Base_2.json order 47, offset (-2,5)
+  // from anchor). The DIFFERENT-type dedup above correctly protects an extension/tower/etc from
+  // being silently overwritten by a route claim, but a container is walkable and strictly better
+  // than the road it replaces — dropping the claim instead left the source with NO structure at all,
+  // forever (nothing else ever revisits or retries that tile). A container/link claim must win over
+  // a same-tile bunker ROAD claim, unlike the extension case in "still drops the claim..." above.
+  it("claims a source's container over a same-tile bunker-grid road instead of dropping it", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
+
+    const spot = expectedSpot(anchor, source, 3);
+    const bunkerRoadAtSpot: PlacedStructure = { x: spot.x, y: spot.y, type: "road" };
+
+    const claims = mining.structures(snap, [bunkerRoadAtSpot]);
+    expect(claims).toContainEqual({ x: spot.x, y: spot.y, type: "container", sourceId: source.id });
+  });
+
   // A route computed over built-only tiles runs through ground the layout will occupy, so the
   // container position shifts the tick that structure goes up — and a moved position makes
   // planBuilding demolish and re-place the container forever.

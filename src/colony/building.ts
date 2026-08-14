@@ -217,8 +217,36 @@ export const wantedStructures = wrapFn(function wantedStructures(
   const gated = throttleGroups ? gateSourceGroups(colony, claimed) : claimed;
   // Bias extension growth toward this room's sources — shortens the miner->filler leg.
   const atRcl = buildableAtRcl(GOAL, colony.controllerLevel, { anchor, sources: colony.sources });
-  const stamped = substituteBlockedCapped(colony, stampLayout(atRcl, anchor), anchor);
+  // stampLayout is pure anchor-relative offset math — it has no notion of terrain, so a goal tile can
+  // land on a real wall wherever this room's terrain doesn't mirror the room the layout was captured
+  // in. Filtered here, not in stampLayout itself: pathing callers (e.g. Mining's sourceRoutes cost
+  // matrix) need the layout's raw shape to route AROUND a blocked tile, not have it silently vanish
+  // from their obstacle set. `claimed` is never filtered by this — every operation already derives its
+  // own claims from a terrain-aware A*/PathFinder search (see layouts/roads.ts's buildCostMatrix), so a
+  // claimed tile can never legitimately be a wall.
+  //
+  // This was latent, not newly introduced: Game.map.getRoomTerrain('W45N17').get(8,15) ===
+  // TERRAIN_MASK_WALL, and Base_2.json's plain bunker grid (no sourceId) has always wanted a road
+  // there. It stayed invisible before mining.ts's container-vs-road fix (2026-08-14) because
+  // gateRoads (below) only keeps a bunker road adjacent to some *served* structure — with source
+  // 5982fc07b097071b4adbca16's container claim silently dropped (the bug that fix addressed), nothing
+  // stood at (8,14) to serve (8,15), so this wall tile correctly failed the adjacency gate and never
+  // appeared in the plan at all. The moment that fix let the container claim survive, its 8-neighbour
+  // ring (computed by gateRoads' neighbourKeys) newly covered (8,15), the road passed the adjacency
+  // gate for the first time, and placeAndDemolish placed a real site on it — a road CAN legally be
+  // built on wall terrain in Screeps (CONSTRUCTION_COST_ROAD_WALL_RATIO), so nothing rejected it. The
+  // defect was always in the layout; the container fix only removed the accidental cover that had kept
+  // it from ever being selected.
+  const walkable = (p: XY) => colony.terrain[p.x * 50 + p.y] === 1;
+  const stamped = substituteBlockedCapped(colony, stampLayout(atRcl, anchor).filter(walkable), anchor);
   const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
+  // Note: the terrain filter above runs BEFORE substituteBlockedCapped, so a wall-blocked CAPPED
+  // placement (extension/tower/etc, unlike a road) currently just vanishes with no substitute — same
+  // class of gap substituteBlockedCapped already closes for a spawn-blocked slot, just not extended to
+  // terrain yet. Deliberately out of scope for this fix: the live incident this filter addresses is a
+  // road (uncapped, no slot to lose); revisit if a capped type is ever actually seen losing an RCL slot
+  // to terrain.
+  //
   // Bunker roads wait for the capacity gate; an operation's claimed roads (e.g. Mining's source
   // access) are never capacity- or adjacency-gated — claimed is the gate.
   const rawBuildable = [...(roadReady ? stamped : stamped.filter(p => p.type !== ROAD)), ...gated];

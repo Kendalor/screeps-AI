@@ -4,7 +4,7 @@ import type { ColonySnapshot, SnapStructure } from "../../src/snapshot/types";
 import { colony } from "../../src/colony";
 import type { BuildingPlanEntry } from "../../src/colony/building";
 import { claimsOf, wantedStructures } from "../../src/colony/building";
-import { colonySnap, remoteSourceAt, snapCreep, sourceAt } from "../fixtures";
+import { colonySnap, openTerrain, remoteSourceAt, snapCreep, sourceAt } from "../fixtures";
 import { Mining } from "../../src/operations/mining";
 import { buildableAtRcl } from "../../src/layouts/goal";
 import { stampLayout, type PlacedStructure } from "../../src/layouts/stamp";
@@ -22,6 +22,42 @@ function allNonRoadStructuresAt(anchor: XY, rcl: number): SnapStructure[] {
     .filter(p => p.type !== "road")
     .map(p => ({ x: p.x, y: p.y, type: p.type }));
 }
+
+// stampLayout is pure anchor-relative offset math with no terrain awareness — a goal tile lands on
+// whatever the real room's terrain happens to be at that offset. Confirmed live on W45N17 2026-08-14:
+// Game.map.getRoomTerrain('W45N17').get(8,15) === TERRAIN_MASK_WALL, yet the bunker grid's plain road
+// (no sourceId) wanted a road there, sitting forever as an un-buildable "wanted" entry — a construction
+// site can never actually go up on a wall tile, so nothing ever placed or cleared it.
+describe("wantedStructures — bunker grid tiles that land on a wall", () => {
+  it("drops a bunker-grid road claim whose tile is a real wall, but keeps the rest of the grid", () => {
+    const anchor = { x: 25, y: 25 };
+    const atRcl = buildableAtRcl(GOAL_JSON as GoalLayout, 3, { anchor, sources: [] });
+    const roads = stampLayout(atRcl, anchor).filter(p => p.type === "road");
+    expect(roads.length).toBeGreaterThan(1); // otherwise this test can't tell "dropped" from "never there"
+
+    const wallTile = roads[0];
+    const terrain = openTerrain();
+    terrain[wallTile.x * 50 + wallTile.y] = 0; // 0 = wall, per ColonySnapshot.terrain's convention
+
+    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, terrain, structures: [], sites: [] });
+    const wanted = wantedStructures(snap, []);
+
+    expect(wanted.some(p => p.x === wallTile.x && p.y === wallTile.y && p.type === "road")).toBe(false);
+    expect(wanted.some(p => p.type === "road")).toBe(true); // sibling road tiles still stand
+  });
+
+  it("never drops an operation's own claimed tile (already terrain-aware via its own pathfinder)", () => {
+    const anchor = { x: 25, y: 25 };
+    const claimedOnWall: PlacedStructure = { x: anchor.x + 30, y: anchor.y, type: "road", sourceId: "srcA" as Id<Source> };
+    const terrain = openTerrain();
+    terrain[claimedOnWall.x * 50 + claimedOnWall.y] = 0;
+
+    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, terrain, structures: [], sites: [] });
+    const wanted = wantedStructures(snap, [claimedOnWall]);
+
+    expect(wanted).toContainEqual(claimedOnWall);
+  });
+});
 
 describe("building planner", () => {
   // Base_2.json has no containers; building.ts must collect mining's per-source
