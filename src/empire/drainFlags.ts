@@ -14,22 +14,12 @@
 // letting an in-progress squad's target be silently reassigned by a second flag.
 
 import { pickDrainSponsor } from "./drainSponsor";
-import { flagRequests, routeDistance } from "./flagRequest";
+import { flagRequests, routeDistance, targetRoomFor } from "./flagRequest";
 import { execute } from "../intents/execute";
 import { log } from "../lib/log";
 import type { Empire } from "./index";
 
 const FLAG_PREFIX = "drain";
-
-/** Target room for a drain flag: an explicit "drain:<room>" suffix always wins; a bare "drain" flag
- * falls back to its own physical room only when that room has vision (a controller isn't required — an
- * unowned/hostile room still resolves this way). */
-function targetRoomFor(flag: Flag): string | undefined {
-  const [, suffix] = flag.name.split(":");
-  if (suffix) return suffix;
-  if (Game.rooms[flag.pos.roomName]) return flag.pos.roomName;
-  return undefined;
-}
 
 /** Runs once per tick from kernel/tick.ts. Resolves every active drain flag against the current empire,
  * hands the target off to the nearest affordable colony with no drain of its own already in progress,

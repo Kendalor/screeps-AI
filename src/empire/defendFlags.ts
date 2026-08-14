@@ -8,21 +8,12 @@
 // lifetime. On failure the flag stays and logs an error every tick, so silence never hides a stuck request.
 
 import { pickDefendSponsor } from "./defendSponsor";
-import { flagRequests, routeDistance } from "./flagRequest";
+import { flagRequests, routeDistance, targetRoomFor } from "./flagRequest";
 import { execute } from "../intents/execute";
 import { log } from "../lib/log";
 import type { Empire } from "./index";
 
 const FLAG_PREFIX = "defend";
-
-/** Target room for a defend flag: an explicit "defend:<room>" suffix always wins; a bare "defend" flag
- * falls back to its own physical room only when that room has vision (a controller isn't required). */
-function targetRoomFor(flag: Flag): string | undefined {
-  const [, suffix] = flag.name.split(":");
-  if (suffix) return suffix;
-  if (Game.rooms[flag.pos.roomName]) return flag.pos.roomName;
-  return undefined;
-}
 
 /** Runs once per tick from kernel/tick.ts. Resolves every active defend flag against the current empire,
  * hands the target off to the nearest affordable colony, and clears the flag on success. */
