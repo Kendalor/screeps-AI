@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runTransport } from "../../src/behaviors/transport";
+import { runTransport } from "../../src/behaviors/logisticsRunner";
 import { clearTiles, stubTile } from "../constants";
 import { stubGame } from "../helpers";
 

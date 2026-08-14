@@ -1,7 +1,7 @@
 // The room-graph walk scouting depends on — the one place Game.map.describeExits is touched.
 // Shared by the snapshot builder and the scout behaviour so both see the same frontier.
 
-import { hasFortifiedInvaderCore } from "../behaviors/scout";
+import { hasFortifiedInvaderCore } from "../behaviors/scoutTargets";
 import { roomType } from "../lib/roomName";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import type { ScoutCandidate } from "./types";

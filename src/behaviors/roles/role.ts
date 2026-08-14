@@ -33,6 +33,14 @@ export abstract class Role {
   // default) opts out entirely: only roles with one clear defining part want this — a hauler's CARRY
   // degrading doesn't make it useless the same all-or-nothing way, for instance.
   static readonly retreatPart?: BodyPartConstant;
+  // Opt in to bypass the step-table dispatch entirely (empire/creeps.ts's dispatchCreep): "logistics"
+  // routes to logisticsRunner.ts's runLogisticsMover (assignment comes from planLogistics via
+  // memory.logistics, not a static step table), "steward" routes to stewardBehavior.ts's runSteward
+  // (threshold-based rebalancing, not a static step table). Undefined (the default) runs the ordinary
+  // step-table dispatch (runOne). Making this explicit means a role with a genuinely empty steps table
+  // by mistake fails loudly (runOne's `steps.length === 0` early-return does nothing) instead of
+  // silently behaving like a diverted role it never opted into.
+  static readonly dispatch?: "logistics" | "steward";
   static body(_energy: number, _ctx: BodyContext): BodyPartConstant[] {
     return [];
   }

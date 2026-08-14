@@ -2,7 +2,7 @@
 // Pure — reads the snapshot, returns intents (recordScout, setScoutTarget); execute.ts does the live-room read, route computation, and walking.
 
 import { roleDef } from "../behaviors/roles";
-import { needsPassiveRecording, needsScouting, scoutCandidatePool } from "../behaviors/scout";
+import { needsPassiveRecording, needsScouting, scoutCandidatePool } from "../behaviors/scoutTargets";
 import type { Intent } from "../intents/types";
 import { log } from "../lib/log";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
@@ -12,7 +12,7 @@ import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
 // Staleness rules live in the behaviour's pure core (shared with the target picker); re-exported for callers/tests.
-export { needsScouting, staleAfter } from "../behaviors/scout";
+export { needsScouting, staleAfter } from "../behaviors/scoutTargets";
 
 const config = {
   roomsPerScout: 10, // fleet size is ceil(todo / this)

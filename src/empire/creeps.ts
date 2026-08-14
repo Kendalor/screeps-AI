@@ -15,9 +15,9 @@ import {
   type CreepState
 } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
-import { runSteward } from "../behaviors/steward";
+import { runSteward } from "../behaviors/stewardBehavior";
 import { sweepEnRoute } from "../behaviors/sweep";
-import { parkNearBunker, runTransport } from "../behaviors/transport";
+import { parkNearBunker, runTransport } from "../behaviors/logisticsRunner";
 import type { Step } from "../behaviors/types";
 import type { Colony } from "../colony";
 import { slotTiles } from "../lib/formation";
@@ -140,26 +140,22 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
 // One creep's behavior for the tick — split out of the loop above so it can be wrapped in its own
 // try/catch without duplicating the dispatch logic.
 function dispatchCreep(creep: Creep): void {
-  // Diverted before the step-table dispatch: "transport" and "supply"'s ROLES entries deliberately
-  // have empty steps (assignment comes from planLogistics via memory.logistics, not a static step
-  // table — supply is planned through its own restricted provider/consumer view, see
-  // logistics/graph.ts's supplyProviders/supplyConsumers), so falling into runOne would hit its
-  // `def.steps.length === 0` early-return and do nothing.
-  if (creep.memory.role === "transport" || creep.memory.role === "supply") {
-    // Neither role runs through runOne's step table, so its flee check (gated on Role.flee) never
-    // sees them — checked here instead, ahead of the same diversion, so a hauler running the
-    // logistics allocator's own task retreats from an armed hostile exactly like a step-table hauler.
-    if (fleeThreat(creep)) return;
-    runTransport(creep);
-    return;
+  // Diverted before the step-table dispatch per the role's own opt-in (Role.dispatch's doc,
+  // behaviors/roles/role.ts) rather than a static step table.
+  switch (roleDef(creep.memory.role)?.dispatch) {
+    case "logistics":
+      // Doesn't run through runOne's step table, so its flee check (gated on Role.flee) never sees
+      // it — checked here instead, ahead of the diversion, so a hauler running the logistics
+      // allocator's own task retreats from an armed hostile exactly like a step-table hauler.
+      if (fleeThreat(creep)) return;
+      runTransport(creep);
+      return;
+    case "steward":
+      runSteward(creep);
+      return;
+    default:
+      runOne(creep);
   }
-  // Same empty-steps diversion as transport above: assignment is threshold-based inside runSteward
-  // itself, not a static step table.
-  if (creep.memory.role === "steward") {
-    runSteward(creep);
-    return;
-  }
-  runOne(creep);
 }
 
 // The squad pass (ADR 0007): iterate SQUADS (not creeps), compute each squad's shared plan once, and

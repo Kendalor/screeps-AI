@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runSteward } from "../../src/behaviors/steward";
+import { runSteward } from "../../src/behaviors/stewardBehavior";
 import { stubGame } from "../helpers";
 import { clearTiles, stubTile } from "../constants";
 

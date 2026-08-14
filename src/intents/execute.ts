@@ -1,6 +1,6 @@
 ﻿// The actuator: calls the game API and logs any non-OK result. Non-game side effects (e.g. recordSourceSpot's Memory write) live here too, so planners stay pure.
 
-import { hasFortifiedInvaderCore } from "../behaviors/scout";
+import { hasFortifiedInvaderCore } from "../behaviors/scoutTargets";
 import { log } from "../lib/log";
 import { recordManual, wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";

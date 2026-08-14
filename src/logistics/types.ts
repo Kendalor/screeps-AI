@@ -23,7 +23,7 @@ export interface LogisticsTask {
   // re-plan tick between them. A trip is a chain of pickups terminating in one deliver — e.g.
   // pickup(A) -> pickup(B) -> deliver(consumer) when no single provider fills the creep for that
   // consumer (see allocate.ts). runTransport promotes `next` to `current` the instant the current leg
-  // completes (see behaviors/transport.ts). The terminal deliver has no `next` of its own; the creep
+  // completes (see behaviors/logisticsRunner.ts). The terminal deliver has no `next` of its own; the creep
   // goes idle after it and gets re-planned fresh.
   //
   // "travelHome" is deliberately NOT chained onto a pickup: it is assigned on its own, once a loaded

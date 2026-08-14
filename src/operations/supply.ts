@@ -1,7 +1,7 @@
 // Supply owns keeping spawning structures (spawn/extensions/towers) topped off. Headcount only — task
 // assignment is Logistics-owned (see logistics/index.ts's planLogistics, which plans supply creeps
 // through graph.ts's supplyProviders/supplyConsumers alongside transport in one coordinated pass) and
-// executed the same way transport is (behaviors/transport.ts's runTransport, diverted to in
+// executed the same way transport is (behaviors/logisticsRunner.ts's runTransport, diverted to in
 // empire/creeps.ts) — Supply itself carries no step table and emits no intents.
 
 import { orderBody } from "../spawn/body";

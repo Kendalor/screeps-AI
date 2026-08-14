@@ -10,7 +10,7 @@ import { listColonizeCandidates } from "../empire/pickColonyTargets";
 import { execute } from "../intents/execute";
 import { SPAWNABLE_OPERATIONS } from "../operations";
 import { Mining } from "../operations/mining";
-import { needsScouting, staleAfter } from "../behaviors/scout";
+import { needsScouting, staleAfter } from "../behaviors/scoutTargets";
 import { COLONIZER_COST } from "../behaviors/roles/colonizer";
 import { SETTLER_MIN_COST } from "../behaviors/roles/settler";
 import { ATTACKER_MIN_COST } from "../behaviors/roles/attacker";

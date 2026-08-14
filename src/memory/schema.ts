@@ -49,7 +49,7 @@ declare global {
     // whole trip is one chain (pickup -> ... -> deliver) nested in `current.next`; runTransport promotes
     // `current.next` as each leg completes, so there is no separate follow-up field here.
     logistics?: { current?: LogisticsTask };
-    // The steward's current carry destination (storage/terminal), owned by behaviors/steward.ts alone —
+    // The steward's current carry destination (storage/terminal), owned by behaviors/stewardBehavior.ts alone —
     // no planner/intent involved, since a steward's job is decided and executed in the same tick with
     // nothing worth persisting across a re-plan (unlike transport's multi-leg chain).
     stewardDest?: Id<StructureStorage> | Id<StructureTerminal> | Id<StructureLink>;

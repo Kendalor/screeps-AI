@@ -8,7 +8,7 @@ import { Role } from "./role";
 const LINK_CAPACITY = 800;
 const MAX_CARRY = LINK_CAPACITY / BODYPART_COST[CARRY]; // 16
 
-// A single MOVE is enough: the steward parks permanently on the anchor tile (see behaviors/steward.ts)
+// A single MOVE is enough: the steward parks permanently on the anchor tile (see behaviors/stewardBehavior.ts)
 // and never fatigues once it arrives, since it stops moving — unlike transport/hauler, no 1:1 CARRY:MOVE
 // is needed here. All remaining energy up to the cap goes to CARRY.
 export function stewardBody(energy: number): BodyPartConstant[] {
@@ -18,10 +18,12 @@ export function stewardBody(energy: number): BodyPartConstant[] {
 }
 
 // Stationary anchor manager: sits on the tile between storage/terminal/link/spawn and balances energy
-// between them (see behaviors/steward.ts) — the legacy bot's "Logistic" role, reworked onto the new
-// snapshot/intent architecture. Assignment is threshold-based, not planLogistics' allocator: all three
-// of its targets are room-fixed and zero-travel from the anchor, so there's no pickup/deliver matching
-// to do — just "is a rebalance needed this tick".
+// between them (see behaviors/stewardBehavior.ts) — the legacy bot's "Logistic" role, reworked onto the
+// new snapshot/intent architecture. Assignment is threshold-based, not planLogistics' allocator: all
+// three of its targets are room-fixed and zero-travel from the anchor, so there's no pickup/deliver
+// matching to do — just "is a rebalance needed this tick". dispatch: "steward" routes it to
+// stewardBehavior.ts's runSteward instead of the step-table dispatch (see Role.dispatch's doc,
+// behaviors/roles/role.ts).
 export class Steward extends Role {
   // Below transport(100)/miner(95)/drainHealer/drainAttacker/attacker(94): a spawn/extension/tower
   // deficit, a source going unmined, or an active offensive squad should all win a spawn slot over
@@ -29,6 +31,7 @@ export class Steward extends Role {
   // (see operations/logistics.ts's needsHandoff), it must not get bumped by a lower-value role or the
   // link triangle goes unrefereed for a gap.
   static override readonly priority = 93;
+  static override readonly dispatch = "steward";
   static override body(energy: number): BodyPartConstant[] {
     return stewardBody(energy);
   }
