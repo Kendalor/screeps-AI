@@ -104,6 +104,7 @@ declare global {
   function colonizeTargets(): string;
   function scoutStatus(room?: string): string;
   function scoutInfo(room: string): string;
+  function resetScoutedAnchors(): string;
   function scanMarket(): string;
   function manufactureCost(resource: string, includeDecompress?: boolean): string;
   function clearDrainTarget(room: string): string;
@@ -370,6 +371,20 @@ export function installConsoleCommands(): void {
     return lines.join("\n");
   };
   register("scoutInfo(room)", "dump one room's cached ScoutInfo in full: type, last-seen age vs staleAfter, owner/hostile/mineral, anchor, sources, colonize potential, lethal/invader-core/noPathFrom negative caches");
+
+  global.resetScoutedAnchors = (): string => {
+    let cleared = 0;
+    for (const room of Object.keys(Memory.rooms ?? {})) {
+      if (Memory.colonies[room]) continue; // never touch an owned colony's own anchor — it's already built around
+      const info = Memory.rooms[room]?.scouted;
+      if (!info || (info.anchor === undefined && info.anchorChecked === undefined)) continue;
+      delete info.anchor;
+      delete info.anchorChecked;
+      cleared++;
+    }
+    return `cleared cached anchor/anchorChecked on ${cleared} scouted room(s) (owned colonies left untouched) — each recomputes with the current BUNKER_RADIUS next time it's observed`;
+  };
+  register("resetScoutedAnchors()", "clear cached bunker-anchor fit (anchor/anchorChecked) on every scouted, non-owned room, so it's recomputed under the current BUNKER_RADIUS next time that room is observed; owned colonies are never touched");
 
   global.scanMarket = (): string => {
     Memory.market = scanMarketNow();

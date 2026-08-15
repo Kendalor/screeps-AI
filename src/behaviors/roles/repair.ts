@@ -1,4 +1,4 @@
-import { affordableSets, bodyCost } from "../../spawn/body";
+import { affordableSets, bodyCost, countPart } from "../../spawn/body";
 import { REPAIRABLE } from "../../lib/repairable";
 import type { BodyContext, Step } from "../types";
 import { Role } from "./role";
@@ -14,16 +14,43 @@ const BASE_BODY: BodyPartConstant[] = [WORK, CARRY, MOVE, MOVE];
 // 2:1 weight:MOVE once every route is paved, matching builder/upgrader's own road-speed convention.
 // Needs two MOVE: WORK+WORK+CARRY is 3 weight parts, and a single MOVE (3:1) still fatigues on a road.
 const BASE_BODY_ROADS: BodyPartConstant[] = [WORK, WORK, CARRY, MOVE, MOVE];
+// WORK caps at 5 — repair/build/harvest power beyond that is rarely the bottleneck for a role that's
+// mostly patching decay, not doing sustained mass construction (that's builder's job). Past this cap,
+// only CARRY (and its matching MOVE) keep growing, up to 5 CARRY = 500 capacity, the largest single
+// haul worth carrying between an energy source and a repair target before travel time dominates anyway.
+const MAX_WORK = 5;
+const MAX_CARRY = 5;
+// Off-road CARRY/MOVE extension set: 1:1, matching BASE_BODY's ratio.
+const CARRY_EXT: BodyPartConstant[] = [CARRY, MOVE];
+// On-road CARRY/MOVE extension set: 2:1, matching BASE_BODY_ROADS' ratio.
+const CARRY_EXT_ROADS: BodyPartConstant[] = [CARRY, CARRY, MOVE];
 
 function repairBody(energy: number, roads = false): BodyPartConstant[] {
   // BASE_BODY_ROADS costs more than BASE_BODY (350 vs 250) — below that, affordableSets' min:1 floor
   // would hand back a body costing more than energy (unspawnable). Fall back to the cheaper off-road
   // set so a repairer is always spawnable down to RCL1's 300-energy cap, roads or not.
   const set = roads && energy >= bodyCost(BASE_BODY_ROADS) ? BASE_BODY_ROADS : BASE_BODY;
-  const sets = affordableSets(energy, set, 1, 6);
+  const workPerSet = countPart(set, WORK);
+  const carryPerSet = countPart(set, CARRY);
+  // Each base set adds both WORK and CARRY, so the set count is bounded by whichever cap binds first.
+  const maxSets = Math.min(Math.floor(MAX_WORK / workPerSet), Math.floor(MAX_CARRY / carryPerSet));
+  const sets = affordableSets(energy, set, 1, maxSets);
   let body: BodyPartConstant[] = [];
   for (let i = 0; i < sets; i++) {
     body = body.concat(set);
+  }
+  // WORK capped at the base-set stage — keep scaling CARRY/MOVE alone up to MAX_CARRY.
+  const carrySoFar = sets * carryPerSet;
+  const remainingCarry = MAX_CARRY - carrySoFar;
+  if (remainingCarry > 0) {
+    const spent = bodyCost(set) * sets;
+    const extSet = roads ? CARRY_EXT_ROADS : CARRY_EXT;
+    const extCarryPerSet = countPart(extSet, CARRY);
+    const maxExtSets = Math.floor(remainingCarry / extCarryPerSet);
+    const extSets = affordableSets(energy - spent, extSet, 0, maxExtSets);
+    for (let i = 0; i < extSets; i++) {
+      body = body.concat(extSet);
+    }
   }
   return body;
 }

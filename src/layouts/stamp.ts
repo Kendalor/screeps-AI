@@ -11,8 +11,11 @@ export interface PlacedStructure extends XY {
   sourceId?: Id<Source>; // which source's route this tile belongs to, if any — see colony/building.ts
 }
 
-// Largest bunker footprint across all RCL layouts, so anchors never need re-anchoring on expansion.
-export const BUNKER_RADIUS = 6;
+// Largest bunker footprint across all RCL layouts: the outermost road sits at Chebyshev distance 6
+// from the anchor. distanceTransform's value D at a tile means the nearest wall is exactly D tiles
+// away, so only tiles through range D-1 are guaranteed open — range D itself may be the wall. D=7
+// guarantees that outer road (range 6) is open.
+export const BUNKER_RADIUS = 7;
 
 // The only function here that touches Game — exercised via integration tests, not unit tests.
 export function walkablePixelsForRoom(roomName: string): Uint8Array {

@@ -9,7 +9,7 @@
 //                           since the colony only gets a bigger spawn body once they exist.
 //
 // Runs in the harness's default room (bunker terrain, spawn on the layout's own spawn tile):
-// stubWorld()'s stock rooms cap clearance at 4 vs BUNKER_RADIUS=6, so no anchor would be found.
+// stubWorld()'s stock rooms cap clearance at 4 vs BUNKER_RADIUS=7, so no anchor would be found.
 
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { assertNoRegression, ECONOMY_SPEC, economyOf, recordBenchmark, reportBenchmark } from "./benchmarks";

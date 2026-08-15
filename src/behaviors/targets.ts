@@ -249,6 +249,16 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
   // where/near rules (not some other member's) govern whether the lock survives.
   const memberSpec = spec.find === "any" ? spec.of.find(m => fitsSpec(kind, m)) : spec;
   if (!memberSpec) return null;
+  // A defender's "hostile" lock must not survive the target fleeing out of defendTargetRoom — Defender
+  // exists to hold its assigned room, not roam after a chased target (Attacker has no such constraint:
+  // attackTargetRoom IS the room it's meant to clear, so chasing a fleeing hostile there is the point).
+  // Confirmed live: a defender's lock on a fled enemy hauler survived cross-room (validLock has no
+  // same-room check for "hostile") and interpreter.ts's cross-room attackStep branch then walked it
+  // straight into a neighboring hostile-owned room chasing an unarmed, unkillable-in-time target.
+  if (memberSpec.find === "hostile" && creep.memory.defendTargetRoom !== undefined) {
+    const pos = (obj as unknown as { pos: RoomPosition }).pos;
+    if (pos.roomName !== creep.memory.defendTargetRoom) return null;
+  }
   // Re-check the store-based `where` so a lock on a now-filled extension or emptied hauler is dropped.
   const where = memberSpec.find === "structure" || memberSpec.find === "creep" ? memberSpec.where : undefined;
   if ((kind.kind === "structure" || kind.kind === "creep") && !matchesWhere(toCandidate(obj), where)) {

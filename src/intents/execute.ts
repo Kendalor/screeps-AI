@@ -461,8 +461,14 @@ function observeRoom(room: Room, previous: ScoutInfo | undefined): ScoutInfo {
   const staticKnown = previous?.sources !== undefined;
   const mineral = staticKnown ? previous.mineral : room.find(FIND_MINERALS)[0]?.mineralType;
   const sources = staticKnown ? previous.sources : room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y }));
-  const anchorChecked = staticKnown ? previous.anchorChecked ?? false : c !== undefined;
-  const anchor = staticKnown ? previous.anchor : resolveScoutedAnchor(room, c, sources);
+  // Resolved independently of staticKnown/sources: resetScoutedAnchors() (commands/console.ts) clears
+  // anchor/anchorChecked on an already-surveyed room (sources stay on record) so a BUNKER_RADIUS change
+  // gets picked up on next observation without re-finding sources/mineral too. Gating this on
+  // `previous?.anchorChecked` rather than staticKnown means a cleared anchor recomputes even when
+  // everything else about the room is still cached.
+  const anchorAlreadyChecked = previous?.anchorChecked ?? false;
+  const anchorChecked = anchorAlreadyChecked || c !== undefined;
+  const anchor = anchorAlreadyChecked ? previous?.anchor : resolveScoutedAnchor(room, c, sources);
   // A STRUCTURE_INVADER_CORE sits independent of any controller (see ScoutInfo.invaderCore's doc), so
   // it needs its own live find rather than piggybacking on the owner/reservation read above. Re-found
   // every observation, active or passive, unlike the static sources/mineral/anchor fields above â€” a

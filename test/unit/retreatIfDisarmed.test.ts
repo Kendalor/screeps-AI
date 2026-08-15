@@ -6,6 +6,12 @@ import { stubGame } from "../helpers";
 // counts parts with hits > 0) can no longer fight back — retreatIfDisarmed (src/behaviors/interpreter.ts)
 // pulls it toward a friendly healer if one is visible in the room, else walks it home, instead of running
 // the normal attack step. Driven through runCreepBehaviors, same convention as fleeThreat.test.ts.
+//
+// HEALS_ALLIES_ROLES (interpreter.ts) is currently empty — no role's step table can be relied on to heal
+// an unrelated ally (see its own doc) — so nearestFriendlyHealer never matches anyone right now and every
+// disarmed fighter falls straight through to the walk-home branch, healer or not. healerAt's role tag
+// exists so these tests keep exercising the real matching code path (and start passing again the moment a
+// role is added to the set) rather than asserting on a fixture that could never match in the first place.
 
 function hostileAt(x: number, y: number) {
   return {
@@ -16,10 +22,14 @@ function hostileAt(x: number, y: number) {
   };
 }
 
+// Carries an active HEAL part but its role ("drainHealer") is not in HEALS_ALLIES_ROLES (currently empty
+// — see interpreter.ts's doc), so nearestFriendlyHealer must not match it, same as SimpleBaitTower's own
+// self-only HEAL parts in production.
 function healerAt(x: number, y: number) {
   return {
     id: "healer1",
     pos: { x, y },
+    memory: { role: "drainHealer" },
     getActiveBodyparts: (part: BodyPartConstant) => (part === HEAL ? 1 : 0)
   };
 }
@@ -87,7 +97,7 @@ function disarmedDefender(opts: {
 }
 
 describe("retreatIfDisarmed: defender with no intact RANGED_ATTACK parts", () => {
-  it("retreats toward the nearest friendly healer in the room", () => {
+  it("does not retreat toward a nearby creep whose role isn't in HEALS_ALLIES_ROLES — heads home instead", () => {
     stubGame({ objects: {} });
     const healer = healerAt(10, 5);
     const { creep, traveled } = disarmedDefender({
@@ -99,23 +109,7 @@ describe("retreatIfDisarmed: defender with no intact RANGED_ATTACK parts", () =>
 
     runCreepBehaviors();
 
-    expect(traveled).toEqual([{ x: 10, y: 5 }]);
-  });
-
-  it("picks the closer of two healers", () => {
-    stubGame({ objects: {} });
-    const far = healerAt(20, 5);
-    const near = healerAt(8, 5);
-    const { creep, traveled } = disarmedDefender({
-      home: "W1N1",
-      roomName: "W1N1",
-      friendlyCreeps: [far, near]
-    });
-    Game.creeps = { d1: creep };
-
-    runCreepBehaviors();
-
-    expect(traveled).toEqual([{ x: 8, y: 5 }]);
+    expect(traveled).toEqual([{ x: 25, y: 25 }]);
   });
 
   it("heads home when no healer is visible in the room", () => {
@@ -228,7 +222,7 @@ describe("retreatIfDisarmed: defender with no intact RANGED_ATTACK parts", () =>
     expect(traveled).toEqual([]);
   });
 
-  it("prefers the healer over heading home even away from home", () => {
+  it("still heads home even with a non-healing creep nearby, away from home", () => {
     stubGame({ objects: {} });
     const healer = healerAt(6, 5);
     const { creep, traveled } = disarmedDefender({
@@ -240,7 +234,7 @@ describe("retreatIfDisarmed: defender with no intact RANGED_ATTACK parts", () =>
 
     runCreepBehaviors();
 
-    expect(traveled).toEqual([{ x: 6, y: 5 }]);
+    expect(traveled).toEqual([{ x: 25, y: 25 }]);
   });
 });
 
@@ -294,7 +288,7 @@ describe("retreatIfDisarmed: attacker with no intact ATTACK parts", () => {
     expect(traveled).toEqual([{ x: 25, y: 25 }]);
   });
 
-  it("retreats toward a friendly healer instead", () => {
+  it("still heads home with a non-healing creep nearby", () => {
     stubGame({ objects: {} });
     const healer = healerAt(6, 5);
     const { creep, traveled } = disarmedFighter("attacker", {
@@ -306,7 +300,7 @@ describe("retreatIfDisarmed: attacker with no intact ATTACK parts", () => {
 
     runCreepBehaviors();
 
-    expect(traveled).toEqual([{ x: 6, y: 5 }]);
+    expect(traveled).toEqual([{ x: 25, y: 25 }]);
   });
 
   it("stays parked home while below full hits", () => {

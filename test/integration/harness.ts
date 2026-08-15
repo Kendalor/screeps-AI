@@ -110,7 +110,7 @@ export interface BootOptions {
   serverDir?: string;
   /**
    * Room terrain, laid down before the first tick. Default `bunkerTerrain()`. stubWorld()'s stock
-   * rooms cap clearance at 4 vs BUNKER_RADIUS=6, so pickAnchor would return null and nothing
+   * rooms cap clearance at 4 vs BUNKER_RADIUS=7, so pickAnchor would return null and nothing
    * downstream of planning would run — pass an explicit matrix only to test that deliberately.
    */
   terrain?: TerrainMatrix;
@@ -130,7 +130,7 @@ export interface BootOptions {
 // ---------------------------------------------------------------------------
 
 // A room the bunker can actually be anchored in. stubWorld()'s stock rooms cap clearance at 4
-// vs BUNKER_RADIUS=6, so pickAnchor would return null there and nothing downstream would run.
+// vs BUNKER_RADIUS=7, so pickAnchor would return null there and nothing downstream would run.
 // The interior wall bands keep clearance >6 near center while forcing the anchor search to
 // actually discriminate, rather than every tile on a blank grid qualifying trivially.
 export function bunkerTerrain(): TerrainMatrix {

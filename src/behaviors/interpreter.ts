@@ -1098,16 +1098,29 @@ export function fleeThreat(creep: Creep): boolean {
   return true;
 }
 
-// The nearest living creep of ours carrying an active HEAL part, visible in the same room as the
+// The nearest living creep of ours that actually heals OTHER creeps, visible in the same room as the
 // disarmed defender — walking toward it lets a healer top the defender back up rather than the
 // defender continuing to soak hits with nothing to shoot back with. Only considers the CURRENT room
 // (like nearestArmedThreat/hostilesWithin above): a healer in a different room isn't reachable this
 // tick regardless, and the retreat-home fallback covers that case.
+//
+// Gated on role, not merely on carrying an active HEAL part: SimpleBaitTower's body also carries HEAL
+// (see its own doc — self-preservation for a tank that solicits tower fire), but its steps only ever
+// call creep.heal(creep) on itself, never on an ally. Confirmed live: a disarmed defender treated a
+// SimpleBaitTower creep as a rescuer, parked at range 1 next to it, and sat there forever — hits never
+// reached hitsMax (nothing was ever healing it) so retreatIfDisarmed's release condition never fired.
+// Currently empty: DrainHealer's own "heal" step only runs while unsquadded (once squadded,
+// planSquadActions heals directly, bypassing the step table — see drainHealer.ts's doc), so no role's
+// step table can be relied on to actually heal an unrelated ally like a disarmed defender/attacker.
+// Add a role here only once it has a step that unconditionally heals arbitrary friendlies.
+const HEALS_ALLIES_ROLES = new Set<string>([]);
+
 function nearestFriendlyHealer(creep: Creep): Creep | undefined {
   let nearest: Creep | undefined;
   let nearestRange = Infinity;
   for (const c of creep.room.find(FIND_MY_CREEPS)) {
     if (c.id === creep.id) continue;
+    if (!HEALS_ALLIES_ROLES.has(c.memory.role)) continue;
     if (c.getActiveBodyparts(HEAL) === 0) continue;
     const range = creep.pos.getRangeTo(c.pos);
     if (range >= nearestRange) continue;
