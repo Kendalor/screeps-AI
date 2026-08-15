@@ -354,7 +354,18 @@ const DANGEROUS_ROOM_HOPS = 50;
 // own check trusts it — once vision confirms exactly where the lairs/guardians are, dangerCostMatrix
 // prices the room precisely tile-by-tile instead, so this stops adding a redundant blanket detour cost
 // on top for a room the colony already actively holds.
-export function dangerRouteCallback(home: string, roomName: string): number {
+// `destination`: the room actually being travelled TO, exempt from every Infinity/detour penalty below —
+// a defend/attack/drain/colonize target was chosen ON PURPOSE, often precisely BECAUSE it's dangerous
+// (that's what "defend" or "attack" means), so pricing it unreachable here would make the destination
+// provably unroutable by construction. Traveler's own findRoute (traveler.ts) calls options.routeCallback
+// unconditionally for every room including origin/destination before its own exemption logic ever runs
+// (see its `roomName !== destination && roomName !== origin` checks further down, which never fire once
+// routeCallback has already returned a defined value) — so this callback must exempt the destination
+// itself, the caller-side comments claiming this used to be wrong (confirmed live: a "defend:W48N14" flag
+// failed with "couldn't findRoute to W48N14" because W48N14 itself had a live lethalAt from a scout that
+// died there earlier — exactly the room the flag exists to send a defender INTO).
+export function dangerRouteCallback(home: string, roomName: string, destination?: string): number {
+  if (roomName === destination) return 1;
   const info = Memory.rooms?.[roomName]?.scouted;
   const noPathAt = info?.noPathFrom?.[home];
   if (noPathAt !== undefined && Game.time - noPathAt < NO_PATH_RETRY_AFTER) return Infinity;
@@ -374,11 +385,13 @@ export function dangerRouteCallback(home: string, roomName: string): number {
 // called creep.travelTo with no danger awareness at all — can opt into identical keeper/hostile-avoidance
 // routing rather than reimplementing or subtly diverging from it. See dangerCostMatrix/dangerRouteCallback/
 // dangerNearby's own docs for what each piece actually does; this is purely the wiring, not new behavior.
-export function dangerAvoidanceOptions(home: string): TravelToOptions {
+// `destination` is optional (transport.ts's callers don't always know one up front) but should be passed
+// whenever the caller has a real target room — see dangerRouteCallback's own doc for why it matters.
+export function dangerAvoidanceOptions(home: string, destination?: string): TravelToOptions {
   return {
     useFindRoute: true,
     roomCallback: (roomName, matrix) => dangerCostMatrix(Game.rooms[roomName], matrix),
-    routeCallback: (roomName: string) => dangerRouteCallback(home, roomName),
+    routeCallback: (roomName: string) => dangerRouteCallback(home, roomName, destination),
     dangerCheck: dangerNearby
   };
 }
@@ -444,7 +457,7 @@ function moveToRoom(
     // E28S2 — forcing another blind repath from inside it that reversed again, oscillating forever.
     // avoidDanger steps always cross multiple rooms by construction (a same-room step never reaches
     // here — see the arrival check above), so there's no case where forcing this trades away anything.
-    ...(step.avoidDanger ? dangerAvoidanceOptions(creep.memory.home) : {})
+    ...(step.avoidDanger ? dangerAvoidanceOptions(creep.memory.home, dest) : {})
   });
   // A scout genuinely can't path into nextRoom from here (Traveler's own PathFinder search, with real
   // vision at this border, came back empty) — e.g. the shared border is walled solid by another player.
@@ -491,13 +504,23 @@ function moveToFlagStep(creep: Creep): StepResult {
 // Self-heals every tick either way (creep.heal is a no-op above hitsMax, so this is safe to call
 // unconditionally). A no-op (falls through, same as moveToRoom with no dest) while targetRoom is unset.
 // Store-less, never self-completes here — only the when:"healthy" gate on this step ends it.
+//
+// FIND_EXIT returns every border tile in all 4 directions, including ones that are TERRAIN_MASK_WALL —
+// a room's border can be walled right up to the edge, same as any interior tile. findClosestByRange picks
+// purely by Chebyshev distance with no walkability awareness, so it can return a wall tile as "closest"
+// over a slightly farther open one, sending travelTo after a destination it can never actually reach.
+// Confirmed live: simpleBaitTower_W47N14_73031758 got stuck retreating in W48N13 because the nearest exit
+// tile by raw distance was solid wall. Filtering to walkable terrain first fixes that at the source.
 function fleeAndHealStep(creep: Creep): StepResult {
   const targetRoom = creep.memory.targetRoom;
   if (!targetRoom) return { acted: false, didAct: false };
 
   creep.heal(creep);
   if (creep.room.name === targetRoom) {
-    const exit = creep.pos.findClosestByRange(FIND_EXIT);
+    const terrain = creep.room.getTerrain();
+    const exit = creep.pos.findClosestByRange(FIND_EXIT, {
+      filter: pos => terrain.get(pos.x, pos.y) !== TERRAIN_MASK_WALL
+    });
     if (exit) creep.travelTo(exit, { range: 0 });
   } else {
     creep.travelTo(new RoomPosition(25, 25, creep.room.name), { range: 20 });

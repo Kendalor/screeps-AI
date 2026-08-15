@@ -272,7 +272,7 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
     // same-room walk to an already-resolved target — a plain travelTo here had no route awareness at
     // all, so a remote hauler could path straight through a keeper guardian's patrol radius and get
     // batted back and forth by fleeThreat forever instead of detouring around it.
-    creep.travelTo(homeRoomWaypoint(creep), dangerAvoidanceOptions(creep.memory.home));
+    creep.travelTo(homeRoomWaypoint(creep), dangerAvoidanceOptions(creep.memory.home, creep.memory.home));
     return;
   }
 
@@ -301,7 +301,7 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
   // around a keeper lair/hostile it would otherwise walk straight through (see dangerAvoidanceOptions).
   const travelOptions = creep.room.name === creep.memory.home && target.pos.roomName === creep.memory.home
     ? undefined
-    : dangerAvoidanceOptions(creep.memory.home);
+    : dangerAvoidanceOptions(creep.memory.home, target.pos.roomName);
 
   if (task.kind === "pickup") {
     const result = withdrawOrPickup(creep, target, task.resource, true, travelOptions);

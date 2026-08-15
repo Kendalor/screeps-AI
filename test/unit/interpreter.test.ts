@@ -3,6 +3,7 @@ import {
   advanceRoute,
   canCoFire,
   dangerCostMatrix,
+  dangerRouteCallback,
   firstRunnableStep,
   nextStep,
   runStep,
@@ -931,6 +932,49 @@ describe("moveToRoom's dangerCheck (live keeper/hostile recheck)", () => {
     const dangerCheck = (options[0] as { dangerCheck: (room: Room, pos: unknown) => boolean }).dangerCheck;
     const room = fakeRoom([{ x: 25, y: 25, username: "SomeFriendlyPlayer" }], []);
     expect(dangerCheck(room, rangedPos(25, 26, "W1N1"))).toBe(false);
+  });
+});
+
+// Regression: a defend/attack/drain/colonize target is chosen ON PURPOSE, often precisely because it's
+// dangerous — pricing the destination itself Infinity makes it provably unroutable. Confirmed live: a
+// "defend:W48N14" flag failed with Traveler's "couldn't findRoute to W48N14" because W48N14 itself had a
+// live lethalAt (a scout died there earlier) — exactly the room the flag exists to send a defender INTO.
+// Traveler's own findRoute calls routeCallback unconditionally for every room, including origin/destination,
+// before its own exemption logic runs (see traveler.ts's findRoute) — so dangerRouteCallback must exempt
+// the destination itself rather than relying on a caller-side exemption that never actually ran.
+describe("dangerRouteCallback exempts the destination room", () => {
+  beforeEach(() => stubGame({ time: 100000 }));
+
+  it("returns the neutral cost for the destination even with a live lethalAt", () => {
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W2N1: { scouted: { owner: "Adameve", lethalAt: Game.time - 10 } } }
+    };
+    expect(dangerRouteCallback("W1N1", "W2N1", "W2N1")).toBe(1);
+  });
+
+  it("still prices a merely-transited room with a live lethalAt as Infinity", () => {
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W2N1: { scouted: { owner: "Adameve", lethalAt: Game.time - 10 } } }
+    };
+    expect(dangerRouteCallback("W1N1", "W2N1", "W3N1")).toBe(Infinity);
+  });
+
+  it("wires the destination through from moveToRoom's targetRoom step", () => {
+    const options: unknown[] = [];
+    const creep = {
+      room: { name: "W1N1" },
+      memory: { targetRoom: "W2N1", home: "W1N1" },
+      travelTo: (_p: unknown, opts?: unknown) => {
+        options.push(opts);
+        return OK;
+      }
+    } as unknown as Creep;
+    (globalThis as Record<string, unknown>).Memory = {
+      rooms: { W2N1: { scouted: { owner: "Adameve", lethalAt: Game.time - 10 } } }
+    };
+    runStep(creep, { do: "moveToRoom", to: "targetRoom", avoidDanger: true });
+    const routeCallback = (options[0] as { routeCallback: (room: string) => number }).routeCallback;
+    expect(routeCallback("W2N1")).toBe(1);
   });
 });
 
