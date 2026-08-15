@@ -27,6 +27,12 @@ import { Operation } from "./operation";
 
 export const MAX_ATTACKERS = 2;
 
+// No spawnRoom pin (unlike Defense/other colony-scoped operations, see fillTo's doc in spawn/request.ts)
+// — an attack is deliberately cross-colony, sponsored by whichever colony placed the target, so any
+// spawn-capable colony may pick it up. Capped in range so a distant, uninvolved colony's budget never
+// gets drafted into a fight several rooms away from it.
+const MAX_ATTACKER_SPAWN_RANGE = 4;
+
 export class Attack extends Operation {
   public readonly kind = "attack";
 
@@ -46,7 +52,8 @@ export class Attack extends Operation {
         body,
         priority: roleDef("attacker")!.priority,
         memory: { role: "attacker", home: colony.name, op: this.name, attackTargetRoom: target },
-        targetRoom: target
+        targetRoom: target,
+        maxSpawnRange: MAX_ATTACKER_SPAWN_RANGE
       }
     ];
   }

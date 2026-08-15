@@ -24,7 +24,8 @@ interface Purse {
 }
 
 /**
- * Collect every colony's demand, sort by priority, and route each request to a spawn (nearest affordable colony, or a pinned spawnRoom).
+ * Collect every colony's demand, sort by priority, and route each request to a spawn (nearest affordable
+ * colony within maxSpawnRange if set, or a pinned spawnRoom).
  * A colony that can't afford its top request stops for the tick rather than letting a cheaper request leapfrog it, but other colonies are unaffected.
  */
 export function planSpawning(colonies: Colony[], roomDistance: RoomDistance): Intent[] {
@@ -97,12 +98,23 @@ function pickPurse(
   const target = purses.get(request.targetRoom);
   if (canServe(target)) return { purse: target };
 
-  // Otherwise the nearest colony that can serve it.
+  // Otherwise the nearest colony that can serve it. Eligibility (which colonies are candidates, and
+  // which one gets stopped if none can pay right now) is judged against full capacity, not today's
+  // available energy — a colony that could eventually afford this is still worth waiting on/searching
+  // from, same reasoning as stopRoom above. Actually spending still requires real budget (canServe).
   let best: Purse | undefined;
   let bestDist = Infinity;
+  let bestEligible: Purse | undefined; // nearest capacity-eligible purse, for the stop fallback below
+  let bestEligibleDist = Infinity;
   for (const purse of purses.values()) {
-    if (!canServe(purse)) continue;
+    if (!hasSpawn(purse) || cost > purse.capacity) continue;
     const d = roomDistance(request.targetRoom, purse.room);
+    if (request.maxSpawnRange !== undefined && d > request.maxSpawnRange) continue;
+    if (d < bestEligibleDist) {
+      bestEligibleDist = d;
+      bestEligible = purse;
+    }
+    if (purse.budget < cost) continue;
     if (d < bestDist) {
       bestDist = d;
       best = purse;
@@ -110,6 +122,7 @@ function pickPurse(
   }
   if (best) return { purse: best };
 
-  // Nowhere can pay — stop the home colony if it's the one that fell short.
-  return { stop: stopRoom(target) };
+  // Nowhere can pay right now — stop the nearest colony that could eventually afford it (in range,
+  // within capacity), falling back to the home/target room if none qualify.
+  return { stop: bestEligible ? bestEligible.room : stopRoom(target) };
 }

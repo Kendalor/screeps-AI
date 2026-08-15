@@ -7,6 +7,7 @@ export interface CreepRequest {
   memory: CreepMemory; // complete — role, home, op, and anything role-specific
   targetRoom: string; // where the creep is needed; arbiter routes to nearest spawn-capable colony, defaults to memory.home
   spawnRoom?: string; // hard override: spawn in exactly this colony; absent means "let the arbiter choose"
+  maxSpawnRange?: number; // caps how far the arbiter's nearest-colony search may reach when spawnRoom is absent; absent means unlimited
 }
 
 // Reserved for the wipe restart — a colony with no creeps has no other way out, since every normal quota evaluates to zero.
