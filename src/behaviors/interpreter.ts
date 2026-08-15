@@ -1077,21 +1077,36 @@ function homeAnchor(home: string): RoomPosition {
 // to range 1). Retreats toward the nearest friendly HEAL creep in the room if one is visible (useful
 // mid-fight, away from home), else falls back to walking home and PARKING there — the home room's tower
 // heals any damaged friendly creep standing in it (see intents/execute.ts's towerHeal), so simply parking
-// there passively restores hits with no squad healer required. Once home it keeps sitting rather than
-// re-entering the step table, since the lost part can never regenerate on its own; only hits === hitsMax
-// releases it back to normal dispatch. Always reports true once the part count is zero — even with
-// nowhere useful to retreat to — so the caller always skips normal dispatch rather than letting a husk
-// keep trying to do a job it no longer can.
+// there passively restores hits with no squad healer required.
+//
+// CreepMemory.retreating latches the walk-home-and-park leg specifically, once the creep has actually
+// reached home: a single tower heal tick revives ONE destroyed part back above 0 hits (Screeps heals the
+// most-damaged part first), which would otherwise flip getActiveBodyparts positive again long before the
+// creep is actually healed — confirmed live: a defender parked on the home exit tile got one part ticked
+// up, immediately read as "rearmed" by a raw part-count check, and walked straight back out into combat
+// while 5 of 6 parts sat at 0 hits. Once latched, only hits === hitsMax (not part count) releases it back
+// to normal dispatch. Deliberately scoped to the home leg only — the healer-seeking branch below still
+// re-reads getActiveBodyparts live every tick even mid-chase, since a creep still out hunting a healer
+// (not yet parked) re-evaluating on fresh part counts each tick is the wanted behavior, not the bug.
 export function retreatIfDisarmed(creep: Creep, part: BodyPartConstant): boolean {
-  if (creep.getActiveBodyparts(part) > 0) return false;
-  if (creep.hits >= creep.hitsMax && creep.room.name === creep.memory.home) return false; // fully healed home — release back to normal dispatch
+  const home = creep.room.name === creep.memory.home;
+  if (!creep.memory.retreating && creep.getActiveBodyparts(part) > 0) return false;
+  const anchor = homeAnchor(creep.memory.home);
+  const atAnchor = home && creep.pos.isEqualTo(anchor);
+  if (atAnchor) {
+    if (creep.hits >= creep.hitsMax) {
+      creep.memory.retreating = false;
+      return false; // fully healed at the anchor — release back to normal dispatch
+    }
+    creep.memory.retreating = true;
+  }
   const healer = nearestFriendlyHealer(creep);
   if (healer) {
     log.debugCreep(creep.name, `retreatIfDisarmed: no ${part} parts left — retreating to healer ${healer.id}`);
     creep.travelTo(healer.pos, { range: 1 });
     return true;
   }
-  if (creep.room.name !== creep.memory.home) {
+  if (!atAnchor) {
     log.debugCreep(creep.name, `retreatIfDisarmed: no ${part} parts left, no healer in sight — heading home`);
     // A generic room-centre target with a wide range (the old {range:3} against (25,25)) let Traveler
     // consider itself "arrived" the moment the creep crossed the border, close enough to satisfy the
@@ -1099,8 +1114,11 @@ export function retreatIfDisarmed(creep: Creep, part: BodyPartConstant): boolean
     // sat on the border for exactly one tick before this ran again and re-issued the same near-satisfied
     // move. homeAnchor (the real bunker anchor, same fallback chain as transport.ts's homeRoomWaypoint)
     // is a concrete point deep in the room with no range slack, so travelTo has no "close enough" reading
-    // until the creep is actually standing well inside home.
-    creep.travelTo(homeAnchor(creep.memory.home));
+    // until the creep is actually standing well inside home. Checked against the exact anchor tile (not
+    // just room membership) so crossing the border onto the exit tile doesn't get mistaken for "arrived" —
+    // confirmed live: a disarmed defender got tower-healed one part's worth on the exit tile itself, which
+    // used to satisfy a room-equality "home" check and stop it there, well outside reliable tower range.
+    creep.travelTo(anchor);
   } else {
     log.debugCreep(creep.name, `retreatIfDisarmed: no ${part} parts left, home but not fully healed — holding`);
   }

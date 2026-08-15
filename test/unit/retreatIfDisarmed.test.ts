@@ -33,24 +33,29 @@ function disarmedFighter(
     hostiles?: object[];
     hits?: number;
     hitsMax?: number;
+    pos?: { x: number; y: number };
+    retreating?: boolean;
   }
 ): { creep: Creep; traveled: { x: number; y: number }[] } {
   const traveled: { x: number; y: number }[] = [];
+  const px = opts.pos?.x ?? 5;
+  const py = opts.pos?.y ?? 5;
   const creep = {
     id: "d1",
     name: "d1",
     spawning: false,
-    memory: { role, task: { step: 0 }, home: opts.home },
+    memory: { role, task: { step: 0 }, home: opts.home, retreating: opts.retreating },
     store: { getFreeCapacity: () => 0, getUsedCapacity: () => 0 },
     hits: opts.hits,
     hitsMax: opts.hitsMax,
     pos: {
-      x: 5,
-      y: 5,
+      x: px,
+      y: py,
       roomName: opts.roomName,
-      getRangeTo: (p: { x: number; y: number }) => Math.max(Math.abs(5 - p.x), Math.abs(5 - p.y)),
+      getRangeTo: (p: { x: number; y: number }) => Math.max(Math.abs(px - p.x), Math.abs(py - p.y)),
       inRangeTo: (p: { x: number; y: number }, range: number) =>
-        Math.max(Math.abs(5 - p.x), Math.abs(5 - p.y)) <= range,
+        Math.max(Math.abs(px - p.x), Math.abs(py - p.y)) <= range,
+      isEqualTo: (p: { x: number; y: number }) => px === p.x && py === p.y,
       findClosestByPath: (list: object[]) => list[0] ?? null
     },
     room: {
@@ -75,6 +80,8 @@ function disarmedDefender(opts: {
   hostiles?: object[];
   hits?: number;
   hitsMax?: number;
+  pos?: { x: number; y: number };
+  retreating?: boolean;
 }): { creep: Creep; traveled: { x: number; y: number }[] } {
   return disarmedFighter("defender", opts);
 }
@@ -140,28 +147,30 @@ describe("retreatIfDisarmed: defender with no intact RANGED_ATTACK parts", () =>
     expect(traveled).toEqual([{ x: 12, y: 38 }]);
   });
 
-  it("does nothing once already home with no healer around (no-op, same as moveToRoom on arrival)", () => {
+  it("still walks in to the anchor after crossing into the home room, rather than stopping on the entry tile", () => {
     stubGame({ objects: {} });
     const { creep, traveled } = disarmedDefender({
       home: "W1N1",
       roomName: "W1N1",
-      hostiles: [hostileAt(9, 5)]
+      hostiles: [hostileAt(9, 5)],
+      pos: { x: 5, y: 5 } // room-equal to home, but not at the (default 25,25) anchor
     });
     Game.creeps = { d1: creep };
 
     runCreepBehaviors();
 
-    expect(traveled).toEqual([]);
+    expect(traveled).toEqual([{ x: 25, y: 25 }]);
   });
 
-  it("stays parked home (no attack step, no travel) while below full hits, even with a hostile present", () => {
+  it("holds (no travel, no attack step) once actually parked at the anchor while below full hits", () => {
     stubGame({ objects: {} });
     const { creep, traveled } = disarmedDefender({
       home: "W1N1",
       roomName: "W1N1",
       hostiles: [hostileAt(9, 5)],
       hits: 40,
-      hitsMax: 100
+      hitsMax: 100,
+      pos: { x: 25, y: 25 } // standing exactly on the default anchor
     });
     Game.creeps = { d1: creep };
 
@@ -171,7 +180,31 @@ describe("retreatIfDisarmed: defender with no intact RANGED_ATTACK parts", () =>
     expect(creep.memory.task).toEqual({ step: 0 }); // never advanced into the normal step table
   });
 
-  it("releases back to normal dispatch once home and fully healed", () => {
+  it("a part reviving from a tower heal mid-transit does not release it back to combat before it reaches the anchor", () => {
+    stubGame({ objects: {} });
+    const { creep, traveled } = disarmedDefender({
+      home: "W1N1",
+      roomName: "W1N1",
+      hostiles: [hostileAt(9, 5)],
+      hits: 15,
+      hitsMax: 100,
+      pos: { x: 5, y: 5 }, // crossed the border onto the entry tile, not yet at the anchor
+      retreating: true // latched on a prior tick, before this tick's heal ticked a part back up
+    });
+    // Simulate the tower heal reviving one RANGED_ATTACK part this tick.
+    (creep as unknown as { getActiveBodyparts: (p: BodyPartConstant) => number }).getActiveBodyparts = part =>
+      part === RANGED_ATTACK ? 1 : 0;
+    Game.creeps = { d1: creep };
+
+    runCreepBehaviors();
+
+    // Still heading to the anchor, not released into the attack step.
+    expect(traveled).toEqual([{ x: 25, y: 25 }]);
+    expect(creep.memory.task).toEqual({ step: 0 });
+    expect(creep.memory.retreating).toBe(true);
+  });
+
+  it("releases back to normal dispatch once at the anchor and fully healed", () => {
     stubGame({ objects: {} });
     const h = hostileAt(9, 5); // range 4 — attackStep (ranged, no ranged parts left) falls back to melee-close travelTo
     const { creep, traveled } = disarmedDefender({
@@ -179,7 +212,8 @@ describe("retreatIfDisarmed: defender with no intact RANGED_ATTACK parts", () =>
       roomName: "W1N1",
       hostiles: [h],
       hits: 100,
-      hitsMax: 100
+      hitsMax: 100,
+      pos: { x: 25, y: 25 } // standing exactly on the default anchor
     });
     Game.creeps = { d1: creep };
 
@@ -227,6 +261,7 @@ describe("retreatIfDisarmed: defender still carrying an active RANGED_ATTACK par
         getRangeTo: (p: { x: number; y: number }) => Math.max(Math.abs(5 - p.x), Math.abs(5 - p.y)),
         inRangeTo: (p: { x: number; y: number }, range: number) =>
           Math.max(Math.abs(5 - p.x), Math.abs(5 - p.y)) <= range,
+        isEqualTo: (p: { x: number; y: number }) => p.x === 5 && p.y === 5,
         findClosestByPath: (list: object[]) => list[0] ?? null
       },
       room: { name: "W1N1", find: (kind: FindConstant) => (kind === FIND_HOSTILE_CREEPS ? [h] : []) },
@@ -281,7 +316,8 @@ describe("retreatIfDisarmed: attacker with no intact ATTACK parts", () => {
       roomName: "W1N1",
       hostiles: [hostileAt(9, 5)],
       hits: 40,
-      hitsMax: 100
+      hitsMax: 100,
+      pos: { x: 25, y: 25 } // standing exactly on the default anchor
     });
     Game.creeps = { d1: creep };
 
