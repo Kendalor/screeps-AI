@@ -8,12 +8,20 @@
 // kernel/tick.ts's tick(), independent of the per-colony operation pipeline — same reasoning as
 // attackFlags.ts/colonizeFlags.ts.
 //
-// One flag = one handoff: on success the target is durably recorded (ColonyMemory.defending, via
-// addDefendTarget) and the flag is removed immediately (placing it again re-triggers, e.g. if the whole
-// attempt later fails and gets cleaned up). From that tick on, Defense.desiredCreeps/intents pool a
-// defender onto the target through the completely normal per-tick arbiter — this module's job ends at the
-// handoff. On failure (no fitting colony) the flag is left in place and an error is logged every tick
-// it's still unresolved, so the player sees why nothing is happening.
+// Unlike a one-shot trigger, the flag's lifetime is now tied to its target's, in both directions (same
+// shape as drainFlags.ts/paradeFlags.ts, applied per-target instead of to a scalar — see attackFlags.ts's
+// header for the full reasoning, identical here): on a successful handoff the flag is left in place (not
+// removed) and its name recorded onto the target via addDefendTarget's `flag` field
+// (ColonyMemory.defendingFlags); the moment that flag disappears from Game.flags, the next tick's second
+// pass here drops just that one target (removeDefendTarget) — the rest of a colony's other
+// flag-sponsored targets, plus its own home/remote hostiles, are untouched, since Defense pools every
+// target behind one shared defender fleet (see defense.ts's header) rather than one operation per target.
+// The reverse also holds: when Defense's own completion logic removes a target on its own (room seen
+// clear — see defense.ts's intents()), execute.ts prunes defendingFlags for it, and this module's third
+// pass notices the now-orphaned flag name and removes the actual flag.
+//
+// One flag = one handoff, same dedup shape as before: placing the same flag again while its target is
+// already being defended is a harmless no-op.
 
 import { pickDefendSponsor } from "./defendSponsor";
 import { execute } from "../intents/execute";
@@ -46,9 +54,14 @@ function routeDistance(a: string, b: string): number {
 }
 
 /** Runs once per tick from kernel/tick.ts. Resolves every active defend flag against the current empire,
- * hands the target off to the nearest affordable colony, and clears the flag on success. */
+ * hands the target off to the nearest affordable colony (flag left in place as the target's live switch),
+ * drops any flag-sponsored target whose flag has since disappeared, and removes any flag whose target has
+ * since been dropped by Defense's own completion logic — see file header for the full shape. */
 export function runDefendFlags(world: Empire): void {
-  for (const flag of defendFlags()) {
+  const flags = defendFlags();
+  const liveByName = new Map(flags.map(f => [f.name, f]));
+
+  for (const flag of flags) {
     const target = targetRoomFor(flag);
     if (!target) {
       log.error(`defend flag "${flag.name}": can't tell the target room — place it in-room or name it "defend:<room>"`);
@@ -65,8 +78,28 @@ export function runDefendFlags(world: Empire): void {
       continue;
     }
 
-    execute([{ kind: "addDefendTarget", room: pick.colony.name, target }]);
+    execute([{ kind: "addDefendTarget", room: pick.colony.name, target, flag: flag.name }]);
     log.info(`defend flag "${flag.name}": handed ${target} off to ${pick.colony.name}`);
-    flag.remove();
+    // Flag deliberately left in place: it's the live on/off switch for this target now (see file header).
+  }
+
+  for (const colony of world.colonies) {
+    const mem = Memory.colonies[colony.name];
+    const flagsByTarget = mem?.defendingFlags ?? {};
+    for (const [target, flagName] of Object.entries(flagsByTarget)) {
+      // Reads live Memory.defending, not colony.snapshot.defending — see attackFlags.ts's identical
+      // comment for why the stale snapshot would misfire on a target this same call just added.
+      const stillListed = (mem?.defending ?? []).includes(target);
+      if (stillListed && !liveByName.has(flagName)) {
+        // The flag is gone but the target is still active: stop defending it.
+        execute([{ kind: "removeDefendTarget", room: colony.name, target }]);
+        log.info(`defend flag "${flagName}" is gone: stopping ${colony.name}'s defense of ${target}`);
+      } else if (!stillListed) {
+        // The target is gone (Defense's own completion logic dropped it) but its flag is still standing:
+        // remove the now-orphaned flag so it doesn't linger as a dead marker.
+        liveByName.get(flagName)?.remove();
+        log.info(`defend target ${target} is gone: removing its flag "${flagName}"`);
+      }
+    }
   }
 }

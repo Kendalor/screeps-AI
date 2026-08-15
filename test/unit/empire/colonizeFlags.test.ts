@@ -38,7 +38,7 @@ describe("runColonizeFlags", () => {
     expect(() => runColonizeFlags(world)).not.toThrow();
   });
 
-  it("hands the target off to the sponsor colony and removes the flag on success", () => {
+  it("hands the target off to the sponsor colony and leaves the flag in place as the target's live switch", () => {
     const remove = vi.fn();
     setUp({ f1: flag("colonize", "W5N5", remove) });
     // Bare "colonize" name resolves via the flag's own room — needs vision (a controller) there.
@@ -49,6 +49,40 @@ describe("runColonizeFlags", () => {
     runColonizeFlags(world);
 
     expect(colonizingOf(Memory, "W1N1")).toEqual(["W5N5"]);
+    expect(remove).not.toHaveBeenCalled();
+    expect(
+      (Memory as unknown as { colonies: Record<string, { colonizingFlags?: Record<string, string> }> }).colonies.W1N1
+        .colonizingFlags
+    ).toEqual({ W5N5: "colonize" });
+  });
+
+  it("drops just the flagged target the tick its flag is removed, leaving other targets untouched", () => {
+    setUp({}); // no flags at all this tick
+    const world = testEmpire(
+      colonySnap({ name: "W1N1", energyCapacity: COLONIZER_COST, colonizing: ["W5N5", "W6N6"] })
+    );
+    // runColonizeFlags' second/third pass reads raw Memory.colonizing (not the snapshot — see the
+    // source's comment on why), so it must be seeded here too, alongside colonizingFlags.
+    (Memory as unknown as { colonies: Record<string, { colonizing: string[]; colonizingFlags?: Record<string, string> }> }).colonies.W1N1 = {
+      colonizing: ["W5N5", "W6N6"],
+      colonizingFlags: { W5N5: "colonize" } // W6N6 has no flag entry — e.g. auto-picked by pickColonyTargets
+    } as never;
+
+    runColonizeFlags(world);
+
+    expect(colonizingOf(Memory, "W1N1")).toEqual(["W6N6"]);
+  });
+
+  it("removes a target's flag once the target itself is gone (operation's own completion logic)", () => {
+    const remove = vi.fn();
+    setUp({ f1: flag("colonize", "W5N5", remove) });
+    const world = testEmpire(colonySnap({ name: "W1N1", energyCapacity: COLONIZER_COST, colonizing: [] }));
+    (Memory as unknown as { colonies: Record<string, { colonizingFlags?: Record<string, string> }> }).colonies.W1N1 = {
+      colonizingFlags: { W5N5: "colonize" }
+    } as never;
+
+    runColonizeFlags(world);
+
     expect(remove).toHaveBeenCalledTimes(1);
   });
 

@@ -178,11 +178,22 @@ export interface ColonyMemory {
   // job is done (reached SELF_SUFFICIENT_ENERGY_CAP) or permanently failed (terminal claimController
   // error) — see colonize.ts's own removal logic.
   colonizing: string[];
+  // Which of `colonizing`'s targets was added by a live flag, and that flag's name — target room key,
+  // flag name value. Only present for flag-sponsored targets; an auto-picked one (pickColonyTargets.ts)
+  // has no entry, since there's no flag whose lifetime it could be tied to. Lets colonizeFlags.ts tie a
+  // target's lifetime to its specific originating flag (see that file's header) even though `colonizing`
+  // itself is a plain target list with no per-entry origin otherwise — removing the flag drops just this
+  // target, and Colonize's own completion-removal (removeColonizeTarget) also removes this entry so a
+  // finished/failed colonize retracts its flag instead of leaving a stale marker behind.
+  colonizingFlags?: Record<string, string>;
   // Target rooms this colony is actively attacking (sponsoring an attacker for), owned by attack.ts —
   // the combat equivalent of `colonizing` above, same durable-memory-fact shape: written once by a flag
   // handoff (addAttackTarget), read every tick by Colony's constructor to attach a real Attack operation
   // per listed target, removed (removeAttackTarget) once that room has vision and no hostile creeps left.
   attacking: string[];
+  // The attacking equivalent of colonizingFlags above — same shape, same reasoning (flag-sponsored
+  // targets only; auto-picked ones from remoteInvaderAttacks.ts have no entry).
+  attackingFlags?: Record<string, string>;
   // Target rooms this colony is sponsoring a defender for beyond its own home/remotes (a flag-requested
   // rescue of another colony's room, or any arbitrary room), owned by defense.ts — the defensive
   // equivalent of `attacking` above, same durable-memory-fact shape: written once by a flag handoff
@@ -191,6 +202,8 @@ export interface ColonyMemory {
   // hostile creeps left. Home and this colony's own remotes are never listed here — Defense already
   // covers those unconditionally (see roomsWithHostiles); this is strictly for rooms outside that set.
   defending: string[];
+  // The defending equivalent of colonizingFlags/attackingFlags above — same shape, same reasoning.
+  defendingFlags?: Record<string, string>;
   // The single room this colony is currently draining (sponsoring a drain squad for), owned by drain.ts —
   // a scalar, unlike colonizing/attacking above: the PRD (#34/ADR 0006) fixes exactly one drain target per
   // colony at a time, which is also what lets squad membership be derived from `op` alone with no squadId

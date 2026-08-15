@@ -141,6 +141,14 @@ above, covering every memory-triggered (as opposed to always-on) operation:
 | `drain` | no | clears `ColonyMemory.draining` (same as `clearDrainTarget`) |
 | `parade` | no | clears `ColonyMemory.parading` |
 
+For every flag-spawnable operation, a live flag's lifetime is tied to its
+target's, in both directions: removing the flag in-game stops just that target
+(the next tick's flag-runner pass notices it's gone), and stopping a target by
+any other means (this command, or the operation's own completion logic) removes
+its flag in turn (same lag — the next tick's pass notices the target's gone).
+An auto-picked target (no flag involved — the empire-wide colonize picker,
+`remoteInvaderAttacks.ts`) has no flag to tie to and is unaffected either way.
+
 ## Market & manufacturing
 
 **`scanMarket()`** — forces `src/empire/market.ts`'s `scanMarketNow()` to run

@@ -5,14 +5,21 @@
 // operation), so this runs as its own call from main.ts's loop(), independent of the per-colony
 // operation pipeline.
 //
-// One flag = one handoff: on success the target is durably recorded (ColonyMemory.colonizing, via
-// addColonizeTarget — see colonize.ts's header) and the flag is removed immediately (placing it again
-// re-triggers, e.g. if the whole attempt later fails and gets cleaned up — see the project's
-// flag-lifecycle decision). From that tick on, Colony's constructor attaches a real Colonize operation
-// for the target and its colonizer/settler spawn through the completely normal per-tick arbiter — this
-// module's job ends at the handoff, it never spawns anything directly. On failure (no fitting colony)
-// the flag is left in place and an error is logged every tick it's still unresolved, so the player sees
-// why nothing is happening rather than silence.
+// Unlike a one-shot trigger, the flag's lifetime is now tied to its target's, in both directions (same
+// shape as drainFlags.ts/paradeFlags.ts, applied per-target instead of to a scalar — see attackFlags.ts's
+// header for the full reasoning, identical here): on a successful handoff the flag is left in place (not
+// removed) and its name recorded onto the target via addColonizeTarget's `flag` field
+// (ColonyMemory.colonizingFlags); the moment that flag disappears from Game.flags, the next tick's second
+// pass here drops just that one target (removeColonizeTarget). The reverse also holds: when Colonize's own
+// completion logic removes a target on its own (succeeded or permanently failed — see colonize.ts's
+// intents()), execute.ts prunes colonizingFlags for it, and this module's third pass notices the
+// now-orphaned flag name and removes the actual flag. A target sponsored by the auto-picker
+// (pickColonyTargets.ts, no flag involved) is simply never tracked here at all — unlike Attack/Defend,
+// Colonize genuinely is one operation instance per target (see colony/index.ts's constructor), but the
+// flag-tracking shape stays identical since it's the target, not the operation, that's tied to a flag.
+//
+// One flag = one handoff, same dedup shape as before: placing the same flag again while its target is
+// already being colonized is a harmless no-op.
 
 import { pickColonizeSponsor } from "./colonizeSponsor";
 import { execute } from "../intents/execute";
@@ -47,10 +54,15 @@ function routeDistance(a: string, b: string): number {
   return route === ERR_NO_PATH ? Infinity : route.length;
 }
 
-/** Runs once per tick from main.ts. Resolves every active colonize flag against the current empire,
- * hands the target off to the best sponsor colony it finds, and clears the flag on success. */
+/** Runs once per tick from main.ts. Resolves every active colonize flag against the current empire, hands
+ * the target off to the best sponsor colony it finds (flag left in place as the target's live switch),
+ * drops any flag-sponsored target whose flag has since disappeared, and removes any flag whose target has
+ * since been dropped by Colonize's own completion logic — see file header for the full shape. */
 export function runColonizeFlags(world: Empire): void {
-  for (const flag of colonizeFlags()) {
+  const flags = colonizeFlags();
+  const liveByName = new Map(flags.map(f => [f.name, f]));
+
+  for (const flag of flags) {
     const target = targetRoomFor(flag);
     if (!target) {
       log.error(`colonize flag "${flag.name}": can't tell the target room — place it in-room or name it "colonize:<room>"`);
@@ -69,8 +81,28 @@ export function runColonizeFlags(world: Empire): void {
       continue;
     }
 
-    execute([{ kind: "addColonizeTarget", room: pick.colony.name, target }]);
+    execute([{ kind: "addColonizeTarget", room: pick.colony.name, target, flag: flag.name }]);
     log.info(`colonize flag "${flag.name}": handed ${target} off to ${pick.colony.name}`);
-    flag.remove();
+    // Flag deliberately left in place: it's the live on/off switch for this target now (see file header).
+  }
+
+  for (const colony of world.colonies) {
+    const mem = Memory.colonies[colony.name];
+    const flagsByTarget = mem?.colonizingFlags ?? {};
+    for (const [target, flagName] of Object.entries(flagsByTarget)) {
+      // Reads live Memory.colonizing, not colony.snapshot.colonizing — see attackFlags.ts's identical
+      // comment for why the stale snapshot would misfire on a target this same call just added.
+      const stillListed = (mem?.colonizing ?? []).includes(target);
+      if (stillListed && !liveByName.has(flagName)) {
+        // The flag is gone but the target is still active: stop colonizing it.
+        execute([{ kind: "removeColonizeTarget", room: colony.name, target }]);
+        log.info(`colonize flag "${flagName}" is gone: stopping ${colony.name}'s colonize of ${target}`);
+      } else if (!stillListed) {
+        // The target is gone (Colonize's own completion logic dropped it) but its flag is still standing:
+        // remove the now-orphaned flag so it doesn't linger as a dead marker.
+        liveByName.get(flagName)?.remove();
+        log.info(`colonize target ${target} is gone: removing its flag "${flagName}"`);
+      }
+    }
   }
 }

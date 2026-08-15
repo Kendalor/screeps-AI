@@ -32,7 +32,7 @@ describe("runDefendFlags", () => {
     expect(() => runDefendFlags(world)).not.toThrow();
   });
 
-  it("hands the target off to the sponsor colony and removes the flag on success", () => {
+  it("hands the target off to the sponsor colony and leaves the flag in place as the target's live switch", () => {
     const remove = vi.fn();
     setUp({ f1: flag("defend", "W5N5", remove) });
     // Bare "defend" name resolves via the flag's own room — needs vision there, no controller required.
@@ -43,6 +43,40 @@ describe("runDefendFlags", () => {
     runDefendFlags(world);
 
     expect(defendingOf(Memory, "W1N1")).toEqual(["W5N5"]);
+    expect(remove).not.toHaveBeenCalled();
+    expect(
+      (Memory as unknown as { colonies: Record<string, { defendingFlags?: Record<string, string> }> }).colonies.W1N1
+        .defendingFlags
+    ).toEqual({ W5N5: "defend" });
+  });
+
+  it("drops just the flagged target the tick its flag is removed, leaving other targets untouched", () => {
+    setUp({}); // no flags at all this tick
+    const world = testEmpire(
+      colonySnap({ name: "W1N1", energyCapacity: DEFENDER_MIN_COST, defending: ["W5N5", "W6N6"] })
+    );
+    // runDefendFlags' second/third pass reads raw Memory.defending (not the snapshot — see the source's
+    // comment on why), so it must be seeded here too, alongside defendingFlags.
+    (Memory as unknown as { colonies: Record<string, { defending: string[]; defendingFlags?: Record<string, string> }> }).colonies.W1N1 = {
+      defending: ["W5N5", "W6N6"],
+      defendingFlags: { W5N5: "defend" } // W6N6 has no flag entry
+    } as never;
+
+    runDefendFlags(world);
+
+    expect(defendingOf(Memory, "W1N1")).toEqual(["W6N6"]);
+  });
+
+  it("removes a target's flag once the target itself is gone (operation's own completion logic)", () => {
+    const remove = vi.fn();
+    setUp({ f1: flag("defend", "W5N5", remove) });
+    const world = testEmpire(colonySnap({ name: "W1N1", energyCapacity: DEFENDER_MIN_COST, defending: [] }));
+    (Memory as unknown as { colonies: Record<string, { defendingFlags?: Record<string, string> }> }).colonies.W1N1 = {
+      defendingFlags: { W5N5: "defend" }
+    } as never;
+
+    runDefendFlags(world);
+
     expect(remove).toHaveBeenCalledTimes(1);
   });
 

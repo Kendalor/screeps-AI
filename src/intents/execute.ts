@@ -289,33 +289,39 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       // added to the schema still lacks the field entirely, so it must be backfilled here too.
       mem.colonizing ??= [];
       if (!mem.colonizing.includes(intent.target)) mem.colonizing.push(intent.target);
+      if (intent.flag) (mem.colonizingFlags ??= {})[intent.target] = intent.flag;
       return OK;
     }
     case "removeColonizeTarget": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.colonizing = (mem.colonizing ?? []).filter(t => t !== intent.target);
+      if (mem.colonizingFlags) delete mem.colonizingFlags[intent.target];
       return OK;
     }
     case "addAttackTarget": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.attacking ??= [];
       if (!mem.attacking.includes(intent.target)) mem.attacking.push(intent.target);
+      if (intent.flag) (mem.attackingFlags ??= {})[intent.target] = intent.flag;
       return OK;
     }
     case "removeAttackTarget": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.attacking = (mem.attacking ?? []).filter(t => t !== intent.target);
+      if (mem.attackingFlags) delete mem.attackingFlags[intent.target];
       return OK;
     }
     case "addDefendTarget": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.defending ??= [];
       if (!mem.defending.includes(intent.target)) mem.defending.push(intent.target);
+      if (intent.flag) (mem.defendingFlags ??= {})[intent.target] = intent.flag;
       return OK;
     }
     case "removeDefendTarget": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.defending = (mem.defending ?? []).filter(t => t !== intent.target);
+      if (mem.defendingFlags) delete mem.defendingFlags[intent.target];
       return OK;
     }
     case "setDrainTarget": {

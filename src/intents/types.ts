@@ -133,23 +133,30 @@ export type Intent =
   | { kind: "setRemotes"; room: string; remotes: RemoteMemory[]; strikes: Record<Id<Source>, number> }
   // A flag/auto-pick handoff resolved `room` as the sponsor for colonizing `target` — execute.ts owns
   // the Memory.colonies[room].colonizing write (append, deduped). From the next tick on, Colony's
-  // constructor reads it back to attach a real Colonize operation, same as setRemotes above.
-  | { kind: "addColonizeTarget"; room: string; target: string }
+  // constructor reads it back to attach a real Colonize operation, same as setRemotes above. `flag`, when
+  // the handoff came from a live flag (colonizeFlags.ts) rather than the auto-picker
+  // (pickColonyTargets.ts), records that flag's name into ColonyMemory.colonizingFlags so the target's
+  // lifetime can be tied back to it — see that field's doc.
+  | { kind: "addColonizeTarget"; room: string; target: string; flag?: string }
   // Colonize.intents() owns removal: the target either finished (reached SELF_SUFFICIENT_ENERGY_CAP) or
   // failed permanently (terminal claimController error) — see colonize.ts for the exact condition.
+  // execute.ts also prunes any colonizingFlags entry for this target, but deliberately does NOT remove
+  // the flag itself from Game.flags — that's colonizeFlags.ts's job (it owns the only Game.flags mutation
+  // for this operation), reading the now-orphaned memory entry back on its next pass. See that file's header.
   | { kind: "removeColonizeTarget"; room: string; target: string }
   // The combat equivalent of addColonizeTarget: a flag handoff resolved `room` as the sponsor for
   // attacking `target` — execute.ts owns the Memory.colonies[room].attacking write (append, deduped).
-  | { kind: "addAttackTarget"; room: string; target: string }
+  // `flag`, same meaning/purpose as addColonizeTarget's — omitted by remoteInvaderAttacks.ts's auto-pick.
+  | { kind: "addAttackTarget"; room: string; target: string; flag?: string }
   // Attack.intents() owns removal: the target room has been seen with zero hostile creeps left — see
-  // attack.ts for the exact condition.
+  // attack.ts for the exact condition. Same attackingFlags-pruning/flag-removal split as removeColonizeTarget.
   | { kind: "removeAttackTarget"; room: string; target: string }
   // The defensive equivalent of addAttackTarget/removeAttackTarget: a flag handoff resolved `room` as the
   // sponsor for defending `target` (a room outside its own home/remotes) — execute.ts owns the
-  // Memory.colonies[room].defending write (append, deduped).
-  | { kind: "addDefendTarget"; room: string; target: string }
+  // Memory.colonies[room].defending write (append, deduped). `flag`, same meaning/purpose as above.
+  | { kind: "addDefendTarget"; room: string; target: string; flag?: string }
   // Defense.intents() owns removal: the target room has been seen with zero hostile creeps left — same
-  // condition as removeAttackTarget, see defense.ts.
+  // condition as removeAttackTarget, see defense.ts. Same defendingFlags-pruning/flag-removal split.
   | { kind: "removeDefendTarget"; room: string; target: string }
   // The drain equivalent of addAttackTarget: a flag handoff resolved `room` as the sponsor for draining
   // `target` — execute.ts owns the Memory.colonies[room].draining write. Unlike addAttackTarget this is a
