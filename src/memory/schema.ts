@@ -252,6 +252,13 @@ export interface ColonyMemory {
   // tick before planBuilding has run once, or a colony with no anchor yet (planBuilding returns before
   // writing — see its own early-out).
   buildingPlan?: { type: BuildableStructureConstant; x: number; y: number; room: string; sourceId?: Id<Source>; built: boolean }[];
+  // Cached alongside buildingPlan (same write, same interval:100 cadence, same staleness contract) so
+  // spawn/bodyContext.ts's body-sizing "roads" flag can ask the planner directly instead of re-deriving
+  // road-completion itself from routeBuilt strings. True once energyCapacity has crossed
+  // ROADS_FROM_ENERGY_CAPACITY AND no ROAD-type entry in this same buildingPlan write is still unbuilt —
+  // the planner's own authoritative claim list, not a parallel scan of colony.remoteSources. Absent only
+  // wherever buildingPlan itself is absent (see that field's own doc).
+  roadsBuilt?: boolean;
 }
 
 // A squad's persisted anchor tile — see ColonyMemory.drainAnchor/paradeAnchor's doc for the full rationale

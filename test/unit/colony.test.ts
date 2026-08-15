@@ -8,11 +8,18 @@
 // since neither Colonize nor Colony can look that up on their own — only the Empire constructing every
 // Colony at once has that visibility.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { colony } from "../../src/colony";
 import { opName } from "../../src/spawn/request";
 import type { Intent } from "../../src/intents/types";
 import { colonySnap, remoteSourceAt, testColony } from "../fixtures";
+import { resetFindPathCacheForTests } from "../../src/construction/planner";
+import { stubPathFinderSingleRoom } from "../constants";
+
+beforeEach(() => {
+  stubPathFinderSingleRoom();
+  resetFindPathCacheForTests();
+});
 
 describe("Colony: colonize targets", () => {
   it("attaches no Colonize operation when colonizing is empty", () => {

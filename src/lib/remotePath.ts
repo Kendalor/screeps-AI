@@ -11,27 +11,6 @@
 import type { RemoteRouteTile, ScoutedSource } from "../memory/schema";
 import type { XY } from "./geometry";
 
-// A tile the source-outward road claim in mining.ts would never actually ask for a road on: the
-// container tile itself (last in the route), an exit tile (Screeps refuses any structure there), or a
-// home-room tile the bunker layout has claimed for a non-road structure (an extension/spawn built right
-// where the route happens to path past the anchor — a bunker ROAD placement at the same tile is not an
-// obstacle, since that's the genuine road this tile wants anyway). `routeBuilt` can never flip to "1" at
-// one of these indices — no road belongs there — so anything walking the whole route/routeBuilt pair
-// (mining.ts's own recordRemoteRouteBuilt marking, and bodyContext.ts's allRemoteRoutesBuilt road-ratio
-// check) must skip these indices rather than reading them as a genuine gap. `nonRoadObstacles` only ever
-// covers the home room (stampLayout never sets `room` on its output), so a remote-room tile is never
-// affected by it.
-export function isRoadEligible(
-  tile: RemoteRouteTile,
-  index: number,
-  route: readonly RemoteRouteTile[],
-  nonRoadObstacles: readonly XY[]
-): boolean {
-  if (index === route.length - 1) return false; // container tile
-  if (isExitTile(tile)) return false;
-  return !nonRoadObstacles.some(p => p.x === tile.x && p.y === tile.y);
-}
-
 // Cost PathFinder gives a plain tile that isn't otherwise marked — mirrors the plainCost option below,
 // duplicated as a constant so preferredTileCost can undercut it deliberately rather than by coincidence.
 const PLAIN_COST = 2;

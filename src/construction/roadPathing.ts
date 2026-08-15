@@ -1,11 +1,11 @@
-// Cost-matrix construction + hand-rolled road pathing for connecting a stamped bunker (stamp.ts) to
-// sources and the controller. Pure/unit-testable — no Game access, via the hand-rolled findPath below,
-// deliberately NOT PathFinder.search: this only ever runs during planning (once per source/controller,
-// not per tick), so it trades the engine's speed for testability without a stubbed engine. Contrast
-// lib/pathing.ts's pathDistance/pathDistanceAndStand, which run on the logistics allocator's hot path and
-// need the opposite tradeoff — see that file's own doc for why.
+// Cost-matrix construction for connecting a stamped bunker (stamp.ts) to sources and the controller.
+// Pure/unit-testable — no Game access. The hand-rolled A* that used to live here (sourceRoadPath/
+// controllerRoadPath/controllerContainerPath) is gone: every caller now goes through
+// construction/planner.ts's findPath (real PathFinder.search) instead — see that module's own doc.
+// This file's remaining job is just the RoadCostMatrix builder, still used by logistics/index.ts's
+// live-structures distance queries (a different matrix-source rule than the planner's plan-only one,
+// deliberately — see that call site's own doc).
 
-import type { XY } from "../lib/geometry";
 import { RoadCostMatrix } from "../lib/pathing";
 import type { PlacedStructure } from "./stamp";
 
@@ -24,117 +24,6 @@ export type { RoadCostMatrix };
 export interface RoomFixture {
   terrain: Uint8Array; // 1 = walkable, 0 = wall, indexed [x*50+y]
   structures: PlacedStructure[];
-}
-
-// A* without a binary heap (linear scan is cheap enough for a 50x50 room). Finds the cheapest
-// path from `from` to any tile within `range` of `to`, 8-directional movement.
-function findPath(from: XY, to: XY, range: number, cm: RoadCostMatrix): XY[] {
-  const key = (p: XY): number => p.x * 50 + p.y;
-  const withinRange = (p: XY): boolean =>
-    Math.max(Math.abs(p.x - to.x), Math.abs(p.y - to.y)) <= range;
-
-  const open = new Map<number, XY>();
-  open.set(key(from), from);
-  const cameFrom = new Map<number, XY>();
-  const gScore = new Map<number, number>([[key(from), 0]]);
-  const fScore = new Map<number, number>([[key(from), heuristic(from, to)]]);
-
-  while (open.size > 0) {
-    let currentKey = -1;
-    let current: XY | null = null;
-    let bestF = Infinity;
-    for (const [k, p] of open) {
-      const f = fScore.get(k) ?? Infinity;
-      if (f < bestF) {
-        bestF = f;
-        currentKey = k;
-        current = p;
-      }
-    }
-    if (current === null) break;
-
-    if (withinRange(current)) {
-      return reconstructPath(cameFrom, current);
-    }
-
-    open.delete(currentKey);
-
-    for (const neighbor of neighbors(current)) {
-      if (neighbor.x < 0 || neighbor.x > 49 || neighbor.y < 0 || neighbor.y > 49) continue;
-      const cost = cm.get(neighbor.x, neighbor.y);
-      if (cost >= IMPASSABLE) continue;
-
-      const nKey = key(neighbor);
-      const tentativeG = (gScore.get(currentKey) ?? Infinity) + cost;
-      if (tentativeG < (gScore.get(nKey) ?? Infinity)) {
-        cameFrom.set(nKey, current);
-        gScore.set(nKey, tentativeG);
-        fScore.set(nKey, tentativeG + heuristic(neighbor, to));
-        open.set(nKey, neighbor);
-      }
-    }
-  }
-
-  return [];
-}
-
-function heuristic(a: XY, b: XY): number {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-}
-
-function neighbors(p: XY): XY[] {
-  const out: XY[] = [];
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      if (dx === 0 && dy === 0) continue;
-      out.push({ x: p.x + dx, y: p.y + dy });
-    }
-  }
-  return out;
-}
-
-function reconstructPath(cameFrom: Map<number, XY>, end: XY): XY[] {
-  const path: XY[] = [end];
-  let currentKey = end.x * 50 + end.y;
-  let prev = cameFrom.get(currentKey);
-  while (prev) {
-    path.unshift(prev);
-    currentKey = prev.x * 50 + prev.y;
-    prev = cameFrom.get(currentKey);
-  }
-  return path;
-}
-
-export interface RoadPathResult {
-  path: XY[];
-  structurePos: XY;
-}
-
-function roadPathTo(anchor: XY, target: XY, range: number, costMatrix: RoadCostMatrix): RoadPathResult {
-  const path = findPath(anchor, target, range, costMatrix);
-  const structurePos = path[path.length - 1];
-  return { path, structurePos };
-}
-
-export function sourceRoadPath(anchor: XY, source: XY, costMatrix: RoadCostMatrix): RoadPathResult {
-  return roadPathTo(anchor, source, 1, costMatrix);
-}
-
-// Screeps' UPGRADE_CONTROLLER_RANGE.
-const UPGRADE_CONTROLLER_RANGE = 3;
-
-export function controllerRoadPath(anchor: XY, controller: XY, costMatrix: RoadCostMatrix): RoadPathResult {
-  return roadPathTo(anchor, controller, UPGRADE_CONTROLLER_RANGE, costMatrix);
-}
-
-// The upgrade container sits adjacent to the controller (range 1, not the full range-3 upgrade
-// range) so an upgrader standing on it is still in range of the controller with room to spare.
-// Pathed from `from` (the storage tile) so the returned path's road tiles connect the container
-// back toward storage; the last tile is the container.
-const UPGRADE_CONTAINER_RANGE = 1;
-
-export function controllerContainerPath(from: XY, controller: XY, costMatrix: RoadCostMatrix): RoadPathResult {
-  return roadPathTo(from, controller, UPGRADE_CONTAINER_RANGE, costMatrix);
 }
 
 export function buildCostMatrix(room: RoomFixture): RoadCostMatrix {

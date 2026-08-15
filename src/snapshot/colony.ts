@@ -245,6 +245,7 @@ function buildColonySnapshot(
     anchor: resolveAnchor(room),
     sourceMemory: Memory.colonies[room.name]?.sources ?? {},
     linkNetwork: Memory.colonies[room.name]?.links ?? {},
+    roadsBuilt: Memory.colonies[room.name]?.roadsBuilt ?? false,
     structures: room
       .find(FIND_STRUCTURES)
       .filter((s): s is AnyStructure & { structureType: BuildableStructureConstant } => s.structureType !== STRUCTURE_CONTROLLER)

@@ -6,12 +6,27 @@
 // scenarios can make an already-built structure lose its claim (and, for the home-room leg, get
 // actively demolished), versus which ones (as of the 25ab1b6 fix) now correctly leave the claim alone.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { colony } from "../../src/colony";
 import { Mining } from "../../src/operations/mining";
 import { pickRemotes } from "../../src/mining/pickRemotes";
 import { colonySnap, remoteSourceAt, scoutTarget, scouted } from "../fixtures";
-import type { SnapRemoteSource } from "../../src/snapshot/types";
+import type { ColonySnapshot, SnapRemoteSource } from "../../src/snapshot/types";
+import { findPath, resetFindPathCacheForTests, type FindPath } from "../../src/construction/planner";
+import { stubPathFinderSingleRoom } from "../constants";
+
+beforeEach(() => {
+  stubPathFinderSingleRoom();
+  resetFindPathCacheForTests();
+  // claimsOf seeds a matrix for every room a resolved claim lands in (see construction/planner.ts's
+  // claimsOf loop) — including a remote room Mining's route claims tag, even though nothing ever
+  // pathfinds there — so building() on a remote-source snapshot needs Game.map.getRoomTerrain stubbed.
+  (globalThis as unknown as { Game: { map: { getRoomTerrain: (room: string) => { get(x: number, y: number): number } } } }).Game = {
+    map: { getRoomTerrain: () => ({ get: () => 0 }) } // fully open room, every tile walkable
+  };
+});
+
+const findPathFor = (snap: ColonySnapshot): FindPath => (from, to, range, opts) => findPath(snap, from, to, range, opts);
 
 const mining = new Mining("W1N1");
 // Same anchor building.test.ts's remote-construction suite uses, confirmed clear of the bunker's own
@@ -61,7 +76,7 @@ describe("remote structure claims across scenario changes — still selected", (
     const source = remoteSourceAt(2, 25, "W2N1", { route, ...over });
     const snap = builtSnap(source);
 
-    const claims = mining.structures(snap);
+    const claims = mining.structures(snap, findPathFor(snap));
     expect(claims).toContainEqual({ x: 35, y: 35, room: "W1N1", type: "road", sourceId: source.id });
     expect(claims.some(c => c.room === "W2N1")).toBe(true);
   });
@@ -91,7 +106,7 @@ describe("remote structure claims once a source is evicted (absent from colony.r
       remoteStructures: {}
     });
 
-    expect(mining.structures(snap)).toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).toEqual([]);
   });
 
   it("building() demolishes the orphaned home-room-leg road as unwanted — the actual W8N3 bug", () => {

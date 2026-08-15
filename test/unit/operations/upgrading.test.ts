@@ -2,15 +2,27 @@
 // storage, the ported getMaxUpgraders formula scales on what storage holds. Constructs the operation
 // directly and hands it a snapshot: no Game mock, no Colony.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import GOAL_JSON from "../../../src/construction/Base_2.json";
 import type { GoalLayout } from "../../../src/construction/sync";
 import type { XY } from "../../../src/lib/geometry";
 import { Upgrading } from "../../../src/operations/upgrading";
+import { findPath, resetFindPathCacheForTests, type FindPath } from "../../../src/construction/planner";
 import { colonySnap, containerAt, dropAt, linkAt, snapCreeps, structureAt } from "../../fixtures";
+import { stubPathFinderSingleRoom } from "../../constants";
+import type { ColonySnapshot } from "../../../src/snapshot/types";
 
 const upgrading = new Upgrading("W1N1");
 const upgraderRequests = (over: Parameters<typeof colonySnap>[0]) => upgrading.desiredCreeps(colonySnap(over));
+
+beforeEach(() => {
+  stubPathFinderSingleRoom();
+  resetFindPathCacheForTests();
+});
+
+// Every test drives Upgrading.structures() through the real planner findPath (real PathFinder.search,
+// single-room, stubbed via stubPathFinderSingleRoom) — the same seam production code uses.
+const findPathFor = (snap: ColonySnapshot): FindPath => (from, to, range, opts) => findPath(snap, from, to, range, opts);
 
 const chebyshev = (a: XY, b: XY): number => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 const storageOffset = (GOAL_JSON as GoalLayout).placements.find(p => p.type === "storage")!;
@@ -152,21 +164,24 @@ describe("Upgrading.structures — controller container + road", () => {
     colonySnap({ anchor, controller, controllerLevel: 3, energyCapacity: 800, ...over });
 
   it("claims exactly one container within range 1 of the controller", () => {
-    const containers = upgrading.structures(gated()).filter(s => s.type === "container");
+    const snap = gated();
+    const containers = upgrading.structures(snap, findPathFor(snap)).filter(s => s.type === "container");
 
     expect(containers).toHaveLength(1);
     expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(1);
   });
 
   it("stays in upgrade range: the container is never further than range 3 from the controller", () => {
-    const [container] = upgrading.structures(gated()).filter(s => s.type === "container");
+    const snap = gated();
+    const [container] = upgrading.structures(snap, findPathFor(snap)).filter(s => s.type === "container");
 
     // Range 1 is the target, but the load-bearing property is "an upgrader on it can still upgrade".
     expect(chebyshev(container, controller)).toBeLessThanOrEqual(3);
   });
 
   it("claims a road linking the container back toward the storage tile", () => {
-    const claimed = upgrading.structures(gated());
+    const snap = gated();
+    const claimed = upgrading.structures(snap, findPathFor(snap));
     const roads = claimed.filter(s => s.type === "road");
     const [container] = claimed.filter(s => s.type === "container");
 
@@ -183,101 +198,46 @@ describe("Upgrading.structures — controller container + road", () => {
   // Capacity, not level, is the gate: 549 is one short. A room that cannot fund the container asks
   // for nothing, exactly as its creep demand is gated by current state.
   it("withholds the container below the energyCapacity gate", () => {
-    expect(upgrading.structures(gated({ energyCapacity: 549 }))).toEqual([]);
+    const snap = gated({ energyCapacity: 549 });
+    expect(upgrading.structures(snap, findPathFor(snap))).toEqual([]);
   });
 
   it("claims nothing before an anchor exists", () => {
-    expect(upgrading.structures(gated({ anchor: null }))).toEqual([]);
+    const snap = gated({ anchor: null });
+    expect(upgrading.structures(snap, findPathFor(snap))).toEqual([]);
   });
 
-  // Two DIFFERENT structures on one tile is not a plan planBuilding can execute — but a road claim
-  // landing on a tile a sibling already planned as a road is agreement, not a conflict, and must still
-  // go out as this operation's own claim (see structures()' doc: dropping it silently used to make
-  // building.ts's gateRoads treat the tile as un-exempt from its adjacency gate, and a shared-corridor
-  // road with nothing else served nearby could fail that too — confirmed live on W47N14 2026-08-13,
-  // where the controller-approach road runs along Mining's own remote route corridor).
-  it("never claims a tile a sibling already planned with a DIFFERENT structure type", () => {
-    const claimed = upgrading.structures(gated());
-    // Feed its own claim back as the planned set: a different type on those tiles must still be blocked.
-    const planned = claimed.map(c => ({ x: c.x, y: c.y, type: c.type }));
-    const second = upgrading.structures(gated(), planned);
-
-    const plannedTypeAt = new Map(planned.map(p => [`${p.x},${p.y}`, p.type]));
-    for (const c of second) {
-      const existing = plannedTypeAt.get(`${c.x},${c.y}`);
-      expect(existing === undefined || existing === c.type).toBe(true);
-    }
+  // No duplicate tiles within Upgrading's own claim. Cross-operation dedup/type-precedence
+  // (a sibling's same-tile claim, a bunker-grid collision) is now the planner's own consolidate()
+  // concern — see construction/planner.test.ts's "consolidate" coverage.
+  it("never claims the same tile twice", () => {
+    const snap = gated();
+    const claimed = upgrading.structures(snap, findPathFor(snap));
+    const keys = claimed.map(c => `${c.x},${c.y}`);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
-  // Every claim structures() makes is implicitly home-room. A DIFFERENT-type claim at the same (x,y)
-  // but tagged to a different room is a coincidence, not the same tile, and must not block anything —
-  // the dedup map needs the same home-room filter route()'s cost matrix now has (see the wall test below).
-  it("ignores a same-coordinate claim from a different room when deduping, even with a different type", () => {
-    const claimed = upgrading.structures(gated());
-    const remoteConflict = claimed.map(c => ({ x: c.x, y: c.y, type: "extension" as const, room: "W2N1" }));
-
-    const second = upgrading.structures(gated(), remoteConflict);
-    const roads = second.filter(s => s.type === "road");
-    const homeRoads = claimed.filter(s => s.type === "road");
-    expect(roads).toHaveLength(homeRoads.length);
-    for (const r of homeRoads) expect(roads).toContainEqual(r);
+  // findPath's clearBunkerFootprint option (planner.ts) keeps the controller-approach search from ever
+  // landing inside the bunker's own footprint — a live bug class this option exists to close (a search
+  // that terminates on a bunker-interior tile would collide with the goal layout itself).
+  it("never lands its container/link inside the bunker footprint", () => {
+    const snap = gated();
+    const claimed = upgrading.structures(snap, findPathFor(snap));
+    const [container] = claimed.filter(s => s.type === "container" || s.type === "link");
+    expect(chebyshev(container, anchor)).toBeGreaterThan(0);
   });
 
-  // A live bug: the bunker's own road grid is seeded into `planned` before any operation runs (see
-  // claimsOf), unconditionally — not capacity-gated the way built roads are. If controllerContainerPath's
-  // A* happens to terminate on a tile that grid already claims as a road, the naive claim silently
-  // vanishes (the dedup drops it with nowhere else to go) rather than finding a free tile nearby — the
-  // container never gets claimed again, at any RCL, until the bunker layout around it changes.
-  it("still claims a container when its natural tile is already planned as a road", () => {
-    const natural = upgrading.structures(gated()).find(s => s.type === "container")!;
-    const planned = [{ x: natural.x, y: natural.y, type: "road" as const }];
-
-    const claimed = upgrading.structures(gated(), planned);
-    const containers = claimed.filter(s => s.type === "container");
-
-    expect(containers).toHaveLength(1);
-    expect({ x: containers[0].x, y: containers[0].y }).not.toEqual({ x: natural.x, y: natural.y });
-    expect(chebyshev(containers[0], controller)).toBeLessThanOrEqual(1);
-  });
-
-  // Confirmed live on W47N14 2026-08-13: the controller-approach road's A* path runs down the same
-  // corridor Mining's own remote-route road already occupies for a large stretch (both searches share
-  // the same PathFinder `preferred`-tile convergence bias — see remotePath.ts), so nearly every road
-  // tile in the route collided with an already-planned road from `planned` (bunker grid or a sibling
-  // operation). The untyped dedup dropped every one of those claims outright, so gateRoads never saw
-  // them as "this operation's own claimed road" and any of those tiles with nothing else served nearby
-  // could fail its adjacency gate too — silently starving genuinely-unbuilt stretches of the controller
-  // road of a construction site, tick after tick, with no way to self-heal.
-  it("still claims its own road tiles even when the route runs along a corridor a sibling already planned as road", () => {
-    const claimed = upgrading.structures(gated());
-    const roads = claimed.filter(s => s.type === "road");
-    expect(roads.length).toBeGreaterThan(0);
-
-    // A sibling (e.g. Mining) already planned the whole route as road — same tiles, same type.
-    const siblingCorridor = roads.map(r => ({ x: r.x, y: r.y, type: "road" as const }));
-    const claimedWithCorridor = upgrading.structures(gated(), siblingCorridor);
-    const roadsWithCorridor = claimedWithCorridor.filter(s => s.type === "road");
-
-    // Every road tile still comes out as this operation's own claim, not silently dropped.
-    expect(roadsWithCorridor).toHaveLength(roads.length);
-    for (const r of roads) expect(roadsWithCorridor).toContainEqual(r);
-  });
-
-  // Confirmed live on W47N14 2026-08-13: a Mining remote-route road claim (room set to the REMOTE room)
-  // shared (x,y) with a real home-room wall tile. buildCostMatrix/RoadCostMatrix index purely by (x,y)
-  // with no room concept, so route()'s unfiltered `planned` let that remote claim mark the home-room
-  // wall as a cheap ROAD_COST tile — the controller-approach A* then happily "tunneled" straight through
-  // it. planned must be filtered to home-room entries before it can influence this room's cost matrix.
-  it("never routes its road across a home-room wall, even when a remote claim shares the wall's coordinates", () => {
+  // A real home-room wall must still be routed around — the matrix seeds IMPASSABLE from
+  // colony.terrain directly (construction/planner.ts's seedMatrixFor), so this is a basic sanity check
+  // that findPath's caller-supplied terrain is actually what the search uses.
+  it("never routes its road across a home-room wall", () => {
     const terrain = new Uint8Array(2500).fill(1); // all walkable
     const wallX = anchor.x - 5;
     const wallY = anchor.y + 8; // sits between storage and the controller on the straight-line path
     terrain[wallX * 50 + wallY] = 0; // a real home-room wall
 
-    // A remote route's road claim at the exact same (x,y), tagged to a different room — must not leak in.
-    const poisonedPlanned = [{ x: wallX, y: wallY, room: "W2N1", type: "road" as const }];
-
-    const claimed = upgrading.structures(gated({ terrain }), poisonedPlanned);
+    const snap = gated({ terrain });
+    const claimed = upgrading.structures(snap, findPathFor(snap));
     const roads = claimed.filter(s => s.type === "road");
 
     expect(roads.length).toBeGreaterThan(0);
@@ -292,7 +252,8 @@ describe("Upgrading.structures — link swap at RCL5", () => {
     colonySnap({ anchor, controller, controllerLevel: 5, energyCapacity: 800, ...over });
 
   it("claims a link instead of a container once the room reaches RCL5", () => {
-    const claimed = upgrading.structures(gated());
+    const snap = gated();
+    const claimed = upgrading.structures(snap, findPathFor(snap));
 
     expect(claimed.filter(s => s.type === "container")).toHaveLength(0);
     const links = claimed.filter(s => s.type === "link");
@@ -301,64 +262,93 @@ describe("Upgrading.structures — link swap at RCL5", () => {
   });
 
   it("still below the gate, RCL4 keeps claiming a container", () => {
-    const claimed = upgrading.structures(gated({ controllerLevel: 4 }));
+    const snap = gated({ controllerLevel: 4 });
+    const claimed = upgrading.structures(snap, findPathFor(snap));
 
     expect(claimed.filter(s => s.type === "link")).toHaveLength(0);
     expect(claimed.filter(s => s.type === "container")).toHaveLength(1);
   });
 
   it("the link sits at the same spot the container would have, still roaded back to storage", () => {
-    const linkClaim = upgrading.structures(gated()).find(s => s.type === "link")!;
-    const containerClaim = upgrading.structures(gated({ controllerLevel: 4 })).find(s => s.type === "container")!;
+    const rcl5 = gated();
+    const rcl4 = gated({ controllerLevel: 4 });
+    const linkClaim = upgrading.structures(rcl5, findPathFor(rcl5)).find(s => s.type === "link")!;
+    const containerClaim = upgrading.structures(rcl4, findPathFor(rcl4)).find(s => s.type === "container")!;
 
     expect({ x: linkClaim.x, y: linkClaim.y }).toEqual({ x: containerClaim.x, y: containerClaim.y });
 
-    const roads = upgrading.structures(gated()).filter(s => s.type === "road");
+    const roads = upgrading.structures(rcl5, findPathFor(rcl5)).filter(s => s.type === "road");
     expect(roads.some(r => chebyshev(r, linkClaim) === 1)).toBe(true);
   });
 
-  // A live bug: once the link is actually built, it's a real obstacle (unlike a container, links aren't
-  // in roads.ts's WALKABLE_STRUCTURES) — so re-running the same A* on a later tick can no longer land
-  // back on its own tile and instead terminates on a *different* tile adjacent to the controller. Nothing
-  // is built there yet, so building.ts sites it too: a second link goes up next to the first. structures()
-  // must keep re-deriving the same spot the recorded link already sits at.
+  // The matrix findPath routes against is plan-only (terrain + bunker layout + accumulated claims,
+  // never colony.structures — see construction/planner.ts's own doc), so a previously-built controller
+  // link is never read as an obstacle in the first place: structures() keeps re-deriving the same
+  // natural spot once the link is actually built and recorded there, never a second one nearby.
   it("keeps claiming the same spot once its own link is built and recorded, not a second one nearby", () => {
-    const natural = upgrading.structures(gated()).find(s => s.type === "link")!;
+    const base = gated();
+    const natural = upgrading.structures(base, findPathFor(base)).find(s => s.type === "link")!;
     const builtLink = linkAt(natural.x, natural.y, 0);
 
-    const claimed = upgrading.structures(
-      gated({
-        structures: [structureAt(natural.x, natural.y, "link", { id: builtLink.id })],
-        links: [builtLink],
-        linkNetwork: { controller: builtLink.id }
-      })
-    );
+    const built = gated({
+      structures: [structureAt(natural.x, natural.y, "link", { id: builtLink.id })],
+      links: [builtLink],
+      linkNetwork: { controller: builtLink.id }
+    });
+    const claimed = upgrading.structures(built, findPathFor(built));
 
     const links = claimed.filter(s => s.type === "link");
     expect(links).toHaveLength(1);
     expect({ x: links[0].x, y: links[0].y }).toEqual({ x: natural.x, y: natural.y });
   });
 
-  // A second live bug, same family as the one above: once the recorded link is destroyed (combat,
-  // manual removal), colony.links no longer contains it — trusting the recorded id blindly would treat
-  // it as a dead obstacle-exclusion that matches nothing, so the route lands on a fresh nearby tile,
-  // that tile gets sited, and once *that* one finishes building the same gap strikes again — an endless
-  // razed/rebuilt cycle. structures() must fall back to re-deriving a fresh natural spot once the
-  // recorded link is confirmed gone, not orbit around a dead id forever.
-  it("re-derives a fresh spot once the recorded link no longer exists (destroyed)", () => {
-    const natural = upgrading.structures(gated()).find(s => s.type === "link")!;
+  it("re-derives the same natural spot once the recorded link no longer exists (destroyed)", () => {
+    const base = gated();
+    const natural = upgrading.structures(base, findPathFor(base)).find(s => s.type === "link")!;
 
-    const claimed = upgrading.structures(
-      gated({
-        structures: [], // the link is gone from the room
-        links: [], // and gone from the live link list
-        linkNetwork: { controller: "dead-id" as Id<StructureLink> } // but memory still points at it
-      })
-    );
+    const destroyed = gated({
+      structures: [], // the link is gone from the room
+      links: [], // and gone from the live link list
+      linkNetwork: { controller: "dead-id" as Id<StructureLink> } // but memory still points at it
+    });
+    const claimed = upgrading.structures(destroyed, findPathFor(destroyed));
 
     const links = claimed.filter(s => s.type === "link");
     expect(links).toHaveLength(1);
     expect({ x: links[0].x, y: links[0].y }).toEqual({ x: natural.x, y: natural.y });
+  });
+
+  // Regression for a real relocation bug: findPath's matrix is reseeded fresh every claimsOf pass from
+  // terrain + bunker layout + whatever OTHER operations staged this tick (Mining runs before Upgrading —
+  // see operations/index.ts's operationsFor order). That staged state legitimately varies tick to tick
+  // (remote selection churn, a newly built road), and with many equal-cost goal tiles available in
+  // clearBunkerFootprint's goal set, a different sibling-claim landscape can tip PathFinder's own
+  // tie-break to a DIFFERENT tile than the one actually built — reading as a second link claim (the old
+  // one goes stale/demolished, a new site opens elsewhere). structures() must PIN to the already-built
+  // tile once one exists, never trust wherever this tick's fresh search happens to land.
+  //
+  // Driven with a spy FindPath that deliberately returns a DIFFERENT structurePos than the real built
+  // link's tile (simulating exactly the tie-break drift a sibling claim could cause) — the only way to
+  // prove structures() ignores the search's own endpoint choice once a link is built, rather than
+  // happening to agree with it because the test's own conditions never actually drifted.
+  it("pins to the already-built link's tile even when findPath's own search would land elsewhere", () => {
+    const builtLink = linkAt(24, 39, 0);
+    const built = gated({
+      structures: [structureAt(24, 39, "link", { id: builtLink.id })],
+      links: [builtLink],
+      linkNetwork: { controller: builtLink.id }
+    });
+
+    // A driftedFindPath that always resolves to a decoy tile far from the real built link — if
+    // structures() ever trusted this call's own endpoint, the claim would land at the decoy instead.
+    const decoy = { x: 30, y: 30 };
+    const driftedFindPath: FindPath = () => ({ path: [decoy], structurePos: decoy });
+
+    const claimed = upgrading.structures(built, driftedFindPath);
+    const links = claimed.filter(s => s.type === "link");
+    expect(links).toHaveLength(1);
+    expect({ x: links[0].x, y: links[0].y }).toEqual({ x: 24, y: 39 });
+    expect({ x: links[0].x, y: links[0].y }).not.toEqual(decoy);
   });
 });
 

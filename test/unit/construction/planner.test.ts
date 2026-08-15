@@ -1,20 +1,43 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Intent } from "../../../src/intents/types";
 import type { ColonySnapshot, SnapStructure } from "../../../src/snapshot/types";
 import { colony } from "../../../src/colony";
 import type { BuildingPlanEntry } from "../../../src/construction/planner";
-import { claimsOf, wantedStructures } from "../../../src/construction/planner";
-import { colonySnap, openTerrain, remoteSourceAt, snapCreep, sourceAt } from "../../fixtures";
+import {
+  claimsOf,
+  findPath,
+  resetFindPathCacheForTests,
+  wantedStructures,
+  ROADS_FROM_ENERGY_CAPACITY,
+  type FindPath
+} from "../../../src/construction/planner";
+import { colonySnap, linkAt, openTerrain, remoteSourceAt, snapCreep, sourceAt } from "../../fixtures";
 import { Mining } from "../../../src/operations/mining";
+import { Upgrading } from "../../../src/operations/upgrading";
 import { buildableAtRcl } from "../../../src/construction/goal";
 import { stampLayout, type PlacedStructure } from "../../../src/construction/stamp";
 import type { GoalLayout } from "../../../src/construction/sync";
 import GOAL_JSON from "../../../src/construction/Base_2.json";
 import type { XY } from "../../../src/lib/geometry";
+import { stubPathFinderSingleRoom } from "../../constants";
+
+beforeEach(() => {
+  stubPathFinderSingleRoom();
+  resetFindPathCacheForTests();
+  // findPath's terrainFromGame needs Game.map.getRoomTerrain for any remote-room matrix. Deliberately
+  // NOT the full stubGame() helper — this file's Memory-cache tests rely on `typeof Memory ===
+  // "undefined"` being true except where a test stubs it itself (see hasOutstandingConstruction/
+  // writeBuildingPlan's own typeof guards), and stubGame() always sets a global Memory.
+  (globalThis as unknown as { Game: { map: { getRoomTerrain: (room: string) => { get(x: number, y: number): number } } } }).Game = {
+    map: { getRoomTerrain: () => ({ get: () => 0 }) } // fully open room, every tile walkable
+  };
+});
+
+const findPathFor = (snap: ColonySnapshot): FindPath => (from, to, range, opts) => findPath(snap, from, to, range, opts);
 
 // What the colony's Mining operation claims — the same call planBuilding makes, so these tests
 // assert the arbiter merges real operation demand rather than a re-stated copy of it.
-const minedStructures = (snap: ColonySnapshot) => new Mining(snap.name).structures(snap);
+const minedStructures = (snap: ColonySnapshot) => new Mining(snap.name).structures(snap, findPathFor(snap));
 
 // Every non-road structure the goal permits at `rcl`, stamped at the anchor.
 function allNonRoadStructuresAt(anchor: XY, rcl: number): SnapStructure[] {
@@ -22,6 +45,59 @@ function allNonRoadStructuresAt(anchor: XY, rcl: number): SnapStructure[] {
     .filter(p => p.type !== "road")
     .map(p => ({ x: p.x, y: p.y, type: p.type }));
 }
+
+// claimsOf's own consolidate() step: dedup + container/rampart-over-road + exit-tile drop, exercised
+// through real operations (not a hand-rolled claim list) so this proves the actual production seam —
+// two operations' claims genuinely colliding at claimsOf's own call site — not just consolidate's
+// isolated logic in a vacuum.
+describe("claimsOf — consolidate (cross-operation dedup)", () => {
+  it("drops a later operation's claim when it collides with an earlier one's DIFFERENT structure type", () => {
+    const anchor = { x: 25, y: 25 };
+    const source = sourceAt(20, 25); // straight line toward the anchor from the west
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
+
+    const mining = new Mining("W1N1");
+    const upgrading = new Upgrading("W1N1");
+    // Mining runs first (operationsFor's real order): its container/road claims seed the matrix: run
+    // both through the real claimsOf pipeline and confirm every resulting claim is unique per tile.
+    const claimed = claimsOf(snap, [mining, upgrading]);
+
+    const keys = claimed.map(p => `${p.room ?? "home"},${p.x},${p.y}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  // Regression for the Upgrading controller-link exclusion hack this refactor deletes (see
+  // operations/upgrading.ts's structures() doc): the matrix is seeded from terrain + bunker layout +
+  // accumulated claims only, never colony.structures — so a link that's already BUILT (a real,
+  // non-walkable obstacle in the engine) must not block Upgrading's own re-derivation of the exact
+  // same tile as its next claim; it's already present in the claim set every pass re-derives.
+  it("never seeds the matrix from colony.structures — a built (non-walkable) link is not an obstacle to re-deriving its own tile", () => {
+    const anchor = { x: 25, y: 25 };
+    const controller = { x: 25, y: 40 };
+    const snap = colonySnap({ anchor, controller, controllerLevel: 5, energyCapacity: 800 });
+    const upgrading = new Upgrading("W1N1");
+
+    const firstPass = claimsOf(snap, [upgrading]);
+    const link = firstPass.find(p => p.type === "link")!;
+    expect(link).toBeDefined();
+
+    // Same tile, but now genuinely built — a matrix keyed off colony.structures would treat this real
+    // link as IMPASSABLE (links aren't walkable) and re-site a second one nearby instead.
+    const builtLink = linkAt(link.x, link.y, 0);
+    const built = colonySnap({
+      anchor,
+      controller,
+      controllerLevel: 5,
+      energyCapacity: 800,
+      structures: [{ x: link.x, y: link.y, type: "link", id: builtLink.id }],
+      links: [builtLink],
+      linkNetwork: { controller: builtLink.id }
+    });
+    const secondPass = claimsOf(built, [upgrading]);
+    const linkAgain = secondPass.find(p => p.type === "link");
+    expect(linkAgain).toEqual(link);
+  });
+});
 
 // stampLayout is pure anchor-relative offset math with no terrain awareness — a goal tile lands on
 // whatever the real room's terrain happens to be at that offset. Confirmed live on W45N17 2026-08-14:
@@ -56,6 +132,36 @@ describe("wantedStructures — bunker grid tiles that land on a wall", () => {
     const wanted = wantedStructures(snap, [claimedOnWall]);
 
     expect(wanted).toContainEqual(claimedOnWall);
+  });
+});
+
+// The pathing-matrix half of the same defect documented above: stampLayout's bunker grid has no terrain
+// awareness, so seedMatrixFor's layout stamp (applyClaimToMatrix) could previously downgrade a real wall
+// tile to ROAD_COST/walkable wherever a bunker-grid road happened to land on one — letting findPath's
+// search tunnel straight through a wall it should have routed around. wantedStructures' own `walkable`
+// filter (tested above) only ever protected the site-placement list; it never touched the matrix findPath
+// itself searches against.
+describe("findPath — bunker grid tiles that land on a wall", () => {
+  it("never lets a bunker-grid road claim downgrade a real wall tile to walkable", () => {
+    const anchor = { x: 25, y: 25 };
+    const atRcl = buildableAtRcl(GOAL_JSON as GoalLayout, 3, { anchor, sources: [] });
+    const roads = stampLayout(atRcl, anchor).filter(p => p.type === "road");
+    expect(roads.length).toBeGreaterThan(1);
+
+    // Wall off one bunker-grid road tile, and every tile on the opposite (short, direct) side of it, so
+    // the only way through is either straight across the wall (if the bug lets the claim un-wall it) or
+    // all the way around the bunker footprint (if the fix holds).
+    const wallTile = roads[0];
+    const terrain = openTerrain();
+    terrain[wallTile.x * 50 + wallTile.y] = 0;
+
+    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, terrain, structures: [], sites: [] });
+
+    const from = new RoomPosition(wallTile.x - 1, wallTile.y, "W1N1");
+    const to = new RoomPosition(wallTile.x + 1, wallTile.y, "W1N1");
+    const route = findPath(snap, from, to, 0);
+
+    expect(route.path.some(p => p.x === wallTile.x && p.y === wallTile.y)).toBe(false);
   });
 });
 
@@ -645,7 +751,11 @@ describe("building planner — remote construction", () => {
   // source's entire route drops out of `claimed` the very next tick, home-room leg included.
   describe("after a remote source is evicted from colony.remoteSources", () => {
     // No remoteSources at all — as if the source that built this route has since been dropped.
-    // The home-room leg (26,25) is a real, already-built road; nothing claims it any more.
+    // The home-room leg's road is a real, already-built road; nothing claims it any more. Its tile
+    // (45,25) is deliberately far outside the bunker's own goal-layout footprint (BUNKER_RADIUS=6 of
+    // anchor) — unlike the describe block's shared `route` (whose (26,25) home-room leg happens to
+    // coincide with the goal layout's own storage slot, at anchor offset (1,0)), so this fixture isn't
+    // shielded by that unrelated coincidence and genuinely tests the unwanted/stale demolition path.
     const evictedSnap = colony(
       colonySnap({
         anchor,
@@ -653,7 +763,7 @@ describe("building planner — remote construction", () => {
         energyCapacity: 800,
         sources: [],
         // Home-room leg's road, already built while the source was still selected.
-        structures: [...built, { x: 26, y: 25, type: "road" }],
+        structures: [...built, { x: 45, y: 25, type: "road" }],
         sites: [],
         remoteSources: [], // evicted: no longer selected
         remoteStructures: {}
@@ -667,7 +777,7 @@ describe("building planner — remote construction", () => {
       // though the physical road is still standing and perfectly serviceable. This is the mechanism
       // that destroys W8N3's roads: eviction, not hostiles/danger/reservation.
       const removals = evictedSnap.building().filter(i => i.kind === "removeStructure");
-      expect(removals).toContainEqual({ kind: "removeStructure", room: "W1N1", x: 26, y: 25, type: "road" });
+      expect(removals).toContainEqual({ kind: "removeStructure", room: "W1N1", x: 45, y: 25, type: "road" });
     });
 
     it("never emits a removeStructure for a remote room's own structures, even after eviction", () => {
@@ -943,7 +1053,7 @@ describe("idle-builder repurposing", () => {
 describe("ColonyMemory.buildingPlan (metrics panel source, written by building())", () => {
   const anchor = { x: 25, y: 25 };
 
-  function stubMemory(name: string): { colonies: Record<string, { buildingPlan?: BuildingPlanEntry[] }> } {
+  function stubMemory(name: string): { colonies: Record<string, { buildingPlan?: BuildingPlanEntry[]; roadsBuilt?: boolean }> } {
     const mem = { colonies: { [name]: {} } };
     (globalThis as unknown as { Memory: typeof mem }).Memory = mem;
     return mem;
@@ -1011,6 +1121,57 @@ describe("ColonyMemory.buildingPlan (metrics panel source, written by building()
     const mem = stubMemory("W1N1");
     colony(colonySnap({ anchor: null, controllerLevel: 1, structures: [], sites: [] })).building();
     expect(mem.colonies.W1N1.buildingPlan).toBeUndefined();
+  });
+});
+
+// ColonyMemory.roadsBuilt — written alongside buildingPlan, in the same interval:100 pass, so
+// spawn/bodyContext.ts can ask the planner directly ("are roads done") instead of re-deriving completion
+// itself from colony.remoteSources' routeBuilt strings (the old, now-deleted allRemoteRoutesBuilt). Below
+// the capacity gate roads are excluded from wantedStructures' own output entirely (see that function's
+// roadReady filter), so an empty road list there must read as "not asked for yet", not "done" — these
+// tests cover that distinction explicitly.
+describe("ColonyMemory.roadsBuilt (spawn/bodyContext.ts's road-readiness source)", () => {
+  const anchor = { x: 25, y: 25 };
+
+  function stubMemory(name: string): { colonies: Record<string, { roadsBuilt?: boolean }> } {
+    const mem = { colonies: { [name]: {} } };
+    (globalThis as unknown as { Memory: typeof mem }).Memory = mem;
+    return mem;
+  }
+
+  it("is false below the energyCapacity gate, even though no road is 'wanted' yet to fail against", () => {
+    const mem = stubMemory("W1N1");
+    const snap = colonySnap({ anchor, controllerLevel: 2, energyCapacity: ROADS_FROM_ENERGY_CAPACITY - 1, structures: [], sites: [] });
+    colony(snap).building();
+    expect(mem.colonies.W1N1.roadsBuilt).toBe(false);
+  });
+
+  it("is false once past the gate while any planned road is still unbuilt", () => {
+    const mem = stubMemory("W1N1");
+    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: ROADS_FROM_ENERGY_CAPACITY, structures: [], sites: [] });
+    colony(snap).building();
+    expect(mem.colonies.W1N1.roadsBuilt).toBe(false);
+  });
+
+  it("is true once every planned road (bunker layout + every operation's own claims) is standing", () => {
+    const mem = stubMemory("W1N1");
+    // Two-pass: derive the full plan against an empty room first (matching writeBuildingPlan's own
+    // wantedStructures(colony, claimed, false) call), then build every road the plan wants and confirm
+    // roadsBuilt flips true — proving the check covers operation-claimed roads too, not just the bunker's.
+    const empty = colonySnap({ anchor, controllerLevel: 3, energyCapacity: ROADS_FROM_ENERGY_CAPACITY, structures: [], sites: [] });
+    const claimed = claimsOf(empty, colony(empty).operations);
+    const allWantedRoads = wantedStructures(empty, claimed, false).filter(p => p.type === "road");
+    const nonRoads = wantedStructures(empty, claimed, false).filter(p => p.type !== "road");
+
+    const snap = colonySnap({
+      anchor,
+      controllerLevel: 3,
+      energyCapacity: ROADS_FROM_ENERGY_CAPACITY,
+      structures: [...nonRoads, ...allWantedRoads],
+      sites: []
+    });
+    colony(snap).building();
+    expect(mem.colonies.W1N1.roadsBuilt).toBe(true);
   });
 });
 

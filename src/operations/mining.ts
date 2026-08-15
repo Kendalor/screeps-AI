@@ -9,15 +9,12 @@ import { pickRemotes } from "../mining/pickRemotes";
 import { remoteSourceLoadParts } from "../mining/load";
 import { PARTS_PER_SPAWN } from "../colony/metrics";
 import type { Intent } from "../intents/types";
-import GOAL_JSON from "../construction/Base_2.json";
-import { plannedObstacles } from "../construction/goal";
-import { buildCostMatrix, sourceRoadPath, type RoadPathResult } from "../construction/roadPathing";
+import { findPath, type FindPath } from "../construction/planner";
 import { log } from "../lib/log";
 import { isExitTile } from "../lib/remotePath";
-import { stampLayout, type PlacedStructure } from "../construction/stamp";
-import type { GoalLayout } from "../construction/sync";
+import type { PlacedStructure } from "../construction/stamp";
 import type { BodyContext } from "../behaviors/types";
-import type { ColonySnapshot, SnapCreep, SnapSource } from "../snapshot/types";
+import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { bodyContext } from "../spawn/bodyContext";
 import { Operation } from "./operation";
@@ -40,49 +37,10 @@ const config = {
 // building.ts's gate on source containers is mining's knowledge of what it needs when.
 export const CONTAINERS_FROM_ENERGY_CAPACITY = config.structuresFromEnergyCapacity;
 
-const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
 
 function sourceStructureType(rcl: number): BuildableStructureConstant {
   return rcl >= config.linkRcl ? "link" : "container";
-}
-
-// sourceRoutes' real inputs are anchor, terrain (static once a room is seen) and structures/planned
-// (walkability) — everything else about a colony is irrelevant to a path search. Recomputing a full
-// cost matrix + PathFinder search per source, every tick, forever, was 2%+ of total colony CPU on a
-// live server for a route that's the same as last tick's the vast majority of the time (profiled via
-// lib/profiler.ts — Mining:intents/sourceRoutes/structures were consistently the largest tick-CPU
-// consumers even on a colony with ~0 living creeps). Cached per room, keyed on a cheap fingerprint of
-// what could actually move a path; a real change (new road/container built, a demolition, RCL-gated
-// link swap) invalidates it the very next tick it's read. `Mining` itself is reconstructed fresh every
-// tick (see operations/index.ts's operationsFor), so this cache lives at module scope instead.
-const routeCache = new Map<string, { fingerprint: string; routes: Map<SnapSource, RoadPathResult> }>();
-
-// Cheap identity tag for the terrain grid: real rooms rebuild their snapshot from the same underlying
-// terrain array every tick (it's static for the life of a room), so a same-instance check is enough to
-// confirm "this is still the same room's terrain as last time" without hashing 2500 bytes every tick.
-// A different array instance (a genuinely different room/scenario, e.g. between unit tests sharing a
-// room name) gets a fresh tag so the fingerprint below can't collide with unrelated terrain.
-let nextTerrainTag = 0;
-const terrainTags = new WeakMap<Uint8Array, number>();
-
-function terrainTag(terrain: Uint8Array): number {
-  let tag = terrainTags.get(terrain);
-  if (tag === undefined) {
-    tag = nextTerrainTag++;
-    terrainTags.set(terrain, tag);
-  }
-  return tag;
-}
-
-function routeFingerprint(colony: ColonySnapshot, planned: readonly PlacedStructure[]): string {
-  const anchor = colony.anchor;
-  // Position + type is enough to detect any walkability-relevant change; order is stable per tick
-  // since both colony.structures and planned are rebuilt fresh from the same snapshot/plan each time.
-  const structureKey = colony.structures.map(s => `${s.x},${s.y},${s.type}`).join(";");
-  const plannedKey = planned.map(p => `${p.x},${p.y},${p.type}`).join(";");
-  const sourceKey = colony.sources.map(s => `${s.id},${s.x},${s.y}`).join(";");
-  return `${anchor?.x},${anchor?.y}|${colony.controllerLevel}|${structureKey}|${plannedKey}|${sourceKey}|${terrainTag(colony.terrain)}`;
 }
 
 const workOf = (c: SnapCreep): number => countPart(c.body, WORK); // live WORK, spawning included
@@ -235,60 +193,33 @@ export class Mining extends Operation {
   }
 
   /** Each source's container/link and the road that reaches it. Never places sites — only claims. */
-  public override structures(colony: ColonySnapshot, planned: readonly PlacedStructure[] = []): PlacedStructure[] {
+  public override structures(colony: ColonySnapshot, findPath: FindPath): PlacedStructure[] {
     if (colony.energyCapacity < config.structuresFromEnergyCapacity) return [];
 
     const type = sourceStructureType(colony.controllerLevel);
+    const anchor = colony.anchor;
+    if (!anchor) return [];
+    const anchorPos = new RoomPosition(anchor.x, anchor.y, colony.name);
 
     const out: PlacedStructure[] = [];
-    // Tiles already claimed by layout, a sibling, or an earlier source this loop. Built structures
-    // are deliberately excluded — a claim isn't "place a site," so dropping it once built would make
-    // Mining demolish its own container the tick after it went up. Keyed by room too: a remote route
-    // can share (x,y) with a home-room tile without being the same tile.
-    //
-    // Only a DIFFERENT structure type on the same tile blocks a claim — a route road that happens to
-    // land on a tile the bunker grid also wants as a road is agreement, not a conflict, and must still
-    // go out as this source's own claim. Dropping it silently (as a plain (x,y) dedup once did) meant
-    // building.ts's gateRoads never saw it as "an operation's own claimed road" (its exemption from the
-    // adjacency-to-a-served-structure gate), so a route tile with no served structure next to it fell
-    // back to that gate and failed it outright — the road was never placed AND the route's own group
-    // read as permanently incomplete (nothing ever confirms routeBuilt there either). Confirmed live on
-    // W47N14 2026-08-12: the W46N13 route's very first home-room hop, (41,12), coincides exactly with a
-    // bunker-grid road tile and silently vanished from every plan, budget, and routeBuilt check as a result.
-    //
-    // A source's container/link claim (`type`) beats a same-tile bunker-grid road: a container is
-    // walkable, so nothing is lost by building it where the grid wanted plain road, and dropping the
-    // claim instead left the source with NO structure at all — the container silently vanished from
-    // every plan/budget with nothing to demolish or retry, since the road it lost to was never actually
-    // built there either (`planned` is the bunker's WANTED layout, not what's built). Confirmed live on
-    // W45N17 2026-08-14: source structurePos (8,14) coincides with a Base_2.json road (order 47),
-    // permanently starving that source of a container while its sibling source built fine.
-    const takenType = new Map(planned.map(p => [`${p.room ?? colony.name},${p.x},${p.y}`, p.type]));
-    const claim = (p: PlacedStructure): void => {
-      const key = `${p.room ?? colony.name},${p.x},${p.y}`;
-      const existing = takenType.get(key);
-      if (existing !== undefined && existing !== p.type && !(p.type === type && existing === ROAD)) return;
-      takenType.set(key, p.type);
-      out.push(p);
-    };
-
-    for (const [source, route] of this.sourceRoutes(colony, planned)) {
-      claim({ x: route.structurePos.x, y: route.structurePos.y, type, sourceId: source.id });
+    for (const source of colony.sources) {
+      const sourcePos = new RoomPosition(source.x, source.y, colony.name);
+      const route = findPath(anchorPos, sourcePos, 1); // no opts — sources are never inside the bunker footprint
+      if (route.path.length === 0) continue; // no path found; findPath already logged
+      out.push({ x: route.structurePos.x, y: route.structurePos.y, type, sourceId: source.id });
       // Claimed source-outward (reversed from path order, which runs anchor->source) so a builder
-      // paves the tiles nearest the source first and works back toward the anchor. Exit tiles are
-      // skipped (same reasoning as the remote route below): Screeps refuses a construction site on
-      // one, and an un-droppable claim there reads as permanently unbuilt, stalling gateSourceGroups
-      // forever — confirmed live on W43N15 2026-08-12, where a chokepoint forced the anchor->source
-      // path through (0,34)/(0,33) and every remote room's construction sat frozen behind it.
-      const roadTiles = route.path.slice(0, -1).filter(tile => !isExitTile(tile)); // last tile is the container, first is the anchor
+      // paves the tiles nearest the source first and works back toward the anchor. Exit-tile filtering
+      // is now the planner's own consolidate() step, not this loop's concern. route.path is the real
+      // PathFinder.search result — every step AFTER the anchor, never including it — so the last entry
+      // is the container/link and everything before it is road.
+      const roadTiles = route.path.slice(0, -1);
       for (let i = roadTiles.length - 1; i >= 0; i--) {
-        const tile = roadTiles[i];
-        claim({ x: tile.x, y: tile.y, type: ROAD, sourceId: source.id });
+        out.push({ x: roadTiles[i].x, y: roadTiles[i].y, type: ROAD, sourceId: source.id });
       }
     }
 
     // Remote routes reuse the already-computed cross-room PathFinder path (see resolveRemoteRoom in
-    // intents/execute.ts) instead of construction/roadPathing.ts's local-only cost matrix, which has no notion of
+    // intents/execute.ts) instead of the planner's own single-room findPath, which has no notion of
     // leaving the room at all. The container claim needs to know what's already built at that tile
     // (colony.remoteStructures), which only exists while the remote room actually has vision this tick —
     // but the road tiles are claimed regardless of remote vision. A route's home-room leg in particular
@@ -307,16 +238,16 @@ export class Mining extends Operation {
       // simply tracks source selection, same as the local-source loop above.
       const container = route[route.length - 1];
       if (colony.remoteStructures[source.room] !== undefined) {
-        claim({ x: container.x, y: container.y, room: container.room, type, sourceId: source.id });
+        out.push({ x: container.x, y: container.y, room: container.room, type, sourceId: source.id });
       }
       // Same source-outward ordering as the local route above. Exit tiles are skipped here (not just
       // at cache-computation time in remotePath.ts's toRouteTiles) so a route cached before that
-      // exclusion existed still self-heals: Screeps refuses a construction site on an exit tile, and an
-      // un-droppable claim there would read as permanently unbuilt, stalling gateSourceGroups forever.
+      // exclusion existed still self-heals — redundant with the planner's own consolidate() exit-tile
+      // drop, but harmless to keep (see this class's header note on this being optional cleanup).
       const roadTiles = route.slice(0, -1).filter(tile => !isExitTile(tile));
       for (let i = roadTiles.length - 1; i >= 0; i--) {
         const tile = roadTiles[i];
-        claim({ x: tile.x, y: tile.y, room: tile.room, type: ROAD, sourceId: source.id });
+        out.push({ x: tile.x, y: tile.y, room: tile.room, type: ROAD, sourceId: source.id });
       }
     }
     return out;
@@ -329,26 +260,29 @@ export class Mining extends Operation {
     const remoteSelection = this.remoteSelection(colony, colonyRequestParts);
     if (remoteSelection) out.push(remoteSelection);
 
-    const planned = colony.anchor
-      ? stampLayout(plannedObstacles(GOAL, colony.controllerLevel, colony.anchor, colony.sources), colony.anchor)
-      : [];
+    const anchor = colony.anchor;
+    if (anchor) {
+      const anchorPos = new RoomPosition(anchor.x, anchor.y, colony.name);
+      for (const source of colony.sources) {
+        const sourcePos = new RoomPosition(source.x, source.y, colony.name);
+        const route = findPath(colony, anchorPos, sourcePos, 1); // reads matrixCache — see planner.ts's cross-tick guarantee
+        if (route.path.length === 0) continue; // no path found; findPath already logged
+        const spot = route.structurePos;
+        const container = colony.containers.find(c => c.x === spot.x && c.y === spot.y);
+        const recorded = colony.sourceMemory[source.id];
 
-    for (const [source, route] of this.sourceRoutes(colony, planned)) {
-      const spot = route.structurePos;
-      const container = colony.containers.find(c => c.x === spot.x && c.y === spot.y);
-      const recorded = colony.sourceMemory[source.id];
+        const spotUnchanged = recorded?.spot?.x === spot.x && recorded?.spot?.y === spot.y;
+        const containerUnchanged = !container || recorded?.containerId === container.id; // execute.ts only ever adds an id
+        if (spotUnchanged && containerUnchanged) continue;
 
-      const spotUnchanged = recorded?.spot?.x === spot.x && recorded?.spot?.y === spot.y;
-      const containerUnchanged = !container || recorded?.containerId === container.id; // execute.ts only ever adds an id
-      if (spotUnchanged && containerUnchanged) continue;
-
-      out.push({
-        kind: "recordSourceSpot",
-        room: colony.name,
-        source: source.id,
-        spot: { x: spot.x, y: spot.y },
-        ...(container ? { container: container.id } : {})
-      });
+        out.push({
+          kind: "recordSourceSpot",
+          room: colony.name,
+          source: source.id,
+          spot: { x: spot.x, y: spot.y },
+          ...(container ? { container: container.id } : {})
+        });
+      }
     }
 
     // Remote container id: the one fact about a remote route that isn't already cached elsewhere
@@ -488,42 +422,4 @@ export class Mining extends Operation {
     };
   }
 
-  /**
-   * Shared route derivation so the recorded spot can never disagree with the built spot. Cached at
-   * module scope per room (see routeCache above) — recomputes only when the fingerprint (anchor, RCL,
-   * structures/planned) actually changes, not every tick.
-   */
-  private sourceRoutes(
-    colony: ColonySnapshot,
-    planned: readonly PlacedStructure[]
-  ): Map<SnapSource, RoadPathResult> {
-    const anchor = colony.anchor;
-    if (!anchor) return new Map();
-
-    const fingerprint = routeFingerprint(colony, planned);
-    const cached = routeCache.get(colony.name);
-    if (cached && cached.fingerprint === fingerprint) return cached.routes;
-
-    // Containers/roads/ramparts are walkable, so a planned road is preferred — the reason two
-    // operations share one route instead of laying parallel ones. Home-room only: `planned` also
-    // carries remote-route claims (room set to the remote room), and buildCostMatrix/RoadCostMatrix
-    // index purely by (x,y) with no notion of room — an unfiltered remote claim whose coordinates
-    // happen to coincide with a home-room tile would silently overwrite that tile's real terrain cost
-    // (e.g. turning a home-room WALL into a cheap ROAD_COST tile because the same (x,y) is legitimately
-    // a road in some other room), letting A* "tunnel" straight through it. Confirmed live on W47N14
-    // 2026-08-13 via upgrading.ts's identical bug: a W47N15 remote-route road claim at (30,24)/(29,25)
-    // leaked into the home room's cost matrix and let the controller-approach path cross a real wall.
-    const costMatrix = buildCostMatrix({
-      terrain: colony.terrain,
-      structures: [...colony.structures, ...planned.filter(p => (p.room ?? colony.name) === colony.name)]
-    });
-
-    const routes = new Map<SnapSource, RoadPathResult>();
-    for (const source of colony.sources) {
-      const route = sourceRoadPath(anchor, source, costMatrix);
-      if (route.structurePos) routes.set(source, route);
-    }
-    routeCache.set(colony.name, { fingerprint, routes });
-    return routes;
-  }
 }

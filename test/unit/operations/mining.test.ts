@@ -4,37 +4,41 @@
 //
 // Every case constructs the operation directly and hands it a snapshot: no Game mock, no Colony.
 
-import { describe, expect, it } from "vitest";
-import GOAL_JSON from "../../../src/construction/Base_2.json";
-import { buildCostMatrix, sourceRoadPath } from "../../../src/construction/roadPathing";
-import { plannedObstacles } from "../../../src/construction/goal";
-import { stampLayout, type PlacedStructure } from "../../../src/construction/stamp";
-import type { GoalLayout } from "../../../src/construction/sync";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { XY } from "../../../src/lib/geometry";
 import { roleDef } from "../../../src/behaviors/roles";
 import { REMOTE_MINER_PRIORITY } from "../../../src/behaviors/roles/miner";
 import { Mining } from "../../../src/operations/mining";
+import { findPath, resetFindPathCacheForTests, type FindPath } from "../../../src/construction/planner";
+import type { PlacedStructure } from "../../../src/construction/stamp";
 import { colonySnap, containerAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt, spawn } from "../../fixtures";
+import { stubPathFinderSingleRoom } from "../../constants";
+import type { ColonySnapshot } from "../../../src/snapshot/types";
 import type { Intent } from "../../../src/intents/types";
-
-const GOAL = GOAL_JSON as GoalLayout;
 
 const mining = new Mining("W1N1");
 
-// The last road tile adjacent to the source, derived independently from road pathing rather than a
-// hardcoded coordinate. Pathed against the bunker stamp exactly as Mining does — a built-only
-// matrix would route through ground the layout occupies and disagree with production.
+beforeEach(() => {
+  stubPathFinderSingleRoom();
+  resetFindPathCacheForTests();
+});
+
+// Every test drives Mining.structures()/intents() through the real planner findPath (real
+// PathFinder.search, single-room, stubbed via stubPathFinderSingleRoom) — the same seam production
+// code uses, curried against whatever snapshot the test builds.
+const findPathFor = (snap: ColonySnapshot): FindPath => (from, to, range, opts) => findPath(snap, from, to, range, opts);
+
+// The last road tile adjacent to the source, derived independently by driving the real findPath against
+// a snapshot with no other operations' claims yet — a built-only matrix would route through ground the
+// layout occupies and disagree with production.
 function expectedRoute(anchor: XY, source: XY, rcl = 3) {
-  const planned = stampLayout(plannedObstacles(GOAL, rcl, anchor, [source]), anchor);
-  const cm = buildCostMatrix({ terrain: openTerrain(), structures: planned });
-  return sourceRoadPath(anchor, source, cm);
+  const snap = colonySnap({ anchor, sources: [source], controllerLevel: rcl, terrain: openTerrain() });
+  const anchorPos = new RoomPosition(anchor.x, anchor.y, snap.name);
+  const sourcePos = new RoomPosition(source.x, source.y, snap.name);
+  return findPathFor(snap)(anchorPos, sourcePos, 1);
 }
 
 const expectedSpot = (anchor: XY, source: XY, rcl = 3) => expectedRoute(anchor, source, rcl).structurePos;
-
-// The baseline planBuilding seeds its operation poll with.
-const plannedAt = (anchor: XY, rcl: number, sources: XY[]) =>
-  stampLayout(plannedObstacles(GOAL, rcl, anchor, sources), anchor);
 
 const minerRequests = (snap: Parameters<Mining["desiredCreeps"]>[0]) =>
   mining.desiredCreeps(snap).filter(r => r.memory.role === "miner");
@@ -47,7 +51,7 @@ describe("Mining on a colony with nothing to mine", () => {
     const snap = colonySnap({ sources: [], containers: [], anchor: { x: 25, y: 25 }, controllerLevel: 3 });
 
     expect(mining.desiredCreeps(snap)).toEqual([]);
-    expect(mining.structures(snap)).toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).toEqual([]);
     expect(mining.intents(snap)).toEqual([]);
   });
 });
@@ -486,7 +490,12 @@ describe("Mining.structures", () => {
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
     const spot = expectedSpot(anchor, source);
-    expect(mining.structures(snap)).toContainEqual({ x: spot.x, y: spot.y, type: "container", sourceId: source.id });
+    expect(mining.structures(snap, findPathFor(snap))).toContainEqual({
+      x: spot.x,
+      y: spot.y,
+      type: "container",
+      sourceId: source.id
+    });
   });
 
   it("declares a container per source", () => {
@@ -497,7 +506,7 @@ describe("Mining.structures", () => {
       energyCapacity: 800
     });
 
-    expect(mining.structures(snap).filter(s => s.type === "container")).toHaveLength(2);
+    expect(mining.structures(snap, findPathFor(snap)).filter(s => s.type === "container")).toHaveLength(2);
   });
 
   // The gate is on energy capacity, not RCL: an operation that cannot afford a container does not
@@ -512,7 +521,7 @@ describe("Mining.structures", () => {
       storageId: undefined
     });
 
-    expect(mining.structures(snap)).toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).toEqual([]);
   });
 
   it("declares nothing at RCL3 while capacity is still bootstrap-low", () => {
@@ -523,7 +532,7 @@ describe("Mining.structures", () => {
       energyCapacity: 300
     });
 
-    expect(mining.structures(snap)).toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).toEqual([]);
   });
 
   it("declares a link instead of a container at RCL7", () => {
@@ -531,22 +540,21 @@ describe("Mining.structures", () => {
     const source = sourceAt(20, 10);
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7, energyCapacity: 800 });
 
-    const spot = expectedSpot(anchor, source);
-    expect(mining.structures(snap).filter(s => s.type !== "road")).toEqual([
+    const spot = expectedSpot(anchor, source, 7);
+    expect(mining.structures(snap, findPathFor(snap)).filter(s => s.type !== "road")).toEqual([
       { x: spot.x, y: spot.y, type: "link", sourceId: source.id }
     ]);
   });
 
-  // The container is only worth having if haulers can reach it, and sourceRoadPath computes the
-  // whole route anyway to find where the container goes.
+  // The container is only worth having if haulers can reach it, and findPath computes the whole
+  // route anyway to find where the container goes.
   it("claims the road leading to its container, not just the container", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
     const route = expectedRoute(anchor, source);
-    // Handed the same baseline expectedRoute paths against, as planBuilding's poll does.
-    const roads = mining.structures(snap, plannedAt(anchor, 3, [source])).filter(s => s.type === "road");
+    const roads = mining.structures(snap, findPathFor(snap)).filter(s => s.type === "road");
 
     expect(roads.length).toBeGreaterThan(0);
     // Every claimed road lies on the route.
@@ -564,7 +572,7 @@ describe("Mining.structures", () => {
     const source = sourceAt(20, 10);
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
-    const roads = mining.structures(snap, plannedAt(anchor, 3, [source])).filter(s => s.type === "road");
+    const roads = mining.structures(snap, findPathFor(snap)).filter(s => s.type === "road");
     expect(roads.length).toBeGreaterThan(1);
 
     // The first claimed road tile must be closer (or equally close) to the source than the last —
@@ -573,112 +581,36 @@ describe("Mining.structures", () => {
     expect(toSource(roads[0])).toBeLessThan(toSource(roads[roads.length - 1]));
   });
 
-  // Two DIFFERENT structures on one tile is not a plan planBuilding can execute — but a road claim
-  // landing on a tile the bunker grid also wants as a road is agreement, not a conflict, and must
-  // survive as this source's own claim (see mining.ts's claim() doc: dropping it silently used to make
-  // building.ts's gateRoads treat the tile as un-exempt from its adjacency gate, and it could fail that
-  // too, vanishing from the plan entirely — confirmed live on W47N14 2026-08-12).
-  it("never claims a tile the layout or a sibling already planned with a DIFFERENT structure type", () => {
+  // No duplicate tiles within Mining's own claim for a single source — consolidate()'s cross-operation
+  // dedup/type-precedence is now the planner's own concern (see construction/planner.test.ts's
+  // "consolidate" coverage), not something structures() needs to guard against itself.
+  it("never claims the same tile twice within a single source's route", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
 
-    const planned = plannedAt(anchor, 3, [source]);
-    const claimed = mining.structures(snap, planned);
-
-    const plannedTypeAt = new Map(planned.map(p => [`${p.x},${p.y}`, p.type]));
-    for (const c of claimed) {
-      const existing = plannedTypeAt.get(`${c.x},${c.y}`);
-      expect(existing === undefined || existing === c.type).toBe(true);
-    }
-    // And no duplicates within its own claim.
+    const claimed = mining.structures(snap, findPathFor(snap));
     const keys = claimed.map(c => `${c.x},${c.y}`);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  // Confirmed live on W45N17 2026-08-14: a source's own structurePos (container/link tile) can
-  // coincide with a tile the bunker grid wants as plain road (Base_2.json order 47, offset (-2,5)
-  // from anchor). The DIFFERENT-type dedup above correctly protects an extension/tower/etc from
-  // being silently overwritten by a route claim, but a container is walkable and strictly better
-  // than the road it replaces — dropping the claim instead left the source with NO structure at all,
-  // forever (nothing else ever revisits or retries that tile). A container/link claim must win over
-  // a same-tile bunker ROAD claim, unlike the extension case in "still drops the claim..." above.
-  it("claims a source's container over a same-tile bunker-grid road instead of dropping it", () => {
+  it("paths around the bunker layout, not only built structures", () => {
     const anchor = { x: 10, y: 10 };
     const source = sourceAt(20, 10);
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
+    const withPlan = mining.structures(snap, findPathFor(snap));
 
-    const spot = expectedSpot(anchor, source, 3);
-    const bunkerRoadAtSpot: PlacedStructure = { x: spot.x, y: spot.y, type: "road" };
-
-    const claims = mining.structures(snap, [bunkerRoadAtSpot]);
-    expect(claims).toContainEqual({ x: spot.x, y: spot.y, type: "container", sourceId: source.id });
-  });
-
-  // A route computed over built-only tiles runs through ground the layout will occupy, so the
-  // container position shifts the tick that structure goes up — and a moved position makes
-  // planBuilding demolish and re-place the container forever.
-  it("paths around planned structures, not only built ones", () => {
-    const anchor = { x: 10, y: 10 };
-    const source = sourceAt(20, 10);
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 });
-
-    const planned = plannedAt(anchor, 3, [source]);
-    const withPlan = mining.structures(snap, planned);
     // The same room once the plan is actually standing: the derived container must not move.
     const built = colonySnap({
       anchor,
       sources: [source],
       controllerLevel: 3,
       energyCapacity: 800,
-      structures: planned.map(p => ({ x: p.x, y: p.y, type: p.type }))
+      structures: withPlan.map(p => ({ x: p.x, y: p.y, type: p.type }))
     });
 
     const containerOf = (s: PlacedStructure[]) => s.find(p => p.type === "container");
-    expect(containerOf(withPlan)).toEqual(containerOf(mining.structures(built, planned)));
-  });
-
-  // Confirmed live on W47N14 2026-08-13: a Mining remote-route road claim (room set to the REMOTE room)
-  // shared (x,y) with a real HOME-room wall tile. buildCostMatrix/RoadCostMatrix index purely by (x,y)
-  // with no room concept, so sourceRoutes' unfiltered `planned` let that remote claim mark the home-room
-  // wall as a cheap ROAD_COST tile — the local source's own access road then "tunneled" straight through
-  // it. `planned` must be filtered to home-room entries before it can influence this room's cost matrix.
-  it("never routes a local source's road across a home-room wall, even when a remote claim shares the wall's coordinates", () => {
-    const anchor = { x: 10, y: 10 };
-    const source = sourceAt(20, 10);
-    const terrain = openTerrain();
-    const wallX = 15;
-    const wallY = 10; // sits on the straight-line path between anchor and source
-    terrain[wallX * 50 + wallY] = 0;
-    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 3, energyCapacity: 800, terrain });
-
-    // A remote route's road claim at the exact same (x,y), tagged to a different room — must not leak in.
-    const poisonedPlanned = [
-      ...plannedAt(anchor, 3, [source]),
-      { x: wallX, y: wallY, room: "W2N1", type: "road" as const }
-    ];
-
-    const claims = mining.structures(snap, poisonedPlanned);
-    const roads = claims.filter(c => c.type === "road" && c.sourceId === source.id);
-    expect(roads.length).toBeGreaterThan(0);
-    expect(roads.some(r => r.x === wallX && r.y === wallY)).toBe(false);
-  });
-
-  // sourceRoutes (the cost-matrix + PathFinder search behind structures()/intents()) is cached at
-  // module scope, keyed on anchor/RCL/structures/planned/sources/terrain — fields that don't affect
-  // the route (tick, energy, live creeps) must never perturb the cached result, and a genuine
-  // structural change (a container going from planned to built, tested above) must still invalidate it.
-  it("reuses the cached route across ticks that don't change anchor/structures/sources", () => {
-    const anchor = { x: 10, y: 10 };
-    const source = sourceAt(20, 10);
-    const planned = plannedAt(anchor, 3, [source]);
-    const base = { anchor, sources: [source], controllerLevel: 3, energyCapacity: 800 };
-
-    const tick10 = colonySnap({ ...base, tick: 10, energyAvailable: 100 });
-    const tick20 = colonySnap({ ...base, tick: 20, energyAvailable: 800, creeps: snapCreeps("hauler", 3) });
-
-    const containerOf = (s: PlacedStructure[]) => s.find(p => p.type === "container");
-    expect(containerOf(mining.structures(tick10, planned))).toEqual(containerOf(mining.structures(tick20, planned)));
+    expect(containerOf(withPlan)).toEqual(containerOf(mining.structures(built, findPathFor(built))));
   });
 
   // A spot that moves once the container exists makes building.ts demolish and
@@ -691,8 +623,8 @@ describe("Mining.structures", () => {
       energyCapacity: 800
     });
 
-    const containerOf = (snap: typeof base) =>
-      mining.structures(snap).find(p => p.type === "container");
+    const containerOf = (snap: ColonySnapshot) =>
+      mining.structures(snap, findPathFor(snap)).find(p => p.type === "container");
 
     const first = containerOf(base)!;
     const second = containerOf({ ...base, structures: [first] });
@@ -703,7 +635,7 @@ describe("Mining.structures", () => {
   it("declares nothing before an anchor is found", () => {
     const snap = colonySnap({ anchor: null, sources: [sourceAt(20, 10)], controllerLevel: 3 });
 
-    expect(mining.structures(snap)).toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).toEqual([]);
   });
 });
 
@@ -729,7 +661,7 @@ describe("Mining.structures — remote sources", () => {
       remoteStructures: { W2N1: [] }
     });
 
-    const claims = mining.structures(snap);
+    const claims = mining.structures(snap, findPathFor(snap));
     expect(claims).toContainEqual({ x: 1, y: 10, room: "W2N1", type: "container", sourceId: source.id });
     expect(claims).toContainEqual({ x: 11, y: 10, room: "W1N1", type: "road", sourceId: source.id });
     expect(claims).toContainEqual({ x: 2, y: 10, room: "W2N1", type: "road", sourceId: source.id });
@@ -758,7 +690,7 @@ describe("Mining.structures — remote sources", () => {
       remoteStructures: { W2N1: [] }
     });
 
-    const claims = mining.structures(snap);
+    const claims = mining.structures(snap, findPathFor(snap));
     expect(claims.some(c => c.x === 49 && c.room === "W1N1")).toBe(false);
     expect(claims.some(c => c.x === 0 && c.room === "W2N1")).toBe(false);
     expect(claims.filter(c => c.type === "road")).toHaveLength(1);
@@ -775,7 +707,7 @@ describe("Mining.structures — remote sources", () => {
       remoteStructures: { W2N1: [] }
     });
 
-    expect(mining.structures(snap)).toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).toEqual([]);
   });
 
   // Danger/reservedBy no longer withholds the claim (see construction/planner.ts's unsafeRemoteRooms, which
@@ -793,7 +725,7 @@ describe("Mining.structures — remote sources", () => {
       remoteStructures: { W2N1: [] }
     });
 
-    expect(mining.structures(snap)).not.toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).not.toEqual([]);
   });
 
   it("still claims a route's tiles for a remote source in a room reserved by another player", () => {
@@ -807,7 +739,7 @@ describe("Mining.structures — remote sources", () => {
       remoteStructures: { W2N1: [] }
     });
 
-    expect(mining.structures(snap)).not.toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).not.toEqual([]);
   });
 
   it("still claims a route's tiles for a remote source in a dangerous room", () => {
@@ -821,7 +753,7 @@ describe("Mining.structures — remote sources", () => {
       remoteStructures: { W2N1: [] }
     });
 
-    expect(mining.structures(snap)).not.toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).not.toEqual([]);
   });
 
   it("claims a route's road tiles but not its container when the remote room has no vision this tick", () => {
@@ -839,13 +771,17 @@ describe("Mining.structures — remote sources", () => {
     // the home-room leg of the route — that leg is always visible and doesn't need remote vision at all.
     // Dropping it made building.ts read an already-built home-room road as stale and demolish it, only to
     // have it re-claimed (and re-sited) the moment vision returned.
-    const claims = mining.structures(snap);
+    const claims = mining.structures(snap, findPathFor(snap));
     expect(claims).toContainEqual({ x: 11, y: 10, room: "W1N1", type: "road", sourceId: source.id });
     expect(claims).toContainEqual({ x: 2, y: 10, room: "W2N1", type: "road", sourceId: source.id });
     expect(claims.some(c => c.type === "container")).toBe(false);
   });
 
-  it("dedups remote claims by room, not just x/y, against an unrelated home-room claim at the same coordinates", () => {
+  // Room-keyed claims: Mining's own emission still tags a remote tile with its real room even when its
+  // (x,y) happens to collide with a home-room coordinate — cross-operation dedup by room+x+y (not just
+  // x+y) is now the planner's consolidate() concern (see construction/planner.test.ts), but the raw
+  // claim shape this asserts is still Mining's own to get right.
+  it("tags a remote claim with its own room even when its (x,y) collides with a home-room coordinate", () => {
     const source = remoteSourceAt(2, 10, "W2N1", { route });
     const snap = colonySnap({
       anchor,
@@ -855,52 +791,9 @@ describe("Mining.structures — remote sources", () => {
       remoteSources: [source],
       remoteStructures: { W2N1: [] }
     });
-    // A home-room claim sharing (x,y) with the remote container tile must not block it — different rooms.
-    const homeClaimSameCoords: PlacedStructure = { x: 1, y: 10, type: "extension" };
 
-    const claims = mining.structures(snap, [homeClaimSameCoords]);
+    const claims = mining.structures(snap, findPathFor(snap));
     expect(claims).toContainEqual({ x: 1, y: 10, room: "W2N1", type: "container", sourceId: source.id });
-  });
-
-  // Confirmed live on W47N14 2026-08-12: a remote route's home-room leg can coincide, tile for tile,
-  // with a road the bunker's own layout grid also wants there. The old dedup treated any (x,y) already
-  // in `planned` as taken regardless of type, so this claim was silently dropped — meaning it never
-  // reached building.ts's gateRoads as "an operation's own claimed road" (its exemption from the
-  // adjacency-to-a-served-structure gate) and never fed gateSourceGroups/builtAt's routeBuilt tracking
-  // either. The tile then had to survive gateRoads on the bunker grid's own adjacency test alone, which
-  // it failed — vanishing from the plan (no site ever placed) while the route's group also read as
-  // permanently incomplete, blocking every source group behind it. A same-type (road-on-road) collision
-  // must NOT drop the claim; only a genuinely different structure type should.
-  it("still claims a route's road tile even when the bunker layout also wants a road there", () => {
-    const source = remoteSourceAt(2, 10, "W2N1", { route });
-    const snap = colonySnap({
-      anchor,
-      sources: [],
-      controllerLevel: 3,
-      energyCapacity: 800,
-      remoteSources: [source],
-      remoteStructures: { W2N1: [] }
-    });
-    const bunkerRoadSameTile: PlacedStructure = { x: 11, y: 10, type: "road" }; // home room, same tile as the route's home-room leg
-
-    const claims = mining.structures(snap, [bunkerRoadSameTile]);
-    expect(claims).toContainEqual({ x: 11, y: 10, room: "W1N1", type: "road", sourceId: source.id });
-  });
-
-  it("still drops the claim when the bunker layout wants a genuinely different structure on that tile", () => {
-    const source = remoteSourceAt(2, 10, "W2N1", { route });
-    const snap = colonySnap({
-      anchor,
-      sources: [],
-      controllerLevel: 3,
-      energyCapacity: 800,
-      remoteSources: [source],
-      remoteStructures: { W2N1: [] }
-    });
-    const bunkerExtensionSameTile: PlacedStructure = { x: 11, y: 10, type: "extension" };
-
-    const claims = mining.structures(snap, [bunkerExtensionSameTile]);
-    expect(claims.some(c => c.x === 11 && c.y === 10 && (c.room ?? "W1N1") === "W1N1")).toBe(false);
   });
 
   // The W8N3 incident's actual mechanism: pickRemotes' reevaluate branch (mining/pickRemotes.ts) can
@@ -923,7 +816,7 @@ describe("Mining.structures — remote sources", () => {
       remoteStructures: {}
     });
 
-    expect(mining.structures(snap)).toEqual([]);
+    expect(mining.structures(snap, findPathFor(snap))).toEqual([]);
   });
 });
 
