@@ -8,6 +8,7 @@ import { runColonizeFlags } from "../empire/colonizeFlags";
 import { runDefendFlags } from "../empire/defendFlags";
 import { runDrainFlags } from "../empire/drainFlags";
 import { runParadeFlags } from "../empire/paradeFlags";
+import { runSimpleBaitTowerFlags } from "../empire/simpleBaitTowerFlags";
 import { MARKET_SCAN_INTERVAL, scanMarketNow } from "../empire/market";
 import { planPixels } from "../empire/pixels";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
@@ -140,6 +141,8 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   runGuarded("drainFlags", () => runDrainFlags(world));
   // Flag-triggered parade, same reasoning as attackFlags above — Parade isn't a default operation either.
   runGuarded("paradeFlags", () => runParadeFlags(world));
+  // Flag-triggered SimpleBaitTower, same reasoning as attackFlags above — not a default operation either.
+  runGuarded("simpleBaitTowerFlags", () => runSimpleBaitTowerFlags(world));
   // Automatic counterpart to attackFlags: launches an Attack at any selected remote reserved by the
   // Invader NPC with its core still standing — see remoteInvaderAttacks.ts's header.
   runGuarded("remoteInvaderAttacks", () => runRemoteInvaderAttacks(world));

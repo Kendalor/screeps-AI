@@ -35,7 +35,8 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   sit: "move",
   attack: "move", // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
   heal: "move", // store-less healer — never self-completes; ends only via targetGone (target gone)
-  trample: "move" // store-less — never self-completes; ends only via targetGone (site destroyed by standing on it)
+  trample: "move", // store-less — never self-completes; ends only via targetGone (site destroyed by standing on it)
+  fleeAndHeal: "move" // store-less — never self-completes on store state; ends only via the when:"healthy" gate
 };
 
 // The engine's per-tick action pipelines (docs.screeps.com/simultaneous-actions.html): harvest/build/
@@ -64,6 +65,8 @@ export interface CreepState {
   step: number;
   free: number;
   used: number;
+  hits: number;
+  hitsMax: number;
   targetGone: boolean; // the locked target no longer resolves
   didAct: boolean; // whether the step's game-API call actually fired this tick, distinct from a target merely resolving; drives oneShot
 }
@@ -119,11 +122,20 @@ function isStandingNoOp(step: Step, creep: Creep | undefined): boolean {
 
 // Skips a step landed on mid-tick that's already complete (e.g. arriving at "upgrade" right after "transfer" emptied the store).
 // targetGone is never set here — that reflects a resolution attempt this step hasn't made yet.
-export function firstRunnableStep(steps: Step[], from: number, store: { free: number; used: number }, creep?: Creep): number {
+// hits/hitsMax default to "fully healed" (1/1) when the caller has no real creep to read them from (e.g.
+// a pure step-table test harness) — same fail-open convention isStandingNoOp's optional creep uses, and
+// correct regardless: a role with no when:"damaged"/"healthy" step never reads these fields at all.
+export function firstRunnableStep(
+  steps: Step[],
+  from: number,
+  store: { free: number; used: number; hits?: number; hitsMax?: number },
+  creep?: Creep
+): number {
   for (let i = 0; i < steps.length; i++) {
     const idx = (from + i) % steps.length;
     if (isStandingNoOp(steps[idx], creep)) continue;
-    if (!isComplete(steps[idx], { step: idx, ...store, targetGone: false, didAct: false })) return idx;
+    const s: CreepState = { step: idx, free: store.free, used: store.used, hits: store.hits ?? 1, hitsMax: store.hitsMax ?? 1, targetGone: false, didAct: false };
+    if (!isComplete(steps[idx], s)) return idx;
   }
   return from;
 }
@@ -132,6 +144,10 @@ export function isComplete(step: Step, s: CreepState): boolean {
   if (s.targetGone) return true;
   // "empty" steps no-op while the creep still carries anything, so a loaded hauler keeps delivering instead of returning early.
   if (step.when === "empty" && s.used > 0) return true;
+  // "damaged" steps no-op once hits has dropped below hitsMax — only runs while at full health.
+  if (step.when === "damaged" && s.hits < s.hitsMax) return true;
+  // "healthy" steps no-op once hits is back at hitsMax — only runs while damaged.
+  if (step.when === "healthy" && s.hits >= s.hitsMax) return true;
   // oneShot completes the moment the action fires, not merely when a target resolves and travelTo begins.
   if (step.oneShot && s.didAct) return true;
   const kind = STEP_KIND[step.do];
@@ -225,6 +241,8 @@ export const runStep = wrapFn(function runStep(
       if (!allowTravel) return { acted: false, didAct: false };
       creep.travelTo(new RoomPosition(step.pos.x, step.pos.y, creep.room.name));
       return { acted: true, didAct: false };
+    case "fleeAndHeal":
+      return allowTravel ? fleeAndHealStep(creep) : { acted: false, didAct: false };
   }
 },
 "interpreter:runStep");
@@ -444,6 +462,27 @@ function moveToRoom(
     const roomMem = (rooms[nextRoom] ??= {});
     const info = (roomMem.scouted ??= { type: roomType(nextRoom), sources: [], hostile: false });
     (info.noPathFrom ??= {})[creep.memory.home] = Game.time;
+  }
+  return { acted: true, didAct: false };
+}
+
+// SimpleBaitTowerRole's retreat leg (see the Step union's doc): still standing in creep.memory.targetRoom
+// — the hostile room — path toward the nearest exit tile of the CURRENT room (running for the border by
+// the shortest route, not toward any specific neighboring room); already outside targetRoom — step one
+// tile further off that exit tile toward the room's centre, so it isn't left parked in the doorway.
+// Self-heals every tick either way (creep.heal is a no-op above hitsMax, so this is safe to call
+// unconditionally). A no-op (falls through, same as moveToRoom with no dest) while targetRoom is unset.
+// Store-less, never self-completes here — only the when:"healthy" gate on this step ends it.
+function fleeAndHealStep(creep: Creep): StepResult {
+  const targetRoom = creep.memory.targetRoom;
+  if (!targetRoom) return { acted: false, didAct: false };
+
+  creep.heal(creep);
+  if (creep.room.name === targetRoom) {
+    const exit = creep.pos.findClosestByRange(FIND_EXIT);
+    if (exit) creep.travelTo(exit, { range: 0 });
+  } else {
+    creep.travelTo(new RoomPosition(25, 25, creep.room.name), { range: 20 });
   }
   return { acted: true, didAct: false };
 }

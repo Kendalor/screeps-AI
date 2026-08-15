@@ -107,6 +107,7 @@ declare global {
   function scanMarket(): string;
   function manufactureCost(resource: string, includeDecompress?: boolean): string;
   function clearDrainTarget(room: string): string;
+  function clearSimpleBaitTowerTarget(room: string): string;
   function removeOperation(kind: string, room: string, target?: string): string;
   function help(): string;
 }
@@ -394,6 +395,16 @@ export function installConsoleCommands(): void {
   };
   register("clearDrainTarget(room)", "manually stop a colony's active drain (clears ColonyMemory.draining), same effect as removing the drain flag");
 
+  global.clearSimpleBaitTowerTarget = (room: string): string => {
+    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
+    execute([{ kind: "clearSimpleBaitTowerTarget", room }]);
+    return `cleared simpleBaitTower target for "${room}" — SimpleBaitTowerOperation stops attaching from the next tick`;
+  };
+  register(
+    "clearSimpleBaitTowerTarget(room)",
+    "manually stop a colony's active SimpleBaitTower (clears ColonyMemory.simpleBaitTower), same effect as removing the simpleBaitTower flag"
+  );
+
   global.removeOperation = (kind: string, room: string, target?: string): string => {
     if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
     switch (kind) {
@@ -415,8 +426,11 @@ export function installConsoleCommands(): void {
       case "parade":
         execute([{ kind: "clearParadeTarget", room }]);
         return `cleared parading target for "${room}"`;
+      case "simpleBaitTower":
+        execute([{ kind: "clearSimpleBaitTowerTarget", room }]);
+        return `cleared simpleBaitTower target for "${room}"`;
       default:
-        return `unknown operation kind "${kind}" — use one of: colonize, attack, defend, drain, parade`;
+        return `unknown operation kind "${kind}" — use one of: colonize, attack, defend, drain, parade, simpleBaitTower`;
     }
   };
   register(

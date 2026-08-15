@@ -6,6 +6,7 @@ import { Attack } from "../operations/attack";
 import { Colonize } from "../operations/colonize";
 import { Drain } from "../operations/drain";
 import { Parade } from "../operations/parade";
+import { SimpleBaitTowerOperation } from "../operations/simpleBaitTower";
 import { operationsFor, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
@@ -81,7 +82,12 @@ export class Colony {
       // Parade isn't in operationsFor() either, same reason: attached only while snapshot.parading
       // (ColonyMemory.parading) is set, a flag handoff's setParadeTarget (see empire/paradeFlags.ts).
       // Scalar like `draining` — one parade per colony at a time, no pooling.
-      ...(snapshot.parading !== undefined ? [new Parade(snapshot.name)] : [])
+      ...(snapshot.parading !== undefined ? [new Parade(snapshot.name)] : []),
+      // SimpleBaitTower isn't in operationsFor() either, same reason: attached only while
+      // snapshot.simpleBaitTower (ColonyMemory.simpleBaitTower) is set, a flag handoff's
+      // setSimpleBaitTowerTarget (see empire/simpleBaitTowerFlags.ts). Scalar like `draining`/`parading` —
+      // one bait target per colony at a time, no pooling.
+      ...(snapshot.simpleBaitTower !== undefined ? [new SimpleBaitTowerOperation(snapshot.name, snapshot.simpleBaitTower)] : [])
     ];
   }
 

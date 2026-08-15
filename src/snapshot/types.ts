@@ -312,6 +312,12 @@ export interface ColonySnapshot {
   // ColonyMemory.draining's doc for why exactly one drain target per colony is load-bearing. Owned by
   // drain.ts; Colony's constructor attaches a real Drain operation while this is set.
   draining?: string;
+  // The SimpleBaitTower equivalent of `draining` above (ColonyMemory.simpleBaitTower), same scalar
+  // shape — one bait target per colony at a time. Owned by simpleBaitTower.ts; Colony's constructor
+  // attaches a real SimpleBaitTowerOperation while this is set.
+  simpleBaitTower?: string;
+  // Mirror of ColonyMemory.simpleBaitTowerSpawned — see its doc for the one-shot-lifetime reasoning.
+  simpleBaitTowerSpawned?: boolean;
   // Room-by-room path from this colony's home room to `draining` (via Game.map.findRoute), each tagged
   // with its cached ScoutInfo.hostile (false when the room has never been scouted) — the input Drain's
   // pure staging-room picker walks. Empty whenever `draining` is unset; computed once here (the snapshot

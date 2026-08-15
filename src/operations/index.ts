@@ -33,6 +33,7 @@ export { Supply } from "./supply";
 export { Logistics } from "./logistics";
 export { Reservation } from "./reservation";
 export { Attack } from "./attack";
+export { SimpleBaitTowerOperation } from "./simpleBaitTower";
 
 /** Every colony gets every operation kind unconditionally; each decides for itself whether to act.
  * Order matters for structures(): Mining paths first so later operations converge onto its routes. It
@@ -93,5 +94,6 @@ export const SPAWNABLE_OPERATIONS: readonly SpawnableOperationInfo[] = [
   { kind: "attack", trigger: "ColonyMemory.attacking non-empty (attack flag)" },
   { kind: "colonize", trigger: "ColonyMemory.colonizing non-empty (colonize flag or auto-pick)" },
   { kind: "drain", trigger: "ColonyMemory.draining set (drain flag)" },
-  { kind: "parade", trigger: "ColonyMemory.parading set (parade flag)" }
+  { kind: "parade", trigger: "ColonyMemory.parading set (parade flag)" },
+  { kind: "simpleBaitTower", trigger: "ColonyMemory.simpleBaitTower set (simpleBaitTower flag)" }
 ];

@@ -175,6 +175,29 @@ export type Intent =
   // Manual/flag-removal stop: clears ColonyMemory.parading so Colony's constructor stops attaching a
   // Parade operation for that colony from the next tick on.
   | { kind: "clearParadeTarget"; room: string }
+  // The SimpleBaitTower equivalent of setDrainTarget: a flag handoff resolved `room` as the sponsor for a
+  // single bait creep at `target` — execute.ts owns the Memory.colonies[room].simpleBaitTower write.
+  // `flag` is recorded onto simpleBaitTowerFlag so the op's lifetime stays tied to its one originating
+  // flag in both directions (see ColonyMemory.simpleBaitTowerFlag's doc). A plain overwrite, not an
+  // append, same scalar reasoning as setDrainTarget.
+  | { kind: "setSimpleBaitTowerTarget"; room: string; target: string; flag: string }
+  // Manual/flag-removal stop: clears ColonyMemory.simpleBaitTower AND simpleBaitTowerFlag (there's no
+  // flag left to clean up — it's already gone) so Colony's constructor stops attaching a
+  // SimpleBaitTowerOperation for that colony from the next tick on. Emitted by simpleBaitTowerFlags.ts
+  // once a colony's tracked flag is no longer live, and by its console command.
+  | { kind: "clearSimpleBaitTowerTarget"; room: string }
+  // Self-termination: SimpleBaitTowerOperation's own end-of-life signal (its one creep spawned and then
+  // died — see the operation's header), emitted from its own intents(). Deliberately narrower than
+  // clearSimpleBaitTowerTarget: it clears `simpleBaitTower`/`simpleBaitTowerSpawned` (so the operation
+  // stops attaching from the next tick) but leaves `simpleBaitTowerFlag` in place — execute.ts intent
+  // handlers never touch Game.flags, so the physical flag still needs removing, and
+  // simpleBaitTowerFlags.ts's own pass needs the flag name still on record to find and remove it (then
+  // clears simpleBaitTowerFlag itself once that's done).
+  | { kind: "endSimpleBaitTower"; room: string }
+  // One-way latch (see ColonyMemory.simpleBaitTowerSpawned's doc): emitted by SimpleBaitTowerOperation
+  // the first tick its one creep is owned, so a later death reads as "spawned then died" (terminate)
+  // rather than "never spawned" (keep requesting).
+  | { kind: "setSimpleBaitTowerSpawned"; room: string }
   // Drain's per-tick observation sample (#40/ADR 0006's operation-owned snapshot history) — emitted by
   // drain.ts's intents() whenever it has vision of colony.draining's target this tick (same
   // hostileRoomTowers-presence vision check the advance/retreat rule already uses). execute.ts owns the

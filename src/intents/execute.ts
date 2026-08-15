@@ -344,6 +344,36 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       if (mem) mem.parading = undefined;
       return OK;
     }
+    case "setSimpleBaitTowerTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.simpleBaitTower = intent.target;
+      mem.simpleBaitTowerFlag = intent.flag;
+      return OK;
+    }
+    case "clearSimpleBaitTowerTarget": {
+      const mem = Memory.colonies[intent.room];
+      if (mem) {
+        mem.simpleBaitTower = undefined;
+        mem.simpleBaitTowerFlag = undefined;
+        mem.simpleBaitTowerSpawned = undefined;
+      }
+      return OK;
+    }
+    case "endSimpleBaitTower": {
+      // Deliberately leaves simpleBaitTowerFlag set — see this intent's doc for why
+      // simpleBaitTowerFlags.ts still needs it to find and remove the now-orphaned physical flag.
+      const mem = Memory.colonies[intent.room];
+      if (mem) {
+        mem.simpleBaitTower = undefined;
+        mem.simpleBaitTowerSpawned = undefined;
+      }
+      return OK;
+    }
+    case "setSimpleBaitTowerSpawned": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.simpleBaitTowerSpawned = true;
+      return OK;
+    }
     case "recordDrainSample": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       // Scoped per target room (#40/ADR 0006): a stored history against a different (or no) target is

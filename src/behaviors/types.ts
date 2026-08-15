@@ -99,8 +99,12 @@ export type TargetSpec =
   // Members exclude "any" (no nesting), "id" and "controller" (both singular, not a search pool).
   | { find: "any"; of: Exclude<TargetSpec, { find: "any" | "id" | "controller" }>[]; prefer?: Prefer };
 
-// Precondition on the CREEP's own store (not the target's `where`); "empty" gates a gather step so a loaded hauler delivers first.
-export type When = "empty";
+// Precondition on the CREEP's own state (not the target's `where`); "empty" gates a gather step so a
+// loaded hauler delivers first. "damaged"/"healthy" gate on hits vs hitsMax — "damaged" marks a step
+// complete/skip once hits < hitsMax (so it only runs while at full health), "healthy" marks it
+// complete/skip once hits === hitsMax (so it only runs while damaged). Used by SimpleBaitTowerRole to
+// switch between advancing on a target room and fleeing/healing.
+export type When = "empty" | "damaged" | "healthy";
 
 export type Step = ({
   when?: When;
@@ -171,6 +175,13 @@ export type Step = ({
     // structure as moveToRoom+attack/heal today.
     | { do: "moveToPos"; to: "drainRallyPos" | "paradeRallyPos" }
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
+    // SimpleBaitTowerRole's retreat leg (when:"healthy" gates this to only run while damaged — see When's
+    // doc): while still standing in creep.memory.targetRoom, path toward the nearest exit tile of the
+    // CURRENT room (running for the border); once already outside targetRoom, step one tile further off
+    // that exit tile (so it isn't left sitting in the doorway) instead. Self-heals every tick either way.
+    // Store-less, never self-completes on store state — only the when:"healthy" gate ends it, once hits
+    // recovers to hitsMax.
+    | { do: "fleeAndHeal" }
   );
 
 export interface TaskState {

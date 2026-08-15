@@ -257,8 +257,8 @@ function runSquadMember(creep: Creep, to: { x: number; y: number; room: string }
   }
 }
 
-function storeOf(creep: Creep): { free: number; used: number } {
-  return { free: creep.store.getFreeCapacity(), used: creep.store.getUsedCapacity() };
+function storeOf(creep: Creep): { free: number; used: number; hits: number; hitsMax: number } {
+  return { free: creep.store.getFreeCapacity(), used: creep.store.getUsedCapacity(), hits: creep.hits, hitsMax: creep.hitsMax };
 }
 
 // True when the creep already stands in action range (1) of its locked target — it has arrived and

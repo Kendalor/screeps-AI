@@ -126,6 +126,11 @@ declare global {
     // own). Colonize's claimFailedPermanently reads this flag alone, not claimError, so a contested-but-
     // winnable reservation fight never silently tears the operation down.
     claimOwnedByOther?: boolean;
+    // Latches Role.retreatPart's walk-home-and-park leg once a disarmed creep has actually reached its
+    // home anchor (behaviors/interpreter.ts's retreatIfDisarmed) — see that function's own doc for why a
+    // raw getActiveBodyparts re-check alone isn't enough (a single tower-heal tick can revive one part
+    // above 0 hits long before the creep is genuinely healed). Cleared once hits reaches hitsMax again.
+    retreating?: boolean;
   }
 
   interface RoomMemory {
@@ -153,7 +158,8 @@ export type RoleName =
   | "attacker"
   | "drainAttacker"
   | "drainHealer"
-  | "paradeMember";
+  | "paradeMember"
+  | "simpleBaitTower";
 
 export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building
@@ -229,6 +235,27 @@ export interface ColonyMemory {
   // restart with a new shape. Written by a flag handoff (empire/paradeFlags.ts's setParadeTarget); read
   // every tick by Colony's constructor to attach a real Parade operation, same pattern as `draining`.
   parading?: { flag: string; formation: string };
+  // The single room this colony is currently running a SimpleBaitTower for (sponsoring one bait creep at),
+  // owned by simpleBaitTower.ts — a scalar like `draining`/`parading`: exactly one bait target per colony
+  // at a time, no pooling. Written by a flag handoff (empire/simpleBaitTowerFlags.ts's
+  // setSimpleBaitTowerTarget); read every tick by Colony's constructor to attach a real
+  // SimpleBaitTowerOperation while set.
+  simpleBaitTower?: string;
+  // The flag name that sponsored `simpleBaitTower` — lets simpleBaitTowerFlags.ts tie the op's lifetime to
+  // its ONE originating flag in both directions (same "flag is the op's lifetime" shape as
+  // colonizingFlags, applied to a scalar instead of a list): removing this flag clears `simpleBaitTower`
+  // (see clearSimpleBaitTowerTarget), and the op clearing `simpleBaitTower` on its own (its one creep died
+  // — see SimpleBaitTowerOperation's header) removes this now-orphaned flag instead of leaving a stale
+  // marker behind. Written together with `simpleBaitTower` by setSimpleBaitTowerTarget; cleared together
+  // with it by clearSimpleBaitTowerTarget.
+  simpleBaitTowerFlag?: string;
+  // One-way latch: true once the operation has seen its one bait creep actually alive. Distinguishes
+  // "never spawned yet" (still requesting) from "spawned and then died" (the operation's whole job is
+  // done/failed either way — see SimpleBaitTowerOperation's header for why a one-shot op must not
+  // request a replacement). Set via setSimpleBaitTowerSpawned the first tick a creep is owned; cleared
+  // together with `simpleBaitTower` itself by clearSimpleBaitTowerTarget, so a flag reused for a fresh
+  // target starts clean.
+  simpleBaitTowerSpawned?: boolean;
   // The drain squad's own persisted anchor — the formation's bounding box's FIXED top-left corner (see
   // lib/squad.ts's SquadState doc), owned by operations/drain.ts. Seeded once from the live squad's own
   // position at the moment it first welds up (the same live-position derivation the anchor used to be
