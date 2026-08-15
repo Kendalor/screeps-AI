@@ -108,6 +108,13 @@ declare global {
     // each other across a border forever). Owned by operations/parade.ts, recomputed every tick for every
     // unsquadded member: the squad's live anchor once one exists, else the assembly point near home.
     paradeRallyPos?: XY & { room: string };
+    // A SimpleBaitTower creep's own originating flag NAME, stamped once at spawn time
+    // (operations/simpleBaitTower.ts's desiredCreeps) from ColonyMemory.simpleBaitTowerFlag. The role's
+    // moveToFlag step reads Game.flags[baitFlag]?.pos live every tick — no snapshot-side position
+    // resolution needed (unlike Parade's paradeGoal/paradeRallyPos): the interpreter already runs against
+    // live Game.* objects, so the creep can just look the flag up itself. Undefined means either the
+    // flag never had a name to record, or (rare) the creep predates this field.
+    baitFlag?: string;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
     // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's

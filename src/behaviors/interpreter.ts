@@ -36,7 +36,8 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   attack: "move", // store-less fighter — never self-completes; ends only via targetGone (hostile gone)
   heal: "move", // store-less healer — never self-completes; ends only via targetGone (target gone)
   trample: "move", // store-less — never self-completes; ends only via targetGone (site destroyed by standing on it)
-  fleeAndHeal: "move" // store-less — never self-completes on store state; ends only via the when:"healthy" gate
+  fleeAndHeal: "move", // store-less — never self-completes on store state; ends only via the when:"healthy" gate
+  moveToFlag: "move" // store-less — never self-completes on store state; ends only via the when:"damaged" gate
 };
 
 // The engine's per-tick action pipelines (docs.screeps.com/simultaneous-actions.html): harvest/build/
@@ -243,6 +244,8 @@ export const runStep = wrapFn(function runStep(
       return { acted: true, didAct: false };
     case "fleeAndHeal":
       return allowTravel ? fleeAndHealStep(creep) : { acted: false, didAct: false };
+    case "moveToFlag":
+      return allowTravel ? moveToFlagStep(creep) : { acted: false, didAct: false };
   }
 },
 "interpreter:runStep");
@@ -463,6 +466,21 @@ function moveToRoom(
     const info = (roomMem.scouted ??= { type: roomType(nextRoom), sources: [], hostile: false });
     (info.noPathFrom ??= {})[creep.memory.home] = Game.time;
   }
+  return { acted: true, didAct: false };
+}
+
+// SimpleBaitTowerRole's advance leg (see the Step union's doc): walks toward creep.memory.baitFlag's
+// CURRENT position, read straight from Game.flags every tick — dragging the flag in the client redirects
+// the creep on its very next move. Falls back to plain moveToRoom(targetRoom) behavior whenever baitFlag
+// is unset or the named flag no longer exists (removed, or a creep spawned before this field existed),
+// so a missing flag never strands the creep — it still has somewhere to walk. Never self-completes on
+// arrival; the caller's when:"damaged" gate is what ends this step once the creep takes a hit.
+function moveToFlagStep(creep: Creep): StepResult {
+  const flag = creep.memory.baitFlag ? Game.flags[creep.memory.baitFlag] : undefined;
+  if (!flag) return moveToRoom(creep, { to: "targetRoom" });
+
+  if (creep.pos.inRangeTo(flag.pos, 1)) return { acted: false, didAct: false };
+  creep.travelTo(flag.pos, { range: 1 });
   return { acted: true, didAct: false };
 }
 

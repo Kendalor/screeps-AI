@@ -316,6 +316,11 @@ export interface ColonySnapshot {
   // shape — one bait target per colony at a time. Owned by simpleBaitTower.ts; Colony's constructor
   // attaches a real SimpleBaitTowerOperation while this is set.
   simpleBaitTower?: string;
+  // Mirror of ColonyMemory.simpleBaitTowerFlag — the originating flag's NAME (not a resolved position).
+  // SimpleBaitTowerOperation stamps this straight onto the spawned creep's own memory (CreepMemory.baitFlag)
+  // so the role's moveToFlag step can read Game.flags[name].pos live at execution time, the same live-tile
+  // convention Parade's flag-goal-tracking uses, but without any snapshot-side position resolution.
+  simpleBaitTowerFlag?: string;
   // Mirror of ColonyMemory.simpleBaitTowerSpawned — see its doc for the one-shot-lifetime reasoning.
   simpleBaitTowerSpawned?: boolean;
   // Room-by-room path from this colony's home room to `draining` (via Game.map.findRoute), each tagged

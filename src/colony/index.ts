@@ -86,8 +86,12 @@ export class Colony {
       // SimpleBaitTower isn't in operationsFor() either, same reason: attached only while
       // snapshot.simpleBaitTower (ColonyMemory.simpleBaitTower) is set, a flag handoff's
       // setSimpleBaitTowerTarget (see empire/simpleBaitTowerFlags.ts). Scalar like `draining`/`parading` —
-      // one bait target per colony at a time, no pooling.
-      ...(snapshot.simpleBaitTower !== undefined ? [new SimpleBaitTowerOperation(snapshot.name, snapshot.simpleBaitTower)] : [])
+      // one bait target per colony at a time, no pooling. simpleBaitTowerFlag (the originating flag's
+      // name) is threaded through too so the operation can stamp it onto the spawned creep's own memory —
+      // see SimpleBaitTowerOperation's constructor doc.
+      ...(snapshot.simpleBaitTower !== undefined
+        ? [new SimpleBaitTowerOperation(snapshot.name, snapshot.simpleBaitTower, snapshot.simpleBaitTowerFlag)]
+        : [])
     ];
   }
 

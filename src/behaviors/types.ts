@@ -182,6 +182,14 @@ export type Step = ({
     // Store-less, never self-completes on store state — only the when:"healthy" gate ends it, once hits
     // recovers to hitsMax.
     | { do: "fleeAndHeal" }
+    // Walks toward creep.memory.baitFlag's LIVE position, read straight from Game.flags every tick — no
+    // memory-cached destination the way moveToPos's drainRallyPos/paradeRallyPos are (an owning operation
+    // would have to refresh those every tick anyway; a flag is already live in Game.flags, so the step
+    // just reads it directly). Dragging the flag in the client redirects the creep immediately. Falls
+    // back to moveToRoom's targetRoom behavior when baitFlag is unset or the named flag no longer exists
+    // (removed, or a creep that predates this field) — never a standing no-op. Never self-completes here;
+    // the caller's when:"damaged" gate is what stops this step once the creep takes a hit.
+    | { do: "moveToFlag" }
   );
 
 export interface TaskState {

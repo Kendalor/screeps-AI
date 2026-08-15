@@ -8,7 +8,7 @@ const SIMPLE_BAIT_TOWER_SET: BodyPartConstant[] = [ATTACK, HEAL, MOVE, MOVE];
 
 export const SIMPLE_BAIT_TOWER_MIN_COST = bodyCost(SIMPLE_BAIT_TOWER_SET);
 
-const BAIT_TOWER_SET_COST = bodyCost([TOUGH, HEAL, MOVE]);
+const BAIT_TOWER_SET_COST = bodyCost([TOUGH, HEAL, MOVE,MOVE]);
 
 function simpleBaitTowerBody(energy: number): BodyPartConstant[] {
   let energyLeft = energy - bodyCost(SIMPLE_BAIT_TOWER_SET);
@@ -26,10 +26,11 @@ export class SimpleBaitTowerRole extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return simpleBaitTowerBody(energy);
   }
-  // 1: advance on targetRoom while at full health. 2: once damaged, flee/heal (see fleeAndHeal's doc)
-  // until back to full health, then step 1 resumes and walks it straight back in.
+  // 1: advance on the live baitFlag position while at full health (see moveToFlag's doc — dragging the
+  // flag redirects the creep immediately). 2: once damaged, flee/heal (see fleeAndHeal's doc) until back
+  // to full health, then step 1 resumes and walks it straight back in.
   static override readonly steps: Step[] = [
-    { do: "moveToRoom", to: "targetRoom", when: "damaged" },
+    { do: "moveToFlag", when: "damaged" },
     { do: "fleeAndHeal", when: "healthy" }
   ];
 }

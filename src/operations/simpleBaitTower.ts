@@ -29,7 +29,13 @@ export class SimpleBaitTowerOperation extends Operation {
 
   public constructor(
     room: string,
-    private readonly targetRoom: string
+    private readonly targetRoom: string,
+    // The originating flag's NAME (ColonyMemory.simpleBaitTowerFlag/snapshot.simpleBaitTowerFlag), stamped
+    // onto the spawned creep's own memory below so its moveToFlag step can read Game.flags[name].pos live
+    // — see CreepMemory.baitFlag's doc. Optional only because a colony still mid-handoff (this same tick's
+    // setSimpleBaitTowerTarget just fired) might not have the flag mirrored onto its snapshot yet; a creep
+    // spawned with no baitFlag simply falls through to targetRoom (moveToFlag's own no-flag fallback).
+    private readonly flagName?: string
   ) {
     super(room);
   }
@@ -53,7 +59,7 @@ export class SimpleBaitTowerOperation extends Operation {
       {
         body,
         priority: def.priority,
-        memory: { role: SIMPLE_BAIT_TOWER_ROLE, home: colony.name, op: this.name },
+        memory: { role: SIMPLE_BAIT_TOWER_ROLE, home: colony.name, op: this.name, baitFlag: this.flagName },
         targetRoom: this.targetRoom,
         spawnRoom: colony.name
       }
