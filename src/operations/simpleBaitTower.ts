@@ -19,7 +19,6 @@
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
-import { orderBody } from "../spawn/body";
 import type { CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 
@@ -43,7 +42,11 @@ export class SimpleBaitTowerOperation extends Operation {
 
     const def = roleDef(SIMPLE_BAIT_TOWER_ROLE);
     if (!def) return [];
-    const body = orderBody(def.body(colony.energyCapacity, { hasContainer: false, hasLink: false }));
+    // Deliberately NOT orderBody()'d — every other operation reorders its body by survival priority
+    // (TOUGH first, MOVE last; see spawn/body.ts's orderBody), but the bait creep's whole point is
+    // soaking tower fire in a SPECIFIC part sequence (behaviors/roles/simpleBaitTower.ts's own body
+    // layout), so the array it produces must reach the spawn request untouched.
+    const body = def.body(colony.energyCapacity, { hasContainer: false, hasLink: false });
     if (body.length === 0) return [];
 
     return [
