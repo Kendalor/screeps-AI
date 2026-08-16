@@ -23,7 +23,8 @@ export default defineConfig({
   define: {
     // Matches rollup.config.mjs's PROFILE-gated replace — some fixtures import src/ modules directly
     // alongside the rollup-bundled bot, so this must be defined here too or that import throws.
-    __PROFILER_ENABLED__: "false"
+    __PROFILER_ENABLED__: "false",
+    __GIT_COMMIT__: '"test"'
   },
   test: {
     environment: "node",

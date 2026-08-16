@@ -1,6 +1,7 @@
 "use strict";
 
 import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import "dotenv/config";
 import clear from "rollup-plugin-clear";
 import resolve from "@rollup/plugin-node-resolve";
@@ -33,6 +34,17 @@ if (!dest) {
 const profilerEnabled = process.env.PROFILE === "1";
 if (profilerEnabled) console.log("Profiler ENABLED for this build");
 
+// Baked into every build (not just PROFILE=1) so Memory.stats.commit can identify which deployed
+// version produced a given tick's data — dirty worktree still resolves to the last real commit; a
+// missing git binary/detached-history edge case falls back to "unknown" rather than failing the build.
+let gitCommit = "unknown";
+try {
+  gitCommit = execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim();
+} catch (e) {
+  console.warn("Could not resolve git commit hash for build:", e.message);
+}
+console.log(`Building commit ${gitCommit}`);
+
 export default {
   input: "src/main.ts",
   output: {
@@ -48,7 +60,10 @@ export default {
     json(),
     replace({
       preventAssignment: true,
-      values: { __PROFILER_ENABLED__: JSON.stringify(profilerEnabled) }
+      values: {
+        __PROFILER_ENABLED__: JSON.stringify(profilerEnabled),
+        __GIT_COMMIT__: JSON.stringify(gitCommit)
+      }
     }),
     typescript({ tsconfig: "./tsconfig.json" }),
     screeps({ config: cfg, dryRun: cfg == null }),

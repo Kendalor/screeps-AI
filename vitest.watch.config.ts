@@ -6,7 +6,8 @@ import { defineConfig } from "vitest/config";
 // so `npm run test:integration` never runs them. Use `npm run watch:integration`.
 export default defineConfig({
   define: {
-    __PROFILER_ENABLED__: "false"
+    __PROFILER_ENABLED__: "false",
+    __GIT_COMMIT__: '"test"'
   },
   test: {
     environment: "node",

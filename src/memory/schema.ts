@@ -522,6 +522,10 @@ export interface StatsMemory {
   version: number;
   cpu?: Record<string, number>; // last tick's CPU per kernel system name, written by kernel/stats.ts
   bucket?: number; // Game.cpu.bucket at tick end, written by kernel/stats.ts's flush()
+  // Short git commit hash of the deployed build (rollup-substituted __GIT_COMMIT__) — lets a Grafana
+  // panel/annotation correlate a metric shift with the commit that caused it, since this project
+  // doesn't tag releases/versions otherwise.
+  commit?: string;
   // Per-room economy gauges for the Grafana forward, one entry per owned colony — point-in-time levels
   // only (no pre-computed rates); Grafana derives rates/deltas itself. Mirrors fields colony/index.ts's
   // metrics() already computes as ColonyMetrics for the in-game panel, so this never re-derives from

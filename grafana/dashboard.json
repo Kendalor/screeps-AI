@@ -1,0 +1,304 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "enable": true,
+        "iconColor": "purple",
+        "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+        "target": { "target": "stats.gauges.commit" },
+        "textField": "commit",
+        "textEditor": true
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["screeps"],
+  "templating": {
+    "list": [
+      {
+        "name": "room",
+        "type": "query",
+        "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+        "query": "stats.gauges.rooms.*",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Screeps colony overview",
+  "uid": "screeps-colony-overview",
+  "version": 1,
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Empire",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "CPU per system",
+      "description": "Memory.stats.cpu.<system> — last tick's CPU used, per kernel system (kernel/tick.ts's SYSTEMS).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "target": "aliasByNode(stats.gauges.cpu.*, 3)" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Bucket",
+      "description": "Memory.stats.bucket — Game.cpu.bucket at tick end.",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 10000,
+          "custom": { "drawStyle": "line", "fillOpacity": 15 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 3000 },
+              { "color": "green", "value": 8000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "target": "alias(stats.gauges.bucket, 'Bucket')" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Bucket now",
+      "description": "Memory.stats.bucket, latest value.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 3000 },
+              { "color": "green", "value": 8000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "target": "alias(stats.gauges.bucket, 'Bucket')" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Deployed commit",
+      "description": "Memory.stats.commit — short git hash of the currently-running build (rollup-substituted __GIT_COMMIT__, kernel/stats.ts). Not versioned/tagged otherwise; compare this value against other panels' history to trace a regression back to a code change.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 5 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "fieldConfig": {
+        "defaults": { "unit": "string", "custom": { "align": "center" }, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "graphMode": "none",
+        "textMode": "value",
+        "colorMode": "none"
+      },
+      "targets": [
+        { "refId": "A", "target": "alias(stats.gauges.commit, 'Commit')" }
+      ]
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Room: $room",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false,
+      "repeat": "room",
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Energy — $room",
+      "description": "Memory.stats.rooms.<room>.{energyAvailable,energyCapacity,storageEnergy} — point-in-time gauges.",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "repeat": "room",
+      "repeatDirection": "h",
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "target": "alias(stats.gauges.rooms.$room.energyAvailable, 'Available')" },
+        { "refId": "B", "target": "alias(stats.gauges.rooms.$room.energyCapacity, 'Capacity')" },
+        { "refId": "C", "target": "alias(stats.gauges.rooms.$room.storageEnergy, 'Storage')" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Controller — $room",
+      "description": "Memory.stats.rooms.<room>.controllerLevel / controllerProgress / controllerProgressTotal.",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "repeat": "room",
+      "repeatDirection": "h",
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Level" },
+            "properties": [{ "id": "custom.axisPlacement", "value": "right" }]
+          }
+        ]
+      },
+      "targets": [
+        { "refId": "A", "target": "alias(stats.gauges.rooms.$room.controllerLevel, 'Level')" },
+        { "refId": "B", "target": "alias(stats.gauges.rooms.$room.controllerProgress, 'Progress')" },
+        { "refId": "C", "target": "alias(stats.gauges.rooms.$room.controllerProgressTotal, 'Progress total')" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "gauge",
+      "title": "Spawn load — $room",
+      "description": "Memory.stats.rooms.<room>.spawnLoad — required parts / spawn capacity. >=1 means spawns can't keep up.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "repeat": "room",
+      "repeatDirection": "h",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1.5,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.8 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "target": "alias(stats.gauges.rooms.$room.spawnLoad, 'Spawn load')" }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Census (alive) — $room",
+      "description": "Memory.stats.rooms.<room>.census.<role>.current — alive count per role.",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "repeat": "room",
+      "repeatDirection": "h",
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "target": "aliasByNode(stats.gauges.rooms.$room.census.*.current, 5)" }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Census (desired vs alive) — $room",
+      "description": "Memory.stats.rooms.<room>.census.<role>.{current,desired} — understaffing shows as desired > current.",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "repeat": "room",
+      "repeatDirection": "h",
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "/desired/" },
+            "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }]
+          }
+        ]
+      },
+      "targets": [
+        { "refId": "A", "target": "aliasByNode(stats.gauges.rooms.$room.census.*.current, 5)" },
+        { "refId": "B", "target": "aliasByNode(stats.gauges.rooms.$room.census.*.desired, 5)" }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Buildings (built vs targeted) — $room",
+      "description": "Memory.stats.rooms.<room>.buildings.<type>.{built,targeted} — current plan's build-out status.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "repeat": "room",
+      "repeatDirection": "h",
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "/targeted/" },
+            "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }]
+          }
+        ]
+      },
+      "targets": [
+        { "refId": "A", "target": "aliasByNode(stats.gauges.rooms.$room.buildings.*.built, 5)" },
+        { "refId": "B", "target": "aliasByNode(stats.gauges.rooms.$room.buildings.*.targeted, 5)" }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Remotes — $room",
+      "description": "Memory.stats.rooms.<room>.numRemotes — distinct rooms among currently-selected remote sources.",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 26 },
+      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
+      "repeat": "room",
+      "repeatDirection": "h",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "target": "alias(stats.gauges.rooms.$room.numRemotes, 'Remotes')" }
+      ]
+    }
+  ]
+}

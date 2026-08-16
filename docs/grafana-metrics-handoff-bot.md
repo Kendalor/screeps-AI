@@ -1,84 +1,111 @@
 # Grafana metrics — Part 1: bot-side changes (THIS repo)
 
-## Status: not started (2026-08-16)
+## Status: bot-side done (2026-08-16); dashboard JSON drafted, unverified against a live stack
 
 Companion doc: `docs/grafana-metrics-handoff-stack.md` (Part 2, the new docker-compose repo). Read
 that doc's intro for the full picture — this file only covers work in **this** repository.
 
 **Goal:** shape this bot's `Memory.stats` so an external Grafana stack (Part 2) can graph it. That
-stack (`screepers/screeps-grafana`) forwards whatever is in `Memory.stats` to the TSDB **verbatim** —
-no schema on its side. All the real work is here: writing the right keys, in the right units, already
-computed as sane per-tick values.
+stack is `screepers/screeps-grafana` — a **Graphite** stack (StatsD + Graphite + Grafana), not
+InfluxDB. Its poller (`src/ScreepsStatsd.js`) walks `Memory.stats` recursively: any nested object is
+descended into with a dotted prefix, any leaf (non-object) value becomes `client.gauge(path, value)`.
+So a nested shape like `Memory.stats.rooms.W5N5.census.miner.current` is fully supported and lands in
+Graphite as `stats.gauges.rooms.W5N5.census.miner.current` (the `stats.gauges.` prefix comes from
+node-statsd's default, confirmed against the project's own `sampleDashboard.json` targets).
 
 **Decision already made:** keep this bot's existing vendored profiler
 ([`src/lib/profiler.ts`](../src/lib/profiler.ts)) — do not port to a different profiler. This work is
-additive: feed its data (and `src/kernel/stats.ts`'s) into `Memory.stats`, not replace it.
+additive: feed `kernel/stats.ts`'s data into `Memory.stats`, not replace it.
 
-## Ground truth verified in this codebase
+**Decision (2026-08-16): gauges only, no bot-side rate/delta computation anywhere in `Memory.stats`.**
+Graphite/Grafana can compute `derivative()`/`nonNegativeDerivative()` over a raw gauge itself — see the
+sample dashboard's own `derivative(stats.gauges.time)` usage. This simplified two things:
+- Step 2 (profiler per-function delta) is **skipped entirely** — forwarding
+  `Memory.profiler.data` cumulative would still need `__PROFILER_ENABLED__` + `Profiler.start()`
+  wiring for no real benefit under the gauges-only model, and nothing currently reads it. Revisit only
+  if a per-function CPU panel is actually wanted later.
+- Step 3's room stats are plain point-in-time levels, not diffed.
 
-- `Memory.stats.cpu: Record<string, number>` — last tick's CPU per kernel system name, flushed every
-  tick unconditionally by `stats.flush()` (`src/kernel/stats.ts:19-21`). Schema:
-  `src/memory/schema.ts:514-517`. **This key already matches the convention** the Grafana side expects
-  (a `cpu` sub-object under `Memory.stats`) — likely needs zero reshaping, just confirm the per-system
-  key names are ones you actually want to see on a dashboard (they get graphed verbatim, so rename now
-  if a key is internal-jargon-y — this is the last easy point to do that).
-- `Memory.profiler.data: Record<string, {calls, time}>` — cumulative per-function CPU, only populated
-  while the profiler is running (`Profiler.start()`; `src/lib/profiler.ts:135-146`), gated behind the
-  compile-time `__PROFILER_ENABLED__` flag (`src/lib/profiler.ts:25`). **This does NOT fit a
-  verbatim-forward model as-is** — it's cumulative-since-start, not a per-tick rate. Forwarding it
-  straight to `Memory.stats` produces a monotonically-increasing graph, not a useful one.
-- `Memory.metrics` (harvest-rate ring buffer, `src/memory/schema.ts:521-523`) and `Memory.market`
-  (`src/memory/schema.ts:525-530`) are optional extras — skip for a first cut.
-- No existing `Memory.stats`-shaping code beyond `kernel/stats.ts`'s `cpu` key exists yet — confirmed via
-  grep. Room/GCL/energy-economy stats (the other things a typical screeps-grafana dashboard expects,
-  e.g. `room.<name>.energyAvailable`) are **not currently written anywhere** in this bot and must be
-  added if those panels are wanted.
+## What's actually in `Memory.stats` now
 
-## Build order
+Written by [`kernel/stats.ts`](../src/kernel/stats.ts)'s `flush()`, called once at the end of
+[`kernel/tick.ts`](../src/kernel/tick.ts)'s `tick()`:
 
-### Step 1 — Confirm/rename `Memory.stats.cpu` keys
-- Read what `stats.record(system, cpu)` is currently called with across the kernel (grep call sites of
-  `stats.record`) and decide if the system names are dashboard-ready as-is. This is config-review, not
-  code — only touch it if a name needs cleaning up.
-- Done-check: no code change needed unless a rename is wanted.
+- `Memory.stats.cpu: Record<string, number>` — last tick's CPU per kernel system name (unchanged from
+  before this work; names were already dashboard-ready, no rename needed).
+- `Memory.stats.bucket: number` — `Game.cpu.bucket` at tick end.
+- `Memory.stats.commit: string` — short git hash of the deployed build. See "Commit tracking" below.
+- `Memory.stats.rooms: Record<string, RoomStats>` — one entry per owned colony, written by
+  [`colony/index.ts`](../src/colony/index.ts)'s `metrics()` (a tier-3 `SYSTEMS` entry, so `Memory.stats`
+  is always initialized by `migrateMemory()` before this runs). Schema:
+  [`src/memory/schema.ts`](../src/memory/schema.ts)'s `RoomStats`:
+  - `energyAvailable`, `energyCapacity`, `storageEnergy` — energy levels.
+  - `spawnLoad` — required parts / spawn capacity fraction; >= 1 means spawns can't keep up.
+  - `controllerLevel`, `controllerProgress`, `controllerProgressTotal` — RCL and upgrade progress.
+  - `census: Record<role, {current, desired}>` — alive count vs. operation-reported target per role.
+  - `buildings: Record<structureType, {built, targeted}>` — build-out status per structure type at the
+    current plan.
+  - `numRemotes` — distinct rooms among this colony's currently-selected remote sources.
+  - Deliberately **excluded** per user decision: construction *progress points* remaining
+    (`ColonyMetrics.construction`) and repair decay (`ColonyMetrics.repair`) — buildings-built-count
+    already answers "what's outstanding" without a second progress-points view.
 
-### Step 2 — Add a per-tick profiler delta (optional, only if per-function CPU panels are wanted)
-- Add a small **always-on** accumulator (not gated behind `Profiler.start()` — that command is for the
-  human-readable `Profiler.output()` CLI, a separate concern) that computes `current - previous` per
-  profiler key each tick and writes the delta into `Memory.stats`, e.g. `Memory.stats.fn[key]`.
-- Implement in `src/lib/profiler.ts` (or a small new module next to it) by keeping the previous tick's
-  cumulative `{calls, time}` per key in a module-level variable, diffing on each `stats.flush()`-style
-  call. Do not push this diffing responsibility onto the external stack (Part 2) — it can't do it
-  without reimplementing knowledge of this bot's internals.
-- Still respect `__PROFILER_ENABLED__` for whether `Memory.profiler.data` itself exists at all — the
-  delta computation only has something to diff when the compile-time flag is on.
-- Done-check: `Memory.stats.fn` (or chosen key) shows a small non-negative number per profiled function
-  each tick, not a value that only grows.
+All of `RoomStats` is mirrored from `ColonyMetrics` (`colony/metrics.ts`'s `collectMetrics`, already
+computed every tick for the in-game panel) plus `this.snapshot.remoteSources` for `numRemotes` — no new
+`Game.*` reads, purity boundary intact (operations/pure modules never touch `Game.*`; only
+`snapshot/colony.ts` does).
 
-### Step 3 — Optional: room/economy stats
-- Add keys like `Memory.stats.rooms[name].energyAvailable`, controller progress, etc., if those panels
-  are wanted on the dashboard.
-- Pull from `buildColonySnapshot`'s existing per-tick data (`src/snapshot/colony.ts`) rather than
-  re-reading `Game.*` directly — keeps the purity boundary this codebase already enforces (operations
-  and pure modules never touch `Game.*`; all live reads happen in `snapshot/colony.ts`). Write the
-  `Memory.stats` values from the same tick-end point that already has snapshot data in hand (near
-  `stats.flush()`'s call site), not from a new ad hoc `Game.rooms` read.
-- Done-check: `Memory.stats.rooms` populated for every owned colony after one tick.
+## Commit tracking
 
-### Step 4 — Verify end to end
-- Via the `debug-main`/`debug-local` skill (or console directly), inspect `Memory.stats` on a live tick
-  and confirm the full intended shape is present: `cpu`, optionally `fn`, optionally `rooms`.
-- This is the handoff point to Part 2 — the stack there just needs `Memory.stats` to look like this.
+**Feature:** `Memory.stats.commit` identifies which deployed build produced a given tick's stats, so a
+Grafana panel can show *when* a metric shifted and cross-reference that against which commit was live —
+this project doesn't tag releases/versions otherwise.
+
+- [`rollup.config.mjs`](../rollup.config.mjs) resolves `git rev-parse --short HEAD` at build time (falls
+  back to `"unknown"` if git isn't available) and substitutes it into a new compile-time constant
+  `__GIT_COMMIT__`, the same `@rollup/plugin-replace` mechanism `__PROFILER_ENABLED__` already uses.
+  Baked into **every** build (not gated behind `PROFILE=1`) — this is meant to be always-on.
+- [`kernel/stats.ts`](../src/kernel/stats.ts) declares `__GIT_COMMIT__` and writes it into
+  `Memory.stats.commit` on every `flush()`.
+- All four `vitest.*.config.ts` files define `__GIT_COMMIT__: '"test"'` alongside their existing
+  `__PROFILER_ENABLED__: "false"`, so importing `src/` under test doesn't throw on the undeclared global.
+- Verified: a plain `npx rollup -c` build embeds the literal short hash directly in `dist/main.js`.
+
+## Dashboard JSON
+
+[`grafana/dashboard.json`](../grafana/dashboard.json) — modern Grafana schema (`schemaVersion: 39`,
+`gridPos`-based panels, not the old `rows`/`hideControls` layout `screeps-grafana`'s own
+`sampleDashboard.json` ships, which is a pre-Grafana-5 export). Targets a Graphite datasource named via
+the `${DS_GRAPHITE}` variable (set this to the actual datasource UID on import, or use Grafana's
+datasource-variable convention when provisioning).
+
+Panels:
+- CPU per system (`stats.gauges.cpu.*`, stacked).
+- Bucket over time + latest-value stat.
+- Deployed commit (latest-value stat, `stats.gauges.commit`).
+- A `Deploys` annotation layer sourced from `stats.gauges.commit` — marks a vertical line whenever the
+  running commit changes, so a sudden shift in any other panel can be visually correlated to a deploy.
+- Per-room panels (repeated over a `$room` template variable, `stats.gauges.rooms.*`): energy levels,
+  controller, spawn load gauge, census (alive-only and alive-vs-desired), buildings (built-vs-targeted),
+  remotes count.
+
+**Not yet verified against a live stack** — this repo has no running Graphite/Grafana instance to import
+against. Before trusting it:
+1. Confirm the annotation panel's `target`/`textField` shape actually renders deploy markers the way
+   modern Grafana's Graphite datasource expects — annotation-from-metric-query support was inferred from
+   general Grafana/Graphite conventions, not tested here.
+2. Confirm `stats.gauges.rooms.*` (the `room` template variable's query) returns room names and not some
+   other path segment — depends on Graphite's actual indexed tree once real data lands.
+3. Import into Part 2's stack once it exists (see the companion doc) and check every panel populates.
 
 ## Traps to avoid
 
-1. **Don't forward `Memory.profiler.data` verbatim.** It's cumulative-since-start, not a rate — diff it
-   here (Step 2), don't leave that problem for the external stack.
-2. **Keep the purity boundary.** If Step 3 pulls room/economy data into `Memory.stats`, read from
-   `ColonySnapshot`/`buildColonySnapshot` output, not raw `Game.*`.
-3. **Confirm `__PROFILER_ENABLED__`** is on in whatever build gets deployed before assuming Step 2's
-   delta is broken — it's a compile-time rollup flag, easy to forget was left off, and the symptom
-   (empty `Memory.stats.fn`) looks identical to a real bug.
-4. **Don't gate the Step 2 delta behind `Profiler.start()`.** That flag controls the human CLI profiler
-   session; a Grafana feed should be always-on so the dashboard doesn't go blank whenever nobody
-   happens to have typed `Profiler.start()` in console.
+1. **Don't forward `Memory.profiler.data` verbatim without understanding it's cumulative-since-start.**
+   Moot for now since Step 2 is skipped, but if a per-function panel is added later, either diff it
+   bot-side or use a Graphite `derivative()` in the panel query — don't assume the raw value is a rate.
+2. **Keep the purity boundary.** Room/economy data in `Memory.stats.rooms` must keep flowing from
+   `ColonyMetrics`/`ColonySnapshot`, not a new ad hoc `Game.*` read.
+3. **`__GIT_COMMIT__` is always-on, unlike `__PROFILER_ENABLED__`.** Don't gate it behind `PROFILE=1` —
+   every build (push-main, push-dev, pserver) should stamp its own commit.
+4. **The Graphite poller flattens nested objects automatically** (`ScreepsStatsd.js`'s `report()`) — no
+   need to pre-flatten `RoomStats` into dotted string keys on the bot side; a plain nested object is fine.

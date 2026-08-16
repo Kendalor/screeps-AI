@@ -19,7 +19,8 @@ import { defineConfig } from "vitest/config";
 // running several benchmark processes at once, and that build must win).
 export default defineConfig({
   define: {
-    __PROFILER_ENABLED__: "false"
+    __PROFILER_ENABLED__: "false",
+    __GIT_COMMIT__: '"test"'
   },
   test: {
     environment: "node",
