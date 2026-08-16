@@ -224,7 +224,10 @@ function toKind(obj: RoomObject): TargetKind | null {
   // doc) — classified as an ordinary "structure" instead so it never re-validates a stale hostileStructure
   // lock either.
   if (o.structureType !== undefined) {
-    return o.my === false && o.structureType !== STRUCTURE_CONTROLLER
+    // STRUCTURE_KEEPER_LAIR excluded alongside the controller: both resolve under Structure.my === false
+    // but neither is a fightable hostileStructure target — see hostileStructure's own doc in
+    // findCandidates below for why.
+    return o.my === false && o.structureType !== STRUCTURE_CONTROLLER && o.structureType !== STRUCTURE_KEEPER_LAIR
       ? { kind: "hostileStructure", structureType: o.structureType }
       : { kind: "structure", structureType: o.structureType };
   }
@@ -631,8 +634,15 @@ function findCandidates(
       // rejects a StructureController outright (ERR_INVALID_TARGET; only attackController touches one,
       // which needs a CLAIM part this ATTACK/TOUGH/MOVE body never carries), so an attacker locking onto
       // it would just sit there forever doing nothing. Confirmed live: a hostile room's controller was
-      // resolving as a valid hostileStructure target.
-      return room.find(FIND_HOSTILE_STRUCTURES).filter(s => s.structureType !== STRUCTURE_CONTROLLER);
+      // resolving as a valid hostileStructure target. It also includes a Source Keeper room's
+      // STRUCTURE_KEEPER_LAIR (Source Keeper is a hostile NPC owner too) — attacking a lair is pointless
+      // (it just respawns its guardian) and an attacker sent into an SK room this way has no business
+      // fighting the actual keeper monster, so lairs are excluded the same way the controller is.
+      // Confirmed live: attacker_W47N14_73031997 locked onto a keeperLair in W46N14 instead of the
+      // level-0 invader core that justified the room-level attack sponsorship in the first place.
+      return room
+        .find(FIND_HOSTILE_STRUCTURES)
+        .filter(s => s.structureType !== STRUCTURE_CONTROLLER && s.structureType !== STRUCTURE_KEEPER_LAIR);
     case "hostileConstructionSite":
       return room.find(FIND_HOSTILE_CONSTRUCTION_SITES);
     case "constructionSite": {

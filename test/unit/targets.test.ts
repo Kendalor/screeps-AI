@@ -1100,6 +1100,31 @@ describe("resolveTarget hostileStructure excludes the controller", () => {
 
     expect(got).toBe(tower);
   });
+
+  // FIND_HOSTILE_STRUCTURES also includes a Source Keeper room's STRUCTURE_KEEPER_LAIR (Source Keeper is
+  // a hostile NPC owner too). Attacking a lair is pointless — it just respawns its guardian — and an
+  // attacker sent into an SK room for a level-0 invader core has no business fighting the keeper monster.
+  // Confirmed live: attacker_W47N14_73031997 locked onto a keeperLair in W46N14 instead of the invader
+  // core that justified the room-level attack sponsorship.
+  it("never offers a source keeper lair from a fresh search", () => {
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    const lair = { id: "lair1", pos: { x: 10, y: 10 }, structureType: STRUCTURE_KEEPER_LAIR, my: false };
+    stubGame({ objects: { tower1: tower, lair1: lair } });
+
+    const got = resolveTarget(creepFinding([lair, tower]), { find: "hostileStructure" });
+
+    expect((got as { id: string }).id).toBe("tower1");
+  });
+
+  it("drops a stale lock on a keeper lair instead of re-validating it", () => {
+    const lair = { id: "lair1", pos: { x: 10, y: 10 }, structureType: STRUCTURE_KEEPER_LAIR, my: false };
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    stubGame({ objects: { lair1: lair, tower1: tower } });
+
+    const got = resolveTarget(creepFinding([tower]), { find: "hostileStructure" }, "lair1" as Id<_HasId>);
+
+    expect((got as { id: string }).id).toBe("tower1");
+  });
 });
 
 // requireReachableAlive excludes a pickup a low-ticksToLive creep would die walking to, using

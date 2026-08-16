@@ -492,8 +492,8 @@ function moveToFlagStep(creep: Creep): StepResult {
   const flag = creep.memory.baitFlag ? Game.flags[creep.memory.baitFlag] : undefined;
   if (!flag) return moveToRoom(creep, { to: "targetRoom" });
 
-  if (creep.pos.inRangeTo(flag.pos, 1)) return { acted: false, didAct: false };
-  creep.travelTo(flag.pos, { range: 1 });
+  if (creep.pos.isEqualTo(flag.pos)) return { acted: false, didAct: false };
+  creep.travelTo(flag.pos, { range: 0 });
   return { acted: true, didAct: false };
 }
 
