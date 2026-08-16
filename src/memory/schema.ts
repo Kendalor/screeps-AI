@@ -521,6 +521,28 @@ export interface ExpansionMemory {
 export interface StatsMemory {
   version: number;
   cpu?: Record<string, number>; // last tick's CPU per kernel system name, written by kernel/stats.ts
+  bucket?: number; // Game.cpu.bucket at tick end, written by kernel/stats.ts's flush()
+  // Per-room economy gauges for the Grafana forward, one entry per owned colony — point-in-time levels
+  // only (no pre-computed rates); Grafana derives rates/deltas itself. Mirrors fields colony/index.ts's
+  // metrics() already computes as ColonyMetrics for the in-game panel, so this never re-derives from
+  // Game.* directly — see collectMetrics in colony/metrics.ts.
+  rooms?: Record<string, RoomStats>;
+}
+
+export interface RoomStats {
+  energyAvailable: number;
+  energyCapacity: number;
+  storageEnergy: number;
+  spawnLoad: number;
+  controllerLevel: number;
+  controllerProgress: number;
+  controllerProgressTotal: number;
+  // Role -> alive count and operation-reported target, mirrors ColonyMetrics.census (colony/metrics.ts).
+  census: Record<string, { current: number; desired: number }>;
+  // Structure type -> built count and current plan target, mirrors ColonyMetrics.buildings.
+  buildings: Record<string, { built: number; targeted: number }>;
+  // Distinct rooms among this colony's currently-selected remote sources (snapshot.remoteSources).
+  numRemotes: number;
 }
 
 // A short window of (tick, total source energy) samples; harvest rate is diffed oldest-vs-newest. A ring rather than a

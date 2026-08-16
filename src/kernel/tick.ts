@@ -151,7 +151,7 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   // Invader NPC with its core still standing — see remoteInvaderAttacks.ts's header.
   runGuarded("remoteInvaderAttacks", () => runRemoteInvaderAttacks(world));
   stats.record("total", Game.cpu.getUsed() - tickStart);
-  stats.flush();
+  stats.flush(Game.cpu.bucket);
 }
 
 function runGuarded(name: string, fn: () => void): void {

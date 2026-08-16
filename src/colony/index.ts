@@ -173,6 +173,20 @@ export class Colony {
       this.operations.flatMap(op => op.roleTargets(this.snapshot, requests)),
       Memory.debugMetrics ?? false
     );
+    // Gauges only, mirrored from `report`/`this.snapshot` — no rates computed here, Grafana derives
+    // those itself from the raw levels (see StatsMemory.rooms's own doc).
+    (Memory.stats.rooms ??= {})[this.name] = {
+      energyAvailable: report.energy.available,
+      energyCapacity: report.energy.capacity,
+      storageEnergy: report.energy.storage,
+      spawnLoad: report.spawns.load,
+      controllerLevel: report.controller.level,
+      controllerProgress: report.controller.progress,
+      controllerProgressTotal: report.controller.progressTotal,
+      census: Object.fromEntries(report.census.map(c => [c.role, { current: c.current, desired: c.desired }])),
+      buildings: Object.fromEntries(report.buildings.map(b => [b.type, { built: b.built, targeted: b.targeted }])),
+      numRemotes: new Set(this.snapshot.remoteSources.map(s => s.room)).size
+    };
     return [visualize(report, cpu)];
   }
 }

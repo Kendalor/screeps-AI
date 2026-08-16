@@ -13,10 +13,12 @@ export const stats = {
   reset(): void {
     cpuBySystem = {};
   },
-  /** Flush the tick's per-system CPU into Memory.stats.cpu. Called once, after every system has run.
-   * No-ops when Memory.stats isn't set up yet — tick() is called directly in some unit tests, without
-   * migrateMemory() having run first. */
-  flush(): void {
-    if (Memory.stats) Memory.stats.cpu = cpuBySystem;
+  /** Flush the tick's per-system CPU (and bucket gauge) into Memory.stats. Called once, after every
+   * system has run. No-ops when Memory.stats isn't set up yet — tick() is called directly in some unit
+   * tests, without migrateMemory() having run first. */
+  flush(bucket: number): void {
+    if (!Memory.stats) return;
+    Memory.stats.cpu = cpuBySystem;
+    Memory.stats.bucket = bucket;
   }
 };
