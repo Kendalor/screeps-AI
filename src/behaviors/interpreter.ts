@@ -8,7 +8,7 @@ import { INVADER_USERNAME } from "../mining/remoteSources";
 import { NO_PATH_RETRY_AFTER } from "../lib/remotePath";
 import { wrapFn } from "../lib/profiler";
 import { roomType } from "../lib/roomName";
-import { hasFortifiedInvaderCore } from "./scout";
+import { hasFortifiedInvaderCore } from "./scoutTargets";
 import { stepOffRoad } from "./roadAvoidance";
 import { resolveTarget } from "./targets";
 import type { Step, TargetSpec } from "./types";
@@ -1154,7 +1154,7 @@ function nearestFriendlyHealer(creep: Creep): Creep | undefined {
 }
 
 // The bunker anchor recorded for `home`, if building has laid one down yet, else the room centre — same
-// fallback chain as behaviors/transport.ts's homeRoomWaypoint (kept as a separate copy here rather than a
+// fallback chain as behaviors/logisticsRunner.ts's homeRoomWaypoint (kept as a separate copy here rather than a
 // shared import: transport.ts's version threads through its own logistics-task plumbing, and duplicating
 // a two-line lookup is cheaper than adding a cross-file dependency for it).
 function homeAnchor(home: string): RoomPosition {

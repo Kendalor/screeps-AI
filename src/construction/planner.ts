@@ -3,12 +3,14 @@
 // deliberate exception: hasOutstandingConstruction reads/writes a narrow ColonyMemory cache field the
 // same way snapshot/colony.ts's resolveAnchor already does for the anchor — see that function's own doc.
 
-import { plannedObstacles, buildableAtRcl } from "../layouts/goal";
-import GOAL_JSON from "../layouts/Base_2.json";
-import { stampLayout, type PlacedStructure } from "../layouts/stamp";
-import type { GoalLayout } from "../layouts/sync";
+import { plannedObstacles, buildableAtRcl } from "./goal";
+import GOAL_JSON from "./Base_2.json";
+import { stampLayout, BUNKER_RADIUS, type PlacedStructure } from "./stamp";
+import type { GoalLayout } from "./sync";
 import type { XY } from "../lib/geometry";
+import { isExitTile } from "../lib/remotePath";
 import { needsRepair } from "../lib/repairable";
+import { RoadCostMatrix } from "../lib/pathing";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
 import type { Intent } from "../intents/types";
@@ -18,6 +20,13 @@ import type { ColonySnapshot, SnapStructure } from "../snapshot/types";
 
 const GOAL = GOAL_JSON as GoalLayout;
 const ROAD: BuildableStructureConstant = "road";
+const IMPASSABLE = 255;
+const ROAD_COST = 1;
+const PLAIN_COST = 2;
+// A miner/builder stands *on* its container/rampart while working — never an obstacle. Mirrors
+// roadPathing.ts's own WALKABLE_STRUCTURES (kept as a separate copy there — that module's matrix
+// building is a distinct, still-alive concern for logistics/index.ts, see its own header).
+const WALKABLE_STRUCTURES = new Set<BuildableStructureConstant>(["road", "container", "rampart"]);
 
 // Cap open sites so a small pre-storage workforce finishes structures instead of smearing effort across the backlog.
 export const FOCUS_SITE_CAP = 20;
@@ -86,7 +95,7 @@ export function existingAt(colony: ColonySnapshot, p: PlacedStructure): boolean 
 }
 
 // Remote rooms currently unsafe to place a site or send a builder into — same definition as
-// operations/building.ts's unsafeRemoteRooms (danger or a reservation held by someone else). Mining's
+// operations/construction.ts's unsafeRemoteRooms (danger or a reservation held by someone else). Mining's
 // own claim no longer withholds itself for this (see mining.ts's structures()), so this is now the
 // only thing stopping a site from going up in a dangerous remote room; the home-room leg of the same
 // route is never affected, since roomOf() only reads this set for non-home placements.
@@ -180,23 +189,241 @@ function writeBuildingPlan(colony: ColonySnapshot, claimed: PlacedStructure[]): 
     sourceId: p.sourceId,
     built: builtAt(colony, p)
   }));
+  // Below the capacity gate, wantedStructures' own roadReady filter excludes bunker roads entirely (an
+  // operation's own claimed roads, e.g. Mining's source access, are never gated — see that function's own
+  // doc), so an empty road list there means "not asked for yet", not "done" — check the gate explicitly
+  // rather than inferring it from absence.
+  const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
+  mem.roadsBuilt = roadReady && targeted.every(p => p.type !== ROAD || builtAt(colony, p));
 }
+
+// --- findPath: the planner-owned pathing seam every operation's structures()/intents() shares -------
+//
+// Matrix source of truth is terrain + the static bunker layout + accumulated operation claims — NEVER
+// colony.structures/colony.remoteStructures (what's physically built). Mixing live built-state into a
+// plan-only matrix is the bug class that caused both the W45N17/W47N14 wall-tunneling incidents (a
+// remote/built structure's coordinates colliding with plan-only space) and Upgrading's old
+// controller-link exclusion hack (the built link, read from colony.structures, became a self-inflicted
+// obstacle against the operation's own prior claim). A matrix built purely from terrain+claims never has
+// this problem: an operation's own prior claim is already IN the claim set every subsequent pass
+// re-derives identically, so there's nothing to exclude.
+//
+// Module-scoped like mining.ts's old routeCache — survives across claimsOf's throttled (interval:100)
+// calls. Rebuilt unconditionally, in full, on every claimsOf call (matrixCache.clear() below) — no
+// fingerprint needed, since claimsOf's own throttle already bounds how often this is touched and every
+// read happens against the same fresh colony/claimed state the rebuild used.
+const matrixCache = new Map<string, RoadCostMatrix>();
+// Mirrors matrixCache 1:1 (same keys, cleared together) — applyClaimToMatrix's wall guard needs the raw
+// terrain array too, not just the matrix it seeds, so a later claim can be told apart from a real wall.
+const terrainCache = new Map<string, Uint8Array>();
+
+// Test-only escape hatch: unit tests call findPath directly (bypassing claimsOf, which is the only
+// production caller of matrixCache.clear()) against a fresh colony fixture every test, often reusing the
+// same room name with a different anchor/terrain/RCL — without this, a later test would silently read an
+// earlier test's stale matrix out of this module-scoped cache. Production code never calls this: a real
+// tick's claimsOf pass already clears+reseeds on its own throttle.
+export function resetFindPathCacheForTests(): void {
+  matrixCache.clear();
+  terrainCache.clear();
+}
+
+function terrainFromGame(room: string): Uint8Array {
+  const terrain = Game.map.getRoomTerrain(room);
+  const out = new Uint8Array(2500);
+  for (let x = 0; x < 50; x++)
+    for (let y = 0; y < 50; y++)
+      out[x * 50 + y] = terrain.get(x, y) === TERRAIN_MASK_WALL ? 0 : 1;
+  return out;
+}
+
+// Lazy get-or-compute, mirroring matrixFor's own caching shape.
+function terrainFor(room: string, colony: ColonySnapshot): Uint8Array {
+  if (room === colony.name) return colony.terrain;
+  let terrain = terrainCache.get(room);
+  if (!terrain) {
+    terrain = terrainFromGame(room);
+    terrainCache.set(room, terrain);
+  }
+  return terrain;
+}
+
+// A claim can never legitimately un-wall a tile — mirrors roadPathing.ts's buildCostMatrix rule ("wall
+// wins even over a claimed road"). Operation claims are always terrain-safe by construction (they come
+// from findPath's own PathFinder search, which already refuses to route through wall tiles), but the
+// static bunker layout (layoutClaims, from stampLayout/plannedObstacles) is pure anchor-relative offset
+// math with no terrain awareness — it can and does land a road on real wall terrain wherever this room's
+// terrain doesn't mirror the room the layout was captured in (confirmed live: W45N17 (8,15) is
+// TERRAIN_MASK_WALL and the baked bunker grid wants a road there — see wantedStructures' own doc for the
+// site-placement half of this same defect). `terrain` is checked directly (not inferred from the
+// matrix's current cost) so this can't be fooled by a tile an earlier claim merely blocked — only a real
+// wall refuses the stamp.
+function applyClaimToMatrix(cm: RoadCostMatrix, terrain: Uint8Array, p: PlacedStructure): void {
+  if (terrain[p.x * 50 + p.y] === 0) return; // wall — never overridden by a claim
+  if (p.type === ROAD) cm.set(p.x, p.y, ROAD_COST);
+  else if (!WALKABLE_STRUCTURES.has(p.type)) cm.set(p.x, p.y, IMPASSABLE);
+  // Walkable non-road claims (container/rampart) leave the tile's existing cost as-is.
+}
+
+// Seeded from terrain + (home room only) the static bunker layout claims — never from what's built.
+// A remote room's matrix is terrain + whatever's been claimed there this pass; no goal-layout concept
+// exists remotely, so no bunker layer applies there.
+function seedMatrixFor(room: string, colony: ColonySnapshot, layoutClaims: readonly PlacedStructure[]): RoadCostMatrix {
+  const terrain = terrainFor(room, colony);
+  const cm = new RoadCostMatrix();
+  for (let x = 0; x < 50; x++) {
+    for (let y = 0; y < 50; y++) {
+      cm.set(x, y, terrain[x * 50 + y] === 0 ? IMPASSABLE : PLAIN_COST);
+    }
+  }
+  if (room === colony.name) {
+    for (const p of layoutClaims) applyClaimToMatrix(cm, terrain, p);
+  }
+  return cm;
+}
+
+// Lazy get-or-seed, so a room is only ever built on first touch within a pass, not eagerly for every
+// room the colony could ever reach.
+function matrixFor(room: string, colony: ColonySnapshot, layoutClaims: readonly PlacedStructure[]): RoadCostMatrix {
+  let cm = matrixCache.get(room);
+  if (!cm) {
+    cm = seedMatrixFor(room, colony, layoutClaims);
+    matrixCache.set(room, cm);
+  }
+  return cm;
+}
+
+function toPathFinderMatrix(cm: RoadCostMatrix): CostMatrix {
+  const matrix = new PathFinder.CostMatrix();
+  for (let x = 0; x < 50; x++) {
+    for (let y = 0; y < 50; y++) {
+      const cost = cm.get(x, y);
+      if (cost !== 0) matrix.set(x, y, cost);
+    }
+  }
+  return matrix;
+}
+
+export interface RoadPathResult {
+  path: XY[];
+  structurePos: XY;
+}
+
+// 4-arg shape every operation's structures()/intents() calls — no `colony`, since claimsOf/findPath's
+// standalone export (below) curries it away at the call site before handing this to an operation.
+export type FindPath = (
+  from: RoomPosition,
+  to: RoomPosition,
+  range: number,
+  opts?: { clearBunkerFootprint?: boolean }
+) => RoadPathResult;
+
+// Standalone, exported — callable from claimsOf's loop (fresh matrix, same tick) OR from any
+// operation's intents() on any tick (reads whatever matrixCache currently holds — up to 99 ticks old
+// between claimsOf firings, but never wrong, since it's only ever overwritten with an equally-valid,
+// more current plan-only matrix; see kernel/tick.ts's SYSTEMS ordering comment for the freshness bound).
+export function findPath(
+  colony: ColonySnapshot,
+  from: RoomPosition,
+  to: RoomPosition,
+  range: number,
+  opts?: { clearBunkerFootprint?: boolean }
+): RoadPathResult {
+  const anchor = colony.anchor;
+  if (!anchor) {
+    log.warn(`findPath: called with no anchor for ${colony.name}`);
+    return { path: [], structurePos: { x: to.x, y: to.y } };
+  }
+  // Pure recomputation, cheap (no PathFinder call) — safe to redo on every call rather than threading
+  // it through as a parameter; identical to what seedMatrixFor's bunker layer needs.
+  const layoutClaims = stampLayout(plannedObstacles(GOAL, colony.controllerLevel, anchor, colony.sources), anchor);
+
+  const roomCallback = (roomName: string): CostMatrix => {
+    const cm = matrixFor(roomName, colony, layoutClaims);
+    return toPathFinderMatrix(cm); // fresh copy every call, same cost lib/pathing.ts already pays
+  };
+
+  // clearBunkerFootprint: the landing tile (structurePos) must never sit inside the bunker's own
+  // footprint — a link/container placed there would occupy a tile the goal layout wants for something
+  // else (e.g. a road), which can't coexist. The matrix itself stays fully walkable through the bunker
+  // (the search must still be ABLE to start from/pass through it — e.g. Upgrading's `from` is the
+  // storage tile, which sits inside BUNKER_RADIUS of anchor by construction): only the SET OF VALID
+  // GOAL TILES is restricted, to every tile within `range` of `to` whose own distance from anchor is
+  // at least BUNKER_RADIUS+1, rather than the single nearest tile within `range` of `to` outright.
+  const goal =
+    opts?.clearBunkerFootprint && to.roomName === colony.name
+      ? goalsOutsideBunkerFootprint(to, range, anchor)
+      : { pos: to, range };
+
+  const result = PathFinder.search(from, goal, { roomCallback, plainCost: PLAIN_COST, swampCost: PLAIN_COST });
+  if (result.incomplete && result.path.length === 0) {
+    log.warn(`findPath: no path from (${from.x},${from.y},${from.roomName}) to (${to.x},${to.y},${to.roomName}) range ${range}`);
+    return { path: [], structurePos: { x: to.x, y: to.y } };
+  }
+  const last = result.path[result.path.length - 1] ?? from;
+  return { path: result.path.map(p => ({ x: p.x, y: p.y })), structurePos: { x: last.x, y: last.y } };
+}
+
+// Every tile within `range` of `to` (Chebyshev, matching PathFinder's own range semantics) whose own
+// Chebyshev distance from `anchor` is strictly outside the bunker footprint — the valid landing set for
+// a clearBunkerFootprint search. Passed to PathFinder.search as a goal array (range 0 each): the engine
+// then finds the cheapest path to whichever of these tiles is nearest, instead of the single nearest
+// tile within `range` of `to` outright — restricting WHERE the search may land, not walling off HOW it
+// gets there (the matrix itself stays fully walkable through the bunker interior).
+function goalsOutsideBunkerFootprint(to: RoomPosition, range: number, anchor: XY): { pos: RoomPosition; range: number }[] {
+  const goals: { pos: RoomPosition; range: number }[] = [];
+  for (let dx = -range; dx <= range; dx++) {
+    for (let dy = -range; dy <= range; dy++) {
+      const x = to.x + dx;
+      const y = to.y + dy;
+      if (x < 0 || x > 49 || y < 0 || y > 49) continue;
+      const distFromAnchor = Math.max(Math.abs(x - anchor.x), Math.abs(y - anchor.y));
+      if (distFromAnchor <= BUNKER_RADIUS) continue;
+      goals.push({ pos: new RoomPosition(x, y, to.roomName), range: 0 });
+    }
+  }
+  return goals;
+}
+
+// Dedup + container/rampart-over-road rule, plus the exit-tile drop every operation's claims now share
+// (Screeps refuses any construction site on a room edge tile). Only ever sees operation claims — the
+// static layoutClaims are folded into the matrix directly (see claimsOf below), never passed through here.
+function consolidate(claim: readonly PlacedStructure[], claimed: readonly PlacedStructure[]): PlacedStructure[] {
+  const taken = new Map(claimed.map(p => [`${p.room ?? "home"},${p.x},${p.y}`, p.type]));
+  const out: PlacedStructure[] = [];
+  for (const p of claim) {
+    if (isExitTile(p)) continue;
+    const key = `${p.room ?? "home"},${p.x},${p.y}`;
+    const existing = taken.get(key);
+    if (existing !== undefined && existing !== p.type && !(WALKABLE_OVERRIDE.has(p.type) && existing === ROAD)) continue;
+    taken.set(key, p.type);
+    out.push(p);
+  }
+  return out;
+}
+const WALKABLE_OVERRIDE = new Set<BuildableStructureConstant>(["container", "rampart"]);
 
 // Gathered sequentially, not flatMap: each operation paths around the layout and around siblings' plans already claimed,
 // so two operations heading for nearby targets share a road instead of laying two. operationsFor()'s order is load-bearing.
 // No anchor yet (very early boot, before resolveAnchor finds one) means no layout to claim against.
 export const claimsOf = wrapFn(function claimsOf(colony: ColonySnapshot, operations: Operation[]): PlacedStructure[] {
   if (!colony.anchor) return [];
-  // This level's buildable subset, not the full RCL8 goal — the full goal seals the anchor in, making it unpathable from itself.
-  const planned: PlacedStructure[] = stampLayout(
-    plannedObstacles(GOAL, colony.controllerLevel, colony.anchor, colony.sources),
-    colony.anchor
-  );
-  const claimed: PlacedStructure[] = [];
+  matrixCache.clear();
+
+  const layoutClaims = stampLayout(plannedObstacles(GOAL, colony.controllerLevel, colony.anchor, colony.sources), colony.anchor);
+  // Force the home room's matrix to build now, before any operation's findPath runs, so the very first
+  // findPath call already sees the full bunker layer rather than lazily discovering it.
+  matrixFor(colony.name, colony, layoutClaims);
+
+  const claimed: PlacedStructure[] = []; // operation claims ONLY — matches today's return contract
   for (const op of operations) {
-    const claim = op.structures(colony, planned);
-    claimed.push(...claim);
-    planned.push(...claim);
+    const opFindPath: FindPath = (from, to, range, opts) => findPath(colony, from, to, range, opts);
+    const claim = op.structures(colony, opFindPath);
+    const resolved = consolidate(claim, claimed);
+    claimed.push(...resolved);
+    for (const p of resolved) {
+      const room = roomOf(p, colony);
+      applyClaimToMatrix(matrixFor(room, colony, layoutClaims), terrainFor(room, colony), p);
+    }
   }
   return claimed;
 }, "building:claimsOf");
@@ -222,7 +449,7 @@ export const wantedStructures = wrapFn(function wantedStructures(
   // in. Filtered here, not in stampLayout itself: pathing callers (e.g. Mining's sourceRoutes cost
   // matrix) need the layout's raw shape to route AROUND a blocked tile, not have it silently vanish
   // from their obstacle set. `claimed` is never filtered by this — every operation already derives its
-  // own claims from a terrain-aware A*/PathFinder search (see layouts/roads.ts's buildCostMatrix), so a
+  // own claims from a terrain-aware A*/PathFinder search (see roadPathing.ts's buildCostMatrix), so a
   // claimed tile can never legitimately be a wall.
   //
   // This was latent, not newly introduced: Game.map.getRoomTerrain('W45N17').get(8,15) ===
@@ -422,7 +649,7 @@ function substituteBlockedCapped(colony: ColonySnapshot, capped: PlacedStructure
 // anything left to build" signal, and it stays non-empty across those between-placement gaps.
 //
 // Remote sites count too: Building's own wantedBuilders() sizes its workforce off home + remote progress
-// (see operations/building.ts's totalConstructionProgress), so this must agree or a live remote backlog
+// (see operations/construction.ts's totalConstructionProgress), so this must agree or a live remote backlog
 // gets read as "finished" and strands every builder into repair/upgrade while roads sit at 0 progress.
 //
 // Per-type target count for the bunker layout portion only (not `claimed` — see hasOutstandingConstruction's
@@ -432,7 +659,7 @@ function substituteBlockedCapped(colony: ColonySnapshot, capped: PlacedStructure
 // sits on, only how many of each type the RCL currently permits — substituteBlockedCapped exists purely to
 // keep a spawn-blocked slot's COUNT from silently shrinking (see its own doc), so a count comparison
 // against buildableAtRcl's raw cap is already correct without re-deriving which tile the substitute landed
-// on. buildableAtRcl itself is already cached (see layouts/goal.ts) — this only adds one more cheap pass
+// on. buildableAtRcl itself is already cached (see goal.ts) — this only adds one more cheap pass
 // over its (already-computed) result.
 function bunkerTargetCounts(colony: ColonySnapshot): Partial<Record<BuildableStructureConstant, number>> {
   const anchor = colony.anchor;

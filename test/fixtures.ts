@@ -138,6 +138,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     anchor: null,
     sourceMemory: {},
     linkNetwork: {},
+    roadsBuilt: false,
     structures: [],
     sites: [],
     remoteStructures: {},

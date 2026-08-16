@@ -25,7 +25,7 @@ export type Intent =
   // cleared to undefined: Operation.owned()'s op-less fallback treats an unstamped creep as ownable by
   // *every* operation, so every operation with no roleTargets override would double-count it.
   | { kind: "setCreepRole"; creep: Id<Creep>; role: RoleName; op: string }
-  // A builder's cross-room construction assignment — picked by operations/building.ts off siteSummary
+  // A builder's cross-room construction assignment — picked by operations/construction.ts off siteSummary
   // (already vision-independent, room-name-only distance ranking), so unlike setScoutTarget the room is
   // resolved in the planner itself; execute.ts just writes it. See CreepMemory.buildTargetRoom.
   | { kind: "setBuildTargetRoom"; creep: Id<Creep>; room: string }
@@ -114,7 +114,7 @@ export type Intent =
   // Emitted for any scouted room lacking potentialChecked; execute.ts does the Game.map.describeExits BFS
   // (scoutCandidatesAround, rooted at `room` itself rather than a colony's home) since only it can reach
   // Game.map, then only writes/marks-checked once every room in that BFS is itself already scouted — see
-  // colonizationPotential.ts's neighborhoodFullyScouted for why a partially-scouted neighborhood can't be
+  // summarizeNeighborhoodPotential.ts's neighborhoodFullyScouted for why a partially-scouted neighborhood can't be
   // trusted yet.
   | { kind: "recordPotential"; room: string }
   // Planner narrows each idle scout to its own viable candidate rooms (pure filter, no distance

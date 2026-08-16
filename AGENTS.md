@@ -4,6 +4,10 @@ Autonomous Screeps bot (TypeScript). Grows a room from empty controller to a
 self-sustaining, multi-colony empire — economy, remote mining, defense, and
 squad-based offense.
 
+# Mistakes
+For every session record mistakes in a mistakes.md.
+Be aware of old mistakes in mistakes.md
+
 ## Orient yourself
 
 - **Vocabulary** — [CONTEXT.md](CONTEXT.md) is the glossary. Read it before naming
@@ -50,6 +54,7 @@ economy/RCL-timing regressions over many ticks.
 
 Use the `debug-local` skill (pserver) or `debug-main` skill (screeps.com) rather
 than guessing — they know how to read Memory/stats and send console commands.
+Do not Guess each deduction must be based on evidence. Make sure to know how Ticks change Gamestate. 
 
 ## Agent skills
 

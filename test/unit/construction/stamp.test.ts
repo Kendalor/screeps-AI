@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { distanceTransform, findAnchorCandidates, pickAnchor, stampLayout } from "../../src/layouts/stamp";
-import type { GoalPlacement } from "../../src/layouts/sync";
+import { distanceTransform, findAnchorCandidates, pickAnchor, stampLayout } from "../../../src/construction/stamp";
+import type { GoalPlacement } from "../../../src/construction/sync";
 
 function openRoom(): Uint8Array {
   return new Uint8Array(2500).fill(1);

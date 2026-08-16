@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildableAtRcl } from "../../src/layouts/goal";
-import type { GoalLayout, GoalPlacement } from "../../src/layouts/sync";
+import { buildableAtRcl } from "../../../src/construction/goal";
+import type { GoalLayout, GoalPlacement } from "../../../src/construction/sync";
 
 // A compact goal fixture: 1 spawn, 3 extensions, 1 tower, 1 storage.
 const goal: GoalLayout = {

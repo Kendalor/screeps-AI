@@ -1,12 +1,7 @@
-// Flag-triggered defend entry point — the defensive twin of attackFlags.ts. A flag named "defend" or
-// "defend:<room>" is the manual trigger for sponsoring a defender at a room outside the sponsoring
-// colony's own home/remotes (an allied or sister colony under attack, say): pick the nearest affordable
-// colony, hand the target off via addDefendTarget, and let the normal per-tick operation pipeline take it
-// from there (Defense already runs unconditionally on every colony, see operations/defense.ts — this only
-// adds `target` to the set of rooms it pools a defender onto). Not wired into SYSTEMS/operationsFor
-// itself (Defense already is; this just feeds it extra targets), so this runs as its own call from
-// kernel/tick.ts's tick(), independent of the per-colony operation pipeline — same reasoning as
-// attackFlags.ts/colonizeFlags.ts.
+// Flag-triggered defend entry point — sponsors a defender at a room outside the sponsoring colony's own
+// home/remotes (an allied or sister colony under attack, say). Not wired into SYSTEMS/operationsFor itself
+// (Defense already is; this just feeds it extra targets), so this runs as its own call from
+// kernel/tick.ts, independent of the per-colony pipeline.
 //
 // Unlike a one-shot trigger, the flag's lifetime is now tied to its target's, in both directions (same
 // shape as drainFlags.ts/paradeFlags.ts, applied per-target instead of to a scalar — see attackFlags.ts's
@@ -24,41 +19,19 @@
 // already being defended is a harmless no-op.
 
 import { pickDefendSponsor } from "./defendSponsor";
+import { flagRequests, routeDistance, targetRoomFor } from "./flagRequest";
 import { execute } from "../intents/execute";
 import { log } from "../lib/log";
 import type { Empire } from "./index";
 
 const FLAG_PREFIX = "defend";
 
-/** Target room for a defend flag — same rule as attackFlags' targetRoomFor: an explicit "defend:<room>"
- * suffix always wins; a bare "defend" flag falls back to its own physical room only when that room has
- * vision (a controller isn't required). */
-function targetRoomFor(flag: Flag): string | undefined {
-  const [, suffix] = flag.name.split(":");
-  if (suffix) return suffix;
-  if (Game.rooms[flag.pos.roomName]) return flag.pos.roomName;
-  return undefined;
-}
-
-/** Every flag whose name marks it as a defend request ("defend" or "defend:<room>"). */
-function defendFlags(): Flag[] {
-  return Object.values(Game.flags).filter(f => f.name === FLAG_PREFIX || f.name.startsWith(`${FLAG_PREFIX}:`));
-}
-
-// Real room-graph route length, Infinity when findRoute can't connect the two rooms — same convention
-// attackFlags.ts's routeDistance uses, not the spawn arbiter's Chebyshev estimate (see defendSponsor.ts).
-function routeDistance(a: string, b: string): number {
-  if (a === b) return 0;
-  const route = Game.map.findRoute(a, b);
-  return route === ERR_NO_PATH ? Infinity : route.length;
-}
-
 /** Runs once per tick from kernel/tick.ts. Resolves every active defend flag against the current empire,
  * hands the target off to the nearest affordable colony (flag left in place as the target's live switch),
  * drops any flag-sponsored target whose flag has since disappeared, and removes any flag whose target has
  * since been dropped by Defense's own completion logic — see file header for the full shape. */
 export function runDefendFlags(world: Empire): void {
-  const flags = defendFlags();
+  const flags = flagRequests(FLAG_PREFIX);
   const liveByName = new Map(flags.map(f => [f.name, f]));
 
   for (const flag of flags) {

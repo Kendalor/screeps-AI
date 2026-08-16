@@ -3,8 +3,8 @@ import { haulerBody } from "./hauler";
 import { Role } from "./role";
 
 // A Logistics-owned mover: assignment comes from planLogistics via memory.logistics, not a static step
-// table — steps stays empty so runCreepBehaviors() diverts it to empire/creeps.ts's transport runner
-// instead of the step-table dispatch (see behaviors/roles/index.ts's roleDef gap notes).
+// table — dispatch: "logistics" routes it to logisticsRunner.ts's runLogisticsMover instead of the
+// step-table dispatch (see Role.dispatch's doc, behaviors/roles/role.ts).
 export class Transport extends Role {
   // Matches bootstrap (100), just below supply (101): not interleaved with miner — Logistics.desiredCreeps
   // only ever asks for a transport creep once providers()/consumers() are both non-empty (real energy
@@ -16,6 +16,7 @@ export class Transport extends Role {
   // everything transport does too.
   static override readonly priority = 100;
   static override readonly mover = true;
+  static override readonly dispatch = "logistics";
   static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
     return haulerBody(energy, ctx.roads);
   }

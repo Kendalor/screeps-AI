@@ -1,6 +1,6 @@
 // planLogistics is thin (wires graph + allocate + reserved-folding), so one integration-style case per
 // behavior is enough — the interesting logic already has its own unit tests in graph/allocate.
-// allocate() now runs distance queries via real PathFinder.search (see layouts/roads.ts's header), so
+// allocate() now runs distance queries via real PathFinder.search (see lib/pathing.ts's header), so
 // every case here needs stubPathFinderSingleRoom() — same as allocate.test.ts.
 
 import { beforeEach, describe, expect, it } from "vitest";

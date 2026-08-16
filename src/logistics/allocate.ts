@@ -10,7 +10,7 @@
 // hauler.ts's own `prefer: "largest"` default, to combine as few providers as possible.
 
 import type { XY } from "../lib/geometry";
-import { pathDistance, pathDistanceAndStand, RoadCostMatrix } from "../layouts/roads";
+import { pathDistance, pathDistanceAndStand, RoadCostMatrix } from "../lib/pathing";
 import type { DeepReadonly, SnapCreep } from "../snapshot/types";
 import type { Consumer, Provider, StorageOverflow } from "./graph";
 import type { LogisticsTask, NodeRef } from "./types";
@@ -71,7 +71,7 @@ export function allocate(
   // that don't care about obstacles — most existing tests — get plain walkable-distance behavior.
   costMatrix: RoadCostMatrix = new RoadCostMatrix(),
   // The real room every position/costMatrix cell here lives in — required by pathDistance's
-  // PathFinder.search (see layouts/roads.ts's doc: a placeholder name breaks against the real engine).
+  // PathFinder.search (see lib/pathing.ts's doc: a placeholder name breaks against the real engine).
   // Defaulted only so existing room-agnostic tests (most of allocate.test.ts, which never care about
   // walls) don't all need updating; any test that DOES care about real terrain passes its own.
   room = "W1N1"

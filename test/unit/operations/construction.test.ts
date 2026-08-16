@@ -3,7 +3,7 @@
 // creeps via the current builder body's WORK count, capped at maxBuilders regardless of body size.
 
 import { describe, expect, it } from "vitest";
-import { Building } from "../../../src/operations/building";
+import { Building } from "../../../src/operations/construction";
 import { colonySnap, remoteSourceAt, snapCreep, snapCreeps, sourceAt } from "../../fixtures";
 
 describe("builder workforce", () => {

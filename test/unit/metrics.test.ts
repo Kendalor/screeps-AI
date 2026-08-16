@@ -108,7 +108,7 @@ describe("metrics: operations", () => {
   });
 });
 
-// buildingRowsFromPlan (colony/building.ts) now owns computing the built/targeted counts themselves, from
+// buildingRowsFromPlan (construction/planner.ts) now owns computing the built/targeted counts themselves, from
 // the cached ColonyMemory.buildingPlan — see its own tests in building.test.ts's "ColonyMemory.buildingPlan
 // (metrics panel source)" describe block. collectMetrics is read-only + math over here: it just carries
 // whatever BuildingRow[] it's handed straight through.

@@ -1,5 +1,5 @@
 // No snapshot needed — hand-built Provider[]/Consumer[]/SnapCreep[] arrays, fully unit-testable.
-// pathDistance/pathDistanceAndStand (layouts/roads.ts) now run via real PathFinder.search — see that
+// pathDistance/pathDistanceAndStand (lib/pathing.ts) now run via real PathFinder.search — see that
 // file's header — so every test needs stubPathFinderSingleRoom() (test/constants.ts): a real Dijkstra
 // over the same CostMatrix the code under test builds, same pattern as lib/squadPath.test.ts. Wall-
 // awareness (e.g. the "real-path-farther provider" case below) is still genuinely exercised, not mocked.
@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { allocate, emptyReserved, refKey, type ReservedAmounts } from "../../../src/logistics/allocate";
 import type { Consumer, Provider } from "../../../src/logistics/graph";
-import { buildCostMatrix } from "../../../src/layouts/roads";
+import { buildCostMatrix } from "../../../src/construction/roadPathing";
 import type { NodeRef } from "../../../src/logistics/types";
 import { openTerrain, snapCreep } from "../../fixtures";
 import { clearTiles, stubPathFinderSingleRoom } from "../../constants";

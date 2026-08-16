@@ -3,7 +3,7 @@
 // Game.map.findRoute (execute.ts's job, covered in execute.test.ts); this pure pool is unit-tested here.
 
 import { describe, expect, it } from "vitest";
-import { hasFortifiedInvaderCore, needsPassiveRecording, needsScouting, scoutCandidatePool, staleAfter } from "../../src/behaviors/scout";
+import { hasFortifiedInvaderCore, needsPassiveRecording, needsScouting, scoutCandidatePool, staleAfter } from "../../src/behaviors/scoutTargets";
 import { scouted, scoutTarget } from "../fixtures";
 
 describe("needsScouting", () => {

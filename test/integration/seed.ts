@@ -6,8 +6,8 @@
 // (`wantedStructures` and the spawn requesters) rather than listing them here, so a scenario seeded
 // through here moves automatically with layout/quota/body changes.
 
-import { claimsOf, wantedStructures } from "../../src/colony/building";
-import type { PlacedStructure } from "../../src/layouts/stamp";
+import { claimsOf, wantedStructures } from "../../src/construction/planner";
+import type { PlacedStructure } from "../../src/construction/stamp";
 import type { RoleName } from "../../src/memory/schema";
 import { operationsFor } from "../../src/operations";
 import type { ColonySnapshot } from "../../src/snapshot/types";

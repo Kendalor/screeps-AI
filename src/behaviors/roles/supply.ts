@@ -29,8 +29,9 @@ export function supplyBody(energy: number, controllerLevel: number, roads = fals
 
 // A Logistics-owned mover, same as Transport: assignment comes from planLogistics via memory.logistics
 // (restricted to spawn/extension/tower sinks and non-remote sources — see logistics/graph.ts's
-// supplyProviders/supplyConsumers), not a static step table — steps stays empty so runCreepBehaviors()
-// diverts it to empire/creeps.ts's transport runner instead of the step-table dispatch.
+// supplyProviders/supplyConsumers), not a static step table — dispatch: "logistics" routes it to
+// logisticsRunner.ts's runLogisticsMover instead of the step-table dispatch (see Role.dispatch's doc,
+// behaviors/roles/role.ts).
 export class Supply extends Role {
   // Strictly above transport (100): a starved spawn stalls the whole colony, and supply is what
   // refills extensions from storage so bigger bodies (miners/haulers sized off capacity) ever become
@@ -40,6 +41,7 @@ export class Supply extends Role {
   // transport claim the only idle slot every time. See git history for the incident.
   static override readonly priority = 101;
   static override readonly mover = true;
+  static override readonly dispatch = "logistics";
   static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
     return supplyBody(energy, ctx.controllerLevel ?? 0, ctx.roads);
   }

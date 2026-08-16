@@ -46,7 +46,12 @@ const roomDistance = (a: string, b: string): number => Game.map.getRoomLinearDis
 
 // tier 1: must run every tick even at 0 bucket. tier 2: economy planning, skipped under CPU pressure. tier 3: luxury, needs bucket headroom.
 export const SYSTEMS: System[] = [
-  // Operations' direct intents (tower fire, link transfers, etc), unarbitrated. Runs first so Defense fires before anything else.
+  // Runs before "operations" so a claimsOf pass that fires this same tick (its own interval:100 gate)
+  // leaves construction/planner.ts's matrixCache fresh before any operation's intents() reads it via
+  // findPath — see that module's own doc on findPath's cross-tick read staleness bound. "operations"
+  // still fires every tick regardless (tier 1); this ordering only matters on the 1-in-100 tick both fire.
+  { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() },
+  // Operations' direct intents (tower fire, link transfers, etc), unarbitrated.
   { name: "operations", tier: 1, scope: "colony", run: runOperations },
   // Empire-scoped: spawn routing is cross-colony, so the arbiter sees every colony's demand and idle spawns at once.
   { name: "spawning", tier: 1, scope: "empire", run: e => e.spawning(roomDistance) },
@@ -55,7 +60,6 @@ export const SYSTEMS: System[] = [
   // tick). Tier 2, so it's placed after the tier-1 creeps run — a tier-2 system ahead of creeps would
   // `break` the loop under CPU pressure and skip creep behavior entirely.
   { name: "workforce", tier: 2, scope: "colony", run: c => c.maintainWorkforce() },
-  { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() },
   // Tier 3 but every tick, so the panel and harvest-rate window stay live rather than sampled. CPU is
   // empire-wide and last-tick's (this tick's own total isn't known until after it finishes); shown on
   // every colony's panel so it's visible regardless of which room's iteration order happens to land

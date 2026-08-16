@@ -2,7 +2,7 @@
 
 import { profileClass } from "../lib/profiler";
 import { Bootstrap } from "./bootstrap";
-import { Building } from "./building";
+import { Building } from "./construction";
 import { Defense } from "./defense";
 import { Logistics } from "./logistics";
 import { Mining } from "./mining";
@@ -26,7 +26,7 @@ export { Mining, CONTAINERS_FROM_ENERGY_CAPACITY } from "./mining";
 export { Defense } from "./defense";
 export { Upgrading } from "./upgrading";
 export { Bootstrap } from "./bootstrap";
-export { Building } from "./building";
+export { Building } from "./construction";
 export { Repairing } from "./repairing";
 export { Scouting } from "./scouting";
 export { Supply } from "./supply";

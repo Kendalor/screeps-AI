@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { neighborhoodFullyScouted, summarizePotential } from "../../../src/mining/colonizationPotential";
+import { neighborhoodFullyScouted, summarizePotential } from "../../../src/mining/summarizeNeighborhoodPotential";
 import { remotePotential } from "../../../src/mining/remotePotentialTable";
 import { keeperPotential } from "../../../src/mining/keeperPotentialTable";
 import { scouted } from "../../fixtures";

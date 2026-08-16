@@ -1,9 +1,5 @@
-// Flag-triggered attack entry point — the combat equivalent of colonizeFlags.ts. A flag named "attack" or
-// "attack:<room>" is the manual trigger for a one-room strike: pick the nearest affordable colony, hand
-// the target off via addAttackTarget, and let the normal per-tick operation pipeline take it from there
-// (see colony/index.ts's constructor and operations/attack.ts). Not wired into SYSTEMS/operationsFor
-// (Attack itself isn't a default operation), so this runs as its own call from kernel/tick.ts's tick(),
-// independent of the per-colony operation pipeline — same reasoning as colonizeFlags.ts.
+// Flag-triggered attack entry point. Not wired into SYSTEMS/operationsFor (Attack isn't a default
+// operation), so this runs as its own call from kernel/tick.ts, independent of the per-colony pipeline.
 //
 // Unlike a one-shot trigger, the flag's lifetime is now tied to its target's, in both directions (same
 // shape as drainFlags.ts/paradeFlags.ts, applied per-target instead of to a scalar): on a successful
@@ -22,41 +18,19 @@
 // already being attacked is a harmless no-op.
 
 import { pickAttackSponsor } from "./attackSponsor";
+import { flagRequests, routeDistance, targetRoomFor } from "./flagRequest";
 import { execute } from "../intents/execute";
 import { log } from "../lib/log";
 import type { Empire } from "./index";
 
 const FLAG_PREFIX = "attack";
 
-/** Target room for an attack flag — same rule as colonizeFlags' targetRoomFor: an explicit
- * "attack:<room>" suffix always wins; a bare "attack" flag falls back to its own physical room only when
- * that room has vision (a controller isn't required — an unowned/hostile room still resolves this way). */
-function targetRoomFor(flag: Flag): string | undefined {
-  const [, suffix] = flag.name.split(":");
-  if (suffix) return suffix;
-  if (Game.rooms[flag.pos.roomName]) return flag.pos.roomName;
-  return undefined;
-}
-
-/** Every flag whose name marks it as an attack request ("attack" or "attack:<room>"). */
-function attackFlags(): Flag[] {
-  return Object.values(Game.flags).filter(f => f.name === FLAG_PREFIX || f.name.startsWith(`${FLAG_PREFIX}:`));
-}
-
-// Real room-graph route length, Infinity when findRoute can't connect the two rooms — same convention
-// colonizeFlags.ts's routeDistance uses, not the spawn arbiter's Chebyshev estimate (see attackSponsor.ts).
-function routeDistance(a: string, b: string): number {
-  if (a === b) return 0;
-  const route = Game.map.findRoute(a, b);
-  return route === ERR_NO_PATH ? Infinity : route.length;
-}
-
 /** Runs once per tick from kernel/tick.ts. Resolves every active attack flag against the current empire,
  * hands the target off to the nearest affordable colony (flag left in place as the target's live switch),
  * drops any flag-sponsored target whose flag has since disappeared, and removes any flag whose target has
  * since been dropped by Attack's own completion logic — see file header for the full shape. */
 export function runAttackFlags(world: Empire): void {
-  const flags = attackFlags();
+  const flags = flagRequests(FLAG_PREFIX);
   const liveByName = new Map(flags.map(f => [f.name, f]));
 
   for (const flag of flags) {

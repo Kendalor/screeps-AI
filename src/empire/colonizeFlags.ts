@@ -1,9 +1,7 @@
-// Flag-triggered colonize entry point. A flag named "colonize" or "colonize:<room>" is the manual
-// equivalent of the empire-scoped auto-picker (pickColonyTargets.ts) — both enter through
-// pickColonizeSponsor and both hand off via the same addColonizeTarget intent; this module is just
-// today's manual trigger for it. Not wired into operationsFor/SYSTEMS (Colonize itself isn't a default
-// operation), so this runs as its own call from main.ts's loop(), independent of the per-colony
-// operation pipeline.
+// Flag-triggered colonize entry point — the manual equivalent of the empire-scoped auto-picker
+// (pickColonyTargets.ts); both enter through pickColonizeSponsor. Not wired into operationsFor/SYSTEMS
+// (Colonize isn't a default operation), so this runs as its own call from main.ts's loop(), independent
+// of the per-colony pipeline.
 //
 // Unlike a one-shot trigger, the flag's lifetime is now tied to its target's, in both directions (same
 // shape as drainFlags.ts/paradeFlags.ts, applied per-target instead of to a scalar — see attackFlags.ts's
@@ -22,18 +20,19 @@
 // already being colonized is a harmless no-op.
 
 import { pickColonizeSponsor } from "./colonizeSponsor";
+import { flagRequests, routeDistance } from "./flagRequest";
 import { execute } from "../intents/execute";
 import { log } from "../lib/log";
 import type { Empire } from "./index";
 
 const FLAG_PREFIX = "colonize";
 
-/** Target room for a colonize flag: an explicit "colonize:<room>" name suffix always wins — a named
- * target must never be silently overridden by wherever the flag happens to physically sit (e.g. placed
- * from the map view centred on the player's own base, which has vision+a controller and would otherwise
- * hijack a bare-name flag meant for a different room entirely). Falls back to the flag's own physical
- * room only for a plain "colonize" flag with no suffix, and only when that room has vision+a controller
- * (the "place it standing in the target room" convenience). Undefined if neither yields a usable name. */
+/** Target room for a colonize flag: an explicit "colonize:<room>" suffix always wins — a named target
+ * must never be silently overridden by wherever the flag happens to physically sit (e.g. placed from the
+ * map view centred on the player's own base, which has vision+a controller and would otherwise hijack a
+ * bare-name flag meant for a different room). Falls back to the flag's own physical room only when that
+ * room has vision+a controller (unlike attack/defend/drain, which don't require a controller — those
+ * targets can be unowned/hostile rooms). */
 function targetRoomFor(flag: Flag): string | undefined {
   const [, suffix] = flag.name.split(":");
   if (suffix) return suffix;
@@ -41,25 +40,12 @@ function targetRoomFor(flag: Flag): string | undefined {
   return undefined;
 }
 
-/** Every flag whose name marks it as a colonize request ("colonize" or "colonize:<room>"). */
-function colonizeFlags(): Flag[] {
-  return Object.values(Game.flags).filter(f => f.name === FLAG_PREFIX || f.name.startsWith(`${FLAG_PREFIX}:`));
-}
-
-// Real room-graph route length, Infinity when findRoute can't connect the two rooms at all — see
-// colonizeSponsor.ts's header for why this must be findRoute-based, not getRoomLinearDistance.
-function routeDistance(a: string, b: string): number {
-  if (a === b) return 0;
-  const route = Game.map.findRoute(a, b);
-  return route === ERR_NO_PATH ? Infinity : route.length;
-}
-
 /** Runs once per tick from main.ts. Resolves every active colonize flag against the current empire, hands
  * the target off to the best sponsor colony it finds (flag left in place as the target's live switch),
  * drops any flag-sponsored target whose flag has since disappeared, and removes any flag whose target has
  * since been dropped by Colonize's own completion logic — see file header for the full shape. */
 export function runColonizeFlags(world: Empire): void {
-  const flags = colonizeFlags();
+  const flags = flagRequests(FLAG_PREFIX);
   const liveByName = new Map(flags.map(f => [f.name, f]));
 
   for (const flag of flags) {

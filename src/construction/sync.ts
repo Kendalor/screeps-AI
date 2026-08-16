@@ -1,6 +1,6 @@
 // Flattens a room-planner export ({rcl, structures:{type:[{x,y}]}} in absolute room coords) into
 // a single RCL8 goal layout, stored anchor-relative with a baked build-order. Edit files under
-// src/layouts/source/ and run `npm run sync-layouts` to regenerate.
+// src/construction/source/ and run `npm run sync-layouts` to regenerate.
 
 import { range, type XY } from "../lib/geometry";
 
@@ -63,7 +63,7 @@ export function flattenGoal(source: PlannerLayout): GoalLayout {
 }
 
 // Greedy nearest-to-blob, seeded on storage and grown through extensions only, so the cluster forms
-// instead of an even ring. Ties break on distance to seed; source bias happens at runtime in layouts/goal.ts.
+// instead of an even ring. Ties break on distance to seed; source bias happens at runtime in goal.ts.
 function orderExtensions(extensions: XY[], seed: XY): GoalPlacement[] {
   const remaining = [...extensions];
   const blob: XY[] = [seed];

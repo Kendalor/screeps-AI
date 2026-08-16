@@ -10,7 +10,7 @@ import { listColonizeCandidates } from "../empire/pickColonyTargets";
 import { execute } from "../intents/execute";
 import { SPAWNABLE_OPERATIONS } from "../operations";
 import { Mining } from "../operations/mining";
-import { needsScouting, staleAfter } from "../behaviors/scout";
+import { needsScouting, staleAfter } from "../behaviors/scoutTargets";
 import { COLONIZER_COST } from "../behaviors/roles/colonizer";
 import { SETTLER_MIN_COST } from "../behaviors/roles/settler";
 import { ATTACKER_MIN_COST } from "../behaviors/roles/attacker";
@@ -19,6 +19,7 @@ import { DRAIN_HEALER_MIN_COST } from "../behaviors/roles/drainHealer";
 import { PARADE_MEMBER_MIN_COST } from "../behaviors/roles/paradeMember";
 import {
   claimsOf,
+  findPath,
   builtAt,
   existingAt,
   sitesAt,
@@ -27,7 +28,7 @@ import {
   wantedStructures,
   FOCUS_SITE_CAP,
   MAX_CONTAINER_SITES
-} from "../colony/building";
+} from "../construction/planner";
 
 const VALID: LogLevel[] = ["error", "warn", "info"];
 
@@ -272,10 +273,11 @@ export function installConsoleCommands(): void {
     if (!c) return `no colony "${room}"`;
     const snapshot = c.snapshot;
     if (!snapshot.anchor) return `${room}: no anchor resolved yet`;
-    // Isolated from claimsOf's operation list/dedup entirely — calls Mining.structures() directly with
-    // no `planned` obstacles, so this can't be affected by a sibling operation's claims or ordering.
+    // Isolated from claimsOf's operation list/dedup (consolidate) entirely — calls Mining.structures()
+    // directly with its own fresh findPath binding, so this can't be affected by a sibling operation's
+    // claims or ordering.
     const mining = new Mining(room);
-    const claims = mining.structures(snapshot, []);
+    const claims = mining.structures(snapshot, (from, to, range, opts) => findPath(snapshot, from, to, range, opts));
     const local = claims.filter(cl => (cl.room ?? room) === room);
     const remote = claims.filter(cl => (cl.room ?? room) !== room);
     const byRoom = new Map<string, number>();

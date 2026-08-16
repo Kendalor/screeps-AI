@@ -82,7 +82,7 @@ describe("drainOccupancyFor", () => {
 });
 
 // ownRoomsFor feeds buildColonySnapshot's siteSummary/constructionProgress filter, which in turn gates
-// operations/building.ts's roomsWithSites — the only source of a builder's cross-room dispatch target
+// operations/construction.ts's roomsWithSites — the only source of a builder's cross-room dispatch target
 // (behaviors/roles/builder.ts's moveToRoom step). A room missing from this set is a room no builder is
 // ever sent to, even if it physically has a construction site.
 describe("ownRoomsFor", () => {

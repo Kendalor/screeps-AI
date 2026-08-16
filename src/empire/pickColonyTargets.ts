@@ -7,8 +7,8 @@
 // scratch each time it fires rather than persisting a "current pick" across ticks the way pickRemotes
 // stabilizes remote-source selection.
 
-import { colonizePotentialScore } from "../mining/colonizePotentialScore";
-import { neighborhoodFullyScouted, summarizePotential } from "../mining/colonizationPotential";
+import { colonizePotentialScore } from "../mining/rankColonizeCandidate";
+import { neighborhoodFullyScouted, summarizePotential } from "../mining/summarizeNeighborhoodPotential";
 import { MAX_REMOTE_HOPS } from "../mining/pickRemotes";
 import { execute } from "../intents/execute";
 import { scoutCandidatesAround } from "../snapshot/scoutGraph";
@@ -30,7 +30,7 @@ export const AUTO_PICK_INTERVAL = 5000;
 export const MIN_COLONY_DISTANCE = 3;
 export const MAX_COLONY_DISTANCE = 8;
 
-// A candidate's score (see colonizePotentialScore.ts) must be at least this to be auto-picked. Below it,
+// A candidate's score (see rankColonizeCandidate.ts) must be at least this to be auto-picked. Below it,
 // leave the room for manual colonize (console) or a better future candidate — better to wait than to sink
 // a colonize commitment into a mediocre room. Project decision, not derived from any other constant.
 export const MIN_COLONY_SCORE = 80;

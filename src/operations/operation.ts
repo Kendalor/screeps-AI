@@ -6,7 +6,8 @@ import { orderBody } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
-import type { PlacedStructure } from "../layouts/stamp";
+import type { PlacedStructure } from "../construction/stamp";
+import type { FindPath } from "../construction/planner";
 import type { RoleName } from "../memory/schema";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { fillTo, opName, type CreepRequest } from "../spawn/request";
@@ -92,12 +93,14 @@ export abstract class Operation {
   }
 
   /**
-   * Demand — arbitrated by planBuilding, which merges, orders and emits `placeSite`. `planned` is
-   * everything intended but not built: layout plus earlier operations' claims this poll. Must path
-   * against `[...colony.structures, ...planned]`, not built alone, or a derived position shifts the
-   * moment that structure goes up — and a sibling's planned road gets reused instead of duplicated.
+   * Demand — arbitrated by planBuilding, which merges, orders and emits `placeSite`. `findPath` is the
+   * planner's own pathing seam (construction/planner.ts): it already routes against terrain, the bunker
+   * layout, and every earlier operation's resolved claims this poll, so a derived position never shifts
+   * once that structure goes up, and a sibling's claimed road is reused instead of duplicated. Return raw
+   * candidate claims — dedup/type-precedence is no longer this method's concern (the planner's own
+   * `consolidate` step owns it after every operation's turn).
    */
-  public structures(_colony: ColonySnapshot, _planned: readonly PlacedStructure[] = []): PlacedStructure[] {
+  public structures(_colony: ColonySnapshot, _findPath: FindPath): PlacedStructure[] {
     return [];
   }
 

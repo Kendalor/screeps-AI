@@ -237,4 +237,7 @@ export interface RoleDef {
   // Opt in to retreating home once every part of this kind has been destroyed by combat damage
   // (behaviors/interpreter.ts's retreatIfDisarmed) — see Role.retreatPart's doc for the full rationale.
   retreatPart?: BodyPartConstant;
+  // Opt in to bypass the step-table dispatch entirely — see Role.dispatch's doc (behaviors/roles/role.ts)
+  // for the full rationale.
+  dispatch?: "logistics" | "steward";
 }

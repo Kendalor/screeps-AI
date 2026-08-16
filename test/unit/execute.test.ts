@@ -1006,7 +1006,7 @@ describe("actuator — scouting", () => {
 
   // Same reasoning as the lethalAt case above, but for a room whose danger is known the instant it's
   // seen (a Stronghold's fortified core), not just after a death — see schema.ts's ScoutInfo.invaderCore
-  // doc and behaviors/scout.ts's hasFortifiedInvaderCore.
+  // doc and behaviors/scoutTargets.ts's hasFortifiedInvaderCore.
   it("prices a room with a live fortified core as impassable via findRoute's routeCallback", () => {
     const creep = { room: { name: "W1N1" }, memory: { home: "W1N1", role: "scout" } as CreepMemory };
     stubGame({ time: 5000, objects: { scout1: creep } });

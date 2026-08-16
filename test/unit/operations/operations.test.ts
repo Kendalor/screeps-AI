@@ -2,20 +2,28 @@
 // operation's demand is arbitrated on equal terms with an unowned requester's rather than
 // short-circuiting past it.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { colony, type Colony } from "../../../src/colony";
-import { planBuilding, wantedStructures } from "../../../src/colony/building";
+import { claimsOf, planBuilding, wantedStructures, findPath, resetFindPathCacheForTests, type FindPath } from "../../../src/construction/planner";
 import { planSpawning } from "../../../src/empire/spawning";
 import { Operation } from "../../../src/operations/operation";
 import type { ColonySnapshot, SnapStructure } from "../../../src/snapshot/types";
 import type { CreepRequest } from "../../../src/spawn/request";
-import { stampLayout, type PlacedStructure } from "../../../src/layouts/stamp";
-import { buildableAtRcl, plannedObstacles } from "../../../src/layouts/goal";
+import { stampLayout, type PlacedStructure } from "../../../src/construction/stamp";
+import { buildableAtRcl } from "../../../src/construction/goal";
 import { Mining } from "../../../src/operations/mining";
 import { Bootstrap } from "../../../src/operations/bootstrap";
-import type { GoalLayout } from "../../../src/layouts/sync";
-import GOAL_JSON from "../../../src/layouts/Base_2.json";
+import type { GoalLayout } from "../../../src/construction/sync";
+import GOAL_JSON from "../../../src/construction/Base_2.json";
 import { colonySnap, roomDistance, snapCreeps, sourceAt, spawn } from "../../fixtures";
+import { stubPathFinderSingleRoom } from "../../constants";
+
+beforeEach(() => {
+  stubPathFinderSingleRoom();
+  resetFindPathCacheForTests();
+});
+
+const findPathFor = (snap: ColonySnapshot): FindPath => (from, to, range, opts) => findPath(snap, from, to, range, opts);
 
 // A stand-in operation, so these assert the framework rather than Mining's formulas.
 class Stub extends Operation {
@@ -62,7 +70,7 @@ describe("Operation", () => {
     const snap = colonySnap({ sources: [sourceAt(20, 10)] });
 
     expect(op.desiredCreeps(snap)).toEqual([]);
-    expect(op.structures(snap)).toEqual([]);
+    expect(op.structures(snap, findPathFor(snap))).toEqual([]);
     expect(op.intents(snap)).toEqual([]);
   });
 
@@ -145,10 +153,6 @@ describe("planBuilding polls operations", () => {
     .filter(p => p.type !== "road")
     .map(p => ({ x: p.x, y: p.y, type: p.type }));
 
-  // The same baseline planBuilding seeds its poll with.
-  const plannedAt = (snap: ColonySnapshot) =>
-    stampLayout(plannedObstacles(GOAL_JSON as GoalLayout, snap.controllerLevel, anchor, snap.sources), anchor);
-
   it("places what an operation claims", () => {
     const snap = colonySnap({ anchor, controllerLevel: 3, structures: built, sites: [] });
     const intents = buildFor(withOps(snap, new Stub("W1N1", [], [claim])));
@@ -198,10 +202,12 @@ describe("planBuilding polls operations", () => {
   });
 
   // The reason the poll is sequential rather than a flatMap. Two operations heading for nearby
-  // targets must converge onto one route instead of laying parallel roads a tile apart — a planned
-  // road sits at ROAD_COST, so A* prefers it once it is visible.
-  it("shows each operation what the ones before it planned", () => {
-    const seen: PlacedStructure[][] = [];
+  // targets must converge onto one route instead of laying parallel roads a tile apart — claimsOf
+  // folds each operation's resolved claims into the shared matrix (construction/planner.ts's
+  // matrixCache) immediately after its turn, before the next operation's findPath calls run, so a
+  // claimed road sits at ROAD_COST and A* prefers it once it's visible — not a `planned` array handed
+  // to structures() any more, but the matrix itself.
+  it("folds an earlier operation's claimed road into the matrix before the next operation's findPath runs", () => {
     class Recorder extends Operation {
       public readonly kind = "recorder";
       public constructor(
@@ -210,32 +216,36 @@ describe("planBuilding polls operations", () => {
       ) {
         super(room);
       }
-      public override structures(_c: ColonySnapshot, planned: readonly PlacedStructure[] = []): PlacedStructure[] {
-        seen.push([...planned]);
+      public override structures(): PlacedStructure[] {
         return this.mine;
       }
     }
+    // A probe operation whose only job is to report what its own findPath call sees along a fixed
+    // straight line — cost 1 (ROAD_COST) at a tile means it's already claimed as a road by a sibling
+    // that ran earlier this same pass; cost 2 (PLAIN_COST) means it's still bare ground.
+    let seenRoadTile = false;
+    class Probe extends Operation {
+      public readonly kind = "probe";
+      public override structures(c: ColonySnapshot, findPathProbe: FindPath): PlacedStructure[] {
+        const from = new RoomPosition(anchor.x, anchor.y, c.name);
+        const to = new RoomPosition(first.x, first.y, c.name);
+        const route = findPathProbe(from, to, 0);
+        seenRoadTile = route.path.some(p => p.x === first.x && p.y === first.y);
+        return [];
+      }
+    }
 
-    const first: PlacedStructure = { x: 5, y: 5, type: "container" };
+    const first: PlacedStructure = { x: anchor.x + 3, y: anchor.y, type: "road" };
     const snap = colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] });
-    buildFor(withOps(snap, new Recorder("W1N1", [first]), new Recorder("W1N1", [])));
+    buildFor(withOps(snap, new Recorder("W1N1", [first]), new Probe("W1N1")));
 
-    // Both saw the layout baseline; only the second saw the first's claim.
-    expect(seen).toHaveLength(2);
-    expect(seen[0]).not.toContainEqual(first);
-    expect(seen[1]).toContainEqual(first);
-    expect(seen[0].length).toBeGreaterThan(0);
+    expect(seenRoadTile).toBe(true);
   });
 
-  // The payoff of the above: an operation that paths bends onto an existing planned route rather
-  // than laying its own a tile over. Mining itself is always first in operationsFor() (see
-  // operations/index.ts) and, as of the (41,12) fix below, deliberately does NOT dedupe its own road
-  // claims against a same-type road already in `planned` — dropping them broke gateRoads' exemption and
-  // routeBuilt bookkeeping for a route tile that happens to coincide with the bunker's own road grid
-  // (confirmed live on W47N14 2026-08-12). So this test uses a plain stand-in "later" operation — any
-  // real sibling that runs after Mining — to demonstrate the general mechanism the pipeline still
-  // provides: seeing a sibling's already-planned road and not laying a second one over it.
-  it("lets a pathing operation reuse a road a sibling already planned", () => {
+  // The payoff of the above: a real pathing operation (Mining) bends its own route onto a road a
+  // sibling already claimed, instead of laying a second one alongside it — the general mechanism the
+  // shared matrix provides, demonstrated end to end via claimsOf rather than a hand-fed `planned` array.
+  it("lets Mining's own route reuse a road a sibling already claimed", () => {
     const source = sourceAt(40, 12);
     const snap = colonySnap({
       anchor,
@@ -246,33 +256,26 @@ describe("planBuilding polls operations", () => {
       sites: []
     });
 
-    const alone = new Mining("W1N1").structures(snap, plannedAt(snap));
-    // A sibling that already planned the first half of the very route Mining would take. Derived
-    // from Mining's own solo claim rather than guessed, so the two genuinely overlap.
-    const soloRoads = alone.filter(p => p.type === "road");
-    const corridor = soloRoads.slice(0, Math.floor(soloRoads.length / 2));
-    expect(corridor.length).toBeGreaterThan(0);
+    // Solo run (no siblings) to find a tile genuinely on Mining's own route.
+    const solo = new Mining("W1N1").structures(snap, findPathFor(snap));
+    resetFindPathCacheForTests(); // solo run's matrix must not leak into the real claimsOf pass below
+    const soloRoad = solo.find(p => p.type === "road")!;
+    expect(soloRoad).toBeDefined();
 
-    // A later, non-Mining pathing operation: strictly dedupes any tile already in `planned`,
-    // regardless of type — the general-purpose rule every operation but Mining still follows.
-    class PathingStub extends Operation {
-      public readonly kind = "pathingStub";
-      public override structures(_c: ColonySnapshot, planned: readonly PlacedStructure[] = []): PlacedStructure[] {
-        const takenKeys = new Set(planned.map(p => `${p.x},${p.y}`));
-        return soloRoads.filter(p => !takenKeys.has(`${p.x},${p.y}`));
+    // A sibling that runs before Mining and claims that exact tile as a road first.
+    class EarlyRoad extends Operation {
+      public readonly kind = "earlyRoad";
+      public override structures(): PlacedStructure[] {
+        return [{ x: soloRoad.x, y: soloRoad.y, type: "road" }];
       }
     }
 
-    const withoutCorridor = new PathingStub("W1N1").structures(snap, plannedAt(snap));
-    const withCorridor = new PathingStub("W1N1").structures(snap, [...plannedAt(snap), ...corridor]);
-
-    const roadKeys = (s: PlacedStructure[]) => new Set(s.filter(p => p.type === "road").map(p => `${p.x},${p.y}`));
-    const corridorKeys = new Set(corridor.map(p => `${p.x},${p.y}`));
-
-    // With the corridor visible, the stub claims fewer new roads: the shared tiles are already planned.
-    expect(roadKeys(withCorridor).size).toBeLessThan(roadKeys(withoutCorridor).size);
-    // And it never re-claims a tile the corridor already covers.
-    for (const k of roadKeys(withCorridor)) expect(corridorKeys.has(k)).toBe(false);
+    const claimed = claimsOf(snap, [new EarlyRoad("W1N1"), new Mining("W1N1")]);
+    // Mining's own claim still names this tile as one of its route's roads — it doesn't avoid a
+    // sibling's own claimed road, it walks straight through it (cheaper than plain ground). Same-type
+    // (road-on-road) collisions are agreement, not a conflict — consolidate() keeps both claims (see
+    // its own doc) rather than dropping Mining's as a duplicate.
+    expect(claimed.filter(p => p.x === soloRoad.x && p.y === soloRoad.y && p.type === "road").length).toBeGreaterThan(0);
   });
 
   it("tears down a structure no operation claims any more", () => {

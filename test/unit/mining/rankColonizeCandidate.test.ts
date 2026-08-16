@@ -3,7 +3,7 @@
 // room mineral. Pure — no Game.*, no Memory.
 
 import { describe, expect, it } from "vitest";
-import { colonizePotentialScore, NEW_MINERAL_BONUS } from "../../../src/mining/colonizePotentialScore";
+import { colonizePotentialScore, NEW_MINERAL_BONUS } from "../../../src/mining/rankColonizeCandidate";
 import type { ColonizationPotential } from "../../../src/memory/schema";
 
 const potential = (over: Partial<ColonizationPotential> = {}): ColonizationPotential => ({
