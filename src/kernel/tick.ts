@@ -8,9 +8,7 @@ import { runColonizeFlags } from "../empire/colonizeFlags";
 import { runDefendFlags } from "../empire/defendFlags";
 import { runDrainFlags } from "../empire/drainFlags";
 import { runParadeFlags } from "../empire/paradeFlags";
-import { runSimpleBaitTowerFlags } from "../empire/simpleBaitTowerFlags";
-import { runDemolishFlags } from "../empire/demolishFlags";
-import { runSimpleHealFlags } from "../empire/simpleHealFlags";
+import { runSingleTargetFlags } from "../empire/singleTargetFlags";
 import { MARKET_SCAN_INTERVAL, scanMarketNow } from "../empire/market";
 import { planPixels } from "../empire/pixels";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
@@ -18,6 +16,7 @@ import { runRemoteInvaderAttacks } from "../empire/remoteInvaderAttacks";
 import { execute } from "../intents/execute";
 import type { Intent } from "../intents/types";
 import { log } from "../lib/log";
+import { SINGLE_TARGET_FLAG_OPERATIONS } from "../operations";
 import { buildEmpireSnapshot } from "../snapshot/colony";
 import { cleanColonyMemory } from "./colonyMemory";
 import { cleanCreepMemory } from "./creepMemory";
@@ -147,12 +146,10 @@ export function tick(systems: System[] = SYSTEMS, injected?: Empire): void {
   runGuarded("drainFlags", () => runDrainFlags(world));
   // Flag-triggered parade, same reasoning as attackFlags above — Parade isn't a default operation either.
   runGuarded("paradeFlags", () => runParadeFlags(world));
-  // Flag-triggered SimpleBaitTower, same reasoning as attackFlags above — not a default operation either.
-  runGuarded("simpleBaitTowerFlags", () => runSimpleBaitTowerFlags(world));
-  // Flag-triggered Demolish, same reasoning as attackFlags above — not a default operation either.
-  runGuarded("demolishFlags", () => runDemolishFlags(world));
-  // Flag-triggered SimpleHeal, same reasoning as attackFlags above — not a default operation either.
-  runGuarded("simpleHealFlags", () => runSimpleHealFlags(world));
+  // The whole SingleTargetFlagOperation family (SimpleBaitTower, Demolish, SimpleHeal, AttackController,
+  // ...) shares one generic runner (empire/singleTargetFlags.ts) instead of one *Flags.ts file per kind —
+  // same reasoning as attackFlags above, called once per registered kind.
+  for (const OpClass of SINGLE_TARGET_FLAG_OPERATIONS) runGuarded(`${OpClass.kind}Flags`, () => runSingleTargetFlags(world, OpClass));
   // Automatic counterpart to attackFlags: launches an Attack at any selected remote reserved by the
   // Invader NPC with its core still standing — see remoteInvaderAttacks.ts's header.
   runGuarded("remoteInvaderAttacks", () => runRemoteInvaderAttacks(world));

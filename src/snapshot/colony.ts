@@ -141,13 +141,7 @@ function buildColonySnapshot(
   const defending = Memory.colonies[room.name]?.defending ?? [];
   const draining = Memory.colonies[room.name]?.draining;
   const drainRoute = draining ? drainRouteTo(room.name, draining) : [];
-  const simpleBaitTower = Memory.colonies[room.name]?.simpleBaitTower;
-  const simpleBaitTowerFlag = Memory.colonies[room.name]?.simpleBaitTowerFlag;
-  const simpleBaitTowerSpawned = Memory.colonies[room.name]?.simpleBaitTowerSpawned;
-  const demolish = Memory.colonies[room.name]?.demolish;
-  const demolishFlag = Memory.colonies[room.name]?.demolishFlag;
-  const simpleHeal = Memory.colonies[room.name]?.simpleHeal;
-  const simpleHealFlag = Memory.colonies[room.name]?.simpleHealFlag;
+  const singleTargetOps = Memory.colonies[room.name]?.singleTargetOps ?? {};
   const parading = Memory.colonies[room.name]?.parading;
   const paradeGoal = parading ? paradeGoalFor(parading.flag) : undefined;
   const paradeRooms = new Set([room.name, ...(paradeGoal ? [paradeGoal.room] : [])]);
@@ -276,13 +270,7 @@ function buildColonySnapshot(
     attacking,
     defending,
     draining,
-    simpleBaitTower,
-    simpleBaitTowerFlag,
-    simpleBaitTowerSpawned,
-    demolish,
-    demolishFlag,
-    simpleHeal,
-    simpleHealFlag,
+    singleTargetOps,
     drainRoute,
     hostileRoomTowers,
     hostileRoomUnits,

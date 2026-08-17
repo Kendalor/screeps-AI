@@ -1,88 +1,36 @@
-// SimpleBaitTower: sponsors exactly one SimpleBaitTowerRole creep sent at a single target room
-// (ColonyMemory.simpleBaitTower, snapshot.simpleBaitTower — a scalar, same "one target per colony" shape
-// as Drain's `draining`/Parade's `parading`, see their headers). Not wired into operationsFor() — no
-// colony gets this by default (see operations/index.ts); a colony only carries it while
-// snapshot.simpleBaitTower is set, attached by Colony's constructor exactly like Drain/Parade.
+// SimpleBaitTower: sponsors up to `wanted` SimpleBaitTowerRole creeps sent at a single target room, on the
+// shared SingleTargetFlagOperation shape (see that file's header for the full demand/lifetime state
+// machine) — attached only while ColonyMemory.singleTargetOps["simpleBaitTower"][target] exists (a flag
+// handoff via empire/singleTargetFlags.ts), never wired into operationsFor() (see operations/index.ts).
 //
-// Lifetime is bound in BOTH directions to the flag (see empire/simpleBaitTowerFlags.ts) AND to its one
-// creep: this is a genuine one-shot, not a headcount to maintain. Exactly one creep is ever spawned —
-// once snapshot.simpleBaitTowerSpawned latches true (set the first tick a creep is owned), desiredCreeps
-// never requests again, even after that creep dies. A death after spawning is read as the operation
-// having run its course: intents() emits endSimpleBaitTower to detach the operation itself (clears
-// simpleBaitTower/simpleBaitTowerSpawned but deliberately leaves simpleBaitTowerFlag on record —
-// simpleBaitTowerFlags.ts's own pass removes the now-orphaned physical flag next tick, same as a player
-// removing the flag would stop this operation). Neither path ever tries to replace a dead bait creep.
+// The one real quirk: its body is deliberately NOT reordered by survival priority (skipBodyOrdering) —
+// every other role's body gets orderBody()'d (TOUGH first, MOVE last; see spawn/body.ts), but the bait
+// creep's whole point is soaking tower fire in a SPECIFIC part sequence
+// (behaviors/roles/simpleBaitTower.ts's own body layout), so the array it produces must reach the spawn
+// request untouched.
 //
 // The bait creep's own enter/retreat/heal/re-enter behavior lives in its own step table — see
 // behaviors/roles/simpleBaitTower.ts.
 
-import { roleDef } from "../behaviors/roles";
-import type { Intent } from "../intents/types";
-import type { ColonySnapshot } from "../snapshot/types";
-import type { CreepRequest } from "../spawn/request";
-import { Operation } from "./operation";
+import type { RoleName } from "../memory/schema";
+import { SingleTargetFlagOperation, type SingleTargetFlagOperationClass } from "./singleTargetFlagOperation";
+import { SIMPLE_BAIT_TOWER_MIN_COST } from "../behaviors/roles/simpleBaitTower";
 
-export const SIMPLE_BAIT_TOWER_ROLE = "simpleBaitTower";
+export const SIMPLE_BAIT_TOWER_ROLE: RoleName = "simpleBaitTower";
 
-export class SimpleBaitTowerOperation extends Operation {
-  public readonly kind = "simpleBaitTower";
+export class SimpleBaitTowerOperation extends SingleTargetFlagOperation {
+  public static readonly kind = "simpleBaitTower";
+  public static readonly sponsorConfig = { minCost: SIMPLE_BAIT_TOWER_MIN_COST };
+  // Original shape: never replace a dead bait creep once its slot has been used.
+  public static readonly defaultLifetime = "oneShot" as const;
+  public static readonly supportedLifetimes = new Set(["oneShot", "constant"] as const);
 
-  public constructor(
-    room: string,
-    private readonly targetRoom: string,
-    // The originating flag's NAME (ColonyMemory.simpleBaitTowerFlag/snapshot.simpleBaitTowerFlag), stamped
-    // onto the spawned creep's own memory below so its moveToFlag step can read Game.flags[name].pos live
-    // — see CreepMemory.followFlag's doc. Optional only because a colony still mid-handoff (this same
-    // tick's setSimpleBaitTowerTarget just fired) might not have the flag mirrored onto its snapshot yet;
-    // a creep spawned with no followFlag simply falls through to targetRoom (moveToFlag's own no-flag
-    // fallback).
-    private readonly flagName?: string
-  ) {
-    super(room);
-  }
-
-  public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
-    // Already spawned once (whether it's still alive or has since died): never request a second bait
-    // creep — see file header for why a death after spawning terminates the op instead of replacing it.
-    if (colony.simpleBaitTowerSpawned) return [];
-    if (this.owned(colony, SIMPLE_BAIT_TOWER_ROLE).length >= 1) return [];
-
-    const def = roleDef(SIMPLE_BAIT_TOWER_ROLE);
-    if (!def) return [];
-    // Deliberately NOT orderBody()'d — every other operation reorders its body by survival priority
-    // (TOUGH first, MOVE last; see spawn/body.ts's orderBody), but the bait creep's whole point is
-    // soaking tower fire in a SPECIFIC part sequence (behaviors/roles/simpleBaitTower.ts's own body
-    // layout), so the array it produces must reach the spawn request untouched.
-    const body = def.body(colony.energyCapacity, { hasContainer: false, hasLink: false });
-    if (body.length === 0) return [];
-
-    return [
-      {
-        body,
-        priority: def.priority,
-        memory: { role: SIMPLE_BAIT_TOWER_ROLE, home: colony.name, op: this.name, followFlag: this.flagName },
-        targetRoom: this.targetRoom,
-        spawnRoom: colony.name
-      }
-    ];
-  }
-
-  public override intents(colony: ColonySnapshot): Intent[] {
-    const owned = this.owned(colony, SIMPLE_BAIT_TOWER_ROLE);
-
-    // First tick the creep is alive: latch simpleBaitTowerSpawned so desiredCreeps never fires again,
-    // even across the tick boundary where this creep eventually dies.
-    if (owned.length > 0 && !colony.simpleBaitTowerSpawned) {
-      return [{ kind: "setSimpleBaitTowerSpawned", room: colony.name }];
-    }
-
-    // Spawned once already, and now nothing's left alive: the bait creep died (or, on the very first
-    // tick after a same-tick spawn+death, never got to act) — the operation's job is done either way.
-    // Self-terminate; simpleBaitTowerFlags.ts removes the now-orphaned flag next tick (see file header).
-    if (colony.simpleBaitTowerSpawned && owned.length === 0) {
-      return [{ kind: "endSimpleBaitTower", room: colony.name }];
-    }
-
-    return [];
-  }
+  public readonly kind = SimpleBaitTowerOperation.kind;
+  protected readonly role = SIMPLE_BAIT_TOWER_ROLE;
+  protected override readonly skipBodyOrdering = true;
 }
+
+// Compile-time proof the class actually satisfies the factory contract flags modules construct against
+// (SingleTargetFlagOperationClass's `new (...)` signature plus its static fields) — a mismatch here is a
+// build error, not a runtime surprise the first time a flag is placed.
+SimpleBaitTowerOperation satisfies SingleTargetFlagOperationClass;

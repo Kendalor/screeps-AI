@@ -1,8 +1,10 @@
 // The list of what exists, not a rules engine.
 
 import { profileClass } from "../lib/profiler";
+import { AttackControllerOperation } from "./attackController";
 import { Bootstrap } from "./bootstrap";
 import { Building } from "./construction";
+import { DemolishOperation } from "./demolish";
 import { Defense } from "./defense";
 import { Logistics } from "./logistics";
 import { Mining } from "./mining";
@@ -10,6 +12,9 @@ import type { Operation } from "./operation";
 import { Repairing } from "./repairing";
 import { Reservation } from "./reservation";
 import { Scouting } from "./scouting";
+import { SimpleBaitTowerOperation } from "./simpleBaitTower";
+import { SimpleHealOperation } from "./simpleHeal";
+import type { SingleTargetFlagOperationClass } from "./singleTargetFlagOperation";
 import { Supply } from "./supply";
 import { Upgrading } from "./upgrading";
 
@@ -36,6 +41,19 @@ export { Attack } from "./attack";
 export { SimpleBaitTowerOperation } from "./simpleBaitTower";
 export { DemolishOperation } from "./demolish";
 export { SimpleHealOperation } from "./simpleHeal";
+export { AttackControllerOperation } from "./attackController";
+export { SingleTargetFlagOperation } from "./singleTargetFlagOperation";
+
+/** Every SingleTargetFlagOperation subclass that exists — the registry empire/singleTargetFlags.ts's
+ * runner iterates (one call per kind, see kernel/tick.ts) and Colony's constructor walks to attach one
+ * instance per (kind, target) entry in ColonyMemory.singleTargetOps. Adding a sixth member of the family
+ * is one line here; nothing else needs to know the list grew. */
+export const SINGLE_TARGET_FLAG_OPERATIONS: readonly SingleTargetFlagOperationClass[] = [
+  SimpleBaitTowerOperation,
+  DemolishOperation,
+  SimpleHealOperation,
+  AttackControllerOperation
+];
 
 /** Every colony gets every operation kind unconditionally; each decides for itself whether to act.
  * Order matters for structures(): Mining paths first so later operations converge onto its routes. It
@@ -97,7 +115,8 @@ export const SPAWNABLE_OPERATIONS: readonly SpawnableOperationInfo[] = [
   { kind: "colonize", trigger: "ColonyMemory.colonizing non-empty (colonize flag or auto-pick)" },
   { kind: "drain", trigger: "ColonyMemory.draining set (drain flag)" },
   { kind: "parade", trigger: "ColonyMemory.parading set (parade flag)" },
-  { kind: "simpleBaitTower", trigger: "ColonyMemory.simpleBaitTower set (simpleBaitTower flag)" },
-  { kind: "demolish", trigger: "ColonyMemory.demolish set (demolish flag)" },
-  { kind: "simpleHeal", trigger: "ColonyMemory.simpleHeal set (simpleHeal flag)" }
+  { kind: "simpleBaitTower", trigger: "ColonyMemory.singleTargetOps.simpleBaitTower entry present (simpleBaitTower flag)" },
+  { kind: "demolish", trigger: "ColonyMemory.singleTargetOps.demolish entry present (demolish flag)" },
+  { kind: "simpleHeal", trigger: "ColonyMemory.singleTargetOps.simpleHeal entry present (simpleHeal flag)" },
+  { kind: "attackController", trigger: "ColonyMemory.singleTargetOps.attackController entry present (attackController flag)" }
 ];

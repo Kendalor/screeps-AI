@@ -153,6 +153,7 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     colonizing: [],
     attacking: [],
     defending: [],
+    singleTargetOps: {},
     drainRoute: [],
     hostileRoomTowers: {},
     hostileRoomUnits: {},

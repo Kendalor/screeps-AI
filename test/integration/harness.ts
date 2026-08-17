@@ -473,6 +473,7 @@ export class BootedColony {
       colonizing: [],
       attacking: [],
       defending: [],
+      singleTargetOps: {},
       drainRoute: [],
       hostileRoomTowers: {}
     };

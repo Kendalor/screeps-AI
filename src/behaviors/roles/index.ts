@@ -3,6 +3,7 @@
 
 import type { RoleName } from "../../memory/schema";
 import type { RoleDef } from "../types";
+import { AttackControllerRole } from "./attackController";
 import { Attacker } from "./attacker";
 import { Bootstrap } from "./bootstrap";
 import { Builder } from "./builder";
@@ -46,7 +47,8 @@ export const ROLES = {
   paradeMember: ParadeMember,
   simpleBaitTower: SimpleBaitTowerRole,
   demolisher: DemolisherRole,
-  simpleHealer: SimpleHealerRole
+  simpleHealer: SimpleHealerRole,
+  attackController: AttackControllerRole
 } satisfies Partial<Record<RoleName, RoleDef>>;
 
 export function roleDef(role: RoleName): RoleDef | undefined {

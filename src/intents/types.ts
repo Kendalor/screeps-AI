@@ -1,6 +1,6 @@
 // Intent union: planners return these; only intents/execute.ts turns them into game API calls.
 
-import type { RoleName, RemoteMemory, SquadAnchorMemory } from "../memory/schema";
+import type { OperationLifetime, RoleName, RemoteMemory, SquadAnchorMemory } from "../memory/schema";
 import type { LogisticsTask } from "../logistics/types";
 import type { XY } from "../lib/geometry";
 
@@ -175,43 +175,34 @@ export type Intent =
   // Manual/flag-removal stop: clears ColonyMemory.parading so Colony's constructor stops attaching a
   // Parade operation for that colony from the next tick on.
   | { kind: "clearParadeTarget"; room: string }
-  // The SimpleBaitTower equivalent of setDrainTarget: a flag handoff resolved `room` as the sponsor for a
-  // single bait creep at `target` — execute.ts owns the Memory.colonies[room].simpleBaitTower write.
-  // `flag` is recorded onto simpleBaitTowerFlag so the op's lifetime stays tied to its one originating
-  // flag in both directions (see ColonyMemory.simpleBaitTowerFlag's doc). A plain overwrite, not an
-  // append, same scalar reasoning as setDrainTarget.
-  | { kind: "setSimpleBaitTowerTarget"; room: string; target: string; flag: string }
-  // Manual/flag-removal stop: clears ColonyMemory.simpleBaitTower AND simpleBaitTowerFlag (there's no
-  // flag left to clean up — it's already gone) so Colony's constructor stops attaching a
-  // SimpleBaitTowerOperation for that colony from the next tick on. Emitted by simpleBaitTowerFlags.ts
-  // once a colony's tracked flag is no longer live, and by its console command.
-  | { kind: "clearSimpleBaitTowerTarget"; room: string }
-  // Self-termination: SimpleBaitTowerOperation's own end-of-life signal (its one creep spawned and then
-  // died — see the operation's header), emitted from its own intents(). Deliberately narrower than
-  // clearSimpleBaitTowerTarget: it clears `simpleBaitTower`/`simpleBaitTowerSpawned` (so the operation
-  // stops attaching from the next tick) but leaves `simpleBaitTowerFlag` in place — execute.ts intent
-  // handlers never touch Game.flags, so the physical flag still needs removing, and
-  // simpleBaitTowerFlags.ts's own pass needs the flag name still on record to find and remove it (then
-  // clears simpleBaitTowerFlag itself once that's done).
-  | { kind: "endSimpleBaitTower"; room: string }
-  // One-way latch (see ColonyMemory.simpleBaitTowerSpawned's doc): emitted by SimpleBaitTowerOperation
-  // the first tick its one creep is owned, so a later death reads as "spawned then died" (terminate)
-  // rather than "never spawned" (keep requesting).
-  | { kind: "setSimpleBaitTowerSpawned"; room: string }
-  // The Demolish equivalent of setSimpleBaitTowerTarget: a flag handoff resolved `room` as the sponsor
-  // for a demolisher at `target` — execute.ts owns the Memory.colonies[room].demolish write. `flag` is
-  // recorded onto demolishFlag so the op's lifetime stays tied to its one originating flag.
-  | { kind: "setDemolishTarget"; room: string; target: string; flag: string }
-  // Manual/flag-removal stop: clears ColonyMemory.demolish AND demolishFlag so Colony's constructor stops
-  // attaching a DemolishOperation for that colony from the next tick on.
-  | { kind: "clearDemolishTarget"; room: string }
-  // The SimpleHeal equivalent of setDemolishTarget: a flag handoff resolved `room` as the sponsor for a
-  // simpleHealer at `target` — execute.ts owns the Memory.colonies[room].simpleHeal write. `flag` is
-  // recorded onto simpleHealFlag so the op's lifetime stays tied to its one originating flag.
-  | { kind: "setSimpleHealTarget"; room: string; target: string; flag: string }
-  // Manual/flag-removal stop: clears ColonyMemory.simpleHeal AND simpleHealFlag so Colony's constructor
-  // stops attaching a SimpleHealOperation for that colony from the next tick on.
-  | { kind: "clearSimpleHealTarget"; room: string }
+  // The SingleTargetFlagOperation-family equivalent of setDrainTarget, generalized across every kind in
+  // the family (SimpleBaitTower, Demolish, SimpleHeal, AttackController, ...) instead of one intent
+  // variant per kind — a flag handoff resolved `room` as the sponsor for `numCreeps` creeps of this `kind`
+  // at `target`. execute.ts owns the ColonyMemory.singleTargetOps[kind][target] write (a plain set, not an
+  // append — each (kind, target) pair holds at most one entry). `flag` ties the entry's lifetime to its
+  // one originating flag in both directions (see SingleTargetOpState.flag's doc); `lifetime` is resolved
+  // once here from the flag's color (empire/flagRequest.ts's lifetimeOf) and never re-derived.
+  | { kind: "setSingleTargetOp"; room: string; opKind: string; target: string; flag: string; lifetime: OperationLifetime; numCreeps: number }
+  // Manual/flag-removal stop: clears ColonyMemory.singleTargetOps[opKind][target] entirely (there's no
+  // flag left to clean up — it's already gone) so Colony's constructor stops attaching that operation
+  // instance from the next tick on. Emitted by empire/singleTargetFlags.ts once a colony's tracked flag is
+  // no longer live, and by the removeOperation console command.
+  | { kind: "clearSingleTargetOp"; room: string; opKind: string; target: string }
+  // Self-termination: a SingleTargetFlagOperation instance's own end-of-life signal for a "oneShot"
+  // lifetime entry (every wanted creep has been spawned at least once and none are left alive — see
+  // operations/singleTargetFlagOperation.ts), emitted from its own intents(). Deliberately narrower than
+  // clearSingleTargetOp: it resets the entry's `wanted`/`spawnedCount` to 0 (so Colony's constructor stops
+  // attaching an instance for it — see SingleTargetOpState.wanted's doc) but leaves the entry itself, and
+  // its `flag`, standing for one more tick — execute.ts intent handlers never touch Game.flags, so the
+  // physical flag still needs removing, and empire/singleTargetFlags.ts's own reconciliation pass (which
+  // runs on a LATER tick) needs the flag name still on record to find and remove the now-orphaned flag,
+  // then clears the entry fully via clearSingleTargetOp once that's done.
+  | { kind: "endSingleTargetOp"; room: string; opKind: string; target: string }
+  // Running-count increment (see SingleTargetOpState.spawnedCount's doc): emitted by a "oneShot" instance
+  // with the number of newly-seen creeps this tick, so a later death reads against how many slots have
+  // been used rather than "never spawned" (keep requesting that slot). A no-op write for a "constant"
+  // instance (nothing currently emits it in that mode — constant tops up against live count instead).
+  | { kind: "recordSingleTargetSpawn"; room: string; opKind: string; target: string; by: number }
   // Drain's per-tick observation sample (#40/ADR 0006's operation-owned snapshot history) — emitted by
   // drain.ts's intents() whenever it has vision of colony.draining's target this tick (same
   // hostileRoomTowers-presence vision check the advance/retreat rule already uses). execute.ts owns the

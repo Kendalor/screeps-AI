@@ -8,7 +8,7 @@ import { Role } from "./role";
 // room (self included) is most damaged, via find:"friendly" (behaviors/targets.ts) rather than
 // find:"squadMate" — a solo SimpleHealer has no squad (memory.op is unique to itself), so squadMate would
 // only ever resolve to itself. targetRoom itself is resolved from the triggering flag's own room — see
-// SimpleHealOperation/simpleHealFlags.ts.
+// SimpleHealOperation/empire/singleTargetFlags.ts.
 const SIMPLE_HEALER_SET: BodyPartConstant[] = [HEAL, MOVE];
 
 export const SIMPLE_HEALER_MIN_COST = bodyCost(SIMPLE_HEALER_SET);

@@ -4,12 +4,9 @@
 import type { Intent } from "../intents/types";
 import { Attack } from "../operations/attack";
 import { Colonize } from "../operations/colonize";
-import { DemolishOperation } from "../operations/demolish";
 import { Drain } from "../operations/drain";
 import { Parade } from "../operations/parade";
-import { SimpleBaitTowerOperation } from "../operations/simpleBaitTower";
-import { SimpleHealOperation } from "../operations/simpleHeal";
-import { operationsFor, type Operation } from "../operations";
+import { operationsFor, SINGLE_TARGET_FLAG_OPERATIONS, type Operation } from "../operations";
 import type { ColonySnapshot } from "../snapshot/types";
 import type { CreepRequest } from "../spawn/request";
 import { log } from "../lib/log";
@@ -85,27 +82,17 @@ export class Colony {
       // (ColonyMemory.parading) is set, a flag handoff's setParadeTarget (see empire/paradeFlags.ts).
       // Scalar like `draining` — one parade per colony at a time, no pooling.
       ...(snapshot.parading !== undefined ? [new Parade(snapshot.name)] : []),
-      // SimpleBaitTower isn't in operationsFor() either, same reason: attached only while
-      // snapshot.simpleBaitTower (ColonyMemory.simpleBaitTower) is set, a flag handoff's
-      // setSimpleBaitTowerTarget (see empire/simpleBaitTowerFlags.ts). Scalar like `draining`/`parading` —
-      // one bait target per colony at a time, no pooling. simpleBaitTowerFlag (the originating flag's
-      // name) is threaded through too so the operation can stamp it onto the spawned creep's own memory —
-      // see SimpleBaitTowerOperation's constructor doc.
-      ...(snapshot.simpleBaitTower !== undefined
-        ? [new SimpleBaitTowerOperation(snapshot.name, snapshot.simpleBaitTower, snapshot.simpleBaitTowerFlag)]
-        : []),
-      // Demolish isn't in operationsFor() either, same reason: attached only while snapshot.demolish
-      // (ColonyMemory.demolish) is set, a flag handoff's setDemolishTarget (see empire/demolishFlags.ts).
-      // Scalar like `draining`/`parading`/`simpleBaitTower` — one demolish target per colony at a time.
-      ...(snapshot.demolish !== undefined
-        ? [new DemolishOperation(snapshot.name, snapshot.demolish, snapshot.demolishFlag)]
-        : []),
-      // SimpleHeal isn't in operationsFor() either, same reason: attached only while snapshot.simpleHeal
-      // (ColonyMemory.simpleHeal) is set, a flag handoff's setSimpleHealTarget (see
-      // empire/simpleHealFlags.ts). Scalar like `draining`/`parading`/`simpleBaitTower`/`demolish` — one
-      // simpleHeal target per colony at a time. No flag name threaded through (unlike its siblings): the
-      // spawned creep never tracks the flag's live position — see SimpleHealOperation's header.
-      ...(snapshot.simpleHeal !== undefined ? [new SimpleHealOperation(snapshot.name, snapshot.simpleHeal)] : [])
+      // The whole SingleTargetFlagOperation family (SimpleBaitTower, Demolish, SimpleHeal,
+      // AttackController, and any future member — see operations/singleTargetFlagOperation.ts) isn't in
+      // operationsFor() either, same reason: attached only per (kind, target) entry actually present in
+      // snapshot.singleTargetOps, a flag handoff's setSingleTargetOp (see empire/singleTargetFlags.ts).
+      // One generic loop over SINGLE_TARGET_FLAG_OPERATIONS replaces what used to be one hand-spread block
+      // per kind here.
+      ...SINGLE_TARGET_FLAG_OPERATIONS.flatMap(OpClass =>
+        Object.entries(snapshot.singleTargetOps[OpClass.kind] ?? {})
+          .filter(([, state]) => state.wanted > 0)
+          .map(([target, state]) => new OpClass(snapshot.name, target, state))
+      )
     ];
   }
 

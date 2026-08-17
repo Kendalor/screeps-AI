@@ -13,6 +13,17 @@ import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
 import { fillTo, opName, type CreepRequest } from "../spawn/request";
 
 /**
+ * An operation class's own affordability floor, exposed as a static field instead of a sibling
+ * *Sponsor.ts file (empire/sponsor.ts's pickSponsorFor reads it) — so the data lives next to the body/
+ * priority it's derived from. A plain number today; kept as its own type (rather than inlining `number`
+ * into pickSponsorFor's signature) so a future operation whose floor depends on call-time data can widen
+ * it later without changing every call site.
+ */
+export interface SponsorConfig {
+  minCost: number;
+}
+
+/**
  * One role's honest staffing target for metrics: how many this operation wants right now, independent
  * of how many are alive. Distinct from `desiredCreeps`, which reports only the deficit (never negative),
  * so an over-staffed role — target below the live count — is invisible there. Census uses this to show

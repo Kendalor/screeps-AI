@@ -137,6 +137,14 @@ export type Step = ({
     | { do: "upgrade"; urgentBelow?: number }
     | { do: "reserve" } // reserve the current room's controller — a claimer's whole job, once it has arrived
     | { do: "claim" } // claimController on the current room's controller — a colonizer's whole job, once it has arrived
+    // attackController the current room's controller unconditionally — AttackControllerRole's whole job,
+    // once it has arrived (see behaviors/roles/attackController.ts). Unlike reserveStep/claimStep, where
+    // attackController is only a side-branch chipping away at someone else's reservation before the real
+    // verb (reserveController/claimController) can succeed, this role never reserves or claims at all —
+    // downgrading (or, once already neutral, holding an owned/reserved controller's decay at bay) is the
+    // entire point, so every tick just calls attackController again. Store-less, never self-completes on
+    // store state — only targetGone (no controller found, which can't really happen) ends it.
+    | { do: "attackController" }
     // Top up ticksToLive at a spawn in the creep's targetRoom, but only below `below` ticks — a no-op
     // (falls through to the next step) above that threshold or while targetRoom has no spawn yet. Unlike
     // reserve/claim this never holds the creep in place once satisfied: renewCreep is called once per

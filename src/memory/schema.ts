@@ -170,7 +170,8 @@ export type RoleName =
   | "paradeMember"
   | "simpleBaitTower"
   | "demolisher"
-  | "simpleHealer";
+  | "simpleHealer"
+  | "attackController";
 
 export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building
@@ -246,47 +247,19 @@ export interface ColonyMemory {
   // restart with a new shape. Written by a flag handoff (empire/paradeFlags.ts's setParadeTarget); read
   // every tick by Colony's constructor to attach a real Parade operation, same pattern as `draining`.
   parading?: { flag: string; formation: string };
-  // The single room this colony is currently running a SimpleBaitTower for (sponsoring one bait creep at),
-  // owned by simpleBaitTower.ts — a scalar like `draining`/`parading`: exactly one bait target per colony
-  // at a time, no pooling. Written by a flag handoff (empire/simpleBaitTowerFlags.ts's
-  // setSimpleBaitTowerTarget); read every tick by Colony's constructor to attach a real
-  // SimpleBaitTowerOperation while set.
-  simpleBaitTower?: string;
-  // The flag name that sponsored `simpleBaitTower` — lets simpleBaitTowerFlags.ts tie the op's lifetime to
-  // its ONE originating flag in both directions (same "flag is the op's lifetime" shape as
-  // colonizingFlags, applied to a scalar instead of a list): removing this flag clears `simpleBaitTower`
-  // (see clearSimpleBaitTowerTarget), and the op clearing `simpleBaitTower` on its own (its one creep died
-  // — see SimpleBaitTowerOperation's header) removes this now-orphaned flag instead of leaving a stale
-  // marker behind. Written together with `simpleBaitTower` by setSimpleBaitTowerTarget; cleared together
-  // with it by clearSimpleBaitTowerTarget.
-  simpleBaitTowerFlag?: string;
-  // One-way latch: true once the operation has seen its one bait creep actually alive. Distinguishes
-  // "never spawned yet" (still requesting) from "spawned and then died" (the operation's whole job is
-  // done/failed either way — see SimpleBaitTowerOperation's header for why a one-shot op must not
-  // request a replacement). Set via setSimpleBaitTowerSpawned the first tick a creep is owned; cleared
-  // together with `simpleBaitTower` itself by clearSimpleBaitTowerTarget, so a flag reused for a fresh
-  // target starts clean.
-  simpleBaitTowerSpawned?: boolean;
-  // The single room this colony is currently running a Demolish for (sponsoring the demolisher role at),
-  // owned by demolish.ts — a scalar like `draining`/`parading`/`simpleBaitTower`: exactly one demolish
-  // target per colony at a time, no pooling. Written by a flag handoff (empire/demolishFlags.ts's
-  // setDemolishTarget); read every tick by Colony's constructor to attach a real DemolishOperation
-  // while set.
-  demolish?: string;
-  // The flag name that sponsored `demolish` — lets demolishFlags.ts tie the op's lifetime to its ONE
-  // originating flag, same shape as simpleBaitTowerFlag. Written together with `demolish` by
-  // setDemolishTarget; cleared together with it by clearDemolishTarget.
-  demolishFlag?: string;
-  // The single room this colony is currently running a SimpleHeal for (sponsoring the simpleHealer role
-  // at), owned by simpleHeal.ts — a scalar like `draining`/`parading`/`simpleBaitTower`/`demolish`:
-  // exactly one simpleHeal target per colony at a time, no pooling. Written by a flag handoff
-  // (empire/simpleHealFlags.ts's setSimpleHealTarget); read every tick by Colony's constructor to attach
-  // a real SimpleHealOperation while set.
-  simpleHeal?: string;
-  // The flag name that sponsored `simpleHeal` — lets simpleHealFlags.ts tie the op's lifetime to its ONE
-  // originating flag, same shape as demolishFlag/simpleBaitTowerFlag. Written together with
-  // `simpleHeal` by setSimpleHealTarget; cleared together with it by clearSimpleHealTarget.
-  simpleHealFlag?: string;
+  // Every SingleTargetFlagOperation-family operation's durable state (SimpleBaitTower, Demolish,
+  // SimpleHeal, AttackController, and any future member — see operations/singleTargetFlagOperation.ts),
+  // keyed by operation `kind` then by target room. A scalar like `draining`/`parading` in spirit — this
+  // family still only ever expects ONE key per kind in practice, since each flags module refuses a
+  // handoff for a target already listed under that kind (see empire/singleTargetFlags.ts) — but keyed by
+  // target rather than a bare `kind?: string` scalar so the shape has room for genuine multi-target
+  // concurrency later without another Memory migration (see the architecture review this generalized
+  // from: Colonize already needs exactly this "N independent instances keyed by target" shape).
+  //
+  // Written by a flag handoff (setSingleTargetOp) or the operation's own self-termination
+  // (clearSingleTargetOp — see that intent's own doc for the one-shot self-end case); read every tick by
+  // Colony's constructor to attach one real operation instance per (kind, target) entry.
+  singleTargetOps?: Partial<Record<string, Record<string, SingleTargetOpState>>>;
   // The drain squad's own persisted anchor — the formation's bounding box's FIXED top-left corner (see
   // lib/squad.ts's SquadState doc), owned by operations/drain.ts. Seeded once from the live squad's own
   // position at the moment it first welds up (the same live-position derivation the anchor used to be
@@ -339,6 +312,41 @@ export interface SquadAnchorMemory {
   x: number;
   y: number;
   room: string;
+}
+
+// A SingleTargetFlagOperation's demand shape (see operations/singleTargetFlagOperation.ts): "oneShot"
+// never replaces a dead creep once its slot has been used (SimpleBaitTower's original shape — a slot used
+// once, dead or alive, never reopens), "constant" always tops back up to the wanted headcount (Drain/
+// Parade's shape — stop only when the flag is removed). Resolved once, from the triggering flag's color,
+// at handoff time (empire/flagRequest.ts's lifetimeOf) — never re-read after that, same "flag is a live
+// on/off switch, not a live config panel" rule Parade's formation string already follows.
+export type OperationLifetime = "oneShot" | "constant";
+
+// One SingleTargetFlagOperation instance's durable state — see ColonyMemory.singleTargetOps's doc for the
+// (kind, target) keying this lives under.
+export interface SingleTargetOpState {
+  // The originating flag's NAME (not a resolved position) — lets the owning *Flags.ts pass tie this
+  // entry's lifetime to its one originating flag in both directions, same shape every predecessor
+  // (simpleBaitTowerFlag, demolishFlag, ...) used individually. Optional only for the same same-tick-
+  // handoff-hasn't-mirrored-yet reason those fields were.
+  flag?: string;
+  // Resolved once at handoff from the flag's color (see OperationLifetime's doc) — never re-derived.
+  lifetime: OperationLifetime;
+  // How many creeps this run wants in total — an explicit "<kind>:<room>:<n>" flag suffix, default 1.
+  // Meaningful for both lifetimes: a "constant" op tops back up to `wanted` forever, a "oneShot" op stops
+  // once `wanted` slots have ever been used (see `spawnedCount` below). Reset to 0 (alongside
+  // `spawnedCount`) by a "oneShot" instance's own self-termination (the endSingleTargetOp intent) — the
+  // operation's job is done, but the entry (and its `flag`) is deliberately left in place for one more
+  // tick so empire/singleTargetFlags.ts's reconciliation pass can still find the flag name to remove the
+  // now-orphaned physical flag. `wanted <= 0` therefore reads as "don't attach an instance for this entry"
+  // exactly like the entry being absent — Colony's constructor and the base class's desiredCreeps both
+  // treat the two the same way.
+  wanted: number;
+  // Running count of creeps ever spawned so far for this entry (not currently-alive count — a dead one
+  // still counts). Only meaningful while lifetime === "oneShot" (kept at 0 and ignored for "constant",
+  // which tops up against live count instead) — distinguishes "still below `wanted`, keep requesting"
+  // from "hit the quota, stop" even across deaths, so a one-shot slot never reopens once used.
+  spawnedCount: number;
 }
 
 // One remote room we've chosen to mine, cached in ColonyMemory so selection is stable and not re-ranked

@@ -8,7 +8,7 @@ import type { LogLevel } from "../lib/log";
 import { buildEmpireSnapshot } from "../snapshot/colony";
 import { listColonizeCandidates } from "../empire/pickColonyTargets";
 import { execute } from "../intents/execute";
-import { SPAWNABLE_OPERATIONS } from "../operations";
+import { SINGLE_TARGET_FLAG_OPERATIONS, SPAWNABLE_OPERATIONS } from "../operations";
 import { Mining } from "../operations/mining";
 import { needsScouting, staleAfter } from "../behaviors/scoutTargets";
 import { COLONIZER_COST } from "../behaviors/roles/colonizer";
@@ -109,9 +109,6 @@ declare global {
   function scanMarket(): string;
   function manufactureCost(resource: string, includeDecompress?: boolean): string;
   function clearDrainTarget(room: string): string;
-  function clearSimpleBaitTowerTarget(room: string): string;
-  function clearDemolishTarget(room: string): string;
-  function clearSimpleHealTarget(room: string): string;
   function removeOperation(kind: string, room: string, target?: string): string;
   function help(): string;
 }
@@ -414,38 +411,18 @@ export function installConsoleCommands(): void {
   };
   register("clearDrainTarget(room)", "manually stop a colony's active drain (clears ColonyMemory.draining), same effect as removing the drain flag");
 
-  global.clearSimpleBaitTowerTarget = (room: string): string => {
-    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
-    execute([{ kind: "clearSimpleBaitTowerTarget", room }]);
-    return `cleared simpleBaitTower target for "${room}" — SimpleBaitTowerOperation stops attaching from the next tick`;
-  };
-  register(
-    "clearSimpleBaitTowerTarget(room)",
-    "manually stop a colony's active SimpleBaitTower (clears ColonyMemory.simpleBaitTower), same effect as removing the simpleBaitTower flag"
-  );
-
-  global.clearDemolishTarget = (room: string): string => {
-    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
-    execute([{ kind: "clearDemolishTarget", room }]);
-    return `cleared demolish target for "${room}" — DemolishOperation stops attaching from the next tick`;
-  };
-  register(
-    "clearDemolishTarget(room)",
-    "manually stop a colony's active Demolish (clears ColonyMemory.demolish), same effect as removing the demolish flag"
-  );
-
-  global.clearSimpleHealTarget = (room: string): string => {
-    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
-    execute([{ kind: "clearSimpleHealTarget", room }]);
-    return `cleared simpleHeal target for "${room}" — SimpleHealOperation stops attaching from the next tick`;
-  };
-  register(
-    "clearSimpleHealTarget(room)",
-    "manually stop a colony's active SimpleHeal (clears ColonyMemory.simpleHeal), same effect as removing the simpleHeal flag"
-  );
+  // Every kind in the SingleTargetFlagOperation family (SimpleBaitTower/Demolish/SimpleHeal/
+  // AttackController, ...) shares one removal shape, so removeOperation below handles them generically
+  // (kind + room + target — see SINGLE_TARGET_FLAG_OPERATIONS) rather than one clear*Target global each.
+  const SINGLE_TARGET_KINDS = new Set(SINGLE_TARGET_FLAG_OPERATIONS.map(c => c.kind));
 
   global.removeOperation = (kind: string, room: string, target?: string): string => {
     if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
+    if (SINGLE_TARGET_KINDS.has(kind)) {
+      if (!target) return `removeOperation("${kind}", room, target) needs a target room`;
+      execute([{ kind: "clearSingleTargetOp", room, opKind: kind, target }]);
+      return `cleared ${kind} target "${target}" for "${room}"`;
+    }
     switch (kind) {
       case "colonize":
         if (!target) return `removeOperation("colonize", room, target) needs a target room`;
@@ -465,22 +442,13 @@ export function installConsoleCommands(): void {
       case "parade":
         execute([{ kind: "clearParadeTarget", room }]);
         return `cleared parading target for "${room}"`;
-      case "simpleBaitTower":
-        execute([{ kind: "clearSimpleBaitTowerTarget", room }]);
-        return `cleared simpleBaitTower target for "${room}"`;
-      case "demolish":
-        execute([{ kind: "clearDemolishTarget", room }]);
-        return `cleared demolish target for "${room}"`;
-      case "simpleHeal":
-        execute([{ kind: "clearSimpleHealTarget", room }]);
-        return `cleared simpleHeal target for "${room}"`;
       default:
-        return `unknown operation kind "${kind}" — use one of: colonize, attack, defend, drain, parade, simpleBaitTower, demolish, simpleHeal`;
+        return `unknown operation kind "${kind}" — use one of: colonize, attack, defend, drain, parade, ${[...SINGLE_TARGET_KINDS].join(", ")}`;
     }
   };
   register(
     "removeOperation(kind, room, target?)",
-    "stop a memory-triggered operation for a colony: colonize/attack/defend need (kind, room, target), drain/parade need only (kind, room)"
+    "stop a memory-triggered operation for a colony: colonize/attack/defend/the single-target family (simpleBaitTower, demolish, simpleHeal, attackController, ...) need (kind, room, target); drain/parade need only (kind, room)"
   );
 
   global.help = (): string => COMMANDS.map(([usage, description]) => `${usage} — ${description}`).join("\n");

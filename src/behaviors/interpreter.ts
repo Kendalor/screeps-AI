@@ -28,6 +28,7 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   dismantle: "move", // store-less — never self-completes on store state, only via targetGone (structure destroyed)
   reserve: "move", // a store-less claimer reserves for life — never self-completes, like a movement step
   claim: "move", // store-less colonizer — never self-completes on store state, only via targetGone (see below)
+  attackController: "move", // store-less AttackController creep attacks for life — never self-completes, same as reserve
   renew: "move", // store-less — see renewStep: falls through via acted:false whenever renewal isn't needed/possible
   recycle: "move", // store-less — see recycleStep: falls through via acted:false whenever the threshold isn't met yet
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
@@ -224,6 +225,8 @@ export const runStep = wrapFn(function runStep(
       return reserveStep(creep, locked, allowTravel);
     case "claim":
       return claimStep(creep, locked, allowTravel);
+    case "attackController":
+      return attackControllerStep(creep, locked, allowTravel);
     case "renew":
       return renewStep(creep, step.below, locked, allowTravel);
     case "recycle":
@@ -523,7 +526,7 @@ function fleeAndHealStep(creep: Creep): StepResult {
       filter: pos => terrain.get(pos.x, pos.y) !== TERRAIN_MASK_WALL
     });
     if (exit) creep.travelTo(exit, { range: 0 });
-  } else {
+  } else if (creep.pos.x === 0 || creep.pos.x === 49 || creep.pos.y === 0 || creep.pos.y === 49) {
     creep.travelTo(new RoomPosition(25, 25, creep.room.name), { range: 20 });
   }
   return { acted: true, didAct: false };
@@ -756,6 +759,29 @@ function claimStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: bo
   }
   if (controller.owner !== undefined) creep.memory.claimOwnedByOther = true;
   return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
+}
+
+// An AttackController creep's whole job: walk to whatever room it's sent at (its targetRoom/followFlag,
+// reached by the preceding moveToFlag step) and attackController the controller there, every tick, for
+// life — never reserveController or claimController like Claimer/Colonizer. attackController is range 1,
+// same as reserveController/claimController, and needs no OK/target-gone bookkeeping the way
+// claimStep does: there's no terminal "done" state to reach (an owned controller's downgrade timer or
+// another player's reservation both just keep ticking back up the moment this creep dies), so the step
+// simply keeps calling every tick it's in range, identical in shape to reserveStep's own steady-state
+// call but never falling through to reserveController first.
+function attackControllerStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  const controller = resolveTarget(creep, { find: "controller" }, locked) as StructureController | undefined;
+  if (!controller) return { acted: false, didAct: false };
+  const controllerPos = controller.pos;
+
+  if (!creep.pos.inRangeTo(controllerPos, 1)) {
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(controllerPos, { range: 1 });
+    return { acted: true, didAct: false, target: (controller as unknown as { id: Id<_HasId> }).id };
+  }
+
+  creep.attackController(controller);
+  return { acted: true, didAct: true, target: (controller as unknown as { id: Id<_HasId> }).id };
 }
 
 // Tops up a creep's ticksToLive at a spawn in its OWN targetRoom (never a room it's merely passing
@@ -1133,11 +1159,13 @@ export function fleeThreat(creep: Creep): boolean {
 // call creep.heal(creep) on itself, never on an ally. Confirmed live: a disarmed defender treated a
 // SimpleBaitTower creep as a rescuer, parked at range 1 next to it, and sat there forever — hits never
 // reached hitsMax (nothing was ever healing it) so retreatIfDisarmed's release condition never fired.
-// Currently empty: DrainHealer's own "heal" step only runs while unsquadded (once squadded,
-// planSquadActions heals directly, bypassing the step table — see drainHealer.ts's doc), so no role's
-// step table can be relied on to actually heal an unrelated ally like a disarmed defender/attacker.
-// Add a role here only once it has a step that unconditionally heals arbitrary friendlies.
-const HEALS_ALLIES_ROLES = new Set<string>([]);
+// DrainHealer's own "heal" step only runs while unsquadded (once squadded, planSquadActions heals
+// directly, bypassing the step table — see drainHealer.ts's doc), so it can't be relied on to actually
+// heal an unrelated ally like a disarmed defender/attacker. SimpleHealer's "heal" step is the first that
+// can: it targets find:"friendly" (any owned creep in the room, self included) unconditionally, every
+// tick — see simpleHealer.ts's doc. Add a role here only once it has a step that unconditionally heals
+// arbitrary friendlies the same way.
+const HEALS_ALLIES_ROLES = new Set<string>(["simpleHealer"]);
 
 function nearestFriendlyHealer(creep: Creep): Creep | undefined {
   let nearest: Creep | undefined;

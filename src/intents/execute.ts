@@ -344,62 +344,41 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       if (mem) mem.parading = undefined;
       return OK;
     }
-    case "setSimpleBaitTowerTarget": {
+    case "setSingleTargetOp": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
-      mem.simpleBaitTower = intent.target;
-      mem.simpleBaitTowerFlag = intent.flag;
+      const byTarget = (mem.singleTargetOps ??= {});
+      (byTarget[intent.opKind] ??= {})[intent.target] = {
+        flag: intent.flag,
+        lifetime: intent.lifetime,
+        wanted: intent.numCreeps,
+        spawnedCount: 0
+      };
       return OK;
     }
-    case "clearSimpleBaitTowerTarget": {
-      const mem = Memory.colonies[intent.room];
-      if (mem) {
-        mem.simpleBaitTower = undefined;
-        mem.simpleBaitTowerFlag = undefined;
-        mem.simpleBaitTowerSpawned = undefined;
+    case "clearSingleTargetOp": {
+      const byKind = Memory.colonies[intent.room]?.singleTargetOps;
+      const byTarget = byKind?.[intent.opKind];
+      if (byTarget) delete byTarget[intent.target];
+      return OK;
+    }
+    case "endSingleTargetOp": {
+      // Deliberately narrower than clearSingleTargetOp: the entry is emptied (wanted/spawnedCount reset,
+      // so Colony's constructor stops attaching an instance for it — see SingleTargetOpState.wanted's
+      // "wanted: 0 reads as absent" convention below) but its `flag` field is left standing, one tick
+      // longer than the rest of the entry — empire/singleTargetFlags.ts's reconciliation pass runs on a
+      // LATER tick and needs the flag name still on record to find and remove the now-orphaned physical
+      // flag (execute.ts intent handlers never touch Game.flags themselves). That pass clears the entry
+      // fully via clearSingleTargetOp once it's done.
+      const entry = Memory.colonies[intent.room]?.singleTargetOps?.[intent.opKind]?.[intent.target];
+      if (entry) {
+        entry.wanted = 0;
+        entry.spawnedCount = 0;
       }
       return OK;
     }
-    case "endSimpleBaitTower": {
-      // Deliberately leaves simpleBaitTowerFlag set — see this intent's doc for why
-      // simpleBaitTowerFlags.ts still needs it to find and remove the now-orphaned physical flag.
-      const mem = Memory.colonies[intent.room];
-      if (mem) {
-        mem.simpleBaitTower = undefined;
-        mem.simpleBaitTowerSpawned = undefined;
-      }
-      return OK;
-    }
-    case "setSimpleBaitTowerSpawned": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
-      mem.simpleBaitTowerSpawned = true;
-      return OK;
-    }
-    case "setDemolishTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
-      mem.demolish = intent.target;
-      mem.demolishFlag = intent.flag;
-      return OK;
-    }
-    case "clearDemolishTarget": {
-      const mem = Memory.colonies[intent.room];
-      if (mem) {
-        mem.demolish = undefined;
-        mem.demolishFlag = undefined;
-      }
-      return OK;
-    }
-    case "setSimpleHealTarget": {
-      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
-      mem.simpleHeal = intent.target;
-      mem.simpleHealFlag = intent.flag;
-      return OK;
-    }
-    case "clearSimpleHealTarget": {
-      const mem = Memory.colonies[intent.room];
-      if (mem) {
-        mem.simpleHeal = undefined;
-        mem.simpleHealFlag = undefined;
-      }
+    case "recordSingleTargetSpawn": {
+      const entry = Memory.colonies[intent.room]?.singleTargetOps?.[intent.opKind]?.[intent.target];
+      if (entry) entry.spawnedCount += intent.by;
       return OK;
     }
     case "recordDrainSample": {
