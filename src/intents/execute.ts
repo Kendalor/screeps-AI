@@ -374,6 +374,34 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       mem.simpleBaitTowerSpawned = true;
       return OK;
     }
+    case "setDemolishTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.demolish = intent.target;
+      mem.demolishFlag = intent.flag;
+      return OK;
+    }
+    case "clearDemolishTarget": {
+      const mem = Memory.colonies[intent.room];
+      if (mem) {
+        mem.demolish = undefined;
+        mem.demolishFlag = undefined;
+      }
+      return OK;
+    }
+    case "setSimpleHealTarget": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.simpleHeal = intent.target;
+      mem.simpleHealFlag = intent.flag;
+      return OK;
+    }
+    case "clearSimpleHealTarget": {
+      const mem = Memory.colonies[intent.room];
+      if (mem) {
+        mem.simpleHeal = undefined;
+        mem.simpleHealFlag = undefined;
+      }
+      return OK;
+    }
     case "recordDrainSample": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       // Scoped per target room (#40/ADR 0006): a stored history against a different (or no) target is

@@ -110,6 +110,8 @@ declare global {
   function manufactureCost(resource: string, includeDecompress?: boolean): string;
   function clearDrainTarget(room: string): string;
   function clearSimpleBaitTowerTarget(room: string): string;
+  function clearDemolishTarget(room: string): string;
+  function clearSimpleHealTarget(room: string): string;
   function removeOperation(kind: string, room: string, target?: string): string;
   function help(): string;
 }
@@ -422,6 +424,26 @@ export function installConsoleCommands(): void {
     "manually stop a colony's active SimpleBaitTower (clears ColonyMemory.simpleBaitTower), same effect as removing the simpleBaitTower flag"
   );
 
+  global.clearDemolishTarget = (room: string): string => {
+    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
+    execute([{ kind: "clearDemolishTarget", room }]);
+    return `cleared demolish target for "${room}" — DemolishOperation stops attaching from the next tick`;
+  };
+  register(
+    "clearDemolishTarget(room)",
+    "manually stop a colony's active Demolish (clears ColonyMemory.demolish), same effect as removing the demolish flag"
+  );
+
+  global.clearSimpleHealTarget = (room: string): string => {
+    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
+    execute([{ kind: "clearSimpleHealTarget", room }]);
+    return `cleared simpleHeal target for "${room}" — SimpleHealOperation stops attaching from the next tick`;
+  };
+  register(
+    "clearSimpleHealTarget(room)",
+    "manually stop a colony's active SimpleHeal (clears ColonyMemory.simpleHeal), same effect as removing the simpleHeal flag"
+  );
+
   global.removeOperation = (kind: string, room: string, target?: string): string => {
     if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
     switch (kind) {
@@ -446,8 +468,14 @@ export function installConsoleCommands(): void {
       case "simpleBaitTower":
         execute([{ kind: "clearSimpleBaitTowerTarget", room }]);
         return `cleared simpleBaitTower target for "${room}"`;
+      case "demolish":
+        execute([{ kind: "clearDemolishTarget", room }]);
+        return `cleared demolish target for "${room}"`;
+      case "simpleHeal":
+        execute([{ kind: "clearSimpleHealTarget", room }]);
+        return `cleared simpleHeal target for "${room}"`;
       default:
-        return `unknown operation kind "${kind}" — use one of: colonize, attack, defend, drain, parade, simpleBaitTower`;
+        return `unknown operation kind "${kind}" — use one of: colonize, attack, defend, drain, parade, simpleBaitTower, demolish, simpleHeal`;
     }
   };
   register(

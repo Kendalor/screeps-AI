@@ -323,12 +323,27 @@ export interface ColonySnapshot {
   // attaches a real SimpleBaitTowerOperation while this is set.
   simpleBaitTower?: string;
   // Mirror of ColonyMemory.simpleBaitTowerFlag — the originating flag's NAME (not a resolved position).
-  // SimpleBaitTowerOperation stamps this straight onto the spawned creep's own memory (CreepMemory.baitFlag)
-  // so the role's moveToFlag step can read Game.flags[name].pos live at execution time, the same live-tile
-  // convention Parade's flag-goal-tracking uses, but without any snapshot-side position resolution.
+  // SimpleBaitTowerOperation stamps this straight onto the spawned creep's own memory
+  // (CreepMemory.followFlag) so the role's moveToFlag step can read Game.flags[name].pos live at
+  // execution time, the same live-tile convention Parade's flag-goal-tracking uses, but without any
+  // snapshot-side position resolution.
   simpleBaitTowerFlag?: string;
   // Mirror of ColonyMemory.simpleBaitTowerSpawned — see its doc for the one-shot-lifetime reasoning.
   simpleBaitTowerSpawned?: boolean;
+  // The Demolish equivalent of `draining` above (ColonyMemory.demolish), same scalar shape — one demolish
+  // target at a time. Owned by demolish.ts; Colony's constructor attaches a real DemolishOperation while
+  // this is set.
+  demolish?: string;
+  // Mirror of ColonyMemory.demolishFlag — the originating flag's NAME, same convention as
+  // simpleBaitTowerFlag above.
+  demolishFlag?: string;
+  // The SimpleHeal equivalent of `draining` above (ColonyMemory.simpleHeal), same scalar shape — one
+  // simpleHeal target at a time. Owned by simpleHeal.ts; Colony's constructor attaches a real
+  // SimpleHealOperation while this is set.
+  simpleHeal?: string;
+  // Mirror of ColonyMemory.simpleHealFlag — the originating flag's NAME, same convention as
+  // simpleBaitTowerFlag/demolishFlag above.
+  simpleHealFlag?: string;
   // Room-by-room path from this colony's home room to `draining` (via Game.map.findRoute), each tagged
   // with its cached ScoutInfo.hostile (false when the room has never been scouted) — the input Drain's
   // pure staging-room picker walks. Empty whenever `draining` is unset; computed once here (the snapshot

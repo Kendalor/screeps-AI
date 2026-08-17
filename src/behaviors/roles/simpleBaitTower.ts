@@ -21,12 +21,12 @@ function simpleBaitTowerBody(energy: number): BodyPartConstant[] {
 }
 
 export class SimpleBaitTowerRole extends Role {
-  static override readonly priority = 30; // placeholder, below the colony's own economy roles
+  static override readonly priority = 66; // above builder(65) per user request
   static override readonly mover = true;
   static override body(energy: number): BodyPartConstant[] {
     return simpleBaitTowerBody(energy);
   }
-  // 1: advance on the live baitFlag position while at full health (see moveToFlag's doc — dragging the
+  // 1: advance on the live followFlag position while at full health (see moveToFlag's doc — dragging the
   // flag redirects the creep immediately). 2: once damaged, flee/heal (see fleeAndHeal's doc) until back
   // to full health, then step 1 resumes and walks it straight back in.
   static override readonly steps: Step[] = [

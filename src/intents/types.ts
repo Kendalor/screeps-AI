@@ -198,6 +198,20 @@ export type Intent =
   // the first tick its one creep is owned, so a later death reads as "spawned then died" (terminate)
   // rather than "never spawned" (keep requesting).
   | { kind: "setSimpleBaitTowerSpawned"; room: string }
+  // The Demolish equivalent of setSimpleBaitTowerTarget: a flag handoff resolved `room` as the sponsor
+  // for a demolisher at `target` — execute.ts owns the Memory.colonies[room].demolish write. `flag` is
+  // recorded onto demolishFlag so the op's lifetime stays tied to its one originating flag.
+  | { kind: "setDemolishTarget"; room: string; target: string; flag: string }
+  // Manual/flag-removal stop: clears ColonyMemory.demolish AND demolishFlag so Colony's constructor stops
+  // attaching a DemolishOperation for that colony from the next tick on.
+  | { kind: "clearDemolishTarget"; room: string }
+  // The SimpleHeal equivalent of setDemolishTarget: a flag handoff resolved `room` as the sponsor for a
+  // simpleHealer at `target` — execute.ts owns the Memory.colonies[room].simpleHeal write. `flag` is
+  // recorded onto simpleHealFlag so the op's lifetime stays tied to its one originating flag.
+  | { kind: "setSimpleHealTarget"; room: string; target: string; flag: string }
+  // Manual/flag-removal stop: clears ColonyMemory.simpleHeal AND simpleHealFlag so Colony's constructor
+  // stops attaching a SimpleHealOperation for that colony from the next tick on.
+  | { kind: "clearSimpleHealTarget"; room: string }
   // Drain's per-tick observation sample (#40/ADR 0006's operation-owned snapshot history) — emitted by
   // drain.ts's intents() whenever it has vision of colony.draining's target this tick (same
   // hostileRoomTowers-presence vision check the advance/retreat rule already uses). execute.ts owns the

@@ -174,6 +174,7 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
     // creep's memory.op to compare against. Enforced instead where the acting creep is available:
     // findCandidates (fresh search) and validLock (re-check) below.
     case "squadMate":
+    case "friendly":
       return k.kind === "creep";
     case "any":
       return spec.of.some(member => fitsSpec(k, member));
@@ -262,8 +263,12 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
     const pos = (obj as unknown as { pos: RoomPosition }).pos;
     if (pos.roomName !== creep.memory.defendTargetRoom) return null;
   }
-  // Re-check the store-based `where` so a lock on a now-filled extension or emptied hauler is dropped.
-  const where = memberSpec.find === "structure" || memberSpec.find === "creep" ? memberSpec.where : undefined;
+  // Re-check the store/hits-based `where` so a lock on a now-filled extension, emptied hauler, or
+  // healed-back-to-full friendly creep is dropped.
+  const where =
+    memberSpec.find === "structure" || memberSpec.find === "creep" || memberSpec.find === "friendly"
+      ? memberSpec.where
+      : undefined;
   if ((kind.kind === "structure" || kind.kind === "creep") && !matchesWhere(toCandidate(obj), where)) {
     return null;
   }
@@ -355,7 +360,7 @@ function poolFor(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find
   if (spec.find === "dropped" && spec.unlessSpawnNeedsEnergy && spawnNeedsEnergy(creep.room)) return [];
   const candidates = findCandidates(creep, spec)
     .filter(c => {
-      if (spec.find !== "structure" && spec.find !== "creep") return true;
+      if (spec.find !== "structure" && spec.find !== "creep" && spec.find !== "friendly") return true;
       if (!matchesWhere(toCandidate(c), spec.where)) return false;
       if (spec.find === "structure" && !belowFillTo(toCandidate(c), spec.fillTo)) return false;
       if (spec.find === "structure" && !belowRepair(toCandidate(c), spec.repairBelow)) return false;
@@ -406,6 +411,22 @@ function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomO
     const topTier = Math.max(...pool.map(threatTier));
     const inTopTier = pool.filter(o => threatTier(o) === topTier);
     return creep.pos.findClosestByPath(inTopTier) ?? inTopTier[0] ?? null;
+  }
+  if (prefer === "nearestToFlag") {
+    // Demolisher's own use: rank by range to the flag's LIVE position (dragging the flag in the client
+    // re-sorts priority on the next tick), not the creep's own position — a structure sitting right on
+    // the flag is worth clearing first regardless of which one the creep happens to be closest to right
+    // now. Falls back to plain "nearest" whenever the flag is unset or has been removed, same as
+    // moveToFlagStep's own fallback. Reads the same CreepMemory.followFlag every flag-following role's
+    // moveToFlag step reads — not a Demolisher-specific field.
+    const flag = creep.memory.followFlag ? Game.flags[creep.memory.followFlag] : undefined;
+    if (!flag) return creep.pos.findClosestByPath(pool) ?? pool[0] ?? null;
+    const sorted = [...pool].sort(
+      (a, b) =>
+        flag.pos.getRangeTo((a as unknown as { pos: RoomPosition }).pos) -
+        flag.pos.getRangeTo((b as unknown as { pos: RoomPosition }).pos)
+    );
+    return sorted[0] ?? null;
   }
   return creep.pos.findClosestByPath(pool) ?? pool[0] ?? null;
 }
@@ -670,5 +691,8 @@ function findCandidates(
       // Unlike "creep" above, the acting creep IS included — a healer can target itself (see ADR 0006's
       // "squad membership is derived, not stored": every creep sharing the same memory.op, full stop).
       return room.find(FIND_MY_CREEPS).filter(c => c.memory.op !== undefined && c.memory.op === creep.memory.op);
+    case "friendly":
+      // Every owned creep in the room, role/op unscoped, self included — SimpleHealer's room-wide pool.
+      return room.find(FIND_MY_CREEPS);
   }
 }

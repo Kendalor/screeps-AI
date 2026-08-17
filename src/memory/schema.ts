@@ -108,13 +108,15 @@ declare global {
     // each other across a border forever). Owned by operations/parade.ts, recomputed every tick for every
     // unsquadded member: the squad's live anchor once one exists, else the assembly point near home.
     paradeRallyPos?: XY & { room: string };
-    // A SimpleBaitTower creep's own originating flag NAME, stamped once at spawn time
-    // (operations/simpleBaitTower.ts's desiredCreeps) from ColonyMemory.simpleBaitTowerFlag. The role's
-    // moveToFlag step reads Game.flags[baitFlag]?.pos live every tick — no snapshot-side position
-    // resolution needed (unlike Parade's paradeGoal/paradeRallyPos): the interpreter already runs against
-    // live Game.* objects, so the creep can just look the flag up itself. Undefined means either the
-    // flag never had a name to record, or (rare) the creep predates this field.
-    baitFlag?: string;
+    // A flag-following creep's own originating flag NAME, stamped once at spawn time from the owning
+    // operation's own ColonyMemory.*Flag field (simpleBaitTowerFlag/demolishFlag/simpleHealFlag —
+    // whichever operation spawned this creep). Shared by every "walk toward a live flag" role
+    // (SimpleBaitTowerRole, DemolisherRole, SimpleHealerRole): the moveToFlag step reads
+    // Game.flags[followFlag]?.pos live every tick — no snapshot-side position resolution needed (unlike
+    // Parade's paradeGoal/paradeRallyPos): the interpreter already runs against live Game.* objects, so
+    // the creep can just look the flag up itself. Undefined means either the flag never had a name to
+    // record, or (rare) the creep predates this field.
+    followFlag?: string;
     lastRoom?: string; // room a scout was standing in when last (re)assigned; avoided by the next pick unless it's the only option
     route?: RouteMemory; // precomputed room-by-room route for long-haul movement, walked by moveToRoom
     // Last non-OK return code a colonizer's claimController call hit, owned by behaviors/interpreter.ts's
@@ -166,7 +168,9 @@ export type RoleName =
   | "drainAttacker"
   | "drainHealer"
   | "paradeMember"
-  | "simpleBaitTower";
+  | "simpleBaitTower"
+  | "demolisher"
+  | "simpleHealer";
 
 export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building
@@ -263,6 +267,26 @@ export interface ColonyMemory {
   // together with `simpleBaitTower` itself by clearSimpleBaitTowerTarget, so a flag reused for a fresh
   // target starts clean.
   simpleBaitTowerSpawned?: boolean;
+  // The single room this colony is currently running a Demolish for (sponsoring the demolisher role at),
+  // owned by demolish.ts — a scalar like `draining`/`parading`/`simpleBaitTower`: exactly one demolish
+  // target per colony at a time, no pooling. Written by a flag handoff (empire/demolishFlags.ts's
+  // setDemolishTarget); read every tick by Colony's constructor to attach a real DemolishOperation
+  // while set.
+  demolish?: string;
+  // The flag name that sponsored `demolish` — lets demolishFlags.ts tie the op's lifetime to its ONE
+  // originating flag, same shape as simpleBaitTowerFlag. Written together with `demolish` by
+  // setDemolishTarget; cleared together with it by clearDemolishTarget.
+  demolishFlag?: string;
+  // The single room this colony is currently running a SimpleHeal for (sponsoring the simpleHealer role
+  // at), owned by simpleHeal.ts — a scalar like `draining`/`parading`/`simpleBaitTower`/`demolish`:
+  // exactly one simpleHeal target per colony at a time, no pooling. Written by a flag handoff
+  // (empire/simpleHealFlags.ts's setSimpleHealTarget); read every tick by Colony's constructor to attach
+  // a real SimpleHealOperation while set.
+  simpleHeal?: string;
+  // The flag name that sponsored `simpleHeal` — lets simpleHealFlags.ts tie the op's lifetime to its ONE
+  // originating flag, same shape as demolishFlag/simpleBaitTowerFlag. Written together with
+  // `simpleHeal` by setSimpleHealTarget; cleared together with it by clearSimpleHealTarget.
+  simpleHealFlag?: string;
   // The drain squad's own persisted anchor — the formation's bounding box's FIXED top-left corner (see
   // lib/squad.ts's SquadState doc), owned by operations/drain.ts. Seeded once from the live squad's own
   // position at the moment it first welds up (the same live-position derivation the anchor used to be

@@ -4,8 +4,8 @@ import type { RoleName } from "../memory/schema";
 // Sources ignore this and use their open harvest-tile count as the cap instead.
 export type Share = "allow" | "avoid" | number;
 
-// Selection strategy a step declares outright, no implicit fallback: "nearest" (default) is closest, "largest" ranks a drop pile by amount, "mostProgress" ranks a construction site closest to done, "mostDamaged" ranks a structure by lowest hits fraction (the repair counterpart of "mostProgress"), "mostThreatening" ranks a hostile creep by body composition (attacker > healer > unarmed), nearest as the tiebreaker.
-export type Prefer = "nearest" | "largest" | "mostProgress" | "mostDamaged" | "mostThreatening";
+// Selection strategy a step declares outright, no implicit fallback: "nearest" (default) is closest, "largest" ranks a drop pile by amount, "mostProgress" ranks a construction site closest to done, "mostDamaged" ranks a structure by lowest hits fraction (the repair counterpart of "mostProgress"), "mostThreatening" ranks a hostile creep by body composition (attacker > healer > unarmed), nearest as the tiebreaker, "nearestToFlag" ranks by range to creep.memory.demolishFlag's live position rather than the acting creep's own position (falls back to "nearest" whenever the flag is unset or gone).
+export type Prefer = "nearest" | "largest" | "mostProgress" | "mostDamaged" | "mostThreatening" | "nearestToFlag";
 
 export type TargetSpec =
   | {
@@ -92,6 +92,12 @@ export type TargetSpec =
   // itself — a healer can target itself. Squad membership is derived, not stored (see ADR 0006): there is
   // no squadId, just "same op". Ranked with "mostDamaged" (a healer's use), same as a repair pool.
   | { find: "squadMate"; prefer?: Prefer }
+  // Any owned creep in the room regardless of role, INCLUDING the acting creep itself — SimpleHealer's
+  // room-wide "heal whoever's hurt" pool, unlike find:"creep" (which requires a role filter and always
+  // excludes self) and find:"squadMate" (which scopes to memory.op, so a solo non-squad creep would only
+  // ever match itself). where:"damaged" is the only Where that makes sense here in practice, but any
+  // matchesWhere case is accepted since a friendly-creep candidate carries a store like any other.
+  | { find: "friendly"; where?: "notFull" | "hasEnergy" | "damaged"; prefer?: Prefer }
   | { find: "id"; id: Id<_HasId> }
   // Groups several specs into one pool (e.g. every viable energy sink) so a step picks the nearest
   // across kinds in one shot instead of falling through a priority-ordered chain of single-kind steps.
@@ -175,20 +181,22 @@ export type Step = ({
     // structure as moveToRoom+attack/heal today.
     | { do: "moveToPos"; to: "drainRallyPos" | "paradeRallyPos" }
     | { do: "sit"; pos: { x: number; y: number } } // for the anchor logistics sitter
-    // SimpleBaitTowerRole's retreat leg (when:"healthy" gates this to only run while damaged — see When's
-    // doc): while still standing in creep.memory.targetRoom, path toward the nearest exit tile of the
-    // CURRENT room (running for the border); once already outside targetRoom, step one tile further off
-    // that exit tile (so it isn't left sitting in the doorway) instead. Self-heals every tick either way.
+    // Shared retreat leg for every flag-following role (SimpleBaitTowerRole, DemolisherRole,
+    // SimpleHealerRole; when:"healthy" gates this to only run while damaged — see When's doc): while
+    // still standing in creep.memory.targetRoom, path toward the nearest exit tile of the CURRENT room
+    // (running for the border); once already outside targetRoom, step one tile further off that exit
+    // tile (so it isn't left sitting in the doorway) instead. Self-heals every tick either way.
     // Store-less, never self-completes on store state — only the when:"healthy" gate ends it, once hits
     // recovers to hitsMax.
     | { do: "fleeAndHeal" }
-    // Walks toward creep.memory.baitFlag's LIVE position, read straight from Game.flags every tick — no
-    // memory-cached destination the way moveToPos's drainRallyPos/paradeRallyPos are (an owning operation
-    // would have to refresh those every tick anyway; a flag is already live in Game.flags, so the step
-    // just reads it directly). Dragging the flag in the client redirects the creep immediately. Falls
-    // back to moveToRoom's targetRoom behavior when baitFlag is unset or the named flag no longer exists
-    // (removed, or a creep that predates this field) — never a standing no-op. Never self-completes here;
-    // the caller's when:"damaged" gate is what stops this step once the creep takes a hit.
+    // Shared advance leg for every flag-following role: walks toward creep.memory.followFlag's LIVE
+    // position, read straight from Game.flags every tick — no memory-cached destination the way
+    // moveToPos's drainRallyPos/paradeRallyPos are (an owning operation would have to refresh those every
+    // tick anyway; a flag is already live in Game.flags, so the step just reads it directly). Dragging
+    // the flag in the client redirects the creep immediately. Falls back to moveToRoom's targetRoom
+    // behavior when followFlag is unset or the named flag no longer exists (removed, or a creep that
+    // predates this field) — never a standing no-op. Never self-completes here; the caller's
+    // when:"damaged" gate is what stops this step once the creep takes a hit.
     | { do: "moveToFlag" }
   );
 

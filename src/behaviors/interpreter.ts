@@ -482,14 +482,15 @@ function moveToRoom(
   return { acted: true, didAct: false };
 }
 
-// SimpleBaitTowerRole's advance leg (see the Step union's doc): walks toward creep.memory.baitFlag's
-// CURRENT position, read straight from Game.flags every tick — dragging the flag in the client redirects
-// the creep on its very next move. Falls back to plain moveToRoom(targetRoom) behavior whenever baitFlag
-// is unset or the named flag no longer exists (removed, or a creep spawned before this field existed),
-// so a missing flag never strands the creep — it still has somewhere to walk. Never self-completes on
-// arrival; the caller's when:"damaged" gate is what ends this step once the creep takes a hit.
+// Shared advance leg for every flag-following role (SimpleBaitTowerRole, DemolisherRole,
+// SimpleHealerRole — see the Step union's doc): walks toward creep.memory.followFlag's CURRENT position,
+// read straight from Game.flags every tick — dragging the flag in the client redirects the creep on its
+// very next move. Falls back to plain moveToRoom(targetRoom) behavior whenever followFlag is unset or
+// the named flag no longer exists (removed, or a creep spawned before this field existed), so a missing
+// flag never strands the creep — it still has somewhere to walk. Never self-completes on arrival; the
+// caller's when:"damaged" gate is what ends this step once the creep takes a hit.
 function moveToFlagStep(creep: Creep): StepResult {
-  const flag = creep.memory.baitFlag ? Game.flags[creep.memory.baitFlag] : undefined;
+  const flag = creep.memory.followFlag ? Game.flags[creep.memory.followFlag] : undefined;
   if (!flag) return moveToRoom(creep, { to: "targetRoom" });
 
   if (creep.pos.isEqualTo(flag.pos)) return { acted: false, didAct: false };
