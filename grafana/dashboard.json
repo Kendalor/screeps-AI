@@ -1,304 +1,1155 @@
 {
-  "annotations": {
-    "list": [
-      {
-        "name": "Deploys",
+  "annotations": [
+    {
+      "kind": "AnnotationQuery",
+      "spec": {
+        "builtIn": true,
         "enable": true,
-        "iconColor": "purple",
-        "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-        "target": { "target": "stats.gauges.commit" },
-        "textField": "commit",
-        "textEditor": true
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "query": {
+          "datasource": { "name": "-- Grafana --" },
+          "group": "grafana",
+          "kind": "DataQuery",
+          "spec": {},
+          "version": "v0"
+        }
       }
-    ]
-  },
+    }
+  ],
+  "cursorSync": "Off",
   "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 1,
+  "elements": {
+    "panel-cpu": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(stats.gauges.cpu.*, 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.cpu.<system> — last tick's CPU used, per kernel system (kernel/tick.ts's SYSTEMS).",
+        "id": 1,
+        "links": [],
+        "title": "CPU per system",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "normal" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "ms"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last", "max"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "right",
+                "showLegend": true,
+                "sortBy": "Last",
+                "sortDesc": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-bucket": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "alias(keepLastValue(stats.gauges.bucket), 'Bucket')" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.bucket — Game.cpu.bucket at tick end.",
+        "id": 2,
+        "links": [],
+        "title": "Bucket",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 15,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "max": 10000,
+                "min": 0,
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": 0 },
+                    { "color": "yellow", "value": 3000 },
+                    { "color": "green", "value": 8000 }
+                  ]
+                },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "list",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": false
+              },
+              "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-commit": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "keepLastValue(stats.gauges.bucket)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.bucket, latest value.",
+        "id": 3,
+        "links": [],
+        "title": "Bucket now",
+        "vizConfig": {
+          "group": "gauge",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "max": 10000,
+                "min": 0,
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": 0 },
+                    { "color": "yellow", "value": 3000 },
+                    { "color": "green", "value": 8000 }
+                  ]
+                },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "barShape": "flat",
+              "barWidthFactor": 0.5,
+              "effects": { "barGlow": false, "centerGlow": false, "gradient": true },
+              "endpointMarker": "point",
+              "minVizHeight": 75,
+              "minVizWidth": 75,
+              "orientation": "horizontal",
+              "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+              "segmentCount": 1,
+              "segmentSpacing": 0.3,
+              "shape": "gauge",
+              "showThresholdLabels": false,
+              "showThresholdMarkers": true,
+              "sizing": "auto",
+              "sparkline": true,
+              "textMode": "auto"
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-energy-available": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(keepLastValue(stats.gauges.rooms.$room.energyAvailable), 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.energyAvailable — energy in the spawn/extension network right now, per colony.",
+        "id": 20,
+        "links": [],
+        "title": "Energy available by colony",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-energy-capacity": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(keepLastValue(stats.gauges.rooms.$room.energyCapacity), 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.energyCapacity — the \"can I afford a body\" ceiling, per colony.",
+        "id": 21,
+        "links": [],
+        "title": "Energy capacity by colony",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-energy-storage": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(keepLastValue(stats.gauges.rooms.$room.storageEnergy), 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.storageEnergy — 0 before storage is built, per colony.",
+        "id": 22,
+        "links": [],
+        "title": "Storage energy by colony",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-controller": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(keepLastValue(stats.gauges.rooms.$room.controllerProgress), 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.controllerProgress — upgrade progress toward the next RCL, per colony.",
+        "id": 11,
+        "links": [],
+        "title": "Controller progress by colony",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-controller-level": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(keepLastValue(stats.gauges.rooms.$room.controllerLevel), 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.controllerLevel — current RCL, per colony.",
+        "id": 23,
+        "links": [],
+        "title": "Controller level by colony",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "max": 8,
+                "min": 0,
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-spawnload": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(keepLastValue(stats.gauges.rooms.$room.spawnLoad), 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.spawnLoad — required parts / spawn capacity. >=1 means spawns can't keep up.",
+        "id": 12,
+        "links": [],
+        "title": "Spawn load by colony",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "max": 1.5,
+                "min": 0,
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": 0 },
+                    { "color": "yellow", "value": 0.8 },
+                    { "color": "red", "value": 1 }
+                  ]
+                },
+                "unit": "percentunit"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-census-alive": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": true,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "target": "aliasByNode(groupByNode(keepLastValue(stats.gauges.rooms.$room.census.*.current), 3, \"sumSeries\"), 0)"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": true,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "target": "aliasByNode(groupByNode(keepLastValue(stats.gauges.rooms.$room.census.*.desired), 3, \"sumSeries\"), 0)"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "B"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "__expr__" },
+                    "group": "__expr__",
+                    "kind": "DataQuery",
+                    "spec": { "expression": "$A / $B", "type": "math" },
+                    "version": "v0"
+                  },
+                  "refId": "C"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.census.<role>.{current,desired}, summed across roles per colony — staffed fraction of desired census (A/B via a Grafana math expression query, since this graphite-api build lacks a multi-series asPercent/applyByNode).",
+        "id": 13,
+        "links": [],
+        "title": "Census staffed % by colony",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "min": 0,
+                "max": 1.5,
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": 0 },
+                    { "color": "yellow", "value": 0.7 },
+                    { "color": "green", "value": 0.95 }
+                  ]
+                },
+                "unit": "percentunit"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-buildings": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": true,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "target": "aliasByNode(groupByNode(keepLastValue(stats.gauges.rooms.$room.buildings.*.built), 3, \"sumSeries\"), 0)"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": true,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "target": "aliasByNode(groupByNode(keepLastValue(stats.gauges.rooms.$room.buildings.*.targeted), 3, \"sumSeries\"), 0)"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "B"
+                }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "__expr__" },
+                    "group": "__expr__",
+                    "kind": "DataQuery",
+                    "spec": { "expression": "$A / $B", "type": "math" },
+                    "version": "v0"
+                  },
+                  "refId": "C"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.buildings.<type>.{built,targeted}, summed across structure types per colony — built fraction of the current plan (A/B via a Grafana math expression query, since this graphite-api build lacks a multi-series asPercent/applyByNode).",
+        "id": 15,
+        "links": [],
+        "title": "Buildings built % by colony",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "min": 0,
+                "max": 1.5,
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": 0 },
+                    { "color": "yellow", "value": 0.7 },
+                    { "color": "green", "value": 0.95 }
+                  ]
+                },
+                "unit": "percentunit"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "bottom",
+                "showLegend": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-remotes": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "keepLastValue(stats.gauges.rooms.$room.numRemotes)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.rooms.<room>.numRemotes — distinct rooms among currently-selected remote sources.",
+        "id": 16,
+        "links": [],
+        "title": "Remotes — $room",
+        "vizConfig": {
+          "group": "stat",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "colorMode": "value",
+              "graphMode": "none",
+              "justifyMode": "auto",
+              "orientation": "auto",
+              "percentChangeColorMode": "standard",
+              "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+              "showPercentChange": false,
+              "textMode": "auto",
+              "wideLayout": true
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    }
+  },
+  "layout": {
+    "kind": "GridLayout",
+    "spec": {
+      "items": [
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-cpu" }, "height": 8, "width": 12, "x": 0, "y": 0 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-bucket" }, "height": 8, "width": 6, "x": 12, "y": 0 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-commit" }, "height": 8, "width": 6, "x": 18, "y": 0 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-energy-available" }, "height": 8, "width": 8, "x": 0, "y": 8 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-energy-capacity" }, "height": 8, "width": 8, "x": 8, "y": 8 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-energy-storage" }, "height": 8, "width": 8, "x": 16, "y": 8 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-controller" }, "height": 8, "width": 12, "x": 0, "y": 16 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-controller-level" }, "height": 8, "width": 12, "x": 12, "y": 16 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-spawnload" }, "height": 8, "width": 12, "x": 0, "y": 24 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-census-alive" }, "height": 8, "width": 12, "x": 12, "y": 24 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-buildings" }, "height": 8, "width": 12, "x": 0, "y": 32 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-remotes" }, "height": 4, "width": 6, "x": 12, "y": 32 } }
+      ]
+    }
+  },
   "links": [],
   "liveNow": false,
-  "refresh": "30s",
-  "schemaVersion": 39,
+  "preload": false,
   "tags": ["screeps"],
-  "templating": {
-    "list": [
-      {
-        "name": "room",
-        "type": "query",
-        "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-        "query": "stats.gauges.rooms.*",
-        "refresh": 2,
+  "timeSettings": {
+    "autoRefresh": "30s",
+    "autoRefreshIntervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+    "fiscalYearStartMonth": 0,
+    "from": "now-6h",
+    "hideTimepicker": false,
+    "timezone": "browser",
+    "to": "now"
+  },
+  "title": "Screeps colony overview",
+  "variables": [
+    {
+      "kind": "DatasourceVariable",
+      "spec": {
+        "allowCustomValue": true,
+        "current": { "text": "graphite", "value": "graphite" },
+        "hide": "dontHide",
+        "includeAll": false,
+        "multi": false,
+        "name": "DS_GRAPHITE",
+        "options": [],
+        "pluginId": "graphite",
+        "refresh": "onDashboardLoad",
+        "regex": "",
+        "skipUrlSync": false
+      }
+    },
+    {
+      "kind": "QueryVariable",
+      "spec": {
+        "allowCustomValue": true,
+        "current": { "text": "All", "value": ["$__all"] },
+        "definition": "",
+        "hide": "dontHide",
         "includeAll": true,
         "multi": true,
-        "current": { "text": "All", "value": "$__all" },
-        "sort": 1
+        "name": "room",
+        "options": [],
+        "query": {
+          "datasource": { "name": "${DS_GRAPHITE}" },
+          "group": "graphite",
+          "kind": "DataQuery",
+          "spec": { "target": "stats.gauges.rooms.*" },
+          "version": "v0"
+        },
+        "refresh": "onDashboardLoad",
+        "regex": "",
+        "regexApplyTo": "value",
+        "skipUrlSync": false,
+        "sort": "alphabeticalAsc"
       }
-    ]
-  },
-  "time": { "from": "now-6h", "to": "now" },
-  "timepicker": {},
-  "timezone": "browser",
-  "title": "Screeps colony overview",
-  "uid": "screeps-colony-overview",
-  "version": 1,
-  "panels": [
-    {
-      "id": 100,
-      "type": "row",
-      "title": "Empire",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "id": 1,
-      "type": "timeseries",
-      "title": "CPU per system",
-      "description": "Memory.stats.cpu.<system> — last tick's CPU used, per kernel system (kernel/tick.ts's SYSTEMS).",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "fieldConfig": {
-        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } },
-        "overrides": []
-      },
-      "targets": [
-        { "refId": "A", "target": "aliasByNode(stats.gauges.cpu.*, 3)" }
-      ]
-    },
-    {
-      "id": 2,
-      "type": "timeseries",
-      "title": "Bucket",
-      "description": "Memory.stats.bucket — Game.cpu.bucket at tick end.",
-      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "min": 0,
-          "max": 10000,
-          "custom": { "drawStyle": "line", "fillOpacity": 15 },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 3000 },
-              { "color": "green", "value": 8000 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "targets": [
-        { "refId": "A", "target": "alias(stats.gauges.bucket, 'Bucket')" }
-      ]
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "Bucket now",
-      "description": "Memory.stats.bucket, latest value.",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 3000 },
-              { "color": "green", "value": 8000 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
-      "targets": [
-        { "refId": "A", "target": "alias(stats.gauges.bucket, 'Bucket')" }
-      ]
-    },
-    {
-      "id": 4,
-      "type": "stat",
-      "title": "Deployed commit",
-      "description": "Memory.stats.commit — short git hash of the currently-running build (rollup-substituted __GIT_COMMIT__, kernel/stats.ts). Not versioned/tagged otherwise; compare this value against other panels' history to trace a regression back to a code change.",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 5 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "fieldConfig": {
-        "defaults": { "unit": "string", "custom": { "align": "center" }, "color": { "mode": "fixed", "fixedColor": "text" } },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
-        "graphMode": "none",
-        "textMode": "value",
-        "colorMode": "none"
-      },
-      "targets": [
-        { "refId": "A", "target": "alias(stats.gauges.commit, 'Commit')" }
-      ]
-    },
-    {
-      "id": 101,
-      "type": "row",
-      "title": "Room: $room",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
-      "collapsed": false,
-      "repeat": "room",
-      "panels": []
-    },
-    {
-      "id": 10,
-      "type": "timeseries",
-      "title": "Energy — $room",
-      "description": "Memory.stats.rooms.<room>.{energyAvailable,energyCapacity,storageEnergy} — point-in-time gauges.",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "repeat": "room",
-      "repeatDirection": "h",
-      "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
-        "overrides": []
-      },
-      "targets": [
-        { "refId": "A", "target": "alias(stats.gauges.rooms.$room.energyAvailable, 'Available')" },
-        { "refId": "B", "target": "alias(stats.gauges.rooms.$room.energyCapacity, 'Capacity')" },
-        { "refId": "C", "target": "alias(stats.gauges.rooms.$room.storageEnergy, 'Storage')" }
-      ]
-    },
-    {
-      "id": 11,
-      "type": "timeseries",
-      "title": "Controller — $room",
-      "description": "Memory.stats.rooms.<room>.controllerLevel / controllerProgress / controllerProgressTotal.",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "repeat": "room",
-      "repeatDirection": "h",
-      "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "Level" },
-            "properties": [{ "id": "custom.axisPlacement", "value": "right" }]
-          }
-        ]
-      },
-      "targets": [
-        { "refId": "A", "target": "alias(stats.gauges.rooms.$room.controllerLevel, 'Level')" },
-        { "refId": "B", "target": "alias(stats.gauges.rooms.$room.controllerProgress, 'Progress')" },
-        { "refId": "C", "target": "alias(stats.gauges.rooms.$room.controllerProgressTotal, 'Progress total')" }
-      ]
-    },
-    {
-      "id": 12,
-      "type": "gauge",
-      "title": "Spawn load — $room",
-      "description": "Memory.stats.rooms.<room>.spawnLoad — required parts / spawn capacity. >=1 means spawns can't keep up.",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "repeat": "room",
-      "repeatDirection": "h",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0,
-          "max": 1.5,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.8 },
-              { "color": "red", "value": 1 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [
-        { "refId": "A", "target": "alias(stats.gauges.rooms.$room.spawnLoad, 'Spawn load')" }
-      ]
-    },
-    {
-      "id": 13,
-      "type": "timeseries",
-      "title": "Census (alive) — $room",
-      "description": "Memory.stats.rooms.<room>.census.<role>.current — alive count per role.",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "repeat": "room",
-      "repeatDirection": "h",
-      "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } },
-        "overrides": []
-      },
-      "targets": [
-        { "refId": "A", "target": "aliasByNode(stats.gauges.rooms.$room.census.*.current, 5)" }
-      ]
-    },
-    {
-      "id": 14,
-      "type": "timeseries",
-      "title": "Census (desired vs alive) — $room",
-      "description": "Memory.stats.rooms.<room>.census.<role>.{current,desired} — understaffing shows as desired > current.",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "repeat": "room",
-      "repeatDirection": "h",
-      "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0 } },
-        "overrides": [
-          {
-            "matcher": { "id": "byRegexp", "options": "/desired/" },
-            "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }]
-          }
-        ]
-      },
-      "targets": [
-        { "refId": "A", "target": "aliasByNode(stats.gauges.rooms.$room.census.*.current, 5)" },
-        { "refId": "B", "target": "aliasByNode(stats.gauges.rooms.$room.census.*.desired, 5)" }
-      ]
-    },
-    {
-      "id": 15,
-      "type": "timeseries",
-      "title": "Buildings (built vs targeted) — $room",
-      "description": "Memory.stats.rooms.<room>.buildings.<type>.{built,targeted} — current plan's build-out status.",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "repeat": "room",
-      "repeatDirection": "h",
-      "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0 } },
-        "overrides": [
-          {
-            "matcher": { "id": "byRegexp", "options": "/targeted/" },
-            "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }]
-          }
-        ]
-      },
-      "targets": [
-        { "refId": "A", "target": "aliasByNode(stats.gauges.rooms.$room.buildings.*.built, 5)" },
-        { "refId": "B", "target": "aliasByNode(stats.gauges.rooms.$room.buildings.*.targeted, 5)" }
-      ]
-    },
-    {
-      "id": 16,
-      "type": "stat",
-      "title": "Remotes — $room",
-      "description": "Memory.stats.rooms.<room>.numRemotes — distinct rooms among currently-selected remote sources.",
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 26 },
-      "datasource": { "type": "graphite", "uid": "${DS_GRAPHITE}" },
-      "repeat": "room",
-      "repeatDirection": "h",
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "none" },
-      "targets": [
-        { "refId": "A", "target": "alias(stats.gauges.rooms.$room.numRemotes, 'Remotes')" }
-      ]
     }
   ]
 }
