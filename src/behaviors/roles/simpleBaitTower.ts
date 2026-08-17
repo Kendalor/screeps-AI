@@ -27,10 +27,13 @@ export class SimpleBaitTowerRole extends Role {
     return simpleBaitTowerBody(energy);
   }
   // 1: advance on the live followFlag position while at full health (see moveToFlag's doc — dragging the
-  // flag redirects the creep immediately). 2: once damaged, flee/heal (see fleeAndHeal's doc) until back
-  // to full health, then step 1 resumes and walks it straight back in.
+  // flag redirects the creep immediately), attacking whatever hostile structure sits nearest the flag
+  // (the tower it's baiting, most of the time) once in range — same "nearestToFlag" targeting Demolisher
+  // uses for dismantle. 2: once damaged, flee/heal (see fleeAndHeal's doc) until back to full health, then
+  // step 1 resumes and walks it straight back in.
   static override readonly steps: Step[] = [
     { do: "moveToFlag", when: "damaged" },
+    { do: "attack", from: { find: "hostileStructure", prefer: "nearestToFlag" }, when: "damaged" },
     { do: "fleeAndHeal", when: "healthy" }
   ];
 }

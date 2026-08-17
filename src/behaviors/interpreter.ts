@@ -498,33 +498,53 @@ function moveToFlagStep(creep: Creep): StepResult {
 
   if (creep.pos.isEqualTo(flag.pos)) return { acted: false, didAct: false };
   creep.travelTo(flag.pos, { range: 0 });
+  const structures = creep.pos.findInRange(FIND_STRUCTURES,1);
+  if(structures.length >0 ){
+    creep.attack(structures[0]);
+  }
+
   return { acted: true, didAct: false };
 }
 
 // SimpleBaitTowerRole's retreat leg (see the Step union's doc): still standing in creep.memory.targetRoom
-// — the hostile room — path toward the nearest exit tile of the CURRENT room (running for the border by
-// the shortest route, not toward any specific neighboring room); already outside targetRoom — step one
-// tile further off that exit tile toward the room's centre, so it isn't left parked in the doorway.
-// Self-heals every tick either way (creep.heal is a no-op above hitsMax, so this is safe to call
-// unconditionally). A no-op (falls through, same as moveToRoom with no dest) while targetRoom is unset.
-// Store-less, never self-completes here — only the when:"healthy" gate on this step ends it.
+// — the hostile room — path toward a REACHABLE exit tile of the CURRENT room (running for the border by
+// the shortest actually-walkable route, not toward any specific neighboring room); already outside
+// targetRoom — step one tile further off that exit tile toward the room's centre, so it isn't left parked
+// in the doorway. Self-heals every tick either way (creep.heal is a no-op above hitsMax, so this is safe
+// to call unconditionally). A no-op (falls through, same as moveToRoom with no dest) while targetRoom is
+// unset. Store-less, never self-completes here — only the when:"healthy" gate on this step ends it.
 //
 // FIND_EXIT returns every border tile in all 4 directions, including ones that are TERRAIN_MASK_WALL —
-// a room's border can be walled right up to the edge, same as any interior tile. findClosestByRange picks
-// purely by Chebyshev distance with no walkability awareness, so it can return a wall tile as "closest"
-// over a slightly farther open one, sending travelTo after a destination it can never actually reach.
-// Confirmed live: simpleBaitTower_W47N14_73031758 got stuck retreating in W48N13 because the nearest exit
-// tile by raw distance was solid wall. Filtering to walkable terrain first fixes that at the source.
+// a room's border can be walled right up to the edge, same as any interior tile — and even an open exit
+// tile can be sealed off from the creep's actual position by hostile walls/ramparts elsewhere in the room.
+// findClosestByRange only ever looks at raw Chebyshev distance, with no walkability or reachability
+// awareness at all, so it can hand back a destination the creep can never actually path to. Confirmed
+// live twice in the same hostile room (W48N13): simpleBaitTower_W47N14_73031758 got sent at a solid wall
+// tile; simpleBaitTower_W47N14_73066777 got sent at an open-terrain exit it couldn't reach because a wall
+// cluster blocked every route to it, and starved there instead of retreating. PathFinder.search against
+// every exit tile at once (using fleeCostMatrix's same wall/obstacle/hostile-rampart pricing as the
+// danger-flee path) picks whichever exit is actually reachable, or reports no path at all instead of
+// aiming at a dead end.
+function nearestReachableExit(creep: Creep): RoomPosition | undefined {
+  const terrain = creep.room.getTerrain();
+  const exits = creep.room.find(FIND_EXIT).filter(pos => terrain.get(pos.x, pos.y) !== TERRAIN_MASK_WALL);
+  if (exits.length === 0) return undefined;
+  const result = PathFinder.search(
+    creep.pos,
+    exits.map(pos => ({ pos, range: 0 })),
+    { maxRooms: 1, roomCallback: fleeCostMatrix }
+  );
+  if (result.incomplete || result.path.length === 0) return undefined;
+  return result.path[result.path.length - 1];
+}
+
 function fleeAndHealStep(creep: Creep): StepResult {
   const targetRoom = creep.memory.targetRoom;
   if (!targetRoom) return { acted: false, didAct: false };
 
   creep.heal(creep);
   if (creep.room.name === targetRoom) {
-    const terrain = creep.room.getTerrain();
-    const exit = creep.pos.findClosestByRange(FIND_EXIT, {
-      filter: pos => terrain.get(pos.x, pos.y) !== TERRAIN_MASK_WALL
-    });
+    const exit = nearestReachableExit(creep);
     if (exit) creep.travelTo(exit, { range: 0 });
   } else if (creep.pos.x === 0 || creep.pos.x === 49 || creep.pos.y === 0 || creep.pos.y === 49) {
     creep.travelTo(new RoomPosition(25, 25, creep.room.name), { range: 20 });
