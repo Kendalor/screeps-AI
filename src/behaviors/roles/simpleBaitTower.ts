@@ -23,17 +23,20 @@ function simpleBaitTowerBody(energy: number): BodyPartConstant[] {
 export class SimpleBaitTowerRole extends Role {
   static override readonly priority = 66; // above builder(65) per user request
   static override readonly mover = true;
+  // Once every HEAL part is destroyed this body can no longer self-heal, so soaking further tower fire is
+  // pure loss instead of the intended damage-absorption trade — retreat home the same way Defender/
+  // Attacker/SimpleHealer already do once disarmed of THEIR one defining part. See Role.retreatPart.
+  static override readonly retreatPart = HEAL;
   static override body(energy: number): BodyPartConstant[] {
     return simpleBaitTowerBody(energy);
   }
-  // 1: advance on the live followFlag position while at full health (see moveToFlag's doc — dragging the
-  // flag redirects the creep immediately), attacking whatever hostile structure sits nearest the flag
-  // (the tower it's baiting, most of the time) once in range — same "nearestToFlag" targeting Demolisher
-  // uses for dismantle. 2: once damaged, flee/heal (see fleeAndHeal's doc) until back to full health, then
-  // step 1 resumes and walks it straight back in.
+  // Advance on the live followFlag position (see moveToFlag's doc — dragging the flag redirects the creep
+  // immediately), attacking whatever hostile structure sits nearest the flag (the tower it's baiting, most
+  // of the time) once in range — same "nearestToFlag" targeting Demolisher uses for dismantle. No
+  // damaged/healthy retreat leg here: retreatPart above pre-empts the whole step table once HEAL is gone
+  // (see runOne's dispatch order), so these steps only ever run while still able to self-heal.
   static override readonly steps: Step[] = [
-    { do: "moveToFlag", when: "damaged" },
-    { do: "attack", from: { find: "hostileStructure", prefer: "nearestToFlag" }, when: "damaged" },
-    { do: "fleeAndHeal", when: "healthy" }
+    { do: "moveToFlag" },
+    { do: "attack", from: { find: "hostileStructure", prefer: "nearestToFlag" } }
   ];
 }
