@@ -46,7 +46,46 @@ export function runSingleTargetFlags(world: Empire, OpClass: SingleTargetFlagOpe
   const flags = flagRequests(kind);
   const liveByName = new Map(flags.map(f => [f.name, f]));
 
+  // Reconcile every colony that still has a live entry of this kind on record BEFORE scanning flags for
+  // new assignments below — reads live Memory, not the (now-stale) snapshot, same reasoning as
+  // colonizeFlags.ts's equivalent pass: this must see whatever endSingleTargetOp the operation's own
+  // intents() already issued this same tick. Ordered first deliberately: a "oneShot" operation that just
+  // ended (wanted zeroed, flag still standing — see endSingleTargetOp's own doc) must have its orphaned
+  // flag removed here BEFORE the assignment loop below gets a chance to see that same still-standing flag
+  // with no active `wanted` behind it and mistake it for a fresh, unclaimed request — re-sponsoring the
+  // exact flag this pass was about to clean up and silently restarting the whole cycle forever. Confirmed
+  // live: a 5-creep simpleBaitTower run finishing (all 5 spawned and dead) never removed its flag —
+  // spawnedCount kept resetting to 0 instead, because the old assignment-first ordering always won the race.
+  for (const colony of world.colonies) {
+    const byTarget = Memory.colonies[colony.name]?.singleTargetOps?.[kind];
+    if (!byTarget) continue;
+
+    for (const [target, entry] of Object.entries(byTarget)) {
+      const flagName = entry.flag;
+      if (!flagName) continue;
+
+      const flagStillLive = liveByName.has(flagName);
+      const targetStillActive = entry.wanted > 0;
+
+      if (targetStillActive && !flagStillLive) {
+        // The flag was removed but the operation is still running: stop it.
+        execute([{ kind: "clearSingleTargetOp", room: colony.name, opKind: kind, target }]);
+        log.info(`${kind} flag "${flagName}" is gone: stopping ${colony.name}'s ${kind}`);
+      } else if (!targetStillActive && flagStillLive) {
+        // The operation ended itself (its creeps died — see singleTargetFlagOperation.ts's header) but the
+        // flag is still standing: remove the now-orphaned flag, then drop the now-stale record of it.
+        liveByName.get(flagName)?.remove();
+        execute([{ kind: "clearSingleTargetOp", room: colony.name, opKind: kind, target }]);
+        log.info(`${kind} for "${colony.name}" ended: removing its now-orphaned flag "${flagName}"`);
+      }
+    }
+  }
+
   for (const flag of flags) {
+    // A flag removed by the reconciliation pass above, this same tick, is no longer live — skip it rather
+    // than re-sponsoring the very flag that was just cleaned up (see the ordering comment above).
+    if (!liveByName.has(flag.name)) continue;
+
     const target = targetRoomFor(flag);
     if (!target) {
       log.error(`${kind} flag "${flag.name}": can't tell the target room — place it in-room or name it "${kind}:<room>"`);
@@ -54,7 +93,10 @@ export function runSingleTargetFlags(world: Empire, OpClass: SingleTargetFlagOpe
     }
 
     // Already handed off for this exact target: don't pick a second sponsor while one's already running it.
-    const alreadySent = world.colonies.some(c => (c.snapshot.singleTargetOps[kind]?.[target]?.wanted ?? 0) > 0);
+    // Reads live Memory (not the snapshot) so it also sees whatever the reconciliation pass above just did.
+    const alreadySent = world.colonies.some(
+      c => (Memory.colonies[c.snapshot.name]?.singleTargetOps?.[kind]?.[target]?.wanted ?? 0) > 0
+    );
     if (alreadySent) continue;
 
     const lifetime = lifetimeOf(flag, OpClass.defaultLifetime);
@@ -81,35 +123,6 @@ export function runSingleTargetFlags(world: Empire, OpClass: SingleTargetFlagOpe
     execute([{ kind: "setSingleTargetOp", room: pick.colony.name, opKind: kind, target, flag: flag.name, lifetime, numCreeps }]);
     log.info(`${kind} flag "${flag.name}": handed ${target} off to ${pick.colony.name} (${numCreeps} creep${numCreeps === 1 ? "" : "s"}, ${lifetime})`);
     // Flag deliberately left in place: it's the live on/off switch for this target (see file header).
-  }
-
-  // Reconcile every colony that still has a live entry of this kind on record — reads live Memory, not
-  // the (now-stale) snapshot, same reasoning as colonizeFlags.ts's equivalent pass: this must see whatever
-  // setSingleTargetOp/endSingleTargetOp the earlier loop or the operation's own intents() already issued
-  // this same tick.
-  for (const colony of world.colonies) {
-    const byTarget = Memory.colonies[colony.name]?.singleTargetOps?.[kind];
-    if (!byTarget) continue;
-
-    for (const [target, entry] of Object.entries(byTarget)) {
-      const flagName = entry.flag;
-      if (!flagName) continue;
-
-      const flagStillLive = liveByName.has(flagName);
-      const targetStillActive = entry.wanted > 0;
-
-      if (targetStillActive && !flagStillLive) {
-        // The flag was removed but the operation is still running: stop it.
-        execute([{ kind: "clearSingleTargetOp", room: colony.name, opKind: kind, target }]);
-        log.info(`${kind} flag "${flagName}" is gone: stopping ${colony.name}'s ${kind}`);
-      } else if (!targetStillActive && flagStillLive) {
-        // The operation ended itself (its creeps died — see singleTargetFlagOperation.ts's header) but the
-        // flag is still standing: remove the now-orphaned flag, then drop the now-stale record of it.
-        liveByName.get(flagName)?.remove();
-        execute([{ kind: "clearSingleTargetOp", room: colony.name, opKind: kind, target }]);
-        log.info(`${kind} for "${colony.name}" ended: removing its now-orphaned flag "${flagName}"`);
-      }
-    }
   }
 }
 

@@ -538,8 +538,19 @@ function nearestReachableExit(creep: Creep): RoomPosition | undefined {
   return result.path[result.path.length - 1];
 }
 
+// Live target room for the flag-following family (see moveToFlagStep's own doc): a followFlag's CURRENT
+// room, read straight from Game.flags every tick same as moveToFlagStep's own position read, so dragging
+// the flag across a border updates retreat/re-entry behavior on the very same tick the creep's advance
+// leg starts following it there too — the two legs never disagree about which room is "home turf" for a
+// dragged flag the way a frozen creep.memory.targetRoom snapshot would. Falls back to targetRoom whenever
+// followFlag is unset or the named flag no longer exists, same fallback moveToFlagStep uses.
+function liveTargetRoom(creep: Creep): string | undefined {
+  const flag = creep.memory.followFlag ? Game.flags[creep.memory.followFlag] : undefined;
+  return flag ? flag.pos.roomName : creep.memory.targetRoom;
+}
+
 function fleeAndHealStep(creep: Creep): StepResult {
-  const targetRoom = creep.memory.targetRoom;
+  const targetRoom = liveTargetRoom(creep);
   if (!targetRoom) return { acted: false, didAct: false };
 
   creep.heal(creep);
