@@ -25,13 +25,13 @@ export class DemolisherRole extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return demolisherBody(energy);
   }
-  // 1: advance on the live followFlag position while at full health (see moveToFlag's doc — dragging
-  // the flag redirects the creep immediately), dismantling whatever hostile structure sits nearest the
-  // flag once in range. 2: once damaged, flee/heal (see fleeAndHeal's doc) until back to full health,
-  // then step 1 resumes and walks it straight back in.
+  // 1: advance on the live followFlag position (see moveToFlag's doc — dragging the flag redirects the
+  // creep immediately), dismantling whatever hostile structure sits nearest the flag once in range.
+  // 2: once damaged, flee/heal (see fleeAndHeal's doc) until back to full health, then step 1 resumes
+  // and walks it straight back in.
   static override readonly steps: Step[] = [
     { do: "moveToFlag", when: "damaged" },
-    { do: "dismantle", at: { find: "hostileStructure", prefer: "nearestToFlag" }, when: "damaged" },
+    { do: "dismantle", at: { find: "hostileStructure", prefer: "nearestToFlag" } },
     { do: "fleeAndHeal", when: "healthy" }
   ];
 }

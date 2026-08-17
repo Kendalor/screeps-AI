@@ -3,9 +3,9 @@
 // attached only while ColonyMemory.singleTargetOps["simpleHeal"][target] exists (a flag handoff via
 // empire/singleTargetFlags.ts), never wired into operationsFor() (see operations/index.ts).
 //
-// Unlike SimpleBaitTower/Demolish/AttackController, the spawned creep never tracks the triggering flag's
-// live position — its own step table (behaviors/roles/simpleHealer.ts) is Defender-shaped: walk to
-// targetRoom and heal there, no flag-following, no damage-gated retreat.
+// Same as SimpleBaitTower/Demolish/AttackController, the spawned creep tracks the triggering flag's live
+// position (its own step table in behaviors/roles/simpleHealer.ts uses moveToFlag) — dragging the flag
+// redirects the healer immediately, same as every other member of this family.
 //
 // Original shape (pre-generalization) was a flat "≥1 owned" check that never latched — effectively always
 // requesting a replacement. That reads as "constant"; kept as the default here so an un-colored
@@ -26,8 +26,6 @@ export class SimpleHealOperation extends SingleTargetFlagOperation {
 
   public readonly kind = SimpleHealOperation.kind;
   protected readonly role = SIMPLE_HEALER_ROLE;
-  // Never tracks the flag's live position — see file header.
-  protected override readonly stampsFollowFlag = false;
 }
 
 // Compile-time proof the class satisfies the factory contract flags modules construct against — see

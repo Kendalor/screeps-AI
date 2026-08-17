@@ -709,6 +709,43 @@ describe("resolveTarget creep targets", () => {
   });
 });
 
+describe("resolveTarget friendly lock room release", () => {
+  function friendlyPatient(id: string, roomName: string): object {
+    return { ...fakeCreep(id, "builder"), my: true, pos: { x: 10, y: 10, roomName } };
+  }
+
+  // findClosestByPath/room.find return empty rather than throwing: once the lock is correctly dropped,
+  // resolveTarget legitimately falls through to a fresh (here, empty) search.
+  function healerCreep(targetRoom: string): Creep {
+    return {
+      id: "healer",
+      memory: { targetRoom },
+      pos: { x: 5, y: 5, findClosestByPath: () => null },
+      room: { find: () => [] }
+    } as unknown as Creep;
+  }
+
+  // SimpleHealer holds its assigned room the same way Defender does (see validLock's "hostile" guard) —
+  // a patient that wanders out of targetRoom must drop the lock instead of dragging the healer along.
+  it("drops a locked patient once it leaves the healer's targetRoom", () => {
+    const patient = friendlyPatient("patient", "W2N2");
+    stubGame({ objects: { patient } });
+
+    const got = resolveTarget(healerCreep("W1N1"), { find: "friendly" }, "patient" as Id<_HasId>);
+
+    expect(got).toBeNull();
+  });
+
+  it("keeps a locked patient that is still inside the healer's targetRoom", () => {
+    const patient = friendlyPatient("patient", "W1N1");
+    stubGame({ objects: { patient } });
+
+    const got = resolveTarget(healerCreep("W1N1"), { find: "friendly" }, "patient" as Id<_HasId>);
+
+    expect(got).toBe(patient);
+  });
+});
+
 describe("resolveTarget source spreading", () => {
   it("sends a harvester to the emptier source once the nearer one fills its tiles", () => {
     const near = fakeSource("near", 10, 10);

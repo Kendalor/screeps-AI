@@ -497,11 +497,26 @@ function moveToFlagStep(creep: Creep): StepResult {
   if (!flag) return moveToRoom(creep, { to: "targetRoom" });
 
   if (creep.pos.isEqualTo(flag.pos)) return { acted: false, didAct: false };
-  creep.travelTo(flag.pos, { range: 0 });
-  const structures = creep.pos.findInRange(FIND_STRUCTURES,1);
-  creep.heal(creep);
-  if(structures.length >0 && creep.pos.roomName == flag.pos.roomName ){
-    creep.attack(structures[0]);
+  creep.travelTo(flag.pos, { range: 1 });
+
+  // attack/heal share one pipeline (docs.screeps.com/simultaneous-actions.html) — only the last call
+  // made actually fires, so these must be mutually exclusive, in priority order, not all unconditional.
+  if (creep.hits < creep.hitsMax) {
+    creep.heal(creep);
+    return { acted: true, didAct: false };
+  }
+  if (creep.pos.roomName == flag.pos.roomName) {
+    const structures = creep.pos.findInRange(FIND_STRUCTURES, 1);
+    if (structures.length > 0) {
+      structures.sort((a, b) => (a.structureType === STRUCTURE_SPAWN ? 0 : 1) - (b.structureType === STRUCTURE_SPAWN ? 0 : 1));
+      creep.attack(structures[0]);
+      return { acted: true, didAct: false };
+    }
+    const creeps = creep.pos.findInRange(FIND_HOSTILE_CREEPS, 1);
+    if (creeps.length > 0) {
+      creep.attack(creeps[0]);
+      return { acted: true, didAct: false };
+    }
   }
 
   return { acted: true, didAct: false };

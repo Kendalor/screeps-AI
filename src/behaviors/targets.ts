@@ -263,6 +263,13 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
     const pos = (obj as unknown as { pos: RoomPosition }).pos;
     if (pos.roomName !== creep.memory.defendTargetRoom) return null;
   }
+  // Same rule as the defender's "hostile" lock above, for SimpleHealer's "friendly" lock: a patient that
+  // wanders out of targetRoom must not drag the healer along behind it (SimpleHealer holds its assigned
+  // room, same as Defender — see simpleHealer.ts's doc).
+  if (memberSpec.find === "friendly" && creep.memory.targetRoom !== undefined) {
+    const pos = (obj as unknown as { pos: RoomPosition }).pos;
+    if (pos.roomName !== creep.memory.targetRoom) return null;
+  }
   // Re-check the store/hits-based `where` so a lock on a now-filled extension, emptied hauler, or
   // healed-back-to-full friendly creep is dropped.
   const where =
