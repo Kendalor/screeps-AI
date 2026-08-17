@@ -7,8 +7,9 @@ import { Role } from "./role";
 // damage-gated retreat) and act there. What it does once it's in: heal whichever friendly creep in the
 // room (self included) is most damaged, via find:"friendly" (behaviors/targets.ts) rather than
 // find:"squadMate" — a solo SimpleHealer has no squad (memory.op is unique to itself), so squadMate would
-// only ever resolve to itself. targetRoom itself is resolved from the triggering flag's own room — see
-// SimpleHealOperation/empire/singleTargetFlags.ts.
+// only ever resolve to itself. "mostDamaged" prioritizes the acting creep itself over any other damaged
+// friendly (see pickByPrefer in targets.ts) — this healer patches itself up before anyone else. targetRoom
+// itself is resolved from the triggering flag's own room — see SimpleHealOperation/empire/singleTargetFlags.ts.
 const SIMPLE_HEALER_SET: BodyPartConstant[] = [HEAL, MOVE];
 
 export const SIMPLE_HEALER_MIN_COST = bodyCost(SIMPLE_HEALER_SET);
