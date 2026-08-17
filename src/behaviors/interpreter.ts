@@ -499,7 +499,8 @@ function moveToFlagStep(creep: Creep): StepResult {
   if (creep.pos.isEqualTo(flag.pos)) return { acted: false, didAct: false };
   creep.travelTo(flag.pos, { range: 0 });
   const structures = creep.pos.findInRange(FIND_STRUCTURES,1);
-  if(structures.length >0 ){
+  creep.heal(creep);
+  if(structures.length >0 && creep.pos.roomName == flag.pos.roomName ){
     creep.attack(structures[0]);
   }
 

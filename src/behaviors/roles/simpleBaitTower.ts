@@ -13,11 +13,15 @@ const BAIT_TOWER_SET_COST = bodyCost([TOUGH, HEAL, MOVE,MOVE]);
 function simpleBaitTowerBody(energy: number): BodyPartConstant[] {
   let energyLeft = energy - bodyCost(SIMPLE_BAIT_TOWER_SET);
   let numSets = 0;
-  while (energyLeft - BAIT_TOWER_SET_COST > 0 && (numSets + 1) * 3 + SIMPLE_BAIT_TOWER_SET.length <= 50) {
+  while (energyLeft - BAIT_TOWER_SET_COST > 0 && (numSets + 1) * 4 + SIMPLE_BAIT_TOWER_SET.length <= 50) {
     energyLeft -= BAIT_TOWER_SET_COST;
     numSets++;
   }
-  return new Array(numSets * 3).fill(TOUGH).fill(MOVE, numSets).fill(HEAL, numSets * 2).concat(SIMPLE_BAIT_TOWER_SET);
+  return new Array(numSets * 4)
+    .fill(TOUGH, 0, numSets)
+    .fill(HEAL, numSets, numSets * 2)
+    .fill(MOVE, numSets * 2, numSets * 4)
+    .concat(SIMPLE_BAIT_TOWER_SET);
 }
 
 export class SimpleBaitTowerRole extends Role {
@@ -36,7 +40,7 @@ export class SimpleBaitTowerRole extends Role {
   // damaged/healthy retreat leg here: retreatPart above pre-empts the whole step table once HEAL is gone
   // (see runOne's dispatch order), so these steps only ever run while still able to self-heal.
   static override readonly steps: Step[] = [
-    { do: "moveToFlag" },
-    { do: "attack", from: { find: "hostileStructure", prefer: "nearestToFlag" } }
+    { do: "moveToFlag", when: "damaged" },
+    { do: "fleeAndHeal", when: "healthy" }
   ];
 }
