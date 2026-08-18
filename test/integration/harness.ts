@@ -329,16 +329,16 @@ export class BootedColony {
     await db["rooms.objects"].update({ _id: id }, { $set: { store: { energy } } });
   }
 
-  // Deletes a room object outright (not decay, not a store change) — for scenarios that need a target to
-  // genuinely vanish mid-route.
+  // Deletes a room object outright (not decay, not a store change) — for scenarios that need a task's
+  // target to genuinely vanish mid-route (gh #45's isValidTask/dead-reference acceptance criterion).
   async removeRoomObject(id: string): Promise<void> {
     const { db } = await this.server.world.load();
     await db["rooms.objects"].removeWhere({ _id: id });
   }
 
   // Queues a console expression to run in-engine on the bot's NEXT tick (mockup's User.console — one-shot,
-  // not a live REPL). Used by gh #46's test-only __pickLogisticsRequest hook (logistics/testHooks.ts) to
-  // drive standalone infra with no live-role wiring, without a bespoke Memory-injection path per test.
+  // not a live REPL). Used by gh #45's test-only __assignLogisticsTaskChain hook (logistics/testHooks.ts)
+  // to drive standalone infra with no live-role wiring, without a bespoke Memory-injection path per test.
   async console(expression: string): Promise<void> {
     await this.bot.console(expression);
   }
