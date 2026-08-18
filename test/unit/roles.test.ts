@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ROLES, roleDef } from "../../src/behaviors/roles";
 import { energySourceGroup } from "../../src/behaviors/targets";
-import { bodyCost } from "../../src/spawn/body";
+import { bodyCost, haulerBody } from "../../src/spawn/body";
 
 // Body assertions below deliberately avoid pinning exact part layouts: the whole point is that a
 // role's body formula can be retuned (different ratios, caps, rungs) without every test needing a
@@ -139,7 +139,7 @@ describe("bootstrap role", () => {
 });
 
 describe("builder role", () => {
-  it("gathers from the nearest of drop/storage/container, falling back to harvest, before building — never from haulers", () => {
+  it("gathers from the nearest of drop/storage/container, falling back to harvest, before building", () => {
     expect(roleDef("builder")).toBe(ROLES.builder);
     expect(roleDef("builder")?.steps).toEqual([
       {
@@ -157,11 +157,6 @@ describe("builder role", () => {
       { do: "moveToRoom", to: "buildTargetRoom", avoidDanger: true },
       { do: "build", at: { find: "constructionSite", prefer: "mostProgress" } }
     ]);
-    // A hauler drained mid-run can't deliver its load to the spawn/extensions, so the builder must
-    // never steal from it — the same rule the upgrader follows.
-    const gatherSpec = roleDef("builder")?.steps.find(s => s.do === "gather");
-    const members = gatherSpec?.from.find === "any" ? gatherSpec.from.of : [];
-    expect(members).not.toContainEqual({ find: "creep", role: "hauler", where: "hasEnergy" });
   });
 
   it("is always a valid, affordable body with WORK and CARRY", () => {
@@ -250,8 +245,8 @@ describe("miner body", () => {
   });
 });
 
-describe("hauler body (must stay 1:1 carry:move so a loaded hauler never fatigues)", () => {
-  const body = (energy: number) => ROLES.hauler.body(energy);
+describe("haulerBody (must stay 1:1 carry:move so a loaded carrier never fatigues)", () => {
+  const body = (energy: number) => haulerBody(energy);
 
   it("is always a valid, affordable body with CARRY and equal CARRY:MOVE", () => {
     for (const e of ENERGY_LEVELS) {
@@ -292,46 +287,6 @@ describe("miner role", () => {
   });
 });
 
-describe("hauler role", () => {
-  it("collects until full, then delivers spawn/extensions first, controller container, storage, tower, and finally a consumer until empty", () => {
-    expect(roleDef("hauler")).toBe(ROLES.hauler);
-    expect(roleDef("hauler")?.steps).toEqual([
-      // Collect phase: one pooled gather over containers, drops, tombstones and ruins, ranked by
-      // largest load, until full (no when-gate — a gather step is complete only at free===0, so the
-      // loop stays here until the store is full).
-      {
-        do: "gather",
-        from: {
-          find: "any",
-          of: [
-            // Source containers only (near: notController) — never the controller container it fills.
-            // requireReachableAlive: skip a pickup this hauler would die en route to.
-            { find: "structure", type: [STRUCTURE_CONTAINER], where: "hasEnergy", near: "notController", requireReachableAlive: true },
-            { find: "dropped", requireReachableAlive: true },
-            { find: "tombstone", requireReachableAlive: true },
-            { find: "ruin", requireReachableAlive: true }
-          ],
-          prefer: "largest"
-        }
-      },
-      // Deliver phase: closest matching sink each step (resolveTarget picks the nearest by path),
-      // running until empty before the loop wraps back to the collect phase. Spawn + extensions come
-      // FIRST — a room that can't spawn is dead, and pre-storage the hauler is the only thing filling
-      // them (no supply unit exists yet). Post-storage the supply unit keeps them full, so this step
-      // finds nothing and the hauler falls through to the controller container (topped to a 70% floor so
-      // upgraders stay fed) and then storage — the phase switch is pure step ordering.
-      { do: "transfer", to: { find: "structure", type: [STRUCTURE_SPAWN, STRUCTURE_EXTENSION], where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: [STRUCTURE_CONTAINER], where: "notFull", near: "controller", fillTo: 0.7 } },
-      { do: "transfer", to: { find: "structure", type: [STRUCTURE_STORAGE], where: "notFull" } },
-      { do: "transfer", to: { find: "structure", type: [STRUCTURE_TOWER], where: "notFull" } },
-      // With every fixed sink full, feed a consumer directly rather than hold or drop energy.
-      // oneShot: an actively-working consumer never truly goes not-full, so one transfer is enough
-      // before the loop re-scans every sink from the top instead of pinning to this one target.
-      { do: "transfer", to: { find: "creep", role: ["builder", "upgrader"], where: "notFull", prefer: "nearest" }, oneShot: true }
-    ]);
-  });
-});
-
 // Supply is a Logistics-owned mover, same as transport: no static step table of its own — assignment
 // (storage or the nearest local pile in, spawn/extension/tower out, never a remote pickup) comes from
 // planLogistics via memory.logistics. See test/unit/logistics/ for the provider/consumer graph that
@@ -355,7 +310,7 @@ describe("supply role", () => {
 
   it("shares the hauler carry-parts body below RCL6", () => {
     const ctx = { hasContainer: false, hasLink: false, controllerLevel: 5 };
-    expect(bodyCost(ROLES.supply.body(450, ctx))).toBe(bodyCost(ROLES.hauler.body(450)));
+    expect(bodyCost(ROLES.supply.body(450, ctx))).toBe(bodyCost(haulerBody(450)));
   });
 
   it("splits into a smaller 2:1 CARRY:MOVE body from RCL6", () => {
@@ -370,12 +325,12 @@ describe("supply role", () => {
       expect(carry).toBe(move * 2);
     }
     // Roughly half the CARRY of the equivalent full hauler body at the same energy.
-    expect(bodyCost(body(450))).toBeLessThan(bodyCost(ROLES.hauler.body(450)));
+    expect(bodyCost(body(450))).toBeLessThan(bodyCost(haulerBody(450)));
   });
 });
 
 describe("upgrader role", () => {
-  it("gathers, then builds outstanding sites before upgrading — never from haulers", () => {
+  it("gathers, then builds outstanding sites before upgrading", () => {
     expect(roleDef("upgrader")).toBe(ROLES.upgrader);
     expect(roleDef("upgrader")?.steps).toEqual([
       // Container/storage/link/drop/tombstone/ruin pooled into one gather step: the nearest source wins.
@@ -397,10 +352,6 @@ describe("upgrader role", () => {
       { do: "build", at: { find: "constructionSite", prefer: "mostProgress", onlyIfCarryOver: { carry: 1, range: 7 } } },
       { do: "upgrade" }
     ]);
-    // A hauler drained mid-run can't deliver its load, so the upgrader must never steal from it.
-    const gatherSpec = roleDef("upgrader")?.steps.find(s => s.do === "gather");
-    const members = gatherSpec?.from.find === "any" ? gatherSpec.from.of : [];
-    expect(members).not.toContainEqual({ find: "creep", role: "hauler", where: "hasEnergy" });
   });
 });
 

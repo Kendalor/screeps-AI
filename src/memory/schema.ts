@@ -152,7 +152,6 @@ export type RoleName =
   | "bootstrap"
   | "miner"
   | "mineralMiner"
-  | "hauler"
   | "supply"
   | "transport"
   | "steward"

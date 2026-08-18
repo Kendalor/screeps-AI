@@ -13,7 +13,6 @@ import { Defender } from "./defender";
 import { DemolisherRole } from "./demolisher";
 import { DrainAttacker } from "./drainAttacker";
 import { DrainHealer } from "./drainHealer";
-import { Hauler } from "./hauler";
 import { Miner } from "./miner";
 import { MineralMiner } from "./mineralMiner";
 import { ParadeMember } from "./paradeMember";
@@ -39,7 +38,6 @@ export const ROLES = {
   claimer: Claimer,
   colonizer: Colonizer,
   settler: Settler,
-  hauler: Hauler,
   transport: Transport,
   steward: Steward,
   defender: Defender,

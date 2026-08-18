@@ -481,7 +481,7 @@ describe("runTransport", () => {
     };
     clearTiles();
     stubTile("W1N1", 20, 20, { structure: [{ structureType: STRUCTURE_ROAD }] });
-    stubTile("W1N1", 21, 20, { creep: [{ id: "other", memory: { role: "hauler" } }] }); // wants through
+    stubTile("W1N1", 21, 20, { creep: [{ id: "other", memory: { role: "transport" } }] }); // wants through
 
     const travelTo = vi.fn();
     const creep = {

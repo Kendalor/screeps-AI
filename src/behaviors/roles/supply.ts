@@ -1,6 +1,5 @@
-import { affordableSets } from "../../spawn/body";
+import { affordableSets, haulerBody } from "../../spawn/body";
 import type { BodyContext } from "../types";
-import { haulerBody } from "./hauler";
 import { Role } from "./role";
 
 // From RCL6, two supply creeps split the topping-off work instead of one — a bigger bunker means

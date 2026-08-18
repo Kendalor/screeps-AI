@@ -20,9 +20,10 @@ beforeEach(() => {
 });
 
 // stepOffRoad only bothers evacuating when a road-using ("mover") creep is within range to want the
-// tile — stub one nearby (a hauler, whose Role.mover is true) for every test that expects a step off.
+// tile — stub one nearby (a transport creep, whose Role.mover is true) for every test that expects a
+// step off.
 function stubNearbyMover(roomName: string, x: number, y: number): void {
-  stubTile(roomName, x, y, { creep: [{ id: "mover", memory: { role: "hauler" } }] });
+  stubTile(roomName, x, y, { creep: [{ id: "mover", memory: { role: "transport" } }] });
 }
 
 describe("stepOffRoad", () => {

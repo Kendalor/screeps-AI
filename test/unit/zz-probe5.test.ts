@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 import { wantedTransportHeadcount } from "../../src/logistics/fleet";
 import { grossHarvest } from "../../src/mining/remoteEconomics";
-import { haulerBody } from "../../src/behaviors/roles/hauler";
+import { haulerBody } from "../../src/spawn/body";
 import { remoteMinerBody } from "../../src/mining/load";
 
 describe("probe5", () => {

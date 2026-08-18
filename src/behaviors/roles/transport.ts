@@ -1,5 +1,5 @@
 import type { BodyContext } from "../types";
-import { haulerBody } from "./hauler";
+import { haulerBody } from "../../spawn/body";
 import { Role } from "./role";
 
 // A Logistics-owned mover: assignment comes from planLogistics via memory.logistics, not a static step

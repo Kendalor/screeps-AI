@@ -3,8 +3,7 @@
 // numbers. Mining stays the income authority in spirit; this module is just where the shared formula
 // lives so neither operation duplicates the other's.
 
-import { countPart } from "../spawn/body";
-import { haulerBody } from "../behaviors/roles/hauler";
+import { countPart, haulerBody } from "../spawn/body";
 import { range, type XY } from "../lib/geometry";
 import { grossHarvest } from "../mining/remoteEconomics";
 import type { ColonySnapshot, SnapCreep, SnapRemoteSource, SnapSource } from "../snapshot/types";
