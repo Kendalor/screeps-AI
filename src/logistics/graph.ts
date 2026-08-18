@@ -258,31 +258,37 @@ export function transportProviders(colony: ColonySnapshot): Provider[] {
   return providers(colony).filter(p => !p.storageBuffer);
 }
 
-// Supply's own view of consumers(): spawn/extensions and towers only — never the controller container
-// or a builder/upgrader/storage sink. Those are transport's job; Supply exists solely to keep the
-// spawn system (and, since an empty tower is as bad as an empty spawn during an attack, towers) topped.
+// Supply's own view of the graph: spawn/extensions and towers only — never the controller container or
+// a builder/upgrader/storage sink. Those are transport's job; Supply exists solely to keep the spawn
+// system (and, since an empty tower is as bad as an empty spawn during an attack, towers) topped. Always
+// includes those tiers regardless of whether a supply creep is alive — that liveness question is
+// transport's concern (see spawnTiersOwnedBySupply), never supply's own.
 export function supplyConsumers(colony: ColonySnapshot): Consumer[] {
-  return consumers(colony).filter(c => c.priority === PRIORITY.spawnSystem || c.priority === PRIORITY.tower);
+  return buildConsumers(colony, true).filter(c => c.priority === PRIORITY.spawnSystem || c.priority === PRIORITY.tower);
 }
 
-/**
- * Spawn/extensions as one aggregate node, plus the controller container while below its fill floor.
- *
- * `skipSupplyTiers`: while a live supply creep exists AND storage has energy to draw from, transport
- * must leave spawnSystem/tower to supply entirely rather than only working around whatever supply's
- * own allocate() pass reserved this tick — supply is a short-hop topper that's typically idle/mid-trip
- * on any given tick, so without this a multi-extension room's uncovered remainder kept falling to
- * transport, which then dragged transport off its own longer-haul work every time supply couldn't
- * reach every sink in one pass. Gated on storage energy too: with storage empty, supply has nothing
- * to draw from and can't be trusted to cover the deficit alone (a single supply creep sized to
- * top-off duty, not the room's full spawn throughput), so transport falls back in at spawnSystem's now
- * -low priority (see PRIORITY's doc) rather than leaving spawn/extensions to starve. Supply's own view
- * (supplyConsumers, below) is unaffected — it never looks at this flag.
- */
-export function consumers(colony: ColonySnapshot, skipSupplyTiers = false): Consumer[] {
+// Whether a live supply creep can be trusted to keep spawnSystem/tower topped on its own, so transport
+// should leave those tiers alone rather than only working around whatever supply's own allocate() pass
+// reserved this tick — supply is a short-hop topper that's typically idle/mid-trip on any given tick, so
+// without this a multi-extension room's uncovered remainder kept falling to transport, which then
+// dragged transport off its own longer-haul work every time supply couldn't reach every sink in one
+// pass. Gated on storage energy too: with storage empty, supply has nothing to draw from and can't be
+// trusted to cover the deficit alone (a single supply creep sized to top-off duty, not the room's full
+// spawn throughput), so transport falls back in at spawnSystem's now-low priority (see PRIORITY's doc)
+// rather than leaving spawn/extensions to starve.
+function spawnTiersOwnedBySupply(colony: ColonySnapshot): boolean {
+  return colony.creeps.some(c => c.role === "supply") && colony.storageEnergy > 0;
+}
+
+/** Spawn/extensions as one aggregate node, plus the controller container while below its fill floor. */
+export function consumers(colony: ColonySnapshot): Consumer[] {
+  return buildConsumers(colony, !spawnTiersOwnedBySupply(colony));
+}
+
+function buildConsumers(colony: ColonySnapshot, includeSpawnTiers: boolean): Consumer[] {
   const out: Consumer[] = [];
 
-  if (!skipSupplyTiers) {
+  if (includeSpawnTiers) {
     // One consumer per spawn/extension with free capacity, all at the spawn-system priority. Emitting
     // them individually (rather than a single "spawnSystem" aggregate) lets the allocator reserve each
     // extension for one creep's multi-dropoff trip — a full creep claims N extensions up front, removing
