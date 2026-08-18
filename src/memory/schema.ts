@@ -62,6 +62,11 @@ declare global {
     // this creep among a set of candidate LogisticsRequests — written so an integration test can read the
     // result back via Memory instead of parsing console output. Never written by any live role.
     logisticsRequestPick?: string;
+    // Test-only: the leg sequence `__pickLogisticsRoute` (gh #47's testHooks.ts) most recently assigned to
+    // this creep, as target ids outermost/current-task first — "[bufferId, targetId]" for a buffer-detour
+    // route, "[targetId]" for direct — so an integration test can assert the actual route picked (not just
+    // its score) without decoding logisticsTask's nested Task shape. Never written by any live role.
+    logisticsRoutePick?: string[];
     // The steward's current carry destination (storage/terminal), owned by behaviors/stewardBehavior.ts alone —
     // no planner/intent involved, since a steward's job is decided and executed in the same tick with
     // nothing worth persisting across a re-plan (unlike transport's multi-leg chain).

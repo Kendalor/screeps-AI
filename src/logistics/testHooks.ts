@@ -1,18 +1,27 @@
 // Console-callable hooks for driving standalone logistics infra from an integration test, before it's
-// wired into any live role's planner — see logistics/task.ts's and logistics/request.ts's headers. Not
-// player-facing commands (deliberately absent from commands/console.ts's registered/help() list): these
-// exist purely as the mockup-server test seam, called via BootedColony's bot.console(). Actually running
-// an assigned Task chain forward is main.ts's runLogisticsTasks, invoked unconditionally every tick —
-// independent of these one-shot hooks and of the live role dispatch table.
+// wired into any live role's planner — see logistics/task.ts's, logistics/request.ts's and
+// logistics/route.ts's headers. Not player-facing commands (deliberately absent from
+// commands/console.ts's registered/help() list): these exist purely as the mockup-server test seam,
+// called via BootedColony's bot.console(). A creep's assigned Task chain (see logisticsTask) is only ever
+// advanced by behaviors/logisticsTaskRunner.ts's runLogisticsTask, which has no live caller yet either
+// (gh #52+) — these hooks assert on the picked route itself, not a multi-tick execution of it.
 
 import { fork, persistTask, type Task } from "./task";
-import { pickBestRequest, requestOutput } from "./request";
+import { pickBestRequest, requestInput, requestOutput } from "./request";
+import { pickBestRoute, type Buffer } from "./route";
 
 declare global {
   var __assignLogisticsTaskChain: (creepName: string, legs: { kind: "withdraw" | "transfer"; targetId: string; resource: ResourceConstant }[]) => string;
   var __pickLogisticsRequest: (
     creepName: string,
     candidates: { targetId: string; resource: ResourceConstant; amount: number; multiplier?: number }[]
+  ) => string;
+  var __pickLogisticsRoute: (
+    creepName: string,
+    targetId: string,
+    resource: ResourceConstant,
+    amount: number,
+    bufferIds: string[]
   ) => string;
 }
 
@@ -59,5 +68,47 @@ export function installLogisticsTestHooks(): void {
     const best = pickBestRequest(requests, resource, target => creep.pos.getRangeTo(target.pos));
     creep.memory.logisticsRequestPick = best ? String(best.target.id) : undefined;
     return best ? `picked ${String(best.target.id)}` : "no request picked";
+  };
+
+  // Builds one delivery LogisticsRequest (via requestInput — targetId WANTS `amount` of `resource`
+  // delivered, gh #47's scope) and evaluates it via pickBestRoute against the named creep's live position,
+  // its current carried amount of `resource`, and the live buffers named by `bufferIds` (storage/terminal,
+  // whichever the test seeded). Assigns the winning route as a real Task chain to logisticsTask (same
+  // shape __assignLogisticsTaskChain writes by hand) and records the leg sequence — outermost/current task
+  // first — to logisticsRoutePick so a test can assert the actual route without decoding the persisted
+  // Task tree itself. getRangeTo is real, live distance for both legs of a detour, matching
+  // __pickLogisticsRequest's existing precedent of not stubbing distance.
+  global.__pickLogisticsRoute = (creepName, targetId, resource, amount, bufferIds): string => {
+    const creep = Game.creeps[creepName];
+    if (!creep) return `no live creep named "${creepName}"`;
+
+    const target = Game.getObjectById(targetId as Id<_HasId>) as (_HasId & { pos: RoomPosition }) | null;
+    if (!target) throw new Error(`no live object with id "${targetId}"`);
+
+    const buffers: Buffer[] = bufferIds.map(id => {
+      const buffer = Game.getObjectById(id as Id<_HasId>) as unknown as Buffer | null;
+      if (!buffer) throw new Error(`no live object with id "${id}"`);
+      return buffer;
+    });
+
+    const request = requestInput(target, resource, amount);
+    const carrying = creep.store.getUsedCapacity(resource) ?? 0;
+    const capacity = carrying + (creep.store.getFreeCapacity(resource) ?? 0);
+    const picked = pickBestRoute(request, creep.pos, buffers, carrying, capacity, (a, b) => a.getRangeTo(b));
+
+    if (!picked) {
+      creep.memory.logisticsTask = undefined;
+      creep.memory.logisticsRoutePick = undefined;
+      return "no route picked";
+    }
+
+    creep.memory.logisticsTask = persistTask(picked.task);
+    const legIds: string[] = [];
+    for (let task: Task | undefined = picked.task; task; task = task.parent) legIds.push(String(task.target.id));
+    creep.memory.logisticsRoutePick = legIds;
+
+    return picked.route.viaBuffer
+      ? `picked a via-buffer route through ${String(picked.route.viaBuffer.id)} then ${targetId}`
+      : `picked the direct route to ${targetId}`;
   };
 }
