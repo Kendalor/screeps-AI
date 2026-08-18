@@ -58,6 +58,10 @@ declare global {
     // (the step-interpreter's unrelated per-role progress) — see CONTEXT.md's LogisticsRequest entry for
     // why "task"/"Task" needs qualifying in this codebase.
     logisticsTask?: PersistedTask;
+    // Test-only: the target id `__pickLogisticsRequest` (gh #46's testHooks.ts) most recently picked for
+    // this creep among a set of candidate LogisticsRequests — written so an integration test can read the
+    // result back via Memory instead of parsing console output. Never written by any live role.
+    logisticsRequestPick?: string;
     // The steward's current carry destination (storage/terminal), owned by behaviors/stewardBehavior.ts alone —
     // no planner/intent involved, since a steward's job is decided and executed in the same tick with
     // nothing worth persisting across a re-plan (unlike transport's multi-leg chain).
