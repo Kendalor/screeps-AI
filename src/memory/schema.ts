@@ -3,7 +3,6 @@
 import type { RoomType } from "../lib/roomName";
 import type { TaskState } from "../behaviors/types";
 import type { LogisticsTask } from "../logistics/types";
-import type { PersistedTask } from "../logistics/task";
 import type { LogLevel } from "../lib/log";
 import type { XY } from "../lib/geometry";
 import type { Reputation } from "./reputation";
@@ -51,13 +50,6 @@ declare global {
     // whole trip is one chain (pickup -> ... -> deliver) nested in `current.next`; runTransport promotes
     // `current.next` as each leg completes, so there is no separate follow-up field here.
     logistics?: { current?: LogisticsTask };
-    // The new fork/parent Task chain primitive (gh #45, ADR 0008), persisted as bare target IDs — Memory
-    // can't hold a live object reference. Standalone infra: not yet written by any live role's planner;
-    // owned by behaviors/logisticsTaskRunner.ts, which resolves and advances it. Deliberately separate
-    // from `logistics` above (the old system, still running the live bot unmodified) and from `task`
-    // (the step-interpreter's unrelated per-role progress) — see CONTEXT.md's LogisticsRequest entry for
-    // why "task"/"Task" needs qualifying in this codebase.
-    logisticsTask?: PersistedTask;
     // Test-only: the target id `__pickLogisticsRequest` (gh #46's testHooks.ts) most recently picked for
     // this creep among a set of candidate LogisticsRequests — written so an integration test can read the
     // result back via Memory instead of parsing console output. Never written by any live role.
