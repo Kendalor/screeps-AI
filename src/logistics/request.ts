@@ -2,9 +2,11 @@
 // graph.ts's separate Provider/Consumer interfaces (see CONTEXT.md's LogisticsRequest entry). Overmind's
 // `dQ/dt` rate shape ranks requests by `multiplier * amount / distance` so a request's score grows with
 // real urgency (a large or long-starved amount) instead of being capped by a fixed priority tier. This is
-// the single-pool core only — no buffer detours (see gh #47), no targetedBy discount (see gh #49), and
-// not yet wired to the live Transport role (see gh #52). Proven against exactly one resource (energy) and
-// one registration source (a miner's source container) per the PRD's scoped acceptance criteria.
+// the single-pool core only — no buffer detours (see gh #47), and not yet wired to the live Transport role
+// (see gh #52). Proven against exactly one resource (energy) and one registration source (a miner's
+// source container) per the PRD's scoped acceptance criteria. gh #49's targetedBy predicted-amount
+// discount (logistics/targeted.ts) composes with pickBestRequest below by scoring a *discounted* amount
+// rather than changing this module's ranking shape — see that module's pickBestDiscountedRequest.
 
 /** One signed unit of transport demand: a live target wants (positive) or has to give (negative) `resource`. */
 export interface LogisticsRequest {

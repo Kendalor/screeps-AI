@@ -2,14 +2,17 @@
 // wired into any live role's planner — see logistics/task.ts's, logistics/request.ts's and
 // logistics/route.ts's headers. Not player-facing commands (deliberately absent from
 // commands/console.ts's registered/help() list): these exist purely as the mockup-server test seam,
-// called via BootedColony's bot.console(). A creep's assigned Task chain (see logisticsTask) is only ever
-// advanced by behaviors/logisticsTaskRunner.ts's runLogisticsTask, which has no live caller yet either
-// (gh #52+) — these hooks assert on the picked route itself, not a multi-tick execution of it.
+// called via BootedColony's bot.console(). A creep's assigned Task chain (see logisticsTask) has no live
+// role caller yet (gh #52+) — __runLogisticsTask below is this seam's own one-shot substitute, letting a
+// test drive an assigned chain forward (e.g. gh #49's remote-pickup-then-home-deliver scenario) without
+// a real dispatch table.
 
 import { fork, persistTask, type Task } from "./task";
 import { pickBestRequest, requestInput, requestOutput } from "./request";
 import { pickBestRoute, type Buffer } from "./route";
+import { buildTargetedBy, discountedAmount, pickBestDiscountedRequest } from "./targeted";
 import { runSupplyTask } from "../behaviors/supplyTaskRunner";
+import { runLogisticsTask } from "../behaviors/logisticsTaskRunner";
 
 declare global {
   var __assignLogisticsTaskChain: (creepName: string, legs: { kind: "withdraw" | "transfer"; targetId: string; resource: ResourceConstant }[]) => string;
@@ -25,6 +28,20 @@ declare global {
     bufferIds: string[]
   ) => string;
   var __runSupplyTask: (creepName: string) => string;
+  // gh #49: same shape as __pickLogisticsRequest, but scans `scanCreepNames`' persisted logisticsTask via
+  // buildTargetedBy first and ranks by the discounted rate instead of the raw one — see targeted.ts.
+  // Also writes the winning target's discounted-vs-raw amount to CreepMemory.logisticsDiscountProbe so a
+  // test can assert on the discount math itself, not just which target wins.
+  var __pickLogisticsRequestDiscounted: (
+    creepName: string,
+    candidates: { targetId: string; resource: ResourceConstant; amount: number; multiplier?: number }[],
+    scanCreepNames: string[]
+  ) => string;
+  // Drives a creep's already-assigned Task chain forward one tick (behaviors/logisticsTaskRunner.ts's
+  // runLogisticsTask), for a test that needs to observe a chained route actually complete (e.g. gh #49's
+  // remote-pickup-then-home-deliver scenario) without main.ts's per-tick driver, which was deliberately
+  // removed pending a real live-role caller (see this module's header).
+  var __runLogisticsTask: (creepName: string) => string;
 }
 
 export function installLogisticsTestHooks(): void {
@@ -123,5 +140,41 @@ export function installLogisticsTestHooks(): void {
     if (!creep) return `no live creep named "${creepName}"`;
     runSupplyTask(creep);
     return `ran supply task for ${creepName}`;
+  };
+
+  // gh #49's proof seam: builds the same candidate requests as __pickLogisticsRequest, but ranks them
+  // through pickBestDiscountedRequest against a targetedBy map freshly built from `scanCreepNames`'
+  // live persisted tasks (buildTargetedBy) — so a test can assign creep A a task chain via
+  // __assignLogisticsTaskChain, then check creep B's ranking pass sees a discounted remaining amount for
+  // whatever target A is already routed toward, without either hook reaching into internal ranking state.
+  global.__pickLogisticsRequestDiscounted = (creepName, candidates, scanCreepNames): string => {
+    const creep = Game.creeps[creepName];
+    if (!creep) return `no live creep named "${creepName}"`;
+    if (candidates.length === 0) return "no candidates given";
+
+    const requests = candidates.map(c => {
+      const target = Game.getObjectById(c.targetId as Id<_HasId>) as (_HasId & { pos: RoomPosition }) | null;
+      if (!target) throw new Error(`no live object with id "${c.targetId}"`);
+      return requestOutput(target, c.resource, c.amount, 0, c.multiplier ?? 1);
+    });
+
+    const scanCreeps = scanCreepNames.map(n => Game.creeps[n]).filter((c): c is Creep => c !== undefined);
+    const targetedBy = buildTargetedBy(scanCreeps);
+
+    const resource = candidates[0].resource;
+    const best = pickBestDiscountedRequest(requests, resource, target => creep.pos.getRangeTo(target.pos), targetedBy, creep);
+    creep.memory.logisticsRequestPick = best ? String(best.target.id) : undefined;
+    creep.memory.logisticsDiscountProbe = best
+      ? { raw: Math.abs(best.amount), discounted: discountedAmount(best, targetedBy, creep) }
+      : undefined;
+    return best ? `picked ${String(best.target.id)}` : "no request picked";
+  };
+
+  global.__runLogisticsTask = (creepName): string => {
+    const creep = Game.creeps[creepName];
+    if (!creep) return `no live creep named "${creepName}"`;
+    if (creep.spawning) return `${creepName} is still spawning`;
+    runLogisticsTask(creep);
+    return `ran ${creepName}'s logistics task`;
   };
 }

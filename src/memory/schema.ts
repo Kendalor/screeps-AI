@@ -58,15 +58,21 @@ declare global {
     // (the step-interpreter's unrelated per-role progress) — see CONTEXT.md's LogisticsRequest entry for
     // why "task"/"Task" needs qualifying in this codebase.
     logisticsTask?: PersistedTask;
-    // Test-only: the target id `__pickLogisticsRequest` (gh #46's testHooks.ts) most recently picked for
-    // this creep among a set of candidate LogisticsRequests — written so an integration test can read the
-    // result back via Memory instead of parsing console output. Never written by any live role.
+    // Test-only: the target id `__pickLogisticsRequest`/`__pickLogisticsRequestDiscounted` (gh #46/#49's
+    // testHooks.ts) most recently picked for this creep among a set of candidate LogisticsRequests —
+    // written so an integration test can read the result back via Memory instead of parsing console
+    // output. Never written by any live role.
     logisticsRequestPick?: string;
     // Test-only: the leg sequence `__pickLogisticsRoute` (gh #47's testHooks.ts) most recently assigned to
     // this creep, as target ids outermost/current-task first — "[bufferId, targetId]" for a buffer-detour
     // route, "[targetId]" for direct — so an integration test can assert the actual route picked (not just
     // its score) without decoding logisticsTask's nested Task shape. Never written by any live role.
     logisticsRoutePick?: string[];
+    // Test-only: gh #49's __pickLogisticsRequestDiscounted also records the winning request's raw amount
+    // vs. its targetedBy-discounted amount, so a test can assert on the discount math itself (proportional
+    // to another creep's predicted delivery, not zero, not unaffected) rather than only on which target
+    // won. Absent whenever no request was picked (see that hook's own doc).
+    logisticsDiscountProbe?: { raw: number; discounted: number };
     // The steward's current carry destination (storage/terminal), owned by behaviors/stewardBehavior.ts alone —
     // no planner/intent involved, since a steward's job is decided and executed in the same tick with
     // nothing worth persisting across a re-plan (unlike transport's multi-leg chain).
