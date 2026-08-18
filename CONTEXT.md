@@ -61,6 +61,18 @@ load up before continuing to a delivery target, when the detour's rate beats a
 direct trip. Scored, not hardcoded — see [ADR 0008](docs/adr/0008-logistics-unification-overmind-style.md).
 _Avoid_: waypoint, stop, depot
 
+**SupplyRequest**:
+Supply's own, deliberately simpler request shape for spawn/extension/tower energy
+needs (`src/logistics/supplyRegister.ts`, gh #50) — a target, a wanted amount, and a
+tier number. Not a `LogisticsRequest`: it carries no `dAmountdt`/`multiplier`,
+because Supply's pool is picked tier-first-then-nearest with no rate math at all
+(see ADR 0008's Pool topology decision). Self-registered directly against live
+`Game.*` spawn/extension/tower objects, same as `LogisticsRequest`'s registration
+functions, but kept a separate type rather than reusing `LogisticsRequest` with its
+rate fields unused.
+_Avoid_: LogisticsRequest (that's Transport's/Steward's rate-ranked pool, a
+different mechanism), Provider, Consumer
+
 ### Energy flow
 
 **Drop mining**:

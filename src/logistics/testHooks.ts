@@ -9,6 +9,7 @@
 import { fork, persistTask, type Task } from "./task";
 import { pickBestRequest, requestInput, requestOutput } from "./request";
 import { pickBestRoute, type Buffer } from "./route";
+import { runSupplyTask } from "../behaviors/supplyTaskRunner";
 
 declare global {
   var __assignLogisticsTaskChain: (creepName: string, legs: { kind: "withdraw" | "transfer"; targetId: string; resource: ResourceConstant }[]) => string;
@@ -23,6 +24,7 @@ declare global {
     amount: number,
     bufferIds: string[]
   ) => string;
+  var __runSupplyTask: (creepName: string) => string;
 }
 
 export function installLogisticsTestHooks(): void {
@@ -110,5 +112,16 @@ export function installLogisticsTestHooks(): void {
     return picked.route.viaBuffer
       ? `picked a via-buffer route through ${String(picked.route.viaBuffer.id)} then ${targetId}`
       : `picked the direct route to ${targetId}`;
+  };
+
+  // Runs gh #50's standalone Supply self-registration/selection path (behaviors/supplyTaskRunner.ts) one
+  // tick for the named creep — a test calls this every tick (via BootedColony.console() inside its own
+  // onTick) to drive a multi-tick walk-then-fill sequence, since bot.console() itself is one-shot per
+  // call. Not wired to any live role's dispatch table (see supplyTaskRunner.ts's header) — cutover is #53.
+  global.__runSupplyTask = (creepName): string => {
+    const creep = Game.creeps[creepName];
+    if (!creep) return `no live creep named "${creepName}"`;
+    runSupplyTask(creep);
+    return `ran supply task for ${creepName}`;
   };
 }
