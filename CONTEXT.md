@@ -43,6 +43,18 @@ Any creep that gathers energy from a drop pile — haulers and consumers both. N
 as a group because pile claiming and share caps apply to both.
 _Avoid_: picker, gatherer
 
+### Logistics (transport)
+
+**LogisticsRequest**:
+One signed unit of transport demand — a resource type, an amount, and a rate
+(`dAmountdt`) at a target `NodeRef`. Positive amount means the target wants the
+resource delivered; negative means the target has it available to withdraw. There
+is no separate Provider/Consumer type — the sign is the only distinction, matching
+Overmind's `LogisticsRequest` exactly (see [ADR 0008](docs/adr/0008-logistics-unification-overmind-style.md)).
+_Avoid_: Provider, Consumer (both superseded by this single signed type), Request
+(already means a spawn-scheduling Request below — always qualify as
+"LogisticsRequest" or "spawn Request" when ambiguous)
+
 ### Energy flow
 
 **Drop mining**:
@@ -97,7 +109,10 @@ _Avoid_: mineral target
 **Request**:
 A single creep a requester has decided is missing, carrying the body, the priority
 and the complete creep memory to spawn it with. Always exactly one creep — a
-requester short three haulers emits three requests.
+requester short three haulers emits three requests. Distinct from
+**LogisticsRequest** (below) — that's transport demand for a resource, not a
+missing creep. Always say "spawn Request" or "LogisticsRequest" where the bare
+word could mean either.
 _Avoid_: order, job, entry, queue item, spawn task
 
 **Requester**:
