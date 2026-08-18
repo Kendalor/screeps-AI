@@ -130,4 +130,22 @@ export abstract class Operation {
   public intents(_colony: ColonySnapshot, _colonyRequestParts: number = 0): Intent[] {
     return [];
   }
+
+  /**
+   * True once this operation has satisfied its own definition of "done" and would, left unattended,
+   * keep emitting nothing forever — e.g. SingleTargetFlagOperation's "oneShot" lifetime once every
+   * wanted slot has been spawned once and nothing from it is left alive. This is a QUERY, not a removal
+   * mechanism: an operation attached from durable state (a flag, a memory list — Drain/Parade/Colonize/
+   * Attack/the SingleTargetFlagOperation family today) is still detached externally, by whatever wrote
+   * that durable state noticing it should stop (a flag going away, the `removeOperation` console command,
+   * or — for a self-finished operation — the operation's own intents() reporting completion into memory
+   * so next tick's external reconciliation can act on it; see singleTargetFlagOperation.ts's
+   * endSingleTargetOp). isFinished() exists so that self-completion condition has ONE place to live
+   * instead of being duplicated between the intents()-time check and anything else that wants to ask.
+   * Default: never finishes on its own — correct for any operation whose lifetime is entirely owned by
+   * external state.
+   */
+  public isFinished(_colony: ColonySnapshot): boolean {
+    return false;
+  }
 }

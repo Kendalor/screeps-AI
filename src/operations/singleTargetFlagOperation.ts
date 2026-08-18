@@ -120,11 +120,21 @@ export abstract class SingleTargetFlagOperation extends Operation {
       return [{ kind: "recordSingleTargetSpawn", room: colony.name, opKind: this.kind, target: this.targetRoom, by: newlySpawned }];
     }
 
-    // Every slot used already, and now nothing's left alive: the job is done either way.
-    if (this.state.spawnedCount >= wanted && owned.length === 0) {
+    // Report completion into durable state: the operation instance itself doesn't survive to next tick,
+    // so isFinished()'s condition has to be re-derived from ColonyMemory.singleTargetOps by whatever
+    // reconciles it externally (empire/singleTargetFlags.ts) — see isFinished's own doc for why this
+    // intent exists at all rather than just detaching here.
+    if (this.isFinished(colony)) {
       return [{ kind: "endSingleTargetOp", room: colony.name, opKind: this.kind, target: this.targetRoom }];
     }
 
     return [];
+  }
+
+  /** "oneShot": done once every wanted slot has been spawned at least once and nothing from it is left
+   * alive. "constant" never self-terminates — same reasoning as `intents()` above. */
+  public override isFinished(colony: ColonySnapshot): boolean {
+    if (this.state.lifetime !== "oneShot") return false;
+    return this.state.spawnedCount >= this.state.wanted && this.owned(colony, this.role).length === 0;
   }
 }
