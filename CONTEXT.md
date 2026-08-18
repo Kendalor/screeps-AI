@@ -55,6 +55,12 @@ _Avoid_: Provider, Consumer (both superseded by this single signed type), Reques
 (already means a spawn-scheduling Request below — always qualify as
 "LogisticsRequest" or "spawn Request" when ambiguous)
 
+**Buffer** (logistics):
+A store-bearing structure (storage or terminal) a creep can swing by mid-route to
+load up before continuing to a delivery target, when the detour's rate beats a
+direct trip. Scored, not hardcoded — see [ADR 0008](docs/adr/0008-logistics-unification-overmind-style.md).
+_Avoid_: waypoint, stop, depot
+
 ### Energy flow
 
 **Drop mining**:

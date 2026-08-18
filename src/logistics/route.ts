@@ -15,7 +15,7 @@
 // LogisticsNetwork.buffers being assembled once by its caller, not re-discovered per request).
 
 import { fork, type Task } from "./task";
-import type { LogisticsRequest } from "./request";
+import { scoreRequest, type LogisticsRequest } from "./request";
 
 /** A live structure/object that can act as a buffer detour stop — must expose a resource store to cap
  * how much a creep can actually load there (a dropped pile can't be swung by on the way, only a
@@ -47,7 +47,7 @@ const MIN_DISTANCE = 1;
 function directRoute(request: LogisticsRequest, distance: number, carrying: number): RouteCandidate {
   const amount = Math.min(Math.abs(request.amount), carrying);
   const dist = Math.max(MIN_DISTANCE, distance);
-  return { distance: dist, amount, score: (request.multiplier * amount) / dist };
+  return { distance: dist, amount, score: scoreRequest(request, dist, amount) };
 }
 
 /**
@@ -68,7 +68,7 @@ function bufferRoute(
   const bufferHas = buffer.store.getUsedCapacity(request.resource) ?? 0;
   const amount = Math.min(Math.abs(request.amount), capacity, bufferHas);
   const dist = Math.max(MIN_DISTANCE, distanceToBuffer + distanceBufferToTarget);
-  return { viaBuffer: buffer, distance: dist, amount, score: (request.multiplier * amount) / dist };
+  return { viaBuffer: buffer, distance: dist, amount, score: scoreRequest(request, dist, amount) };
 }
 
 /**

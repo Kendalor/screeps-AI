@@ -45,12 +45,13 @@ export function requestOutput(
 
 /**
  * A request's score for a creep at `from`: `multiplier * amount / distance` (Overmind's dQ/dt shape).
- * `amount` is used signed-then-absolute — a creep doesn't care whether it's picking up or delivering,
- * only how much and how urgently. Distance is real path length in tiles (see rankRequests), never 0
- * (a request whose target the creep is already standing on scores as distance 1, not Infinity).
+ * `amount` defaults to the request's own signed-then-absolute amount, but a caller pricing a specific
+ * route (see route.ts's directRoute/bufferRoute) can pass the amount actually deliverable on that route
+ * instead — capped by carry space/buffer stock, never more than the request's raw amount would allow.
+ * Distance is real path length in tiles (see rankRequests), never 0 (a request whose target the creep is
+ * already standing on scores as distance 1, not Infinity).
  */
-export function scoreRequest(request: LogisticsRequest, distance: number): number {
-  const amount = Math.abs(request.amount);
+export function scoreRequest(request: LogisticsRequest, distance: number, amount = Math.abs(request.amount)): number {
   return (request.multiplier * amount) / Math.max(1, distance);
 }
 
