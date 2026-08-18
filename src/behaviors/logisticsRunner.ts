@@ -9,6 +9,7 @@
 import type { LogisticsTask, NodeRef } from "../logistics/types";
 import { log } from "../lib/log";
 import { wrapFn } from "../lib/profiler";
+import { pickTopoff, topoffRange, type TopoffCandidate } from "../logistics/topoff";
 import { transferTo, withdrawOrPickup } from "./actions";
 import { dangerAvoidanceOptions } from "./interpreter";
 import { stepOffRoad } from "./roadAvoidance";
@@ -16,38 +17,14 @@ import { stepOffRoad } from "./roadAvoidance";
 const PARK_RADIUS = 3; // "near the bunker" — anywhere within this range of the anchor counts as parked
 const PARK_SPREAD = 2; // per-creep offset off the anchor so idle creeps fan out instead of stacking
 
-// A pile/container must hold at least this much for a same-spot top-off to be worth it — same bar
-// targets.ts's WORTHWHILE_FLOOR and graph.ts's DROP_WORTHWHILE_FLOOR use elsewhere.
-const TOPOFF_WORTHWHILE_FLOOR = 50;
-
-// How close a second provider must sit to the one just drained to be worth grabbing on the spot, no
-// extra trip. Scales with how much of the haul home is still ahead: right by the home room, almost none
-// of a detour is worth it (a fresh, cheap re-plan is one idle tick away — see planLogistics); several
-// rooms out, the alternative to a same-tick top-off is walking the WHOLE trip home mostly empty and back
-// out again, so a several-tile detour here and now is cheap by comparison. Room-linear-distance is a
-// coarse proxy (no live path search per creep per tick — this fires on every drained provider), but it's
-// the right shape: 0 near home, growing with real remaining trip length, exactly the deep-remote case
-// (see advanceOrTopOff) this whole mechanism exists for. Never below TOPOFF_RANGE_MIN (the adjacent-tile
-// case — a container plus its own overflow pile — always qualifies even one room out) or above
-// TOPOFF_RANGE_MAX (an unbounded detour on a very deep trip could wander the creep off its route home
-// entirely).
-const TOPOFF_RANGE_MIN = 1;
-const TOPOFF_RANGE_MAX = 5;
-const TOPOFF_RANGE_PER_ROOM = 2; // extra detour tiles tolerated per room of linear distance from home
-
 // Linear room distance from the creep's current room to its home room (0 while already home), the cheap
-// proxy for "how much of the trip is still ahead" — see TOPOFF_RANGE_PER_ROOM's doc. Falls back to 0
-// (never widens the range) if Game.map isn't available, matching this file's existing defensive style
-// for optional globals (parkNearBunker/homeRoomWaypoint's `typeof Memory` checks).
+// proxy for "how much of the trip is still ahead" — see logistics/topoff.ts's TOPOFF_RANGE_PER_ROOM doc.
+// Falls back to 0 (never widens the range) if Game.map isn't available, matching this file's existing
+// defensive style for optional globals (parkNearBunker/homeRoomWaypoint's `typeof Memory` checks).
 function roomsFromHome(creep: Creep): number {
   if (creep.room.name === creep.memory.home) return 0;
   if (typeof Game === "undefined" || !Game.map?.getRoomLinearDistance) return 0;
   return Game.map.getRoomLinearDistance(creep.room.name, creep.memory.home);
-}
-
-function topoffRange(creep: Creep): number {
-  const range = TOPOFF_RANGE_MIN + roomsFromHome(creep) * TOPOFF_RANGE_PER_ROOM;
-  return Math.min(TOPOFF_RANGE_MAX, range);
 }
 
 // A stable per-creep hash so a given creep always parks on the same spread-out spot rather than
@@ -155,67 +132,45 @@ function advanceOrPark(creep: Creep): void {
   if (!next) parkNearBunker(creep);
 }
 
-// A worthwhile energy pile/container within `range` of the creep's current position (right where the
-// just-drained provider was), excluding that provider itself (already known empty — don't re-offer it).
-// Live scan, not snapshot/allocate-driven: this exists specifically to catch the case allocate.ts's
-// plan-once-when-idle model can't — a provider that looked fine when planLogistics ran a tick or more
-// ago but got drained by something outside the logistics system (a sweep pickup, a builder self-feeding,
-// another creep entirely) by the time this creep actually arrived, while a sibling provider sits right
-// next to it (e.g. a miner's container plus its overflow drop pile on/beside the same tile). Containers
-// before drops: a container doesn't decay, so it's the safer bet over a pile another creep might grab
-// first. `range` comes from topoffRange (scales with remaining trip distance) — this is a nearby-spot
-// grab, not a room-wide hunt.
+// Gathers every worthwhile-or-not candidate within `range` of the creep's current position (right where
+// the just-drained provider was) and hands the pick to logistics/topoff.ts's pure pickTopoff — the only
+// Game.* dependency this detour has left is these findInRange scans. Live scan, not snapshot/allocate-
+// driven: this exists specifically to catch the case allocate.ts's plan-once-when-idle model can't — a
+// provider that looked fine when planLogistics ran a tick or more ago but got drained by something
+// outside the logistics system (a sweep pickup, a builder self-feeding, another creep entirely) by the
+// time this creep actually arrived, while a sibling provider sits right next to it (e.g. a miner's
+// container plus its overflow drop pile on/beside the same tile).
 //
-// Picks by straight-line range (getRangeTo), not findClosestByPath — same trade-off sweep.ts's
-// pickSweepPile already makes for the same kind of short-radius opportunistic detour (range here tops
-// out at TOPOFF_RANGE_MAX=5, comparable to sweep's SWEEP_RADIUS=2). This runs unconditionally on EVERY
-// travelHome tick with spare capacity (confirmed live 2026-08-13 CPU profiling: transport:runTransport
-// was the single most expensive per-call creep function), so a PathFinder search here is paid every tick
-// of a whole cross-room trip, not once. At this radius a path-blocked tile being materially nearer by
-// path than by range is rare and low-stakes even when it happens — the caller re-checks live every tick
-// (by design, see transport.test.ts's "detours for a nearby topoff" tests), so a suboptimal pick this
-// tick is corrected or superseded next tick, never a stuck/wrong-forever state.
-function findLiveTopoff(creep: Creep, exclude: Id<_HasId> | undefined, range: number): Resource | Tombstone | Ruin | StructureContainer | undefined {
-  const nearest = <T extends { pos: RoomPosition }>(items: T[]): T | undefined =>
-    items.sort((a, b) => creep.pos.getRangeTo(a.pos) - creep.pos.getRangeTo(b.pos))[0];
-
-  const containers = creep.pos
+// This runs unconditionally on EVERY travelHome tick with spare capacity (confirmed live 2026-08-13 CPU
+// profiling: transport:runTransport was the single most expensive per-call creep function), so a
+// PathFinder search here is paid every tick of a whole cross-room trip, not once — pickTopoff's
+// straight-line-range ranking (not findClosestByPath) is deliberate for the same reason; see its own doc.
+function findLiveTopoff(creep: Creep, exclude: Id<_HasId> | undefined, range: number): TopoffCandidate | undefined {
+  const containers: TopoffCandidate[] = creep.pos
     .findInRange(FIND_STRUCTURES, range, { filter: s => s.structureType === STRUCTURE_CONTAINER })
-    .filter((c): c is StructureContainer => (c as StructureContainer).id !== exclude && (c as StructureContainer).store.getUsedCapacity(RESOURCE_ENERGY) >= TOPOFF_WORTHWHILE_FLOOR);
-  if (containers.length > 0) return nearest(containers);
+    .map(s => s as StructureContainer)
+    .map(c => ({ ref: { kind: "structure", id: c.id as Id<AnyStoreStructure> }, pos: c.pos, amount: c.store.getUsedCapacity(RESOURCE_ENERGY) }));
 
-  const drops = creep.pos
-    .findInRange(FIND_DROPPED_RESOURCES, range)
-    .filter(d => d.resourceType === RESOURCE_ENERGY && d.id !== exclude && d.amount >= TOPOFF_WORTHWHILE_FLOOR);
-  const tombs = creep.pos
+  const drops: TopoffCandidate[] = creep.pos
+    .findInRange(FIND_DROPPED_RESOURCES, range, { filter: d => d.resourceType === RESOURCE_ENERGY })
+    .map(d => ({ ref: { kind: "dropped", id: d.id }, pos: d.pos, amount: d.amount }));
+  const tombs: TopoffCandidate[] = creep.pos
     .findInRange(FIND_TOMBSTONES, range)
-    .filter(t => t.id !== exclude && t.store.getUsedCapacity(RESOURCE_ENERGY) >= TOPOFF_WORTHWHILE_FLOOR);
-  const ruins = creep.pos
+    .map(t => ({ ref: { kind: "tombstone", id: t.id }, pos: t.pos, amount: t.store.getUsedCapacity(RESOURCE_ENERGY) }));
+  const ruins: TopoffCandidate[] = creep.pos
     .findInRange(FIND_RUINS, range)
-    .filter(r => r.id !== exclude && r.store.getUsedCapacity(RESOURCE_ENERGY) >= TOPOFF_WORTHWHILE_FLOOR);
+    .map(r => ({ ref: { kind: "ruin", id: r.id }, pos: r.pos, amount: r.store.getUsedCapacity(RESOURCE_ENERGY) }));
 
-  const piles: (Resource | Tombstone | Ruin)[] = [...drops, ...tombs, ...ruins];
-  if (piles.length === 0) return undefined;
-  return nearest(piles);
+  return pickTopoff(creep.pos, containers, [...drops, ...tombs, ...ruins], exclude);
 }
 
-function nodeRefFor(obj: Resource | Tombstone | Ruin | StructureContainer): NodeRef {
-  if ("resourceType" in obj) return { kind: "dropped", id: obj.id };
-  if ("deathTime" in obj) return { kind: "tombstone", id: obj.id };
-  if ("destroyTime" in obj) return { kind: "ruin", id: obj.id };
-  return { kind: "structure", id: obj.id as Id<AnyStoreStructure> };
-}
-
-// Builds a pickup task for a live-found topoff object, capped to the creep's free capacity, resuming
+// Builds a pickup task for a live-found topoff candidate, capped to the creep's free capacity, resuming
 // `resumeWith` (the chain/task to fall back into) once that pickup completes. Shared by advanceOrTopOff
 // (splices ahead of a pickup chain's `next`) and the travelHome branch (resumes travelHome itself after
 // the detour) — both are "grab this first, then continue what I was already doing."
-function topoffTask(creep: Creep, topoff: Resource | Tombstone | Ruin | StructureContainer, resumeWith: LogisticsTask | undefined): LogisticsTask {
-  const amount = Math.min(
-    creep.store.getFreeCapacity(RESOURCE_ENERGY),
-    (topoff as { store?: { getUsedCapacity(r: ResourceConstant): number } }).store?.getUsedCapacity(RESOURCE_ENERGY) ?? (topoff as Resource).amount
-  );
-  return { kind: "pickup", from: nodeRefFor(topoff), resource: RESOURCE_ENERGY, amount, next: resumeWith };
+function topoffTask(creep: Creep, topoff: TopoffCandidate, resumeWith: LogisticsTask | undefined): LogisticsTask {
+  const amount = Math.min(creep.store.getFreeCapacity(RESOURCE_ENERGY), topoff.amount);
+  return { kind: "pickup", from: topoff.ref, resource: RESOURCE_ENERGY, amount, next: resumeWith };
 }
 
 // A pickup leg that came up short (its provider was drained, whether by this withdraw or by something
@@ -228,7 +183,7 @@ function topoffTask(creep: Creep, topoff: Resource | Tombstone | Ruin | Structur
 function advanceOrTopOff(creep: Creep, exhaustedId: Id<_HasId> | undefined): void {
   const remainingChain = creep.memory.logistics?.current?.next;
   if (creep.room.name !== creep.memory.home && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-    const topoff = findLiveTopoff(creep, exhaustedId, topoffRange(creep));
+    const topoff = findLiveTopoff(creep, exhaustedId, topoffRange(roomsFromHome(creep)));
     if (topoff) {
       creep.memory.logistics = { current: topoffTask(creep, topoff, remainingChain) };
       return;
@@ -261,7 +216,7 @@ export const runTransport = wrapFn(function runTransport(creep: Creep): void {
     // every tick while still travelling, not just once at assignment, so a creep also picks up whatever
     // it happens to walk past en route, not only what was nearby the tick it went idle.
     if (creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-      const topoff = findLiveTopoff(creep, undefined, topoffRange(creep));
+      const topoff = findLiveTopoff(creep, undefined, topoffRange(roomsFromHome(creep)));
       if (topoff) {
         creep.memory.logistics = { current: topoffTask(creep, topoff, task) };
         return;
