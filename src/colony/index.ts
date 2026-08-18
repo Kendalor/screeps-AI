@@ -107,7 +107,7 @@ export class Colony {
    * that capability is built, rather than widening the empire-wide picker's assumptions ahead of it.
    */
   public getMinerals(): MineralConstant[] {
-    return this.snapshot.mineral ? [this.snapshot.mineral] : [];
+    return this.snapshot.mineral ? [this.snapshot.mineral.mineralType] : [];
   }
 
   /** This colony's spawn demand; the empire arbiter sorts and routes across all colonies. Not sorted here. */

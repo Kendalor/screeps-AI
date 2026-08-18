@@ -9,6 +9,7 @@ import type {
   ScoutCandidate,
   SnapContainer,
   SnapLink,
+  SnapMineral,
   SnapSink,
   SnapCreep,
   SnapDrop,
@@ -131,12 +132,14 @@ export function colonySnap(over: Partial<ColonySnapshot> = {}): ColonySnapshot {
     controllerProgressTotal: 0,
     storageEnergy: 0,
     storageCapacity: 0,
+    storageMineral: 0,
     containers: [],
     links: [],
     terminalEnergy: 0,
     terminalCapacity: 0,
     anchor: null,
     sourceMemory: {},
+    mineralMemory: {},
     linkNetwork: {},
     roadsBuilt: false,
     structures: [],
@@ -238,6 +241,27 @@ export function linkAt(
   over: Partial<Pick<SnapLink, "id" | "storeCapacity" | "cooldown">> = {}
 ): SnapLink {
   return { id: `link_${x}_${y}` as Id<StructureLink>, x, y, storeEnergy, storeCapacity: 800, cooldown: 0, ...over };
+}
+
+export function mineralAt(
+  x: number,
+  y: number,
+  over: Partial<
+    Pick<
+      SnapMineral,
+      "id" | "mineralType" | "mineralAmount" | "ticksToRegeneration" | "extractorId" | "containerId" | "containerMineral" | "containerCapacity"
+    >
+  > = {}
+): SnapMineral {
+  return {
+    id: `mineral_${x}_${y}` as Id<Mineral>,
+    x,
+    y,
+    mineralType: RESOURCE_LEMERGIUM,
+    mineralAmount: 50000,
+    ticksToRegeneration: 0,
+    ...over
+  };
 }
 
 export function spawn(id = "spawn1", busy = false): SnapSpawn {

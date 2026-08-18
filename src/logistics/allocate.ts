@@ -92,36 +92,58 @@ export function allocate(
     providerRemaining.set(refKey(p.ref), p.available - (reserved.providers[refKey(p.ref)] ?? 0));
   }
 
-  // Loaded creeps first: a creep already carrying energy should win a deliver before an empty creep is
-  // sent on a round trip for the same consumer — the pre-loaded one is ready this tick, the empty one
-  // isn't. (A creep pre-loaded speculatively from a drop, below, is exactly the case this serves.)
+  // Loaded creeps first: a creep already carrying its resource should win a deliver before an empty
+  // creep is sent on a round trip for the same consumer — the pre-loaded one is ready this tick, the
+  // empty one isn't. (A creep pre-loaded speculatively from a drop, below, is exactly the case this
+  // serves.) storeEnergy sorts every creep, mineral-carrying included: a mineralMiner/transport never
+  // carries both at once, so this is just "loaded first, whatever it's loaded with."
   const byLoadedFirst = [...idleCreeps].sort((a, b) => b.storeEnergy - a.storeEnergy);
+
+  // One resource-type creep's outstanding chain is priced against ONLY that resource's own providers/
+  // consumers — energy and mineral demand never cross-route (a mineral provider can't fill an extension,
+  // an energy provider can't fill the mineral container). Resolved fresh per creep from what it's
+  // actually carrying/could carry, not a single fixed loop order, so a creep already loaded with mineral
+  // still gets a mineral-scoped deliver even while energy demand also exists this tick.
+  const resourcesOf = (list: readonly { resource: ResourceConstant }[]): ResourceConstant[] => [...new Set(list.map(r => r.resource))];
+  const allResources = resourcesOf([...providers, ...consumers]);
 
   for (const creep of byLoadedFirst) {
     // Already carrying load (just spawned, or resuming): skip straight to delivering that load — no
     // wasted trip back through a provider it doesn't need. Spread it across as many consumers as it
     // takes to empty the creep (e.g. a 200-energy creep filling four 50-cap extensions in one trip).
     if (creep.storeEnergy > 0) {
+      // Which resource this creep is actually carrying — inferred from live game state the same way
+      // carriedResource() does in interpreter.ts, since SnapCreep.storeEnergy is a generic carried-
+      // amount reading (see its own doc), not literally always RESOURCE_ENERGY.
+      const resource = creepResource(creep, allResources);
       // Still out in a remote room: don't pick (and reserve) a consumer yet — that would park a
       // spawn/extension reservation for the whole cross-room trip home. Head home first; a deliver
       // gets chosen fresh, against live demand, once a later tick finds it idle inside the home room.
       if (creep.room !== creep.home) {
-        out[creep.id] = { kind: "travelHome", resource: RESOURCE_ENERGY, amount: creep.storeEnergy };
+        out[creep.id] = { kind: "travelHome", resource, amount: creep.storeEnergy };
         continue;
       }
-      const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, creep.storeEnergy, creep, costMatrix, room);
+      const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, resource, creep.storeEnergy, creep, costMatrix, room);
       const delivered = delivers.reduce((sum, d) => sum + d.amount, 0);
       const leftover = creep.storeEnergy - delivered;
       // No live consumer wanted (all of) what this creep carries: dump the rest into storage rather
       // than stranding it on the creep or, worse, letting the speculative pass below send it to fetch
       // even MORE energy on top of what it can't deliver. Never a pickup, so this can't reintroduce the
-      // withdraw-then-redeposit loop storage's consumer-side gate (above) guards against.
-      if (leftover > 0 && storageOverflow && overflowFree > 0 && !delivers.some(d => refKey(d.ref) === refKey(storageOverflow.ref))) {
+      // withdraw-then-redeposit loop storage's consumer-side gate (above) guards against. Energy only —
+      // storageOverflow is priced off colony.storageCapacity - storageEnergy (see graph.ts), an
+      // energy-specific ceiling; a mineral leftover with no consumer just rides home on the creep.
+      if (
+        resource === RESOURCE_ENERGY &&
+        leftover > 0 &&
+        storageOverflow &&
+        overflowFree > 0 &&
+        !delivers.some(d => refKey(d.ref) === refKey(storageOverflow.ref))
+      ) {
         const dump = Math.min(leftover, overflowFree);
         overflowFree -= dump;
         delivers.push({ ref: storageOverflow.ref, amount: dump });
       }
-      const chain = linkDelivers(delivers);
+      const chain = linkDelivers(delivers, resource);
       if (chain) out[creep.id] = chain;
       continue;
     }
@@ -129,47 +151,59 @@ export function allocate(
     const capacity = creep.storeCapacity;
     if (capacity <= 0) continue;
 
-    // Load up to the creep's full capacity, bounded by the total the currently-reservable consumers
-    // want — no point carrying energy nothing has room for. Filling to capacity (not one consumer's
-    // want) is what lets a single full creep then fan out across many extensions below.
-    const wantOpen = openConsumerDemand(sortedConsumers, consumerRemaining, RESOURCE_ENERGY);
-    const fillTarget = Math.min(capacity, wantOpen);
-    if (fillTarget <= 0) continue;
+    // An empty creep may be sent after ANY resource this tick's demand includes — try each in turn
+    // (array order; energy first when present, since allResources is built providers-then-consumers and
+    // every existing colony's providers/consumers are energy-only) and take the first that finds a job.
+    let assigned = false;
+    for (const resource of allResources) {
+      // Load up to the creep's full capacity, bounded by the total the currently-reservable consumers
+      // want — no point carrying more than anything has room for. Filling to capacity (not one
+      // consumer's want) is what lets a single full creep then fan out across many extensions below.
+      const wantOpen = openConsumerDemand(sortedConsumers, consumerRemaining, resource);
+      const fillTarget = Math.min(capacity, wantOpen);
+      if (fillTarget <= 0) continue;
 
-    const pickups = buildPickupChain(providers, providerRemaining, RESOURCE_ENERGY, fillTarget, creep, costMatrix, room);
-    if (pickups.length === 0) continue;
-    const loaded = pickups.reduce((sum, p) => sum + p.amount, 0);
+      const pickups = buildPickupChain(providers, providerRemaining, resource, fillTarget, creep, costMatrix, room);
+      if (pickups.length === 0) continue;
+      const loaded = pickups.reduce((sum, p) => sum + p.amount, 0);
 
-    // Any leg of this trip draws from a remote (cross-room) provider: queue the pickup(s) alone, with
-    // no deliver chained on — see the byLoadedFirst travelHome branch above for why. consumerRemaining
-    // is deliberately left untouched (nothing was reserved), so other creeps still see full demand.
-    if (pickups.some(p => p.remote)) {
-      let remoteChain: LogisticsTask | undefined;
-      for (let i = pickups.length - 1; i >= 0; i--) {
-        remoteChain = { kind: "pickup", from: pickups[i].ref, resource: RESOURCE_ENERGY, amount: pickups[i].amount, next: remoteChain };
+      // Any leg of this trip draws from a remote (cross-room) provider: queue the pickup(s) alone, with
+      // no deliver chained on — see the byLoadedFirst travelHome branch above for why. consumerRemaining
+      // is deliberately left untouched (nothing was reserved), so other creeps still see full demand.
+      if (pickups.some(p => p.remote)) {
+        let remoteChain: LogisticsTask | undefined;
+        for (let i = pickups.length - 1; i >= 0; i--) {
+          remoteChain = { kind: "pickup", from: pickups[i].ref, resource, amount: pickups[i].amount, next: remoteChain };
+        }
+        if (remoteChain) out[creep.id] = remoteChain;
+        assigned = true;
+        break;
       }
-      if (remoteChain) out[creep.id] = remoteChain;
-      continue;
-    }
 
-    // Spread the load across consumers (highest priority first) — a chain of delivers, one per sink,
-    // each reserved so no other creep is sent to a sink this trip will fill. Providers were reserved in
-    // buildPickupChain; consumers are reserved in buildDeliverChain. foldReserved re-derives both from
-    // the stored chain next tick, so a mid-trip creep never double-books either side. Route starts from
-    // the LAST pickup's position (where the creep will actually be once loaded), not its current spot —
-    // falls back to the creep's own position when the last pickup has none (a remote source).
-    const lastPickupPos = pickups[pickups.length - 1]?.pos ?? creep;
-    const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, RESOURCE_ENERGY, loaded, lastPickupPos, costMatrix, room);
+      // Spread the load across consumers (highest priority first) — a chain of delivers, one per sink,
+      // each reserved so no other creep is sent to a sink this trip will fill. Providers were reserved
+      // in buildPickupChain; consumers are reserved in buildDeliverChain. foldReserved re-derives both
+      // from the stored chain next tick, so a mid-trip creep never double-books either side. Route
+      // starts from the LAST pickup's position (where the creep will actually be once loaded), not its
+      // current spot — falls back to the creep's own position when the last pickup has none (remote).
+      const lastPickupPos = pickups[pickups.length - 1]?.pos ?? creep;
+      const delivers = buildDeliverChain(sortedConsumers, consumerRemaining, resource, loaded, lastPickupPos, costMatrix, room);
 
-    // Head pickup carries the first deliver's consumer as its `to` so foldReserved can read *a*
-    // destination off `current`; the full per-consumer accounting lives in the deliver legs it walks.
-    const deliverChain = linkDelivers(delivers);
-    let chain: LogisticsTask | undefined = deliverChain;
-    const headTo = delivers[0]?.ref;
-    for (let i = pickups.length - 1; i >= 0; i--) {
-      chain = { kind: "pickup", from: pickups[i].ref, to: headTo, resource: RESOURCE_ENERGY, amount: pickups[i].amount, next: chain };
+      // Head pickup carries the first deliver's consumer as its `to` so foldReserved can read *a*
+      // destination off `current`; the full per-consumer accounting lives in the deliver legs it walks.
+      const deliverChain = linkDelivers(delivers, resource);
+      let chain: LogisticsTask | undefined = deliverChain;
+      const headTo = delivers[0]?.ref;
+      for (let i = pickups.length - 1; i >= 0; i--) {
+        chain = { kind: "pickup", from: pickups[i].ref, to: headTo, resource, amount: pickups[i].amount, next: chain };
+      }
+      if (chain) {
+        out[creep.id] = chain;
+        assigned = true;
+        break;
+      }
     }
-    if (chain) out[creep.id] = chain;
+    if (assigned) continue;
   }
 
   // Speculative pass: an empty creep with no consumer-driven job still tops itself off from any DECAYING
@@ -178,6 +212,8 @@ export function allocate(
   // rot, so pulling it before a consumer wants it just moves the idle wait to the deliver side and
   // fights miners for the container. These pickups carry NO `to`/`next` — the consumer is unknown yet;
   // the loaded creep gets a deliver on a later tick, ahead of empty creeps (byLoadedFirst, above).
+  // Energy only, same as pickLargestDecayingProvider's own resource gate — a mineral never decays on
+  // the ground in this milestone's scope (harvested straight into a container, never dropped).
   for (const creep of byLoadedFirst) {
     if (out[creep.id]) continue; // already assigned by the consumer-driven pass
     const free = creep.storeCapacity - creep.storeEnergy;
@@ -197,6 +233,24 @@ export function allocate(
   }
 
   return out;
+}
+
+// Which resource a loaded creep is actually carrying, for the byLoadedFirst deliver pass — SnapCreep
+// only reports a generic storeEnergy amount (see its own doc: "current carried energy"), not which
+// ResourceConstant it is, so a mineral-carrying creep needs a live lookup instead. Falls back to
+// RESOURCE_ENERGY (the overwhelming common case, and every non-mineral creep's only possible cargo) when
+// no live object resolves (a stale snapshot entry) or nothing else in this tick's demand is non-energy.
+function creepResource(creep: SnapCreep, candidates: readonly ResourceConstant[]): ResourceConstant {
+  // Only RESOURCE_ENERGY in play at all (every existing colony before this milestone): skip the live
+  // lookup entirely — no ambiguity to resolve, and every existing test/call site keeps working with no
+  // Game global required, same as before this function existed.
+  if (candidates.length === 0 || (candidates.length === 1 && candidates[0] === RESOURCE_ENERGY)) return RESOURCE_ENERGY;
+  const live = Game.getObjectById(creep.id) as Creep | null;
+  if (!live) return RESOURCE_ENERGY;
+  for (const resource of candidates) {
+    if (live.store.getUsedCapacity(resource) > 0) return resource;
+  }
+  return RESOURCE_ENERGY;
 }
 
 // Greedily draw `fillTarget` from providers in turn, decrementing each in `remaining` as it's claimed
@@ -371,10 +425,10 @@ function nearestConsumer(
 }
 
 // Link deliver legs into a `next`-chained task (deliver1 -> deliver2 -> ...); undefined if empty.
-function linkDelivers(delivers: readonly { ref: NodeRef; amount: number }[]): LogisticsTask | undefined {
+function linkDelivers(delivers: readonly { ref: NodeRef; amount: number }[], resource: ResourceConstant): LogisticsTask | undefined {
   let chain: LogisticsTask | undefined;
   for (let i = delivers.length - 1; i >= 0; i--) {
-    chain = { kind: "deliver", to: delivers[i].ref, resource: RESOURCE_ENERGY, amount: delivers[i].amount, next: chain };
+    chain = { kind: "deliver", to: delivers[i].ref, resource, amount: delivers[i].amount, next: chain };
   }
   return chain;
 }
@@ -383,6 +437,8 @@ function isDecaying(ref: NodeRef): boolean {
   return ref.kind === "dropped" || ref.kind === "tombstone" || ref.kind === "ruin";
 }
 
+// Energy only, same as the speculative pass's own doc: a mineral never decays on the ground in this
+// milestone's scope, so there is no mineral-typed decaying pile to prefer here.
 function pickLargestDecayingProvider(providers: readonly Provider[], remaining: Map<string, number>): Provider | undefined {
   let best: Provider | undefined;
   let bestAmount = 0;

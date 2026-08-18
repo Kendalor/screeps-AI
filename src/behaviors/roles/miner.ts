@@ -14,8 +14,9 @@ export const SOURCE_SATURATING_WORK = 6;
 // unreserved remote's body actually carries.
 export const REMOTE_UNRESERVED_WORK = 3;
 
-// Below this a body is too tight to spare a CARRY part at all.
-const MIN_CARRY_ENERGY = 350;
+// Below this a body is too tight to spare a CARRY part at all. Exported so mineralMiner.ts's body
+// calculator mirrors this exact threshold rather than duplicating the literal.
+export const MIN_CARRY_ENERGY = 350;
 
 // Every miner gets exactly one CARRY once the room can afford it, regardless of container/link/site —
 // it ferries overflow into whatever it's standing near (container, link, or just its own next trip),

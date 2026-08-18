@@ -416,6 +416,13 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       if (source) source.containerId = intent.container; // only ever adds an id, same rule as recordSourceSpot
       return OK;
     }
+    case "recordMineralRegen": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      // Moves down as well as up (unlike recordSourceSpot's ids) — only ever emitted with live vision
+      // behind it, so a cleared value here is real information (regen finished), not a gap to preserve.
+      mem.mineral = { regeneratesAt: intent.regeneratesAt };
+      return OK;
+    }
     case "recordRemoteRouteBuilt": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       const source = mem.remotes.find(r => r.room === intent.remoteRoom)?.sources.find(s => s.id === intent.source);

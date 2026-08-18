@@ -92,6 +92,13 @@ export type Intent =
   // `reservedBy`: same move-down-as-well-as-up rule as dangerUntil above — captured from the same vision
   // read at the same call site, so both are always emitted (or not) together.
   | { kind: "recordRemoteDanger"; room: string; remoteRoom: string; dangerUntil: number | undefined; reservedBy: string | undefined }
+  // Persists the room's mineral deposit's regeneration deadline (Game.time + ticksToRegeneration at the
+  // observing tick) so a depleted deposit's status survives losing vision — see MineralMemory's own doc
+  // (memory/schema.ts) for why this can't just be read live every tick the way a home-room source can.
+  // Unlike recordSourceSpot's ids, this DOES move down (cleared once regen completes on a tick with
+  // vision) — a stale "still regenerating" read would otherwise block mineralMiner requests forever once
+  // vision is lost mid-regen and never regained before the real deadline passes.
+  | { kind: "recordMineralRegen"; room: string; regeneratesAt: number | undefined }
   // Planner decides a room is worth recording; execute.ts reads the live room to build the observation.
   // `passive`: recorded from ambient vision, not a scout's assigned survey — execute.ts skips re-finding
   // static data (sources/mineral) already on record, refreshing only tick/owner/hostile.

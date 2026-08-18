@@ -204,7 +204,7 @@ export const runStep = wrapFn(function runStep(
       return resolveAndAct(creep, step.from, locked, t => withdrawOrPickup(creep, t, step.resource ?? RESOURCE_ENERGY, allowTravel));
     case "transfer":
       if (creep.store.getUsedCapacity() === 0) return { acted: false, didAct: false };
-      return resolveAndAct(creep, step.to, locked, t => transferTo(creep, t, step.resource ?? RESOURCE_ENERGY, allowTravel));
+      return resolveAndAct(creep, step.to, locked, t => transferTo(creep, t, step.resource ?? carriedResource(creep), allowTravel));
     case "build":
       return actOn(
         creep,
@@ -632,6 +632,16 @@ function resolveAndAct(
   const target = resolveTarget(creep, spec, locked);
   if (!target) return { acted: false, didAct: false };
   return act(target);
+}
+
+// A transfer step with no explicit `resource` defaults to whatever the creep is actually carrying, energy
+// first (the overwhelming common case, and every existing role's steps carry only energy so this is a
+// no-op for them) — lets a mineralMiner's static step table (built with no per-room mineral type known)
+// transfer whichever mineral it just harvested without hardcoding a type.
+function carriedResource(creep: Creep): ResourceConstant {
+  if (creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0) return RESOURCE_ENERGY;
+  const held = Object.keys(creep.store) as ResourceConstant[];
+  return held[0] ?? RESOURCE_ENERGY;
 }
 
 // A container's tile is a mining spot: harvesting from on top of it drops overflow straight in, no

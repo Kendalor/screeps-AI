@@ -119,6 +119,25 @@ export interface SnapSource extends XY {
   openTiles: number; // walkable tiles adjacent to the source, i.e. its miner/collector share cap
 }
 
+// This room's own mineral deposit, full per-tick fact (id, position, type, current amount,
+// regeneration countdown, and — once built — extractor/container ids). extractorId/containerId are
+// embedded at snapshot-construction time (a near-position scan), unlike source containers which are
+// found by the reading operation — MineralMining wants a simpler read path since there's only one
+// mineral per room to resolve.
+export interface SnapMineral extends XY {
+  id: Id<Mineral>;
+  mineralType: MineralConstant;
+  mineralAmount: number;
+  ticksToRegeneration: number;
+  extractorId?: Id<StructureExtractor>;
+  containerId?: Id<StructureContainer>;
+  // The container's own current mineral store, present only alongside containerId — SnapContainer's
+  // storeEnergy is energy-specific and always reads 0 for this container, so its real (mineralType)
+  // level is carried here instead, for Logistics' mineral-provider entry (see logistics/graph.ts).
+  containerMineral?: number;
+  containerCapacity?: number;
+}
+
 // A remote-room source selected for mining, in the *home* colony's snapshot. Local sources are
 // conceptually these at distance 0, but stay in `sources` (SnapSource) to avoid churning every current
 // reader — Mining iterates `sources` then `remoteSources`. x/y are in `room`'s coordinate space, not home's.
@@ -210,6 +229,13 @@ export interface SnapSourceMemory {
   linkId?: Id<StructureLink>;
 }
 
+// What mineralMining last recorded about the deposit's regeneration, so it survives losing vision — see
+// MineralMemory's own doc (memory/schema.ts) for why this needs to be cached rather than read live every
+// tick. Absent means nothing recorded (never seen depleted, or last known state is "not regenerating").
+export interface SnapMineralMemory {
+  regeneratesAt?: number; // Game.time the deposit finishes regenerating
+}
+
 // Which built link plays which non-source role — mirrors sourceMemory's linkId, but for the two links
 // Mining doesn't own. Absent fields mean that link hasn't been detected/recorded yet (e.g. controller
 // still on a container pre-RCL5, or the anchor link not yet built).
@@ -239,7 +265,7 @@ export interface ColonySnapshot {
   // This room's own mineral, if any — absent for a room with no mineral deposit. Read by
   // Colony.getMinerals(); today only an owned room's own mineral is ever mineable (a remote/keeper room's
   // mineral is scouting data only, see ScoutInfo.mineral, until keeper-room mining exists).
-  mineral?: MineralConstant;
+  mineral?: SnapMineral;
   remoteSources: SnapRemoteSource[]; // selected remote sources; empty until pickRemotes chooses some. Mining/Reservation/Logistics all read it.
   // Straight copy of ColonyMemory.remoteStrikes (see its doc there) — pure bookkeeping, not a live game
   // fact, so unlike remoteStructures/remoteDanger this needs no vision gating at all.
@@ -255,6 +281,12 @@ export interface ColonySnapshot {
   controllerProgressTotal: number; // progress needed to reach the next level; 0 at max RCL
   storageEnergy: number; // 0 when no storage built yet
   storageCapacity: number; // 0 when no storage built yet — total store capacity when it exists
+  // How much of the room's own mineral type storage currently holds — 0 when no storage, no mineral, or
+  // none stored yet. Needed alongside storageEnergy (not derivable from storageCapacity - storageEnergy,
+  // which only accounts for the energy portion of a shared, multi-resource store) so Logistics' mineral
+  // consumer entry (see logistics/graph.ts) can compute storage's real remaining mineral-agnostic free
+  // capacity instead of overcounting it by whatever mineral is already stored.
+  storageMineral: number;
   containers: SnapContainer[]; // empty until mining containers are built
   links: SnapLink[]; // every built link in the home room, source and anchor alike; empty until RCL5
   storageId?: Id<StructureStorage>; // absent until storage is built
@@ -263,6 +295,7 @@ export interface ColonySnapshot {
   terminalCapacity: number; // 0 when no terminal built yet
   anchor: XY | null; // null until a bunker-fitting anchor is found in this room
   sourceMemory: Partial<Record<Id<Source>, SnapSourceMemory>>; // keyed by source id; missing means nothing recorded yet
+  mineralMemory: SnapMineralMemory; // last-recorded mineral regen state; see SnapMineralMemory's own doc
   linkNetwork: SnapLinkNetwork; // which built link is the anchor link vs the controller link; see SnapLinkNetwork
   // The planner's own "roads done" verdict (ColonyMemory.roadsBuilt, construction/planner.ts's
   // writeBuildingPlan) — true once energyCapacity has crossed the road-readiness gate AND no ROAD entry

@@ -10,7 +10,7 @@ export type Where = "notFull" | "hasEnergy" | "damaged";
 // in upgrade range (3). `near: "controller"`/"notController" partition containers by this radius.
 const CONTROLLER_CONTAINER_RANGE = 1;
 
-type Near = "assignedSource" | "controller" | "notController";
+type Near = "assignedSource" | "assignedMineral" | "controller" | "notController";
 
 // Positional filter shared by the live search and the locked-target re-check, so a lock survives exactly
 // the same near-test a fresh search would apply. A structure with no `near` always matches.
@@ -21,6 +21,10 @@ function nearMatches(creep: Creep, s: { pos: RoomPosition }, near: Near | undefi
     case "assignedSource": {
       const source = creep.memory.sourceId && (Game.getObjectById(creep.memory.sourceId) as Source | null);
       return !!source && s.pos.inRangeTo(source.pos, 1);
+    }
+    case "assignedMineral": {
+      const mineral = creep.memory.mineralId && (Game.getObjectById(creep.memory.mineralId) as Mineral | null);
+      return !!mineral && s.pos.inRangeTo(mineral.pos, 1);
     }
     case "controller": {
       const controller = creep.room.controller;
@@ -131,6 +135,7 @@ export type TargetKind =
   | { kind: "structure"; structureType: StructureConstant }
   | { kind: "constructionSite"; structureType?: StructureConstant }
   | { kind: "source" }
+  | { kind: "mineral" }
   | { kind: "controller" }
   | { kind: "dropped" }
   | { kind: "tombstone" }
@@ -162,6 +167,7 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
       // A site with no scoped structureType matches any spec; a scoped spec matches only its type.
       return k.kind === "constructionSite" && (spec.structureType === undefined || k.structureType === spec.structureType);
     case "source":
+    case "mineral":
     case "controller":
     case "dropped":
     case "tombstone":
@@ -184,13 +190,16 @@ export function fitsSpec(k: TargetKind, spec: TargetSpec): boolean {
 // --- live-API resolution ------------------------------------------------------
 // Fetches candidates for a spec, applies the where-filter, and returns the nearest by path.
 
-// Objects without a store (source, controller, construction site) never carry a `where`.
-function toCandidate(obj: RoomObject): TargetCandidate {
+// Objects without a store (source, controller, construction site) never carry a `where`. `resource`
+// defaults to energy — the overwhelming common case — but a structure spec may override it (see
+// TargetSpec's own doc) for a store that never holds energy at all, e.g. a mineral container; "any"
+// reads the store's general (all-resources) capacity instead of one resource's.
+function toCandidate(obj: RoomObject, resource: ResourceConstant | "any" = RESOURCE_ENERGY): TargetCandidate {
   const store = (obj as { store?: StoreDefinition }).store;
   const withHits = obj as { hits?: number; hitsMax?: number };
   return {
-    freeCapacity: store ? store.getFreeCapacity(RESOURCE_ENERGY) ?? 0 : 0,
-    usedCapacity: store ? store.getUsedCapacity(RESOURCE_ENERGY) ?? 0 : 0,
+    freeCapacity: store ? (resource === "any" ? store.getFreeCapacity() : store.getFreeCapacity(resource)) ?? 0 : 0,
+    usedCapacity: store ? (resource === "any" ? store.getUsedCapacity() : store.getUsedCapacity(resource)) ?? 0 : 0,
     hits: withHits.hits ?? 0,
     hitsMax: withHits.hitsMax ?? 0
   };
@@ -204,6 +213,7 @@ function toKind(obj: RoomObject): TargetKind | null {
     energyCapacity?: number;
     level?: number;
     resourceType?: ResourceConstant;
+    mineralType?: MineralConstant;
     deathTime?: number;
     destroyTime?: number;
     body?: unknown[];
@@ -240,6 +250,7 @@ function toKind(obj: RoomObject): TargetKind | null {
   // (never role/op-filtered).
   if (o.body !== undefined) return o.my ? { kind: "creep", role: o.memory?.role, op: o.memory?.op } : { kind: "hostile" };
   if (o.energyCapacity !== undefined) return { kind: "source" };
+  if (o.mineralType !== undefined) return { kind: "mineral" };
   if (o.level !== undefined) return { kind: "controller" };
   return null;
 }
@@ -276,7 +287,10 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
     memberSpec.find === "structure" || memberSpec.find === "creep" || memberSpec.find === "friendly"
       ? memberSpec.where
       : undefined;
-  if ((kind.kind === "structure" || kind.kind === "creep") && !matchesWhere(toCandidate(obj), where)) {
+  if (
+    (kind.kind === "structure" || kind.kind === "creep") &&
+    !matchesWhere(toCandidate(obj, memberSpec.find === "structure" ? memberSpec.resource : undefined), where)
+  ) {
     return null;
   }
   // A locked squad-mate must still share the acting creep's own op — a stale lock taken before a
@@ -291,8 +305,8 @@ function validLock(creep: Creep, locked: Id<_HasId>, spec: TargetSpec): RoomObje
   if (memberSpec.find === "structure") {
     const s = obj as unknown as { pos: RoomPosition };
     if (!nearMatches(creep, s, memberSpec.near)) return null;
-    if (!belowFillTo(toCandidate(obj), memberSpec.fillTo)) return null;
-    if (!belowRepair(toCandidate(obj), memberSpec.repairBelow)) return null;
+    if (!belowFillTo(toCandidate(obj, memberSpec.resource), memberSpec.fillTo)) return null;
+    if (!belowRepair(toCandidate(obj, memberSpec.resource), memberSpec.repairBelow)) return null;
     if (!reachableAlive(creep, s, memberSpec.requireReachableAlive)) return null;
   }
   // A locked source must release the instant its room's controller becomes hostile-reserved — same
@@ -368,9 +382,10 @@ function poolFor(creep: Creep, spec: Exclude<TargetSpec, { find: "id" } | { find
   const candidates = findCandidates(creep, spec)
     .filter(c => {
       if (spec.find !== "structure" && spec.find !== "creep" && spec.find !== "friendly") return true;
-      if (!matchesWhere(toCandidate(c), spec.where)) return false;
-      if (spec.find === "structure" && !belowFillTo(toCandidate(c), spec.fillTo)) return false;
-      if (spec.find === "structure" && !belowRepair(toCandidate(c), spec.repairBelow)) return false;
+      const resource = spec.find === "structure" ? spec.resource : undefined;
+      if (!matchesWhere(toCandidate(c, resource), spec.where)) return false;
+      if (spec.find === "structure" && !belowFillTo(toCandidate(c, resource), spec.fillTo)) return false;
+      if (spec.find === "structure" && !belowRepair(toCandidate(c, resource), spec.repairBelow)) return false;
       return true;
     })
     // A hard exclusion, not a fallback-to-full-set stage like worthwhile/share below: offering the
@@ -640,6 +655,16 @@ function findCandidates(
       const assigned = creep.memory.sourceId;
       if (assigned === undefined) return sources;
       return sources.filter(s => s.id === assigned);
+    }
+    case "mineral": {
+      // No hostile-reservation check (unlike source): a mineral's extractor isn't gated by controller
+      // reservation. mineralAmount > 0 excludes a depleted-and-regenerating deposit, mirroring source's
+      // energy > 0 filter — a mineral has no separate "temporarily empty" case worth distinguishing from
+      // ordinary depletion (see types.ts's find:"mineral" doc).
+      const minerals = room.find(FIND_MINERALS).filter(m => m.mineralAmount > 0);
+      const assigned = creep.memory.mineralId;
+      if (assigned === undefined) return minerals;
+      return minerals.filter(m => m.id === assigned);
     }
     case "dropped": {
       const local = room.find(FIND_DROPPED_RESOURCES);

@@ -15,6 +15,7 @@ import { DrainAttacker } from "./drainAttacker";
 import { DrainHealer } from "./drainHealer";
 import { Hauler } from "./hauler";
 import { Miner } from "./miner";
+import { MineralMiner } from "./mineralMiner";
 import { ParadeMember } from "./paradeMember";
 import { Repair } from "./repair";
 import { Scout } from "./scout";
@@ -31,6 +32,7 @@ export const ROLES = {
   builder: Builder,
   upgrader: Upgrader,
   miner: Miner,
+  mineralMiner: MineralMiner,
   repair: Repair,
   supply: Supply,
   scout: Scout,

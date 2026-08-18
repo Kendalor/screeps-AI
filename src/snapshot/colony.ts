@@ -12,6 +12,7 @@ import type {
   ColonySnapshot,
   EmpireSnapshot,
   SnapCreep,
+  SnapMineral,
   SnapRemoteEnergy,
   SnapStructure,
   SnapTower,
@@ -164,6 +165,7 @@ function buildColonySnapshot(
   const ownRooms = ownRoomsFor(room.name, remotes);
   const ownSites = Object.values(Game.constructionSites).filter(s => ownRooms.has(s.pos.roomName));
   const siteSummary = ownSites.map(s => ({ room: s.pos.roomName, type: s.structureType }));
+  const mineral = snapMineral(room);
   return {
     name: room.name,
     tick,
@@ -200,7 +202,7 @@ function buildColonySnapshot(
     energyAvailable: room.energyAvailable,
     energyCapacity: room.energyCapacityAvailable,
     sources: room.find(FIND_SOURCES).map(s => ({ id: s.id, x: s.pos.x, y: s.pos.y, openTiles: openHarvestTiles(s) })),
-    mineral: room.find(FIND_MINERALS)[0]?.mineralType,
+    mineral,
     remoteSources: buildRemoteSources(remotes, vision, tick),
     remoteStrikes: Memory.colonies[room.name]?.remoteStrikes ?? {},
     remoteEnergy: remoteEnergyFor(remotes),
@@ -218,6 +220,7 @@ function buildColonySnapshot(
     controllerProgressTotal: controller.progressTotal ?? 0, // undefined at RCL8 (max)
     storageEnergy: room.storage?.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0,
     storageCapacity: room.storage?.store.getCapacity(RESOURCE_ENERGY) ?? 0,
+    storageMineral: mineral && room.storage ? room.storage.store.getUsedCapacity(mineral.mineralType) ?? 0 : 0,
     storageId: room.storage?.id,
     containers: room
       .find<StructureContainer>(FIND_STRUCTURES, {
@@ -245,6 +248,7 @@ function buildColonySnapshot(
     terminalCapacity: room.terminal?.store.getCapacity(RESOURCE_ENERGY) ?? 0,
     anchor: resolveAnchor(room),
     sourceMemory: Memory.colonies[room.name]?.sources ?? {},
+    mineralMemory: Memory.colonies[room.name]?.mineral ?? {},
     linkNetwork: Memory.colonies[room.name]?.links ?? {},
     roadsBuilt: Memory.colonies[room.name]?.roadsBuilt ?? false,
     structures: room
@@ -557,6 +561,31 @@ function snapStructure(s: {
     base.hitsMax = s.hitsMax;
   }
   return base;
+}
+
+function snapMineral(room: Room): SnapMineral | undefined {
+  const mineral = room.find(FIND_MINERALS)[0];
+  if (!mineral) return undefined;
+
+  const extractor = mineral.pos
+    .lookFor(LOOK_STRUCTURES)
+    .find((s): s is StructureExtractor => s.structureType === STRUCTURE_EXTRACTOR);
+  const container = mineral.pos
+    .findInRange<StructureContainer>(FIND_STRUCTURES, 1, { filter: s => s.structureType === STRUCTURE_CONTAINER })[0];
+
+  return {
+    id: mineral.id,
+    x: mineral.pos.x,
+    y: mineral.pos.y,
+    mineralType: mineral.mineralType,
+    mineralAmount: mineral.mineralAmount,
+    ticksToRegeneration: mineral.ticksToRegeneration ?? 0,
+    extractorId: extractor?.id,
+    containerId: container?.id,
+    ...(container
+      ? { containerMineral: container.store.getUsedCapacity(mineral.mineralType), containerCapacity: container.store.getCapacity() }
+      : {})
+  };
 }
 
 // Boost-weighted sum of one part type's live (hits > 0) parts — e.g. 3 plain parts plus 2 parts boosted

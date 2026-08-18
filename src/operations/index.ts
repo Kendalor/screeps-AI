@@ -8,6 +8,7 @@ import { DemolishOperation } from "./demolish";
 import { Defense } from "./defense";
 import { Logistics } from "./logistics";
 import { Mining } from "./mining";
+import { MineralMining } from "./mineralMining";
 import type { Operation } from "./operation";
 import { Repairing } from "./repairing";
 import { Reservation } from "./reservation";
@@ -22,12 +23,13 @@ import { Upgrading } from "./upgrading";
 // snapshot — the "does the pure/stateless architecture recompute too much?" hypothesis lives here.
 // profileClass mutates the (ordinary, mutable) class prototype, unlike wrapFn's declaration-site
 // approach needed for plain functions — see lib/profiler.ts's file header for why the two differ.
-for (const op of [Bootstrap, Building, Defense, Logistics, Mining, Repairing, Reservation, Scouting, Supply, Upgrading]) {
+for (const op of [Bootstrap, Building, Defense, Logistics, Mining, MineralMining, Repairing, Reservation, Scouting, Supply, Upgrading]) {
   profileClass(op);
 }
 
 export { Operation } from "./operation";
 export { Mining, CONTAINERS_FROM_ENERGY_CAPACITY } from "./mining";
+export { MineralMining } from "./mineralMining";
 export { Defense } from "./defense";
 export { Upgrading } from "./upgrading";
 export { Bootstrap } from "./bootstrap";
@@ -70,6 +72,7 @@ export const SINGLE_TARGET_FLAG_OPERATIONS: readonly SingleTargetFlagOperationCl
 export function operationsFor(room: string, siblingRemoteSourceIds: ReadonlySet<Id<Source>> = new Set()): Operation[] {
   return [
     new Mining(room, siblingRemoteSourceIds),
+    new MineralMining(room),
     new Defense(room),
     new Upgrading(room),
     new Bootstrap(room),
@@ -102,6 +105,7 @@ export interface SpawnableOperationInfo {
  * `trigger` names both. */
 export const SPAWNABLE_OPERATIONS: readonly SpawnableOperationInfo[] = [
   { kind: "mining", trigger: "always" },
+  { kind: "mineralMining", trigger: "always" },
   { kind: "defense", trigger: "always (plus ColonyMemory.defending targets from a defend flag)" },
   { kind: "upgrading", trigger: "always" },
   { kind: "bootstrap", trigger: "always" },

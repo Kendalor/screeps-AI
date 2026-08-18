@@ -455,6 +455,7 @@ export class BootedColony {
       containers: [],
       anchor: await this.anchor(),
       sourceMemory: {},
+      mineralMemory: {},
       structures: objects
         .filter(o => o.type !== "controller" && o.type !== "source" && o.type !== "mineral" && o.type !== "creep")
         .map(o => ({ x: o.x, y: o.y, type: o.type as BuildableStructureConstant })),

@@ -217,6 +217,20 @@ export function providers(colony: ColonySnapshot): Provider[] {
     });
   }
 
+  // The mineral container, same shape as a source container above — same worthwhile floor doesn't apply
+  // (mineral doesn't decay on the ground and isn't dropped in this milestone's scope; the container
+  // itself is the only pickup point). Mined mineral never decays, so urgency is 0 like storage's own
+  // buffer entry, not the "always urgent" 1 a decaying drop gets.
+  if (colony.mineral?.containerId && (colony.mineral.containerMineral ?? 0) > 0) {
+    out.push({
+      ref: { kind: "structure", id: colony.mineral.containerId as Id<AnyStoreStructure> },
+      resource: colony.mineral.mineralType,
+      available: colony.mineral.containerMineral ?? 0,
+      urgency: 0,
+      pos: { x: colony.mineral.x, y: colony.mineral.y }
+    });
+  }
+
   return out;
 }
 
@@ -354,6 +368,25 @@ export function consumers(colony: ColonySnapshot, skipSupplyTiers = false): Cons
         priority: PRIORITY.storage,
         pos: storageStruct ? { x: storageStruct.x, y: storageStruct.y } : null
       });
+    }
+
+    // Storage as the mineral sink too, while it has free capacity — no controller-container/tower/
+    // spawn-equivalent tier exists for a raw mineral (nothing else in the colony wants it yet), so this
+    // is the only mineral consumer. Free capacity is the store's shared total minus BOTH resources
+    // already occupying it (storageEnergy and storageMineral) — storageCapacity - storageEnergy alone
+    // would overcount by however much mineral is already stored, since capacity is shared, not per-type.
+    if (colony.mineral) {
+      const wantedMineral = colony.storageCapacity - colony.storageEnergy - colony.storageMineral;
+      if (wantedMineral > 0) {
+        const storageStruct = colony.structures.find(s => s.type === "storage");
+        out.push({
+          ref: { kind: "structure", id: colony.storageId as Id<AnyStoreStructure> },
+          resource: colony.mineral.mineralType,
+          wanted: wantedMineral,
+          priority: PRIORITY.storage,
+          pos: storageStruct ? { x: storageStruct.x, y: storageStruct.y } : null
+        });
+      }
     }
   }
 

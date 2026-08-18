@@ -2,7 +2,19 @@
 
 import { describe, expect, it } from "vitest";
 import { consumers, providers, storageOverflow, supplyConsumers, supplyProviders, transportProviders } from "../../../src/logistics/graph";
-import { colonySnap, containerAt, dropAt, remoteEnergyAt, remoteSourceAt, sinkAt, snapCreep, structureAt, tombstoneAt, towerAt } from "../../fixtures";
+import {
+  colonySnap,
+  containerAt,
+  dropAt,
+  mineralAt,
+  remoteEnergyAt,
+  remoteSourceAt,
+  sinkAt,
+  snapCreep,
+  structureAt,
+  tombstoneAt,
+  towerAt
+} from "../../fixtures";
 
 describe("providers", () => {
   it("treats a source container holding energy as a provider", () => {
@@ -158,6 +170,36 @@ describe("providers", () => {
       colonySnap({ storageId, storageEnergy: 0, storageCapacity: 10000, energyAvailable: 30, energyCapacity: 50 })
     );
     expect(result.some(p => p.ref.kind === "structure" && p.ref.id === storageId)).toBe(false);
+  });
+
+  // Issue #42 (M0): the mineral container is a provider, same shape as a source container, just keyed
+  // by the room's own mineral type rather than energy.
+  it("treats the mineral container as a provider once it holds mineral", () => {
+    const mineral = mineralAt(30, 30, {
+      containerId: "mineralContainer1" as Id<StructureContainer>,
+      containerMineral: 500,
+      containerCapacity: 2000
+    });
+    const result = providers(colonySnap({ mineral }));
+
+    expect(result).toContainEqual({
+      ref: { kind: "structure", id: mineral.containerId },
+      resource: mineral.mineralType,
+      available: 500,
+      urgency: 0,
+      pos: { x: mineral.x, y: mineral.y }
+    });
+  });
+
+  it("excludes the mineral container as a provider while empty", () => {
+    const mineral = mineralAt(30, 30, { containerId: "mineralContainer1" as Id<StructureContainer>, containerMineral: 0 });
+    const result = providers(colonySnap({ mineral }));
+    expect(result.some(p => p.ref.kind === "structure" && p.ref.id === mineral.containerId)).toBe(false);
+  });
+
+  it("excludes a mineral with no container built yet from providers", () => {
+    const mineral = mineralAt(30, 30); // no containerId
+    expect(providers(colonySnap({ mineral })).some(p => p.resource === mineral.mineralType)).toBe(false);
   });
 });
 
@@ -319,6 +361,48 @@ describe("consumers", () => {
       })
     );
     expect(result.some(c => c.ref.kind === "creep")).toBe(false);
+  });
+
+  // Issue #42 (M0): storage is the sole mineral consumer — no controller-container/tower/spawn-
+  // equivalent tier exists for a raw mineral.
+  it("wants storage's real free capacity as a mineral consumer, accounting for mineral already stored", () => {
+    const mineral = mineralAt(30, 30, { containerId: "mineralContainer1" as Id<StructureContainer> });
+    const result = consumers(
+      colonySnap({ mineral, storageId, storageEnergy: 1000, storageCapacity: 10000, storageMineral: 500, energyAvailable: 50, energyCapacity: 50 })
+    );
+    const mineralConsumer = result.find(c => c.resource === mineral.mineralType);
+    // 10000 - 1000 (energy) - 500 (mineral already stored) = 8500 real free capacity.
+    expect(mineralConsumer).toEqual({
+      ref: { kind: "structure", id: storageId },
+      resource: mineral.mineralType,
+      wanted: 8500,
+      priority: 70,
+      pos: null
+    });
+  });
+
+  it("wants no mineral consumer before storage exists", () => {
+    const mineral = mineralAt(30, 30, { containerId: "mineralContainer1" as Id<StructureContainer> });
+    const result = consumers(colonySnap({ mineral }));
+    expect(result.some(c => c.resource === mineral.mineralType)).toBe(false);
+  });
+
+  it("does not want a mineral consumer once storage is genuinely full", () => {
+    const mineral = mineralAt(30, 30, { containerId: "mineralContainer1" as Id<StructureContainer> });
+    const result = consumers(
+      colonySnap({ mineral, storageId, storageEnergy: 5000, storageCapacity: 10000, storageMineral: 5000, energyAvailable: 50, energyCapacity: 50 })
+    );
+    expect(result.some(c => c.resource === mineral.mineralType)).toBe(false);
+  });
+
+  it("never lets a mineral consumer's resource collide with the energy storage consumer", () => {
+    const mineral = mineralAt(30, 30, { containerId: "mineralContainer1" as Id<StructureContainer> });
+    const result = consumers(
+      colonySnap({ mineral, storageId, storageEnergy: 1000, storageCapacity: 10000, storageMineral: 0, energyAvailable: 50, energyCapacity: 50 })
+    );
+    const storageConsumers = result.filter(c => c.ref.kind === "structure" && c.ref.id === storageId);
+    expect(storageConsumers).toHaveLength(2); // one energy, one mineral — distinct resources, same structure
+    expect(storageConsumers.map(c => c.resource).sort()).toEqual([mineral.mineralType, RESOURCE_ENERGY].sort());
   });
 });
 

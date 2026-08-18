@@ -215,6 +215,30 @@ describe("actuator", () => {
     expect(mem.remotes[0].dangerUntil).toBeUndefined();
   });
 
+  describe("recordMineralRegen", () => {
+    it("records a newly-depleted deposit's regen deadline", () => {
+      stubGame();
+      (globalThis as Record<string, unknown>).Memory = { colonies: { W1N1: { sources: {}, danger: 0, remotes: [] } } };
+
+      execute([{ kind: "recordMineralRegen", room: "W1N1", regeneratesAt: 1500 }]);
+
+      const mem = (globalThis as { Memory: { colonies: Record<string, { mineral?: { regeneratesAt?: number } }> } }).Memory.colonies.W1N1;
+      expect(mem.mineral?.regeneratesAt).toBe(1500);
+    });
+
+    it("clears the cached regen deadline once regen completes with vision (moves down, not just up)", () => {
+      stubGame();
+      (globalThis as Record<string, unknown>).Memory = {
+        colonies: { W1N1: { sources: {}, danger: 0, remotes: [], mineral: { regeneratesAt: 1500 } } }
+      };
+
+      execute([{ kind: "recordMineralRegen", room: "W1N1", regeneratesAt: undefined }]);
+
+      const mem = (globalThis as { Memory: { colonies: Record<string, { mineral?: { regeneratesAt?: number } }> } }).Memory.colonies.W1N1;
+      expect(mem.mineral?.regeneratesAt).toBeUndefined();
+    });
+  });
+
   describe("recordDrainSample (#40)", () => {
     it("starts a fresh history and appends the first sample when none exists yet", () => {
       stubGame();

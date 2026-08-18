@@ -43,6 +43,7 @@ declare global {
     role: RoleName;
     op?: string; // requester that ordered this creep, as `kind:room`; absent means unowned (predates its requester)
     sourceId?: Id<Source>; // singular — no multi-source miner assignment
+    mineralId?: Id<Mineral>; // singular — no multi-mineral miner assignment (see sourceId, its parallel)
     task?: TaskState; // current behavior progress — owned by behaviors/interpreter.ts
     // Current transport assignment — owned by intents/execute.ts (write) via Logistics.intents();
     // empire/creeps.ts's transport runner reads and consumes `current`, never writes it directly. The
@@ -150,6 +151,7 @@ declare global {
 export type RoleName =
   | "bootstrap"
   | "miner"
+  | "mineralMiner"
   | "hauler"
   | "supply"
   | "transport"
@@ -176,6 +178,7 @@ export type RoleName =
 export interface ColonyMemory {
   anchor?: { x: number; y: number }; // owned by building
   sources: Record<Id<Source>, SourceMemory>; // owned by mining
+  mineral?: MineralMemory; // owned by mineralMining
   links?: LinkNetworkMemory; // owned by links
   remotes: RemoteMemory[]; // the selected remote rooms + their mined sources; owned by mining (pickRemotes writes it)
   // Consecutive reevaluate passes each still-selected source has failed to make the cut on, keyed by
@@ -418,6 +421,17 @@ export interface SourceMemory {
   containerId?: Id<StructureContainer>;
   linkId?: Id<StructureLink>;
   spot?: { x: number; y: number }; // mining position
+}
+
+// Cached from the last tick a mineral was actually visible, so it survives losing vision (SK-room
+// minerals in particular won't have vision every tick once remote/keeper mineral mining exists — see
+// assignedMineral's doc in behaviors/types.ts). Owned by MineralMining (recordMineralRegen intent).
+export interface MineralMemory {
+  // Game.time the deposit finishes regenerating, i.e. Game.time + ticksToRegeneration at the tick this
+  // was last observed depleted. Absent means either never observed depleted, or already known to have
+  // finished regenerating (see execute.ts's recordMineralRegen: cleared once regen completes on a tick
+  // with vision, not left stale).
+  regeneratesAt?: number;
 }
 
 export interface LinkNetworkMemory {

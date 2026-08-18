@@ -14,6 +14,11 @@ export type TargetSpec =
       // (e.g. STRUCTURE_SPAWN and STRUCTURE_EXTENSION together), same as "any" does across find-kinds.
       type: StructureConstant | StructureConstant[];
       where?: "notFull" | "hasEnergy" | "damaged";
+      // Which resource `where`'s notFull/hasEnergy reads capacity for. Defaults to RESOURCE_ENERGY.
+      // "any" reads the store's general (all-resources) free/used capacity instead — for a structure that
+      // never holds energy at all, e.g. a mineralMiner's container, where the room's actual mineral type
+      // isn't known at this static step-table's definition time.
+      resource?: ResourceConstant | "any";
       share?: Share;
       prefer?: Prefer;
       // Positional discriminator, the only way to tell same-typed structures apart by where they sit:
@@ -22,7 +27,7 @@ export type TargetSpec =
       //    it stays in upgrade range). This is the hauler's fill target.
       //  - "notController": the complement — every container that is NOT the controller's, i.e. the source
       //    containers a hauler draws from. Keeps a hauler from draining the very container it fills.
-      near?: "assignedSource" | "controller" | "notController";
+      near?: "assignedSource" | "assignedMineral" | "controller" | "notController";
       // Only qualify a store-holder while its energy fraction is BELOW this (0..1). Lets the hauler top the
       // controller container to a floor (0.7) and then leave it alone, rather than fighting the upgraders
       // that drain it for every last unit. Combines with `where` (both must pass).
@@ -60,6 +65,10 @@ export type TargetSpec =
   | { find: "tombstone"; share?: Share; prefer?: Prefer; requireReachableAlive?: boolean; alsoAdjacentRooms?: boolean }
   | { find: "ruin"; share?: Share; prefer?: Prefer; requireReachableAlive?: boolean; alsoAdjacentRooms?: boolean }
   | { find: "source" }
+  // The room's mineral deposit — parallel to find:"source", not merged with it, since a mineral has no
+  // continuous-regen "temporarily empty" case to distinguish and is exactly one per room. See
+  // assignedMineral (near, above) for a mineralMiner's own deposit vs. find:"mineral"'s room-wide search.
+  | { find: "mineral" }
   // structureType/near scope which sites qualify, mirroring the structure spec: a miner builds only the
   // CONTAINER site at its own source, not whatever construction site happens to be nearest.
   // onlyIfCarryOver: a single-CARRY creep (e.g. the base upgrader body) can't afford a long round trip
@@ -69,7 +78,7 @@ export type TargetSpec =
   | {
       find: "constructionSite";
       structureType?: StructureConstant;
-      near?: "assignedSource" | "controller" | "notController";
+      near?: "assignedSource" | "assignedMineral" | "controller" | "notController";
       share?: Share;
       prefer?: Prefer;
       onlyIfCarryOver?: { carry: number; range: number };

@@ -11,6 +11,7 @@ import { buildCostMatrix } from "../../../src/construction/roadPathing";
 import type { NodeRef } from "../../../src/logistics/types";
 import { openTerrain, snapCreep } from "../../fixtures";
 import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
+import { stubGame } from "../../helpers";
 
 beforeEach(() => {
   clearTiles();
@@ -539,5 +540,86 @@ describe("allocate", () => {
 
     expect(result[loaded.id]).toMatchObject({ kind: "deliver", to: { kind: "structure", id: "sink" }, amount: 100 });
     expect(result[empty.id]).toBeUndefined(); // demand already met by the loaded creep
+  });
+});
+
+// Generalized resource-type routing (issue #42, M0): a mineral provider/consumer coexists with energy's
+// in the same providers()/consumers() arrays, and the allocator must never cross-route between them.
+describe("allocate — mineral resource routing", () => {
+  const mineralProvider = (id: string, available: number, pos: { x: number; y: number } | null = { x: 0, y: 0 }): Provider => ({
+    ref: { kind: "structure", id: id as Id<AnyStoreStructure> },
+    resource: RESOURCE_LEMERGIUM,
+    available,
+    urgency: 0,
+    pos
+  });
+
+  const mineralConsumer = (id: string, wanted: number, priority = 70, pos: { x: number; y: number } | null = null): Consumer => ({
+    ref: { kind: "structure", id: id as Id<AnyStoreStructure> },
+    resource: RESOURCE_LEMERGIUM,
+    wanted,
+    priority,
+    pos
+  });
+
+  it("never routes a mineral provider to an energy consumer, even when energy demand is open", () => {
+    const empty = idleHauler({ storeEnergy: 0, storeCapacity: 100 });
+    const result = allocate(
+      [mineralProvider("mineralContainer", 1000)],
+      [consumer("energySink", 100)], // energy-typed consumer only
+      [empty],
+      emptyReserved()
+    );
+
+    // The mineral provider is never a match for an energy-only consumer — nothing to assign.
+    expect(result[empty.id]).toBeUndefined();
+  });
+
+  it("never routes an energy provider to a mineral consumer, even when mineral demand is open", () => {
+    const empty = idleHauler({ storeEnergy: 0, storeCapacity: 100 });
+    const result = allocate(
+      [provider("energySrc", 1000)], // energy-typed provider only
+      [mineralConsumer("storage", 100)],
+      [empty],
+      emptyReserved()
+    );
+
+    expect(result[empty.id]).toBeUndefined();
+  });
+
+  it("assigns an empty creep a mineral pickup/deliver chain end to end when only mineral demand exists", () => {
+    const empty = idleHauler({ storeEnergy: 0, storeCapacity: 100 });
+    const result = allocate([mineralProvider("mineralContainer", 500)], [mineralConsumer("storage", 500)], [empty], emptyReserved());
+
+    expect(result[empty.id]).toMatchObject({
+      kind: "pickup",
+      from: { kind: "structure", id: "mineralContainer" },
+      resource: RESOURCE_LEMERGIUM,
+      to: { kind: "structure", id: "storage" }
+    });
+  });
+
+  it("assigns a creep carrying mineral a mineral deliver, inferred from what it's actually carrying", () => {
+    const creep = snapCreep("transport", { storeEnergy: 80, storeCapacity: 100, home: "W1N1", room: "W1N1" });
+    stubGame({
+      objects: {
+        [creep.id]: {
+          store: {
+            getUsedCapacity: (resource?: ResourceConstant) => (resource === RESOURCE_LEMERGIUM ? 80 : 0)
+          }
+        }
+      }
+    });
+
+    const result = allocate([mineralProvider("mineralContainer", 1000)], [mineralConsumer("storage", 500)], [creep], emptyReserved());
+
+    expect(result[creep.id]).toMatchObject({ kind: "deliver", to: { kind: "structure", id: "storage" }, resource: RESOURCE_LEMERGIUM, amount: 80 });
+  });
+
+  it("still defaults a loaded creep to energy when only energy demand exists (regression: no live Game object needed)", () => {
+    const creep = snapCreep("transport", { storeEnergy: 50, storeCapacity: 100, home: "W1N1", room: "W1N1" });
+    const result = allocate([provider("src", 1000)], [consumer("sink", 100)], [creep], emptyReserved());
+
+    expect(result[creep.id]).toMatchObject({ kind: "deliver", resource: RESOURCE_ENERGY, amount: 50 });
   });
 });

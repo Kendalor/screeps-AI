@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
 import GOAL_JSON from "../../../src/construction/Base_2.json";
 import type { GoalLayout } from "../../../src/construction/sync";
-import { colonySnap, containerAt, linkAt, sinkAt, snapCreep, snapCreeps } from "../../fixtures";
+import { colonySnap, containerAt, linkAt, mineralAt, sinkAt, snapCreep, snapCreeps } from "../../fixtures";
 import { bodyCost } from "../../../src/spawn/body";
 import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
 
@@ -193,6 +193,30 @@ describe("Logistics.intents", () => {
 
   it("emits nothing when there are no idle transport creeps or no work", () => {
     expect(logistics.intents(colonySnap({}))).toEqual([]);
+  });
+
+  // Issue #42 (M0): a mineral container alone (no energy provider/consumer at all this tick) is enough
+  // real work to assign an idle transport creep a task — confirms the mineral provider/consumer entries
+  // actually flow through the live allocator, not just graph.ts's own unit tests.
+  it("assigns an idle transport creep a mineral pickup/deliver task when only mineral work exists", () => {
+    const creep = snapCreeps("transport", 1, { storeEnergy: 0, storeCapacity: 100 })[0];
+    const mineral = mineralAt(10, 10, {
+      containerId: "mineralContainer1" as Id<StructureContainer>,
+      containerMineral: 500,
+      containerCapacity: 2000
+    });
+    const intents = logistics.intents(
+      colonySnap({
+        creeps: [creep],
+        mineral,
+        storageId: "storage1" as Id<StructureStorage>,
+        storageEnergy: 0,
+        storageCapacity: 10000,
+        storageMineral: 0
+      })
+    );
+
+    expect(intents).toEqual([expect.objectContaining({ kind: "assignLogisticsTask", creep: creep.id })]);
   });
 });
 

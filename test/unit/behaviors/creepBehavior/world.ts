@@ -23,8 +23,17 @@ export interface FakeContainer {
   id: Id<_HasId>;
   pos: { x: number; y: number };
   structureType: StructureConstant;
-  energy: number;
+  energy: number; // generic carried-amount field — this world never mixes resources, so it also serves a mineral container
   capacity: number;
+  hits: number;
+  hitsMax: number;
+}
+
+export interface FakeMineral {
+  id: Id<_HasId>;
+  pos: { x: number; y: number };
+  mineralAmount: number;
+  ticksToRegeneration: number;
 }
 
 export interface FakeController {
@@ -44,6 +53,9 @@ export interface WorldOptions {
   // A store-holding structure (container/storage/link) — for roles whose "gather" step draws from an
   // existing energy pool rather than self-harvesting a raw source (e.g. Upgrader, Builder's first choice).
   container?: Partial<FakeContainer> | null;
+  // Present only for a mineralMiner-shaped world (mineralMiner.test.ts) — absent means find:"mineral"
+  // resolves nothing, same "opt-in fixture" convention as site/container.
+  mineral?: Partial<FakeMineral> | null;
 }
 
 // One WORK part's harvest() yield per tick, mirroring the engine constant used elsewhere in src/.
@@ -66,11 +78,14 @@ export class FakeWorld {
   controller: FakeController;
   site: FakeSite | null;
   container: FakeContainer | null;
+  mineral: FakeMineral | null;
   workParts: number;
   private travelDest: { x: number; y: number } | null = null;
   built: string[] = [];
   upgraded: string[] = [];
   harvested: string[] = [];
+  repaired: string[] = [];
+  transferred: string[] = [];
 
   constructor(opts: WorldOptions = {}) {
     this.roomName = opts.roomName ?? "W1N1";
@@ -110,7 +125,19 @@ export class FakeWorld {
             structureType: STRUCTURE_CONTAINER,
             energy: 2000,
             capacity: 2000,
+            hits: 250000,
+            hitsMax: 250000,
             ...opts.container
+          };
+    this.mineral =
+      opts.mineral === null || opts.mineral === undefined
+        ? null
+        : {
+            id: "mineral1" as Id<_HasId>,
+            pos: { x: 25, y: 25 },
+            mineralAmount: 50000,
+            ticksToRegeneration: 0,
+            ...opts.mineral
           };
     this.workParts = 2;
   }
@@ -168,18 +195,31 @@ export class FakeWorld {
   }
 
   // Store-shaped view of the container matching what targets.ts's toCandidate/findCandidates expect
-  // (structureType + a `store` with getFreeCapacity/getUsedCapacity), rebuilt fresh each call so it
-  // always reflects the container's current energy level.
+  // (structureType + a `store` with getFreeCapacity/getUsedCapacity + hits for repairStep), rebuilt
+  // fresh each call so it always reflects the container's current energy/hits level.
   private containerObj() {
     const c = this.container!;
     return {
       id: c.id,
       pos: this.roomPos(c.pos),
       structureType: c.structureType,
+      hits: c.hits,
+      hitsMax: c.hitsMax,
       store: {
         getFreeCapacity: () => c.capacity - c.energy,
         getUsedCapacity: () => c.energy
       }
+    };
+  }
+
+  private mineralObj() {
+    const m = this.mineral!;
+    return {
+      id: m.id,
+      pos: this.roomPos(m.pos),
+      mineralType: RESOURCE_LEMERGIUM,
+      mineralAmount: m.mineralAmount,
+      ticksToRegeneration: m.ticksToRegeneration
     };
   }
 
@@ -212,7 +252,10 @@ export class FakeWorld {
       id: "creep1",
       name: "test1",
       pos: this.roomPos(this.pos),
-      memory: { role: "test", home: this.roomName },
+      // mineralId set whenever a mineral fixture exists, mirroring how MineralMining's real creep request
+      // stamps memory.mineralId — needed for the assignedMineral positional filter (near: "assignedMineral")
+      // mineralMiner's repair/build/transfer steps use to scope onto their own container.
+      memory: { role: "test", home: this.roomName, ...(this.mineral ? { mineralId: this.mineral.id } : {}) },
       room: {
         name: this.roomName,
         controller: this.controllerObj(),
@@ -223,6 +266,7 @@ export class FakeWorld {
           if (kind === FIND_MY_CONSTRUCTION_SITES)
             return this.site && this.site.progress < this.site.progressTotal ? [this.siteObj()] : [];
           if (kind === FIND_STRUCTURES || kind === FIND_MY_STRUCTURES) return this.container ? [this.containerObj()] : [];
+          if (kind === FIND_MINERALS) return this.mineral && this.mineral.mineralAmount > 0 ? [this.mineralObj()] : [];
           if (kind === FIND_DROPPED_RESOURCES) return [];
           if (kind === FIND_HOSTILE_CREEPS) return [];
           return [];
@@ -242,13 +286,40 @@ export class FakeWorld {
         this.store.free -= amount;
         return OK;
       },
-      harvest: (source: { id: Id<_HasId> }) => {
-        if (source.id !== this.source.id) return ERR_INVALID_TARGET;
+      harvest: (target: { id: Id<_HasId> }) => {
+        if (this.mineral && target.id === this.mineral.id) {
+          const amount = Math.min(HARVEST_POWER * this.workParts, this.mineral.mineralAmount, this.store.free);
+          this.mineral.mineralAmount -= amount;
+          this.store.energy += amount; // generic carried-amount field, see FakeContainer's own doc
+          this.store.free -= amount;
+          this.harvested.push(target.id);
+          return OK;
+        }
+        if (target.id !== this.source.id) return ERR_INVALID_TARGET;
         const amount = Math.min(HARVEST_POWER * this.workParts, this.source.energy, this.store.free);
         this.source.energy -= amount;
         this.store.energy += amount;
         this.store.free -= amount;
-        this.harvested.push(source.id);
+        this.harvested.push(target.id);
+        return OK;
+      },
+      repair: (target: { id: Id<_HasId> }) => {
+        if (!this.container || target.id !== this.container.id) return ERR_INVALID_TARGET;
+        if (this.store.energy === 0) return ERR_NOT_ENOUGH_RESOURCES;
+        const spend = Math.min(this.workParts, this.store.energy, (this.container.hitsMax - this.container.hits) / 100);
+        this.container.hits = Math.min(this.container.hitsMax, this.container.hits + spend * 100);
+        this.store.energy -= spend;
+        this.store.free += spend;
+        this.repaired.push(target.id);
+        return OK;
+      },
+      transfer: (target: { id: Id<_HasId> }) => {
+        if (!this.container || target.id !== this.container.id) return ERR_INVALID_TARGET;
+        const amount = Math.min(this.store.energy, this.container.capacity - this.container.energy);
+        this.container.energy += amount;
+        this.store.energy -= amount;
+        this.store.free += amount;
+        this.transferred.push(target.id);
         return OK;
       },
       build: (site: { id: Id<_HasId> }) => {
