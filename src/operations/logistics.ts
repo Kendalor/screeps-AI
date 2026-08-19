@@ -1,19 +1,20 @@
-// Logistics owns the transport-creep headcount and per-tick task assignment for the provider/consumer
-// graph in src/logistics/. It is the colony's sole transport mechanism — Mining no longer spawns
-// haulers (see docs/logistics-plan.md for the rollout and the A/B that settled it) — so sizing below
-// covers the whole load: source->spawn/extension plus controller-container/tower top-off. Sizing is
-// throughput-based (income x round trip), since a flat quota can't carry the whole colony's transport
-// load.
+// Logistics owns the transport-creep headcount for the live pool driven, per gh #52, by
+// behaviors/transportTaskRunner.ts's LogisticsRequest system (src/logistics/transportRegister.ts) rather
+// than this file's own intents() (Transport's assignment no longer flows through planLogistics — see
+// logistics/index.ts's header). Sizing below covers the whole load Transport's new pool actually owns:
+// source/mineral output -> controller-container/builder-upgrader-battery/storage, NEVER spawn/extension
+// (Supply's exclusive scope). Sizing is throughput-based (income x round trip), since a flat quota can't
+// carry the whole colony's transport load.
 //
 // Priority is transport.ts's flat roleDef() number (100, tied with bootstrap/supply) — not a
 // live-count interleave. An earlier version staggered transport's rank against live miner/transport
 // count to avoid miners monopolising every spawn slot, but that only works if both operations agree
 // on the exact same live-count index at the exact same tick, which proved fragile in practice
 // (miners kept winning every slot regardless). Simpler and correct: desiredCreeps here only ever
-// returns a request once a provider has energy to move — real energy already sitting on the
-// ground/in a container — so a transport request can never exist before the first miner has produced
-// something. Once it does exist, it should win the very next spawn slot outright. The gate keys off
-// providers only, NOT the live consumers() list, whose spawnSystem entry blinks out at a full spawn.
+// returns a request once a provider has energy to move AND the new pool has somewhere to put it (see
+// transportPoolHasConsumer's own doc) — real energy already sitting on the ground/in a container, with
+// a real consumer for it, so a transport request can never exist before the first miner has produced
+// something AND something wants it. Once it does exist, it should win the very next spawn slot outright.
 
 import { orderBody } from "../spawn/body";
 import type { Intent } from "../intents/types";
@@ -21,6 +22,7 @@ import GOAL_JSON from "../construction/Base_2.json";
 import type { GoalLayout } from "../construction/sync";
 import { planLogistics } from "../logistics";
 import { providers } from "../logistics/graph";
+import { CONTROLLER_CONTAINER_FILL_FLOOR } from "../logistics/transportRegister";
 import { harvestIncome, haulDistance, wantedTransportHeadcount } from "../logistics/fleet";
 import { planLinkTransfers } from "../logistics/links";
 import { bodyContext } from "../spawn/bodyContext";
@@ -29,6 +31,48 @@ import { fillTo, type CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
 import { roleDef } from "../behaviors/roles";
 import type { SnapCreep } from "../snapshot/types";
+
+const CONTROLLER_CONTAINER_RANGE = 1; // mirrors transportRegister.ts's own constant — Chebyshev range to the controller
+
+/**
+ * Whether Transport's NEW live pool (transportRegister.ts) has ANY real consumer to deliver a pickup to
+ * right now — a snapshot-pure mirror of that module's registerControllerContainerRequest/
+ * registerCreepBatteryRequests/registerStorageSinkRequests scope, since desiredCreeps only has a
+ * ColonySnapshot to read (the live pool itself reads Game.* directly — see transportRegister.ts's
+ * header). Without this gate, `providers(colony).length > 0` alone (real energy sitting on the ground)
+ * was enough to keep requesting more transport creeps even when NOTHING in the new pool could receive
+ * it (e.g. a fresh RCL1 colony: no controller container, no storage, no builder/upgrader alive yet,
+ * since Supply alone is still catching up) — those creeps spawned, sat idle forever (nowhere to
+ * deliver), and — worse — kept outranking upgrader/bootstrap-replacement for every spawn slot at
+ * priority 100, stalling the colony's climb to RCL2 entirely (confirmed live during gh #52's own
+ * integration testing: controller progress plateaued permanently once transport's dead-weight headcount
+ * saturated the spawn queue). Mirrors Supply's own storageEnergy gate (needsHandoff's doc) in spirit:
+ * don't ask for a mover with nothing to move things to.
+ */
+function transportPoolHasConsumer(colony: ColonySnapshot): boolean {
+  const controllerContainer = colony.containers.find(c => {
+    const dx = c.x - colony.controller.x;
+    const dy = c.y - colony.controller.y;
+    return Math.max(Math.abs(dx), Math.abs(dy)) <= CONTROLLER_CONTAINER_RANGE;
+  });
+  if (controllerContainer) {
+    const floor = Math.floor(controllerContainer.storeCapacity * CONTROLLER_CONTAINER_FILL_FLOOR);
+    if (controllerContainer.storeEnergy < floor) return true;
+  }
+
+  if (!colony.storageId) {
+    // Pre-storage: builder/upgrader creeps are direct battery sinks (registerCreepBatteryRequests) —
+    // mirrors that function's own scope exactly (upgrader only counts near the controller, but a fresh
+    // one with free capacity anywhere still counts here, matching the pre-cutover gate's own leniency).
+    const hasOpenBattery = colony.creeps.some(c => (c.role === "builder" || c.role === "upgrader") && c.storeEnergy < c.storeCapacity);
+    if (hasOpenBattery) return true;
+  } else {
+    if (colony.storageEnergy < colony.storageCapacity) return true;
+    if (colony.mineral && colony.storageEnergy + colony.storageMineral < colony.storageCapacity) return true;
+  }
+
+  return false;
+}
 
 const GOAL = GOAL_JSON as GoalLayout;
 
@@ -45,7 +89,14 @@ const config = {
   maxTransport: 12, // raised from mining.ts's old local-only hauler ceiling (6) — remote sources add income/distance the original cap never accounted for
   minTransportEnergy: 150, // one CARRY,CARRY,MOVE set — cheapest useful body
   bootstrapEnergy: 300, // base spawn capacity, always affordable — size the FIRST transport off this
-  wantedStewards: 1 // one is enough — it never leaves the anchor tile, so there's no throughput case for a second
+  wantedStewards: 1, // one is enough — it never leaves the anchor tile, so there's no throughput case for a second
+  // gh #52's pre-storage transport sink cap (wantedTransport's own doc): a floor so the very first
+  // transport creep is never blocked out entirely (there's always the controller-container/ground-pile
+  // withdraw side even with zero battery-holders alive yet), and a per-battery-holder multiplier sized
+  // generously enough for real throughput (a battery-holder's own trip cadence easily keeps 2 transport
+  // creeps' worth of deliveries busy) without reproducing the unbounded income-only blowup.
+  minPreStorageTransport: 2,
+  preStorageTransportPerBattery: 2
 } as const;
 
 // Whether the sole surviving steward is close enough to death that its replacement must already be
@@ -65,14 +116,15 @@ export class Logistics extends Operation {
   // on a job that doesn't exist, the same silent-stall shape Supply avoids by gating on storageEnergy.
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
     if (colony.energyCapacity < config.minTransportEnergy) return [];
-    // Gate on a provider having energy to move — NOT on consumers() being non-empty this tick. The
-    // spawn/extension system is the always-present structural sink (energyCapacity > 0), but its
-    // consumers() entry is (capacity - available), which momentarily hits 0 at a full spawn. Gating on
-    // the live consumer list there made the transport request vanish exactly when the spawn finally
-    // had the energy to build it — a lower-priority miner spawned instead, drained the spawn, and the
-    // request reappeared next tick (an oscillation that never spawned transport). A provider with
-    // energy plus a spawn system to feed is real, standing work.
+    // Gate on a provider having energy to move AND the new pool having a real place to put it
+    // (transportPoolHasConsumer — see gh #52's own doc on that function: without the consumer half of
+    // this gate, transport creeps kept spawning with nowhere to deliver, permanently starving
+    // upgrader/bootstrap-replacement of spawn slots). `providers` still comes from the old graph.ts —
+    // its provider-side scope (ground piles, containers, remote energy, mineral) matches the new pool's
+    // provider side closely enough to reuse rather than duplicate; only the consumer half needed a new,
+    // pool-accurate check, since graph.ts's own consumers() still assumes spawn/extension is in scope.
     if (providers(colony).length === 0) return [];
+    if (!transportPoolHasConsumer(colony)) return [];
 
     // Nothing alive yet: size the first transport off base spawn capacity (300, always affordable),
     // not full energyCapacity — otherwise the room stalls waiting for the extensions to fill, which
@@ -132,7 +184,23 @@ export class Logistics extends Operation {
     const miners = colony.creeps.filter(c => c.role === "miner");
     const income = harvestIncome(miners, colony, config);
     const distance = haulDistance(miners, colony, config);
-    return wantedTransportHeadcount(income, distance, energyForBody, config);
+    const raw = wantedTransportHeadcount(income, distance, energyForBody, config);
+
+    // gh #52 cutover: Transport's new pool (transportRegister.ts) never delivers to spawn/extension
+    // (Supply's exclusive scope) — pre-storage, its only deliver-side sinks are the controller
+    // container (once built) and builder/upgrader creep batteries (registerCreepBatteryRequests), a
+    // much smaller total capacity than the old system's spawn/extension fallback offered. Without a
+    // cap here, income-based sizing (identical formula, unchanged) requests far more transport creeps
+    // than that small sink set can ever usefully absorb — confirmed live during gh #52's own
+    // integration testing: a fresh RCL1 room's income math alone asked for 9 transport creeps against
+    // a single upgrader's tiny battery, and those unmet, ever-pending priority-100 requests
+    // permanently starved upgrader's own priority-60 request of every spawn slot, stalling the colony
+    // completely (the SAME priority tie-up that motivated Supply's own existence over transport
+    // directly feeding spawn — see this file's original header comment on that). Once storage exists,
+    // its own much larger capacity is the real sink and this cap no longer applies.
+    if (colony.storageId) return raw;
+    const battery = colony.creeps.filter(c => c.role === "builder" || c.role === "upgrader").length;
+    return Math.min(raw, Math.max(config.minPreStorageTransport, battery * config.preStorageTransportPerBattery));
   }
 
   /**

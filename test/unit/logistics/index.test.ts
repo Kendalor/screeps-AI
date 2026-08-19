@@ -2,6 +2,13 @@
 // behavior is enough — the interesting logic already has its own unit tests in graph/allocate.
 // allocate() now runs distance queries via real PathFinder.search (see lib/pathing.ts's header), so
 // every case here needs stubPathFinderSingleRoom() — same as allocate.test.ts.
+//
+// gh #52 cutover: planLogistics now plans Supply's fleet ONLY — Transport is driven live by
+// behaviors/transportTaskRunner.ts against the new LogisticsRequest system instead (see logistics/index.ts's
+// header). The "planLogistics" describe block that used to prove transport assignment through this
+// function (pickup/deliver chains, mid-task reservation folding for transport creeps) is removed — that
+// behavior no longer exists here; graph.ts/allocate.ts's own unit tests still cover the underlying
+// provider/consumer/allocate machinery, which Supply's path below still exercises for real.
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { planLogistics } from "../../../src/logistics";
@@ -13,147 +20,9 @@ beforeEach(() => {
   stubPathFinderSingleRoom();
 });
 
-describe("planLogistics", () => {
-  it("assigns one idle transport creep given one provider and one consumer", () => {
-    const creep = snapCreep("transport", { storeEnergy: 0, storeCapacity: 100 });
-    const container = containerAt(10, 10, 300);
-    const plan = planLogistics(
-      colonySnap({
-        creeps: [creep],
-        containers: [container],
-        controller: { x: 25, y: 25 },
-        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")], // one empty spawn wanting 100
-        energyAvailable: 200,
-        energyCapacity: 300
-      })
-    );
-
-    expect(plan.assignments[creep.id]).toMatchObject({ kind: "pickup", from: { kind: "structure", id: container.id } });
-  });
-
-  it("does nothing when there are no idle transport creeps", () => {
-    const busy = snapCreep("transport", { memory: { logistics: { current: { kind: "deliver", resource: RESOURCE_ENERGY, amount: 10 } } } });
-    const plan = planLogistics(colonySnap({ creeps: [busy], energyAvailable: 0, energyCapacity: 300 }));
-    expect(plan.assignments).toEqual({});
-  });
-
-  it("reserves a mid-task chain's consumer off its deliver leg, leaving the rest open for an idle creep", () => {
-    // The busy creep's chain fills spawn1 (100) then a second sink spawn2 is still open. Folding must
-    // reserve spawn1 (via the deliver leg), leaving spawn2's 100 for the idle creep.
-    const container = containerAt(10, 10, 400);
-    const busy = snapCreep("transport", {
-      memory: {
-        logistics: {
-          current: {
-            kind: "pickup",
-            from: { kind: "structure", id: container.id },
-            to: { kind: "structure", id: "spawn1" as Id<AnyStoreStructure> },
-            resource: RESOURCE_ENERGY,
-            amount: 100,
-            next: { kind: "deliver", to: { kind: "structure", id: "spawn1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 100 }
-          }
-        }
-      }
-    });
-    const idle = snapCreep("transport", { storeEnergy: 0, storeCapacity: 100 });
-    const plan = planLogistics(
-      colonySnap({
-        creeps: [busy, idle],
-        containers: [container],
-        controller: { x: 25, y: 25 },
-        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1"), sinkAt(21, 20, 0, 100, "spawn2")],
-        energyAvailable: 100,
-        energyCapacity: 300
-      })
-    );
-
-    // spawn1 is reserved by the busy chain, so the idle creep is sent to fill spawn2.
-    const idleTask = plan.assignments[idle.id];
-    expect(idleTask?.kind).toBe("pickup");
-    // Its deliver leg targets spawn2 (the still-open sink), not the reserved spawn1.
-    let deliver = idleTask?.next;
-    while (deliver && deliver.kind !== "deliver") deliver = deliver.next;
-    expect(deliver?.to).toEqual({ kind: "structure", id: "spawn2" });
-  });
-
-  it("reserves every provider in a mid-task creep's pickup chain, not just the first", () => {
-    // A busy creep is fetching from TWO containers in one chained trip (cont1 then cont2) to spawn.
-    // Folding must reserve BOTH providers so an idle creep isn't sent to cont2 for energy already spoken for.
-    // Each container holds exactly what the chain plans to take, so the reservation fully claims both.
-    const cont1 = containerAt(10, 10, 100);
-    const cont2 = containerAt(12, 12, 100);
-    const busy = snapCreep("transport", {
-      memory: {
-        logistics: {
-          current: {
-            kind: "pickup",
-            from: { kind: "structure", id: cont1.id },
-            to: { kind: "structure", id: "spawn1" as Id<AnyStoreStructure> }, // head-pointer hint the allocator sets
-            resource: RESOURCE_ENERGY,
-            amount: 100,
-            next: {
-              kind: "pickup",
-              from: { kind: "structure", id: cont2.id },
-              to: { kind: "structure", id: "spawn1" as Id<AnyStoreStructure> },
-              resource: RESOURCE_ENERGY,
-              amount: 100,
-              next: { kind: "deliver", to: { kind: "structure", id: "spawn1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 200 }
-            }
-          }
-        }
-      }
-    });
-    const idle = snapCreep("transport", { storeEnergy: 0, storeCapacity: 100 });
-    const plan = planLogistics(
-      colonySnap({
-        creeps: [busy, idle],
-        containers: [cont1, cont2],
-        controller: { x: 25, y: 25 },
-        // A second open sink so the idle creep WOULD want work — proving it's the provider reservation,
-        // not a lack of demand, that leaves it with no container to draw from.
-        spawnSinks: [sinkAt(20, 20, 100, 200, "spawn1"), sinkAt(22, 20, 0, 100, "spawn2")],
-        energyAvailable: 100,
-        energyCapacity: 300
-      })
-    );
-
-    // Both containers are reserved by the busy creep's chain, so the idle creep has no provider to draw
-    // from even though spawn2 is open demand — it must not be sent to either reserved container.
-    const idleTask = plan.assignments[idle.id];
-    if (idleTask) {
-      expect(idleTask.from).not.toEqual({ kind: "structure", id: cont1.id });
-      expect(idleTask.from).not.toEqual({ kind: "structure", id: cont2.id });
-    }
-  });
-
-  it("does not double-assign a provider a mid-task creep already reserved", () => {
-    const container = containerAt(10, 10, 100);
-    const busy = snapCreep("transport", {
-      memory: {
-        logistics: {
-          current: { kind: "pickup", from: { kind: "structure", id: container.id }, resource: RESOURCE_ENERGY, amount: 100 }
-        }
-      }
-    });
-    const idle = snapCreep("transport", { storeEnergy: 0, storeCapacity: 50 });
-    const plan = planLogistics(
-      colonySnap({
-        creeps: [busy, idle],
-        containers: [container],
-        controller: { x: 25, y: 25 },
-        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")], // open demand — so the block is provider reservation, not lack of it
-        energyAvailable: 200,
-        energyCapacity: 300
-      })
-    );
-
-    expect(plan.assignments[idle.id]).toBeUndefined();
-  });
-});
-
-// Supply is planned inside the same planLogistics pass as transport (see logistics/index.ts's header),
-// through graph.ts's restricted supplyProviders/supplyConsumers — never a separate, uncoordinated call
-// that could double-book a node either fleet reads off the same snapshot.
+// Supply is the only fleet planLogistics plans as of gh #52 (see this file's header) — transport creeps
+// appearing in a few of these fixtures are deliberate bystanders, proving Supply's plan doesn't touch
+// them, not that Transport itself gets planned here.
 describe("planLogistics — supply", () => {
   it("assigns an idle supply creep from storage to a spawn/extension deficit", () => {
     const storageId = "storage1" as Id<StructureStorage>;
@@ -274,10 +143,14 @@ describe("planLogistics — supply", () => {
     }
   });
 
-  it("falls back to filling spawn1 itself when supply is alive but storage is empty", () => {
-    // No storage energy for the lone supply creep to draw from — it can't be trusted to cover the
-    // deficit alone (a short-hop topper, not sized for the room's full spawn throughput), so transport
-    // must step in rather than leave idle, fully-loaded transport creeps stranded while spawn starves.
+  // gh #52 cutover: planLogistics no longer plans transport at all (see this file's header), so the old
+  // "transport falls back to filling spawn1 when supply can't keep up" safety net (graph.ts's
+  // spawnTiersOwnedBySupply low-priority fallback) no longer applies through THIS function — spawn/
+  // extension/tower is exclusively Supply's pool now, with no Transport-side fallback here. Transport's
+  // new rate-ranked pool (transportRegister.ts) never registers spawn/extension/tower requests at all,
+  // by design (the PRD's pool-topology decision), so an idle transport creep simply gets nothing from
+  // planLogistics regardless of whether supply can currently reach the deficit.
+  it("leaves spawn1 alone even when supply is alive but storage is empty — transport is never planned here", () => {
     const busySupply = snapCreep("supply", {
       memory: { logistics: { current: { kind: "pickup", from: { kind: "structure", id: "storage1" as Id<AnyStoreStructure> }, resource: RESOURCE_ENERGY, amount: 50 } } }
     });
@@ -292,9 +165,6 @@ describe("planLogistics — supply", () => {
       })
     );
 
-    const transportTask = plan.assignments[idleTransport.id];
-    let deliver = transportTask?.kind === "deliver" ? transportTask : transportTask?.next;
-    while (deliver && deliver.kind !== "deliver") deliver = deliver.next;
-    expect(deliver?.to).toEqual({ kind: "structure", id: "spawn1" });
+    expect(plan.assignments[idleTransport.id]).toBeUndefined();
   });
 });

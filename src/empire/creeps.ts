@@ -18,6 +18,7 @@ import { roleDef } from "../behaviors/roles";
 import { runSteward } from "../behaviors/stewardBehavior";
 import { sweepEnRoute } from "../behaviors/sweep";
 import { parkNearBunker, runTransport } from "../behaviors/logisticsRunner";
+import { runTransportTask } from "../behaviors/transportTaskRunner";
 import type { Step } from "../behaviors/types";
 import type { Colony } from "../colony";
 import { slotTiles } from "../lib/formation";
@@ -108,6 +109,22 @@ function resolveSquads(colonies: readonly Colony[]): { squads: ResolvedSquad[]; 
   return { squads, members };
 }
 
+// Every live Transport creep, grouped by home room — computed once per tick (not once per creep) so
+// planTransportTask's targetedBy scan (see transportTaskRunner.ts's own doc: "derive fresh each tick,
+// never cache") stays O(creeps) overall rather than O(creeps^2). A colony with no Transport creeps simply
+// has no entry, so dispatchCreep's lookup below just sees an empty list.
+function transportCreepsByHome(): Map<string, Creep[]> {
+  const out = new Map<string, Creep[]>();
+  for (const name in Game.creeps) {
+    const creep = Game.creeps[name];
+    if (creep.memory.role !== "transport" || creep.spawning) continue;
+    const list = out.get(creep.memory.home);
+    if (list) list.push(creep);
+    else out.set(creep.memory.home, [creep]);
+  }
+  return out;
+}
+
 // Returns the squad anchor write-back intents (see SquadBearingOperation.setSquadAnchor's doc) — the ONE
 // piece of this function's work that goes through the Intent/execute.ts pipeline; everything else
 // (movement, actions) acts directly on Game objects, per the module header.
@@ -115,6 +132,7 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
   // Compute squad membership once, up front — the single source of truth shared between the per-creep
   // skip below and the runSquads pass, so a squadded creep is never run by both or neither (ADR 0007).
   const { squads, members: squadMembers } = resolveSquads(colonies);
+  const transportByHome = transportCreepsByHome();
 
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
@@ -128,7 +146,7 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
     // (Invader NPC) reaching roadAvoidance's moverNearby threw and froze the rest of Game.creeps for the
     // tick, since the only guard used to be the one system-level runGuarded("creeps", ...) in kernel/tick.ts.
     try {
-      dispatchCreep(creep);
+      dispatchCreep(creep, transportByHome);
     } catch (e) {
       log.error(`creep ${name} threw: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
     }
@@ -139,17 +157,31 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
 
 // One creep's behavior for the tick — split out of the loop above so it can be wrapped in its own
 // try/catch without duplicating the dispatch logic.
-function dispatchCreep(creep: Creep): void {
+function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>): void {
   // Diverted before the step-table dispatch per the role's own opt-in (Role.dispatch's doc,
   // behaviors/roles/role.ts) rather than a static step table.
   switch (roleDef(creep.memory.role)?.dispatch) {
-    case "logistics":
+    case "logistics": {
       // Doesn't run through runOne's step table, so its flee check (gated on Role.flee) never sees
       // it — checked here instead, ahead of the diversion, so a hauler running the logistics
       // allocator's own task retreats from an armed hostile exactly like a step-table hauler.
       if (fleeThreat(creep)) return;
-      runTransport(creep);
+      // Supply and Transport share dispatch:"logistics" (Role.dispatch's doc) but, as of gh #52, no
+      // longer share an executor: Supply still plans/runs through the OLD graph.ts/allocate.ts/
+      // memory.logistics path (runTransport, behaviors/logisticsRunner.ts) — its own cutover is gh #53 —
+      // while Transport is now driven entirely by the new LogisticsRequest/rate-ranking system
+      // (behaviors/transportTaskRunner.ts), never touching graph.ts/allocate.ts. A Transport creep with
+      // no live pool to draw from (nothing registered, or no vision of home) simply has nothing assigned
+      // this tick; park near the bunker exactly as the old runTransport did for the same case.
+      if (creep.memory.role === "transport") {
+        const siblings = (transportByHome.get(creep.memory.home) ?? []).filter(c => c !== creep);
+        runTransportTask(creep, siblings);
+        if (!creep.memory.logisticsTask) parkNearBunker(creep);
+      } else {
+        runTransport(creep);
+      }
       return;
+    }
     case "steward":
       runSteward(creep);
       return;

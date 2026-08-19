@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
 import GOAL_JSON from "../../../src/construction/Base_2.json";
 import type { GoalLayout } from "../../../src/construction/sync";
-import { colonySnap, containerAt, linkAt, mineralAt, sinkAt, snapCreep, snapCreeps } from "../../fixtures";
+import { colonySnap, containerAt, linkAt, snapCreep, snapCreeps } from "../../fixtures";
 import { bodyCost } from "../../../src/spawn/body";
 import { clearTiles, stubPathFinderSingleRoom } from "../../constants";
 
@@ -27,13 +27,21 @@ describe("Logistics.desiredCreeps", () => {
 
   // A miner with live WORK parts is what makes wantedTransport's income-based sizing nonzero —
   // without one, harvestIncome is 0 and Logistics correctly asks for nothing (see the case above).
+  // gh #52 cutover: transportPoolHasConsumer (operations/logistics.ts) also requires a REAL consumer
+  // for Transport's new pool — spawn/extension no longer counts (Supply's exclusive scope) — so every
+  // fixture here also seeds a builder with open carry capacity as that pool's pre-storage battery sink
+  // (transportRegister.ts's registerCreepBatteryRequests), keeping these cases' original intent (some
+  // provider, some consumer, transport should want to run) valid under the new topology.
   const withWork = (over: Parameters<typeof colonySnap>[0] = {}) =>
     colonySnap({
       containers: [containerAt(10, 10, 300)],
       controller: { x: 25, y: 25 },
       energyAvailable: 200,
       energyCapacity: 300,
-      creeps: [snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] })],
+      creeps: [
+        snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] }),
+        snapCreep("builder", { storeEnergy: 0, storeCapacity: 50 })
+      ],
       ...over
     });
 
@@ -75,7 +83,11 @@ describe("Logistics.desiredCreeps", () => {
     const supplyAliveNoTransport = withWork({
       energyAvailable: 550,
       energyCapacity: 550,
-      creeps: [snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] }), supplyCreep]
+      creeps: [
+        snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] }),
+        supplyCreep,
+        snapCreep("builder", { storeEnergy: 0, storeCapacity: 50 })
+      ]
     });
     const [request] = logistics.desiredCreeps(supplyAliveNoTransport);
     expect(request).toBeDefined();
@@ -93,7 +105,7 @@ describe("Logistics.desiredCreeps", () => {
       energyAvailable: 550,
       energyCapacity: 550,
       anchor: { x: 49, y: 49 },
-      creeps: [miner, ...snapCreeps("transport", 1)]
+      creeps: [miner, ...snapCreeps("transport", 1), snapCreep("builder", { storeEnergy: 0, storeCapacity: 50 })]
     });
     const [request] = logistics.desiredCreeps(oneAlive);
     expect(request).toBeDefined();
@@ -102,7 +114,8 @@ describe("Logistics.desiredCreeps", () => {
 
   it("returns nothing once the live transport creeps meet the quota", () => {
     const miner = snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] });
-    expect(logistics.desiredCreeps(withWork({ creeps: [miner, ...snapCreeps("transport", 6)] }))).toEqual([]);
+    const builder = snapCreep("builder", { storeEnergy: 0, storeCapacity: 50 });
+    expect(logistics.desiredCreeps(withWork({ creeps: [miner, builder, ...snapCreeps("transport", 6)] }))).toEqual([]);
   });
 
   it("stamps its own op name on every request", () => {
@@ -118,7 +131,8 @@ describe("Logistics.desiredCreeps", () => {
   // priority can't fire before the first miner has produced anything, but always wins once it does.
   it("ranks above any number of live miners once there is real work to do", () => {
     const sixMiners = Array.from({ length: 6 }, () => snapCreep("miner", { body: [WORK, WORK, WORK, WORK, WORK, MOVE] }));
-    const [request] = logistics.desiredCreeps(withWork({ creeps: sixMiners }));
+    const builder = snapCreep("builder", { storeEnergy: 0, storeCapacity: 50 });
+    const [request] = logistics.desiredCreeps(withWork({ creeps: [...sixMiners, builder] }));
 
     expect(request.priority).toBe(100);
   });
@@ -171,52 +185,18 @@ describe("Logistics.desiredCreeps steward", () => {
   });
 });
 
+// gh #52 cutover: Logistics.intents() -> planLogistics() no longer plans or assigns Transport creeps at
+// all (see logistics/index.ts's header) — Transport is driven live, per-tick, by
+// behaviors/transportTaskRunner.ts against the new LogisticsRequest/rate-ranking system instead, which
+// reads Game.* directly and has no ColonySnapshot-fixture seam to unit-test the way this file's other
+// cases do (ADR 0008's testing decision: ranking/registration is proven against the real mockup server —
+// see test/integration/logistics-request-rank.test.ts and friends — not hand-built snapshots). The two
+// cases that used to prove an idle transport creep got an assignLogisticsTask intent (energy work, then
+// mineral-only work) are removed; mineral transport's live-role proof now lives in
+// test/integration/drop-mining.test.ts (gh #52's own mineral-transport acceptance criterion).
 describe("Logistics.intents", () => {
-  it("emits an assignLogisticsTask intent for an idle transport creep with work available", () => {
-    const creep = snapCreeps("transport", 1, { storeEnergy: 0, storeCapacity: 100 })[0];
-    const container = containerAt(10, 10, 300);
-    const intents = logistics.intents(
-      colonySnap({
-        creeps: [creep],
-        containers: [container],
-        controller: { x: 25, y: 25 },
-        spawnSinks: [sinkAt(20, 20, 0, 100, "spawn1")], // open sink so allocate has a consumer to assign to
-        energyAvailable: 200,
-        energyCapacity: 300
-      })
-    );
-
-    expect(intents).toEqual([
-      expect.objectContaining({ kind: "assignLogisticsTask", creep: creep.id })
-    ]);
-  });
-
   it("emits nothing when there are no idle transport creeps or no work", () => {
     expect(logistics.intents(colonySnap({}))).toEqual([]);
-  });
-
-  // Issue #42 (M0): a mineral container alone (no energy provider/consumer at all this tick) is enough
-  // real work to assign an idle transport creep a task — confirms the mineral provider/consumer entries
-  // actually flow through the live allocator, not just graph.ts's own unit tests.
-  it("assigns an idle transport creep a mineral pickup/deliver task when only mineral work exists", () => {
-    const creep = snapCreeps("transport", 1, { storeEnergy: 0, storeCapacity: 100 })[0];
-    const mineral = mineralAt(10, 10, {
-      containerId: "mineralContainer1" as Id<StructureContainer>,
-      containerMineral: 500,
-      containerCapacity: 2000
-    });
-    const intents = logistics.intents(
-      colonySnap({
-        creeps: [creep],
-        mineral,
-        storageId: "storage1" as Id<StructureStorage>,
-        storageEnergy: 0,
-        storageCapacity: 10000,
-        storageMineral: 0
-      })
-    );
-
-    expect(intents).toEqual([expect.objectContaining({ kind: "assignLogisticsTask", creep: creep.id })]);
   });
 });
 
