@@ -175,11 +175,16 @@ describe("mineral vs. energy rate race (scoreRequest/pickBestRequest, gh #48)", 
     expect(pickBestRequest([energy, freshMineral], RESOURCE_ENERGY, distanceTo)).toBe(energy);
     expect(pickBestRequest([energy, freshMineral], "Z" as ResourceConstant, distanceTo)).toBe(freshMineral);
 
-    // Starved: comparing both pools' best score directly (pickBestRequest itself only ranks within one
-    // resource — see its own doc — so the cross-resource "which one wins the creep's next trip" call is
-    // the caller's job, exactly as it would be in a real Transport pool with mixed-resource requests).
-    const bestEnergy = pickBestRequest([energy], RESOURCE_ENERGY, distanceTo)!;
-    const bestMineral = pickBestRequest([starvedMineral], "Z" as ResourceConstant, distanceTo)!;
+    // Starved: pickBestRequest itself only ranks within one resource (see its own doc), matching a real
+    // Transport pool where each resource is picked separately and then compared — so call it once per
+    // resource against the FULL mixed candidate list (proving the resource filter itself, not just a
+    // single-element array) and compare the two winners' scores, exactly the cross-resource "which one
+    // wins the creep's next trip" call a real ranking pass would make.
+    const mixedPool = [energy, starvedMineral];
+    const bestEnergy = pickBestRequest(mixedPool, RESOURCE_ENERGY, distanceTo)!;
+    const bestMineral = pickBestRequest(mixedPool, "Z" as ResourceConstant, distanceTo)!;
+    expect(bestEnergy).toBe(energy);
+    expect(bestMineral).toBe(starvedMineral);
     expect(scoreRequest(bestMineral, distance)).toBeGreaterThan(scoreRequest(bestEnergy, distance));
   });
 });
