@@ -169,11 +169,11 @@ function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>): voi
       if (fleeThreat(creep)) return;
       // Supply and Transport share dispatch:"logistics" (Role.dispatch's doc) and, as of gh #53, share an
       // executor shape too: both are now driven entirely by their own self-registered LogisticsRequest/
-      // SupplyRequest pool (behaviors/transportTaskRunner.ts / behaviors/supplyTaskRunner.ts) — neither
-      // touches graph.ts/allocate.ts/logisticsRunner.ts's runTransport any more (that whole old path is
-      // dead code as of this cutover; see logistics/graph.ts's header). A creep with no live pool to draw
-      // from (nothing registered, or no vision of home) simply has nothing assigned this tick; park near
-      // the bunker exactly as the old runTransport did for the same case.
+      // SupplyRequest pool (behaviors/transportTaskRunner.ts / behaviors/supplyTaskRunner.ts) — the old
+      // graph.ts/allocate.ts/logisticsRunner.ts's runTransport path this replaced is deleted entirely, gh
+      // #55. A creep with no live pool to draw from (nothing registered, or no vision of home) simply has
+      // nothing assigned this tick; park near the bunker via parkNearBunker (logisticsRunner.ts), which
+      // survived the deletion as this fallback's shared implementation.
       if (creep.memory.role === "transport") {
         const siblings = (transportByHome.get(creep.memory.home) ?? []).filter(c => c !== creep);
         runTransportTask(creep, siblings);

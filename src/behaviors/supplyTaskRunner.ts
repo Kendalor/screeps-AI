@@ -4,9 +4,9 @@
 // Task/fork/parent chain primitive gh #45 built (logistics/task.ts), reusing behaviors/actions.ts's
 // withdraw/transfer leaves exactly as logisticsTaskRunner.ts does. Live as of gh #53: empire/creeps.ts's
 // dispatchCreep sends every role==="supply" creep here each tick (replacing the old graph.ts/allocate.ts/
-// logisticsRunner.ts path — see logistics/graph.ts's header for that path's dead-code status), mirroring
-// Transport's own gh #52 cutover onto transportTaskRunner.ts. Still exercised directly by the test-only
-// __runSupplyTask console hook (testHooks.ts) too, unchanged from gh #50.
+// logisticsRunner.ts path — that whole old system is deleted, gh #55), mirroring Transport's own gh #52
+// cutover onto transportTaskRunner.ts. Still exercised directly by the test-only __runSupplyTask console
+// hook (testHooks.ts) too, unchanged from gh #50.
 
 import { registerSupplyRequests, pickSupplyRequest } from "../logistics/supplyRegister";
 import { fork, persistTask, resolveTask, type Task } from "../logistics/task";

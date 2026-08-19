@@ -1,7 +1,6 @@
 // Intent union: planners return these; only intents/execute.ts turns them into game API calls.
 
 import type { OperationLifetime, RoleName, RemoteMemory, SquadAnchorMemory } from "../memory/schema";
-import type { LogisticsTask } from "../logistics/types";
 import type { XY } from "../lib/geometry";
 
 export type Intent =
@@ -57,9 +56,6 @@ export type Intent =
   // though nothing about whether it belongs actually changed.
   | { kind: "setSquadJoined"; creep: Id<Creep>; op: string }
   | { kind: "clearSquadJoined"; creep: Id<Creep> }
-  // planLogistics decides; execute.ts owns the memory.logistics.current write (same "planner decides,
-  // execute.ts owns the memory write" split as setCreepRole above).
-  | { kind: "assignLogisticsTask"; creep: Id<Creep>; task: LogisticsTask }
   | { kind: "removeStructure"; room: string; x: number; y: number; type: BuildableStructureConstant }
   // Persists which built link plays which role in the colony's link network — the equivalent of
   // recordSourceSpot's linkId, but for the two links that aren't source-side (Mining already records

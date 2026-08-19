@@ -289,9 +289,9 @@ describe("miner role", () => {
 
 // Supply is a Logistics-owned mover, same as transport: no static step table of its own — assignment
 // (storage or the nearest local pile in, spawn/extension/tower out, never a remote pickup) comes from
-// planLogistics via memory.logistics. See test/unit/logistics/ for the provider/consumer graph that
-// governs it (graph.ts's supplyProviders/supplyConsumers) and test/unit/roles.test.ts's own empty-steps
-// assertion below for why runCreepBehaviors diverts it before the step-table dispatch.
+// behaviors/supplyTaskRunner.ts's self-registered SupplyRequest pool (logistics/supplyRegister.ts), not a
+// static step table. See test/unit/logistics/ for that pool's own tests and test/unit/roles.test.ts's own
+// empty-steps assertion below for why runCreepBehaviors diverts it before the step-table dispatch.
 describe("supply role", () => {
   it("has no step table — assignment is Logistics-owned", () => {
     expect(roleDef("supply")).toBe(ROLES.supply);

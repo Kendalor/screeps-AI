@@ -429,7 +429,7 @@ export class BootedColony {
       .map(o => ({ x: o.x, y: o.y, id: o._id as Id<Source> }));
   }
 
-  // 1 = walkable, 0 = wall, indexed [x*50+y] — the form construction/roadPathing and construction/stamp expect.
+  // 1 = walkable, 0 = wall, indexed [x*50+y] — the form construction/planner.ts and construction/stamp expect.
   async terrain(): Promise<Uint8Array> {
     const matrix = await this.server.world.getTerrain(this.room);
     const grid = new Uint8Array(2500);

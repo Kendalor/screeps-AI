@@ -133,7 +133,7 @@ export interface SnapMineral extends XY {
   containerId?: Id<StructureContainer>;
   // The container's own current mineral store, present only alongside containerId — SnapContainer's
   // storeEnergy is energy-specific and always reads 0 for this container, so its real (mineralType)
-  // level is carried here instead, for Logistics' mineral-provider entry (see logistics/graph.ts).
+  // level is carried here instead, for operations/logistics.ts's transportPoolHasProvider gate.
   containerMineral?: number;
   containerCapacity?: number;
 }
@@ -156,8 +156,8 @@ export interface SnapRemoteSource extends XY {
   danger: number; // hostile presence in the room; > 0 means stop staffing/reserving
   // The cached home->source path (see RemoteSourceMemory.route), room-tagged tile by tile. Absent until
   // resolveRemoteRoom has computed it at least once (e.g. selected but no anchor yet). Mining turns this
-  // into container/road construction claims instead of re-deriving a path with the local-only cost-matrix
-  // pather in construction/roadPathing.ts.
+  // into container/road construction claims instead of re-deriving a path with a local-only cost-matrix
+  // pather.
   route?: RemoteRouteTile[];
   // Straight copy of RemoteSourceMemory.routeBuilt (see its doc there) — which route[] tiles are already
   // confirmed built, index-aligned, surviving a vision gap in the tile's own room. building.ts's builtAt()
@@ -283,9 +283,10 @@ export interface ColonySnapshot {
   storageCapacity: number; // 0 when no storage built yet — total store capacity when it exists
   // How much of the room's own mineral type storage currently holds — 0 when no storage, no mineral, or
   // none stored yet. Needed alongside storageEnergy (not derivable from storageCapacity - storageEnergy,
-  // which only accounts for the energy portion of a shared, multi-resource store) so Logistics' mineral
-  // consumer entry (see logistics/graph.ts) can compute storage's real remaining mineral-agnostic free
-  // capacity instead of overcounting it by whatever mineral is already stored.
+  // which only accounts for the energy portion of a shared, multi-resource store) so
+  // operations/logistics.ts's transportPoolHasConsumer/transportPoolHasProvider gates can compute
+  // storage's real remaining mineral-agnostic free capacity instead of overcounting it by whatever
+  // mineral is already stored.
   storageMineral: number;
   containers: SnapContainer[]; // empty until mining containers are built
   links: SnapLink[]; // every built link in the home room, source and anchor alike; empty until RCL5

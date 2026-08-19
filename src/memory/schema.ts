@@ -2,7 +2,6 @@
 
 import type { RoomType } from "../lib/roomName";
 import type { TaskState } from "../behaviors/types";
-import type { LogisticsTask } from "../logistics/types";
 import type { PersistedTask } from "../logistics/task";
 import type { LogLevel } from "../lib/log";
 import type { XY } from "../lib/geometry";
@@ -46,17 +45,13 @@ declare global {
     sourceId?: Id<Source>; // singular — no multi-source miner assignment
     mineralId?: Id<Mineral>; // singular — no multi-mineral miner assignment (see sourceId, its parallel)
     task?: TaskState; // current behavior progress — owned by behaviors/interpreter.ts
-    // Current transport assignment — owned by intents/execute.ts (write) via Logistics.intents();
-    // empire/creeps.ts's transport runner reads and consumes `current`, never writes it directly. The
-    // whole trip is one chain (pickup -> ... -> deliver) nested in `current.next`; runTransport promotes
-    // `current.next` as each leg completes, so there is no separate follow-up field here.
-    logistics?: { current?: LogisticsTask };
-    // The new fork/parent Task chain primitive (gh #45, ADR 0008), persisted as bare target IDs — Memory
-    // can't hold a live object reference. Standalone infra: not yet written by any live role's planner;
-    // owned by behaviors/logisticsTaskRunner.ts, which resolves and advances it. Deliberately separate
-    // from `logistics` above (the old system, still running the live bot unmodified) and from `task`
-    // (the step-interpreter's unrelated per-role progress) — see CONTEXT.md's LogisticsRequest entry for
-    // why "task"/"Task" needs qualifying in this codebase.
+    // The fork/parent Task chain primitive (gh #45, ADR 0008), persisted as bare target IDs — Memory
+    // can't hold a live object reference. Owned by behaviors/logisticsTaskRunner.ts, which resolves and
+    // advances it — Transport (gh #52), Supply (gh #53), and Steward (gh #54) all persist their current
+    // task here. Deliberately separate from `task` (the step-interpreter's unrelated per-role progress) —
+    // see CONTEXT.md's LogisticsRequest entry for why "task"/"Task" needs qualifying in this codebase. The
+    // old system's equivalent field (`logistics?: { current?: LogisticsTask }`, graph.ts/allocate.ts's
+    // pickup->...->deliver chain) is deleted, gh #55.
     logisticsTask?: PersistedTask;
     // Test-only: the target id `__pickLogisticsRequest`/`__pickLogisticsRequestDiscounted` (gh #46/#49's
     // testHooks.ts) most recently picked for this creep among a set of candidate LogisticsRequests —

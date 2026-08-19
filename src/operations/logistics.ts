@@ -1,7 +1,8 @@
 // Logistics owns the transport-creep headcount for the live pool driven, per gh #52, by
 // behaviors/transportTaskRunner.ts's LogisticsRequest system (src/logistics/transportRegister.ts) rather
-// than this file's own intents() (Transport's assignment no longer flows through planLogistics — see
-// logistics/index.ts's header). Sizing below covers the whole load Transport's new pool actually owns:
+// than this file's own intents() (Transport's assignment no longer flows through a planner here — the old
+// graph.ts/allocate.ts/logistics/index.ts pipeline this used to drive is deleted, gh #55). Sizing below
+// covers the whole load Transport's new pool actually owns:
 // source/mineral output -> controller-container/builder-upgrader-battery/storage, NEVER spawn/extension
 // (Supply's exclusive scope). Sizing is throughput-based (income x round trip), since a flat quota can't
 // carry the whole colony's transport load.
@@ -20,8 +21,7 @@ import { orderBody } from "../spawn/body";
 import type { Intent } from "../intents/types";
 import GOAL_JSON from "../construction/Base_2.json";
 import type { GoalLayout } from "../construction/sync";
-import { providers } from "../logistics/graph";
-import { CONTROLLER_CONTAINER_FILL_FLOOR, UPGRADER_CONTROLLER_RANGE } from "../logistics/transportRegister";
+import { CONTROLLER_CONTAINER_FILL_FLOOR, DROP_WORTHWHILE_FLOOR, UPGRADER_CONTROLLER_RANGE } from "../logistics/transportRegister";
 import { harvestIncome, haulDistance, wantedTransportHeadcount } from "../logistics/fleet";
 import { planLinkTransfers } from "../logistics/links";
 import { bodyContext } from "../spawn/bodyContext";
@@ -84,6 +84,37 @@ function transportPoolHasConsumer(colony: ColonySnapshot): boolean {
   return false;
 }
 
+/**
+ * Whether there's ANY real energy or mineral for transport to move right now — a snapshot-pure gate
+ * mirroring the old graph.ts's `providers()` predicate (deleted at gh #55: source containers other than
+ * the controller container, dropped piles/tombstones/ruins past the worthwhile floor, remote energy, the
+ * mineral container, and storage itself once it has a spawn-system deficit to cover). `desiredCreeps`
+ * only has a ColonySnapshot to read, so this stays a pure read over that snapshot rather than a live
+ * Game.* registration call — same reasoning as transportPoolHasConsumer's own doc, just the pickup half
+ * of the same gate instead of the delivery half. Short-circuits on the first hit; only ever consulted as
+ * a boolean (`.length === 0` on the old graph.ts array), so there's no need to build a list here.
+ */
+function transportPoolHasProvider(colony: ColonySnapshot): boolean {
+  for (const c of colony.containers) {
+    if (c.storeEnergy <= 0) continue;
+    const dx = c.x - colony.controller.x;
+    const dy = c.y - colony.controller.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) <= CONTROLLER_CONTAINER_RANGE) continue; // controller container is a consumer, not a source
+    return true;
+  }
+
+  if (colony.drops.some(d => d.amount >= DROP_WORTHWHILE_FLOOR)) return true;
+  if (colony.tombstones.some(t => t.storeEnergy >= DROP_WORTHWHILE_FLOOR)) return true;
+  if (colony.ruins.some(r => r.storeEnergy >= DROP_WORTHWHILE_FLOOR)) return true;
+  if (colony.remoteEnergy.some(r => r.amount >= DROP_WORTHWHILE_FLOOR)) return true;
+
+  if (colony.storageId && colony.storageEnergy > 0 && colony.energyCapacity > colony.energyAvailable) return true;
+
+  if (colony.mineral?.containerId && (colony.mineral.containerMineral ?? 0) > 0) return true;
+
+  return false;
+}
+
 const GOAL = GOAL_JSON as GoalLayout;
 
 const config = {
@@ -129,11 +160,10 @@ export class Logistics extends Operation {
     // Gate on a provider having energy to move AND the new pool having a real place to put it
     // (transportPoolHasConsumer — see gh #52's own doc on that function: without the consumer half of
     // this gate, transport creeps kept spawning with nowhere to deliver, permanently starving
-    // upgrader/bootstrap-replacement of spawn slots). `providers` still comes from the old graph.ts —
-    // its provider-side scope (ground piles, containers, remote energy, mineral) matches the new pool's
-    // provider side closely enough to reuse rather than duplicate; only the consumer half needed a new,
-    // pool-accurate check, since graph.ts's own consumers() still assumes spawn/extension is in scope.
-    if (providers(colony).length === 0) return [];
+    // upgrader/bootstrap-replacement of spawn slots). gh #55: transportPoolHasProvider replaces the old
+    // graph.ts's `providers(colony).length === 0` check (graph.ts deleted) with an equivalent
+    // snapshot-pure predicate — see that function's own doc.
+    if (!transportPoolHasProvider(colony)) return [];
     if (!transportPoolHasConsumer(colony)) return [];
 
     // Nothing alive yet: size the first transport off base spawn capacity (300, always affordable),
@@ -216,10 +246,11 @@ export class Logistics extends Operation {
   /**
    * Direct action, not arbitrated: emits this tick's link-network transfers (see logistics/links.ts) —
    * links are instant and creep-free, so they're fired here rather than through a creep allocator — plus
-   * the anchor-link recording intent below. gh #53 cutover: no longer calls planLogistics/emits
-   * assignLogisticsTask — Transport (gh #52) and Supply (gh #53) both now self-register and self-assign
-   * their own tasks directly against Game.* each tick (transportTaskRunner.ts/supplyTaskRunner.ts), so
-   * there is nothing left for this operation to plan or assign (see logistics/index.ts's header).
+   * the anchor-link recording intent below. Transport (gh #52) and Supply (gh #53) both self-register and
+   * self-assign their own tasks directly against Game.* each tick (transportTaskRunner.ts/
+   * supplyTaskRunner.ts), so there is nothing left for this operation to plan or assign — the old
+   * graph.ts/allocate.ts/logistics/index.ts planLogistics pipeline this operation used to drive is deleted
+   * entirely as of gh #55.
    */
   public override intents(colony: ColonySnapshot): Intent[] {
     return [...planLinkTransfers(colony), ...this.recordAnchorLink(colony)];

@@ -640,8 +640,8 @@ describe("Mining.structures", () => {
 });
 
 // A remote route reuses the already-computed cross-room PathFinder path cached on the source (see
-// remote-mining-progress/construction plan) instead of construction/roadPathing.ts's local-only cost matrix, and
-// only claims while the remote room actually has vision this tick.
+// remote-mining-progress/construction plan) instead of a local-only cost matrix, and only claims while
+// the remote room actually has vision this tick.
 describe("Mining.structures — remote sources", () => {
   const anchor = { x: 10, y: 10 };
   const route = [

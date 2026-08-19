@@ -150,15 +150,6 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       delete creep.memory.squadJoined;
       return OK;
     }
-    case "assignLogisticsTask": {
-      const creep = Game.getObjectById(intent.creep);
-      if (!creep) return ERR_NOT_FOUND;
-      // Store the whole task chain under `current`; its follow-up legs stay nested in `current.next`
-      // (pickup->pickup->...->deliver). runTransport promotes `current.next` the moment the current leg
-      // completes, walking the chain with no idle re-plan tick between legs.
-      creep.memory.logistics = { current: intent.task };
-      return OK;
-    }
     case "removeStructure": {
       // Last line of defense: never destroy a spawn here, regardless of intent.
       if (intent.type === "spawn") {

@@ -1,9 +1,10 @@
 // Mirrors supply.test.ts's structure — the smallest existing operation test. Every case constructs the
 // operation directly and hands it a snapshot: no Game mock, no Colony.
-// gh #53 cutover: Logistics.intents() no longer calls planLogistics at all (see logistics/index.ts's
-// header — that whole module is dead code now that Supply also self-registers/self-assigns live, same as
-// Transport did at gh #52). stubPathFinderSingleRoom() is still wired up below since desiredCreeps'
-// wantedTransport sizing goes through haulDistance's real PathFinder.search (lib/pathing.ts's header).
+// gh #53 cutover: Logistics.intents() no longer calls a planner at all — Supply self-registers/
+// self-assigns live, same as Transport did at gh #52; the old graph.ts/allocate.ts/logistics/index.ts
+// pipeline this used to drive is deleted entirely as of gh #55. stubPathFinderSingleRoom() is still wired
+// up below since desiredCreeps' wantedTransport sizing goes through haulDistance's real
+// PathFinder.search (lib/pathing.ts's header).
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { Logistics } from "../../../src/operations/logistics";
@@ -187,9 +188,10 @@ describe("Logistics.desiredCreeps steward", () => {
   });
 });
 
-// gh #52 cutover: Logistics.intents() -> planLogistics() no longer plans or assigns Transport creeps at
-// all (see logistics/index.ts's header) — Transport is driven live, per-tick, by
-// behaviors/transportTaskRunner.ts against the new LogisticsRequest/rate-ranking system instead, which
+// gh #52 cutover: Logistics.intents() no longer plans or assigns Transport creeps at all — Transport is
+// driven live, per-tick, by behaviors/transportTaskRunner.ts against the new LogisticsRequest/
+// rate-ranking system instead (the old graph.ts/allocate.ts/logistics/index.ts pipeline this used to run
+// through is deleted entirely as of gh #55), which
 // reads Game.* directly and has no ColonySnapshot-fixture seam to unit-test the way this file's other
 // cases do (ADR 0008's testing decision: ranking/registration is proven against the real mockup server —
 // see test/integration/logistics-request-rank.test.ts and friends — not hand-built snapshots). The two

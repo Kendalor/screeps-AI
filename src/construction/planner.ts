@@ -25,7 +25,7 @@ const ROAD_COST = 1;
 const PLAIN_COST = 2;
 // A miner/builder stands *on* its container/rampart while working — never an obstacle. Mirrors
 // roadPathing.ts's own WALKABLE_STRUCTURES (kept as a separate copy there — that module's matrix
-// building is a distinct, still-alive concern for logistics/index.ts, see its own header).
+// building serves its own, distinct live callers; see that module's own header).
 const WALKABLE_STRUCTURES = new Set<BuildableStructureConstant>(["road", "container", "rampart"]);
 
 // Cap open sites so a small pre-storage workforce finishes structures instead of smearing effort across the backlog.
@@ -247,9 +247,10 @@ function terrainFor(room: string, colony: ColonySnapshot): Uint8Array {
   return terrain;
 }
 
-// A claim can never legitimately un-wall a tile — mirrors roadPathing.ts's buildCostMatrix rule ("wall
-// wins even over a claimed road"). Operation claims are always terrain-safe by construction (they come
-// from findPath's own PathFinder search, which already refuses to route through wall tiles), but the
+// A claim can never legitimately un-wall a tile — same "wall wins even over a claimed road" rule the
+// (now-deleted, gh #55) roadPathing.ts's buildCostMatrix used to enforce. Operation claims are always
+// terrain-safe by construction (they come from findPath's own PathFinder search, which already refuses
+// to route through wall tiles), but the
 // static bunker layout (layoutClaims, from stampLayout/plannedObstacles) is pure anchor-relative offset
 // math with no terrain awareness — it can and does land a road on real wall terrain wherever this room's
 // terrain doesn't mirror the room the layout was captured in (confirmed live: W45N17 (8,15) is
@@ -449,8 +450,8 @@ export const wantedStructures = wrapFn(function wantedStructures(
   // in. Filtered here, not in stampLayout itself: pathing callers (e.g. Mining's sourceRoutes cost
   // matrix) need the layout's raw shape to route AROUND a blocked tile, not have it silently vanish
   // from their obstacle set. `claimed` is never filtered by this — every operation already derives its
-  // own claims from a terrain-aware A*/PathFinder search (see roadPathing.ts's buildCostMatrix), so a
-  // claimed tile can never legitimately be a wall.
+  // own claims from a terrain-aware A*/PathFinder search, so a claimed tile can never legitimately be a
+  // wall.
   //
   // This was latent, not newly introduced: Game.map.getRoomTerrain('W45N17').get(8,15) ===
   // TERRAIN_MASK_WALL, and Base_2.json's plain bunker grid (no sourceId) has always wanted a road

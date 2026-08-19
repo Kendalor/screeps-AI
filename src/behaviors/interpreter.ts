@@ -1240,9 +1240,9 @@ function nearestFriendlyHealer(creep: Creep): Creep | undefined {
 }
 
 // The bunker anchor recorded for `home`, if building has laid one down yet, else the room centre — same
-// fallback chain as behaviors/logisticsRunner.ts's homeRoomWaypoint (kept as a separate copy here rather than a
-// shared import: transport.ts's version threads through its own logistics-task plumbing, and duplicating
-// a two-line lookup is cheaper than adding a cross-file dependency for it).
+// fallback chain as behaviors/logisticsRunner.ts's parkNearBunker uses to find its own anchor (kept as a
+// separate copy here rather than a shared import: duplicating a two-line lookup is cheaper than adding a
+// cross-file dependency for it).
 function homeAnchor(home: string): RoomPosition {
   const anchor = typeof Memory !== "undefined" ? Memory.colonies?.[home]?.anchor : undefined;
   return anchor ? new RoomPosition(anchor.x, anchor.y, home) : new RoomPosition(25, 25, home);

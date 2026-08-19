@@ -9,8 +9,7 @@
 // abandoned (the harness's console test seam stopped delivering commands once seeded past RCL4; see the
 // removed test/integration/mineral-vs-energy-rank.test.ts in git history and this ticket's own testing
 // note permitting a simplified proof). Each registration function's own logic (threshold gate vs.
-// unconditional-if-any-amount) is a small enough pure computation over its inputs to unit-test directly,
-// same as topoff.ts's pickTopoff.
+// unconditional-if-any-amount) is a small enough pure computation over its inputs to unit-test directly.
 
 import { describe, expect, it } from "vitest";
 import {

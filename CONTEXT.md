@@ -47,11 +47,14 @@ _Avoid_: picker, gatherer
 
 **LogisticsRequest**:
 One signed unit of transport demand — a resource type, an amount, and a rate
-(`dAmountdt`) at a target `NodeRef`. Positive amount means the target wants the
+(`dAmountdt`) at a live target object (`target: _HasId & {pos: RoomPosition}`,
+read directly off `Game.*`, not a serialized `NodeRef` — that indirection was
+`graph.ts`'s, deleted at gh #55). Positive amount means the target wants the
 resource delivered; negative means the target has it available to withdraw. There
 is no separate Provider/Consumer type — the sign is the only distinction, matching
 Overmind's `LogisticsRequest` exactly (see [ADR 0008](docs/adr/0008-logistics-unification-overmind-style.md)).
-_Avoid_: Provider, Consumer (both superseded by this single signed type), Request
+_Avoid_: Provider, Consumer (both superseded by this single signed type; the
+`graph.ts`/`allocate.ts` module pair that defined them is deleted, gh #55), Request
 (already means a spawn-scheduling Request below — always qualify as
 "LogisticsRequest" or "spawn Request" when ambiguous)
 
