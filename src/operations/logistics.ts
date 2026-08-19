@@ -22,7 +22,7 @@ import GOAL_JSON from "../construction/Base_2.json";
 import type { GoalLayout } from "../construction/sync";
 import { planLogistics } from "../logistics";
 import { providers } from "../logistics/graph";
-import { CONTROLLER_CONTAINER_FILL_FLOOR } from "../logistics/transportRegister";
+import { CONTROLLER_CONTAINER_FILL_FLOOR, UPGRADER_CONTROLLER_RANGE } from "../logistics/transportRegister";
 import { harvestIncome, haulDistance, wantedTransportHeadcount } from "../logistics/fleet";
 import { planLinkTransfers } from "../logistics/links";
 import { bodyContext } from "../spawn/bodyContext";
@@ -62,9 +62,20 @@ function transportPoolHasConsumer(colony: ColonySnapshot): boolean {
 
   if (!colony.storageId) {
     // Pre-storage: builder/upgrader creeps are direct battery sinks (registerCreepBatteryRequests) —
-    // mirrors that function's own scope exactly (upgrader only counts near the controller, but a fresh
-    // one with free capacity anywhere still counts here, matching the pre-cutover gate's own leniency).
-    const hasOpenBattery = colony.creeps.some(c => (c.role === "builder" || c.role === "upgrader") && c.storeEnergy < c.storeCapacity);
+    // mirrors that function's own scope exactly, including its UPGRADER_CONTROLLER_RANGE gate: an
+    // upgrader off harvesting or still travelling to the controller isn't a viable delivery target there,
+    // so it must not count here either, or this would request transport headcount the real pool can never
+    // actually use.
+    const hasOpenBattery = colony.creeps.some(c => {
+      if (c.role === "builder") return c.storeEnergy < c.storeCapacity;
+      if (c.role === "upgrader") {
+        const dx = c.x - colony.controller.x;
+        const dy = c.y - colony.controller.y;
+        const inRange = Math.max(Math.abs(dx), Math.abs(dy)) <= UPGRADER_CONTROLLER_RANGE;
+        return inRange && c.storeEnergy < c.storeCapacity;
+      }
+      return false;
+    });
     if (hasOpenBattery) return true;
   } else {
     if (colony.storageEnergy < colony.storageCapacity) return true;

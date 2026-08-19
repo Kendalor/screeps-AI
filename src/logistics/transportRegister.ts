@@ -33,8 +33,10 @@ const CONTROLLER_CONTAINER_RANGE = 1; // range of the controller a controller co
 // Only an upgrader actually parked at the controller is a viable creep-sink consumer — one wandering
 // off to harvest or in transit isn't upgrading, so topping it up wherever it happens to be just drags a
 // transport creep away from the bunker chasing a moving target. Mirrors graph.ts's
-// UPGRADER_CONTROLLER_RANGE exactly.
-const UPGRADER_CONTROLLER_RANGE = 5;
+// UPGRADER_CONTROLLER_RANGE exactly. Exported so operations/logistics.ts's transportPoolHasConsumer can
+// mirror the same range gate instead of a wider one that would over-request transport headcount for an
+// upgrader that's technically alive but too far from the controller to ever register a real request here.
+export const UPGRADER_CONTROLLER_RANGE = 5;
 
 /**
  * A source's adjacent container's energy output as a withdraw request — register.ts's own
