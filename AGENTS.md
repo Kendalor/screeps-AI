@@ -60,8 +60,8 @@ Do not Guess each deduction must be based on evidence. Make sure to know how Tic
 
 ### Issue tracker
 
-Issues and PRDs live as markdown files under `.scratch/<feature-slug>/` in this
-repo, not GitHub Issues. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+Issues and PRDs live as GitHub Issues (`gh issue create`/`gh issue view`), not
+local markdown files. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 
 ### Triage labels
 
