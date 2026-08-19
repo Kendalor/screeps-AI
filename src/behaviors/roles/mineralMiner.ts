@@ -31,7 +31,7 @@ function mineralMinerBody(energy: number, _ctx: BodyContext): BodyPartConstant[]
 }
 
 export class MineralMiner extends Role {
-  static override readonly priority = 40; // below builder/upgrader — mineral surplus has no consumer yet (M0), never worth starving the energy economy for.
+  static override readonly priority = 79; // between builder(65) and steward(93) — mineral now has a real consumer (Transport's rate-ranked pool, gh #48), so it no longer needs to sit at the bottom of the table, but colony economy/building and the anchor triangle still outrank it.
   static override readonly flee = true; // unarmed, home room only but still exposed to a base-runner.
   static override readonly retreatPart = WORK; // once WORK is gone it can no longer harvest, see Role.retreatPart.
   static override body(energy: number, ctx: BodyContext): BodyPartConstant[] {
