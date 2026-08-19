@@ -13,6 +13,7 @@ import { pickBestRoute, type Buffer } from "./route";
 import { buildTargetedBy, discountedAmount, pickBestDiscountedRequest } from "./targeted";
 import { runSupplyTask } from "../behaviors/supplyTaskRunner";
 import { runLogisticsTask } from "../behaviors/logisticsTaskRunner";
+import { resolveStewardTriangle, runStewardTask } from "../behaviors/stewardTaskRunner";
 
 declare global {
   var __assignLogisticsTaskChain: (creepName: string, legs: { kind: "withdraw" | "transfer"; targetId: string; resource: ResourceConstant }[]) => string;
@@ -42,6 +43,11 @@ declare global {
   // remote-pickup-then-home-deliver scenario) without main.ts's per-tick driver, which was deliberately
   // removed pending a real live-role caller (see this module's header).
   var __runLogisticsTask: (creepName: string) => string;
+  // gh #51: runs Steward's standalone rate-ranked pool (behaviors/stewardTaskRunner.ts) one tick for the
+  // named creep, resolving the anchor link/storage/terminal triangle live off `anchorX/anchorY` (Steward
+  // parks on the anchor tile, same as stewardBehavior.ts) — a test calls this every tick to drive a
+  // multi-tick withdraw/travel/transfer sequence, same __runSupplyTask precedent.
+  var __runStewardTask: (creepName: string, anchorX: number, anchorY: number) => string;
 }
 
 export function installLogisticsTestHooks(): void {
@@ -176,5 +182,19 @@ export function installLogisticsTestHooks(): void {
     if (creep.spawning) return `${creepName} is still spawning`;
     runLogisticsTask(creep);
     return `ran ${creepName}'s logistics task`;
+  };
+
+  // gh #51's proof seam: resolves the live anchor link/storage/terminal triangle at (anchorX, anchorY) via
+  // stewardTaskRunner.ts's resolveStewardTriangle, then runs runStewardTask one tick for the named creep.
+  // No memory/anchor-cache dependency (unlike stewardBehavior.ts) — the test passes the anchor position
+  // directly so this hook stays independent of whether the bot's own layout planner has cached one yet.
+  global.__runStewardTask = (creepName, anchorX, anchorY): string => {
+    const creep = Game.creeps[creepName];
+    if (!creep) return `no live creep named "${creepName}"`;
+    if (creep.spawning) return `${creepName} is still spawning`;
+    const anchor = new RoomPosition(anchorX, anchorY, creep.room.name);
+    const triangle = resolveStewardTriangle(creep, anchor);
+    runStewardTask(creep, triangle);
+    return `ran ${creepName}'s steward task`;
   };
 }
