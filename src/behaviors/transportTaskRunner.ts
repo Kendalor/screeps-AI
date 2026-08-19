@@ -80,9 +80,10 @@ export function buildTransportPool(home: Room): LogisticsRequest[] {
   return out;
 }
 
-// Which resource(s) this tick's pool actually has demand for, in a stable order — energy first, since
-// every existing colony's pool is energy-only before a mineral ever registers (mirrors allocate.ts's own
-// allResources ordering, which the old system's tests already rely on).
+// Every distinct resource this tick's pool has demand for, in no particular order — planTransportTask's
+// empty-creep branch races every resource's best withdraw+deliver pair against every other's (see its own
+// doc), so nothing downstream depends on this list's ordering; it exists purely to avoid re-scanning the
+// pool once per possible ResourceConstant.
 function resourcesInPool(pool: readonly LogisticsRequest[]): ResourceConstant[] {
   const seen = new Set<ResourceConstant>();
   const out: ResourceConstant[] = [];
@@ -91,7 +92,7 @@ function resourcesInPool(pool: readonly LogisticsRequest[]): ResourceConstant[] 
     seen.add(r.resource);
     out.push(r.resource);
   }
-  return out.sort((a, b) => (a === RESOURCE_ENERGY ? -1 : b === RESOURCE_ENERGY ? 1 : 0));
+  return out;
 }
 
 // A creep already carrying resource: which one, out of what's actually in its store — mirrors
@@ -159,6 +160,19 @@ function pickBestInDirection(
  * storage). `otherTransportCreeps` is every OTHER live Transport creep (excluding this one), scanned fresh
  * by the caller once per tick's planning pass — the same "derive targetedBy fresh, never cache" rule
  * targeted.ts's header documents.
+ *
+ * The empty-creep case races EVERY resource's best withdraw+deliver pair against every other's on the
+ * withdraw leg's own discounted rate, and takes the single best pair overall — a genuine cross-resource
+ * race, not "try energy first, fall back to mineral only if energy has nothing workable." This is the
+ * actual mechanism the PRD/ADR 0008 call for (a long-starved mineral pickup outranking a routine energy
+ * hop) and matches Overmind's own `transporterPreferences()` (`LogisticsNetwork.ts`), which sorts its
+ * entire mixed-resource `requests` array by rate with no resource-type pre-filter — verified directly
+ * against bencbartlett/Overmind's source, not just this repo's own paraphrase of it. An earlier version of
+ * this function walked `resources` in a fixed energy-first order and returned the FIRST resource with a
+ * workable pair, which meant mineral was never even scored while any energy withdraw+deliver pair existed
+ * — since energy is (per the PRD's own opening line) almost never simultaneously absent everywhere, this
+ * made the PRD's headline behavior structurally unreachable in the live Transport role. Found and fixed
+ * after live pserver observation prompted re-deriving this loop from first principles.
  */
 export function planTransportTask(creep: Creep, home: Room, otherTransportCreeps: readonly Creep[]): Task | undefined {
   const pool = buildTransportPool(home);
@@ -182,20 +196,30 @@ export function planTransportTask(creep: Creep, home: Room, otherTransportCreeps
     return picked?.task;
   }
 
-  // Empty: try each resource's best withdraw (output) candidate in turn, chained straight to that same
-  // resource's best deliver (input) target — skip a resource with nothing wanting it anywhere (see this
-  // function's own doc).
+  // Empty: score every resource's best complete (withdraw+deliver) pair on the withdraw leg's own
+  // discounted rate, and take the single best pair across ALL resources — see this function's own doc.
+  // A resource with a withdraw candidate but nowhere to deliver it is skipped entirely (never scored),
+  // matching the "never carry it around forever" rule above.
+  let bestPair: { withdraw: LogisticsRequest; deliverTarget: LogisticsRequest["target"]; resource: ResourceConstant; score: number } | undefined;
   for (const resource of resources) {
     const bestOutput = pickBestInDirection(pool, resource, "output", creep.pos, targetedBy, creep);
     if (!bestOutput) continue;
     const deliverTarget = pickBestInDirection(pool, resource, "input", bestOutput.target.pos, targetedBy, creep);
     if (!deliverTarget) continue;
-    const withdraw: Task = { kind: "withdraw", target: bestOutput.target, resource };
-    const deliver: Task = { kind: "transfer", target: deliverTarget.target, resource };
-    return fork(withdraw, deliver);
-  }
 
-  return undefined;
+    const distance = creep.pos.getRangeTo(bestOutput.target.pos);
+    const amount = discountedAmount(bestOutput, targetedBy, creep);
+    const score = (bestOutput.multiplier * amount) / Math.max(1, distance);
+
+    if (!bestPair || score > bestPair.score) {
+      bestPair = { withdraw: bestOutput, deliverTarget: deliverTarget.target, resource, score };
+    }
+  }
+  if (!bestPair) return undefined;
+
+  const withdraw: Task = { kind: "withdraw", target: bestPair.withdraw.target, resource: bestPair.resource };
+  const deliver: Task = { kind: "transfer", target: bestPair.deliverTarget, resource: bestPair.resource };
+  return fork(withdraw, deliver);
 }
 
 /**
