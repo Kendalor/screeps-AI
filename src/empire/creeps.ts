@@ -15,7 +15,7 @@ import {
   type CreepState
 } from "../behaviors/interpreter";
 import { roleDef } from "../behaviors/roles";
-import { runSteward } from "../behaviors/stewardBehavior";
+import { resolveStewardTriangle, runStewardTask } from "../behaviors/stewardTaskRunner";
 import { sweepEnRoute } from "../behaviors/sweep";
 import { parkNearBunker, runTransport } from "../behaviors/logisticsRunner";
 import { runTransportTask } from "../behaviors/transportTaskRunner";
@@ -183,11 +183,42 @@ function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>): voi
       return;
     }
     case "steward":
-      runSteward(creep);
+      dispatchSteward(creep);
       return;
     default:
       runOne(creep);
   }
+}
+
+// Steward's cutover (gh #54, ADR 0008): drives the anchor link/storage/terminal triangle through
+// stewardTaskRunner.ts's rate-ranked pool (gh #51) instead of stewardBehavior.ts's hand-tuned threshold
+// checks, which this replaces outright (see stewardBehavior.ts's deletion in this same commit). Movement
+// is NOT part of stewardTaskRunner.ts's scope — that module assumes a creep already parked on the anchor
+// tile (its withdraw/transfer legs act at range 1 against structures adjacent to the anchor, same as
+// stewardBehavior.ts's own targets) — so getting there is handled here, mirroring stewardBehavior.ts's own
+// anchorPos/travelTo logic exactly (see logisticsRunner.ts's parkNearBunker for the same "step off the
+// road once settled" pattern, not reused directly since a steward has its own fixed single-tile spot
+// rather than a spread-out park radius).
+function anchorPos(creep: Creep): RoomPosition | undefined {
+  const anchor = typeof Memory !== "undefined" ? Memory.colonies?.[creep.memory.home]?.anchor : undefined;
+  return anchor ? new RoomPosition(anchor.x, anchor.y, creep.memory.home) : undefined;
+}
+
+// Exported for test/unit/empire/creeps.test.ts — the anchor-travel gate this function owns had its only
+// coverage in test/unit/steward.test.ts (stewardBehavior.ts's own tests, deleted alongside it at cutover);
+// this keeps that movement-mechanics coverage alive without re-testing stewardTaskRunner.ts's own request/
+// route logic, which stays covered by logistics/stewardRegister.test.ts.
+export function dispatchSteward(creep: Creep): void {
+  const anchor = anchorPos(creep);
+  if (!anchor) return; // no anchor recorded yet — nothing to park on, nothing to do
+
+  if (!creep.pos.isEqualTo(anchor)) {
+    creep.travelTo(anchor);
+    return;
+  }
+
+  const triangle = resolveStewardTriangle(creep, anchor);
+  runStewardTask(creep, triangle);
 }
 
 // The squad pass (ADR 0007): iterate SQUADS (not creeps), compute each squad's shared plan once, and

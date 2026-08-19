@@ -8,9 +8,9 @@ import { Role } from "./role";
 const LINK_CAPACITY = 800;
 const MAX_CARRY = LINK_CAPACITY / BODYPART_COST[CARRY]; // 16
 
-// A single MOVE is enough: the steward parks permanently on the anchor tile (see behaviors/stewardBehavior.ts)
-// and never fatigues once it arrives, since it stops moving — unlike transport/hauler, no 1:1 CARRY:MOVE
-// is needed here. All remaining energy up to the cap goes to CARRY.
+// A single MOVE is enough: the steward parks permanently on the anchor tile (see empire/creeps.ts's
+// dispatchSteward) and never fatigues once it arrives, since it stops moving — unlike transport/hauler,
+// no 1:1 CARRY:MOVE is needed here. All remaining energy up to the cap goes to CARRY.
 export function stewardBody(energy: number): BodyPartConstant[] {
   const affordable = Math.max(1, Math.floor((energy - BODYPART_COST[MOVE]) / BODYPART_COST[CARRY]));
   const carry = Math.min(MAX_CARRY, affordable);
@@ -18,12 +18,13 @@ export function stewardBody(energy: number): BodyPartConstant[] {
 }
 
 // Stationary anchor manager: sits on the tile between storage/terminal/link/spawn and balances energy
-// between them (see behaviors/stewardBehavior.ts) — the legacy bot's "Logistic" role, reworked onto the
-// new snapshot/intent architecture. Assignment is threshold-based, not planLogistics' allocator: all
-// three of its targets are room-fixed and zero-travel from the anchor, so there's no pickup/deliver
-// matching to do — just "is a rebalance needed this tick". dispatch: "steward" routes it to
-// stewardBehavior.ts's runSteward instead of the step-table dispatch (see Role.dispatch's doc,
-// behaviors/roles/role.ts).
+// between them (see behaviors/stewardTaskRunner.ts) — the legacy bot's "Logistic" role, reworked onto the
+// new snapshot/intent architecture. As of gh #54, driven by stewardTaskRunner.ts's rate-ranked
+// LogisticsRequest pool (ADR 0008), not a hand-tuned threshold cascade: all three of its targets are
+// room-fixed and zero-travel from the anchor, so the only ranking distance that ever matters is
+// buffer-detour-via-storage vs. direct. dispatch: "steward" routes it to empire/creeps.ts's dispatchSteward
+// (anchor travel, then stewardTaskRunner.ts's runStewardTask) instead of the step-table dispatch (see
+// Role.dispatch's doc, behaviors/roles/role.ts).
 export class Steward extends Role {
   // Below transport(100)/miner(95)/drainHealer/drainAttacker/attacker(94): a spawn/extension/tower
   // deficit, a source going unmined, or an active offensive squad should all win a spawn slot over

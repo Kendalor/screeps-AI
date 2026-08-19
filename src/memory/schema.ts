@@ -73,10 +73,6 @@ declare global {
     // to another creep's predicted delivery, not zero, not unaffected) rather than only on which target
     // won. Absent whenever no request was picked (see that hook's own doc).
     logisticsDiscountProbe?: { raw: number; discounted: number };
-    // The steward's current carry destination (storage/terminal), owned by behaviors/stewardBehavior.ts alone —
-    // no planner/intent involved, since a steward's job is decided and executed in the same tick with
-    // nothing worth persisting across a re-plan (unlike transport's multi-leg chain).
-    stewardDest?: Id<StructureStorage> | Id<StructureTerminal> | Id<StructureLink>;
     scoutTarget?: string; // room a scout is assigned to reach; cleared by moveToRoom on arrival
     targetRoom?: string; // a remote worker's permanent destination room (its source's room); NOT cleared on arrival, unlike scoutTarget
     // A builder's current cross-room construction assignment (home or a remote room with outstanding

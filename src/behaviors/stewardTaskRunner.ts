@@ -7,10 +7,12 @@
 // supplyTaskRunner.ts/logisticsTaskRunner.ts do. No scoring or buffer-detour logic is reimplemented here —
 // see stewardRegister.ts's header for why each leg is expressed as a request instead of a threshold check.
 //
-// Standalone: not called from any live role's dispatch table yet (cutover is gh #54, blocked on this
-// ticket plus #52) — stewardBehavior.ts keeps running the live bot unmodified throughout. Driven here only
-// by the test-only __runStewardTask console hook (logistics/testHooks.ts), same pattern supplyTaskRunner.ts
-// established for __runSupplyTask.
+// Live since gh #54 (ADR 0008): empire/creeps.ts's dispatchSteward calls runStewardTask once a Steward
+// creep is parked on its anchor tile, replacing stewardBehavior.ts's hand-tuned threshold cascade outright
+// (deleted in that same commit — see its removal for why no dead-in-place remnant was left: the old logic
+// was fully self-contained, no other module read its constants or shared its call path). Also still
+// reachable from the test-only __runStewardTask console hook (logistics/testHooks.ts), same pattern
+// supplyTaskRunner.ts established for __runSupplyTask.
 
 import { registerStewardRequests } from "../logistics/stewardRegister";
 import { pickBestRequest, type LogisticsRequest } from "../logistics/request";

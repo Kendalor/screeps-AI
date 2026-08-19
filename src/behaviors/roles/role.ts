@@ -35,8 +35,9 @@ export abstract class Role {
   static readonly retreatPart?: BodyPartConstant;
   // Opt in to bypass the step-table dispatch entirely (empire/creeps.ts's dispatchCreep): "logistics"
   // routes to logisticsRunner.ts's runLogisticsMover (assignment comes from planLogistics via
-  // memory.logistics, not a static step table), "steward" routes to stewardBehavior.ts's runSteward
-  // (threshold-based rebalancing, not a static step table). Undefined (the default) runs the ordinary
+  // memory.logistics, not a static step table), "steward" routes to empire/creeps.ts's dispatchSteward
+  // (anchor travel, then behaviors/stewardTaskRunner.ts's rate-ranked pool — gh #54, ADR 0008 — not a
+  // static step table). Undefined (the default) runs the ordinary
   // step-table dispatch (runOne). Making this explicit means a role with a genuinely empty steps table
   // by mistake fails loudly (runOne's `steps.length === 0` early-return does nothing) instead of
   // silently behaving like a diverted role it never opted into.
