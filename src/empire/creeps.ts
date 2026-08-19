@@ -17,7 +17,8 @@ import {
 import { roleDef } from "../behaviors/roles";
 import { resolveStewardTriangle, runStewardTask } from "../behaviors/stewardTaskRunner";
 import { sweepEnRoute } from "../behaviors/sweep";
-import { parkNearBunker, runTransport } from "../behaviors/logisticsRunner";
+import { parkNearBunker } from "../behaviors/logisticsRunner";
+import { runSupplyTask } from "../behaviors/supplyTaskRunner";
 import { runTransportTask } from "../behaviors/transportTaskRunner";
 import type { Step } from "../behaviors/types";
 import type { Colony } from "../colony";
@@ -166,20 +167,20 @@ function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>): voi
       // it — checked here instead, ahead of the diversion, so a hauler running the logistics
       // allocator's own task retreats from an armed hostile exactly like a step-table hauler.
       if (fleeThreat(creep)) return;
-      // Supply and Transport share dispatch:"logistics" (Role.dispatch's doc) but, as of gh #52, no
-      // longer share an executor: Supply still plans/runs through the OLD graph.ts/allocate.ts/
-      // memory.logistics path (runTransport, behaviors/logisticsRunner.ts) — its own cutover is gh #53 —
-      // while Transport is now driven entirely by the new LogisticsRequest/rate-ranking system
-      // (behaviors/transportTaskRunner.ts), never touching graph.ts/allocate.ts. A Transport creep with
-      // no live pool to draw from (nothing registered, or no vision of home) simply has nothing assigned
-      // this tick; park near the bunker exactly as the old runTransport did for the same case.
+      // Supply and Transport share dispatch:"logistics" (Role.dispatch's doc) and, as of gh #53, share an
+      // executor shape too: both are now driven entirely by their own self-registered LogisticsRequest/
+      // SupplyRequest pool (behaviors/transportTaskRunner.ts / behaviors/supplyTaskRunner.ts) — neither
+      // touches graph.ts/allocate.ts/logisticsRunner.ts's runTransport any more (that whole old path is
+      // dead code as of this cutover; see logistics/graph.ts's header). A creep with no live pool to draw
+      // from (nothing registered, or no vision of home) simply has nothing assigned this tick; park near
+      // the bunker exactly as the old runTransport did for the same case.
       if (creep.memory.role === "transport") {
         const siblings = (transportByHome.get(creep.memory.home) ?? []).filter(c => c !== creep);
         runTransportTask(creep, siblings);
-        if (!creep.memory.logisticsTask) parkNearBunker(creep);
       } else {
-        runTransport(creep);
+        runSupplyTask(creep);
       }
+      if (!creep.memory.logisticsTask) parkNearBunker(creep);
       return;
     }
     case "steward":

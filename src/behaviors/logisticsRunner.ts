@@ -5,6 +5,17 @@
 // Does NOT call planLogistics itself: that already ran once per tick inside Logistics.intents() (tier
 // 1, before "creeps") and its output landed in memory.logistics via the assignLogisticsTask intent by
 // the time this runs — see kernel/tick.ts's SYSTEMS order.
+//
+// gh #53 cutover status: runTransport (and everything above it that exists only to support it —
+// advanceOrPark, advanceOrTopOff, findLiveTopoff, topoffTask, resolveNode, isTaskDone, providerEmpty,
+// consumerFull, homeRoomWaypoint) is now DEAD CODE — no live call path reaches it any more. Supply (the
+// last live caller, via empire/creeps.ts) is driven by behaviors/supplyTaskRunner.ts's runSupplyTask
+// instead, following Transport's own gh #52 cutover. parkNearBunker stays live — both new task runners
+// still call it directly from empire/creeps.ts when a creep has nothing assigned. Left in place rather
+// than deleted here, matching gh #52's own precedent for transportProviders/consumers/storageOverflow:
+// full deletion of this file's dead half (and planLogistics/assignLogisticsTask/memory.logistics, all
+// dead for the same reason — see logistics/index.ts's header) is gh #55's job, once Steward (#54) also
+// cuts over and the whole old system can be removed in one pass.
 
 import type { LogisticsTask, NodeRef } from "../logistics/types";
 import { log } from "../lib/log";

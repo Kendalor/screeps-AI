@@ -9,9 +9,11 @@
 // by a computed rate. Self-registration reads live Game.* state directly (no ColonySnapshot indirection),
 // same as register.ts's registerMinerContainerOutput.
 //
-// Scope stays exactly what graph.ts's supplyConsumers() covers today: spawn/extension (one aggregate
-// tier) and tower — never the controller container, storage, minerals, or a remote-room structure. Those
-// remain Transport's (or Steward's) job.
+// Scope stays exactly what graph.ts's (now-dead) supplyConsumers() used to cover: spawn/extension (one
+// aggregate tier) and tower — never the controller container, storage, minerals, or a remote-room
+// structure. Those remain Transport's (or Steward's) job. Live as of gh #53: driven each tick by
+// behaviors/supplyTaskRunner.ts's runSupplyTask, itself dispatched from empire/creeps.ts for every
+// role==="supply" creep — this module's own registration/selection logic is unchanged from gh #50.
 
 /** One spawn/extension/tower's outstanding energy need — Supply's own request shape, no rate math. */
 export interface SupplyRequest {

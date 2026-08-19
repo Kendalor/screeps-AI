@@ -20,7 +20,6 @@ import { orderBody } from "../spawn/body";
 import type { Intent } from "../intents/types";
 import GOAL_JSON from "../construction/Base_2.json";
 import type { GoalLayout } from "../construction/sync";
-import { planLogistics } from "../logistics";
 import { providers } from "../logistics/graph";
 import { CONTROLLER_CONTAINER_FILL_FLOOR, UPGRADER_CONTROLLER_RANGE } from "../logistics/transportRegister";
 import { harvestIncome, haulDistance, wantedTransportHeadcount } from "../logistics/fleet";
@@ -215,18 +214,15 @@ export class Logistics extends Operation {
   }
 
   /**
-   * Direct action, not arbitrated: runs planLogistics once per tick and emits one assignment intent per
-   * idle creep, plus this tick's link-network transfers (see logistics/links.ts) — links are instant and
-   * creep-free, so they're fired here rather than through the transport allocator.
+   * Direct action, not arbitrated: emits this tick's link-network transfers (see logistics/links.ts) —
+   * links are instant and creep-free, so they're fired here rather than through a creep allocator — plus
+   * the anchor-link recording intent below. gh #53 cutover: no longer calls planLogistics/emits
+   * assignLogisticsTask — Transport (gh #52) and Supply (gh #53) both now self-register and self-assign
+   * their own tasks directly against Game.* each tick (transportTaskRunner.ts/supplyTaskRunner.ts), so
+   * there is nothing left for this operation to plan or assign (see logistics/index.ts's header).
    */
   public override intents(colony: ColonySnapshot): Intent[] {
-    const plan = planLogistics(colony);
-    const assignments: Intent[] = Object.entries(plan.assignments).map(([creep, task]) => ({
-      kind: "assignLogisticsTask",
-      creep: creep as Id<Creep>,
-      task
-    }));
-    return [...assignments, ...planLinkTransfers(colony), ...this.recordAnchorLink(colony)];
+    return [...planLinkTransfers(colony), ...this.recordAnchorLink(colony)];
   }
 
   /**

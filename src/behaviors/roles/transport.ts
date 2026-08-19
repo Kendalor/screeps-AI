@@ -4,9 +4,9 @@ import { Role } from "./role";
 
 // A Logistics-owned mover: dispatch: "logistics" routes it through empire/creeps.ts's dispatchCreep,
 // which (as of gh #52's cutover) sends role==="transport" to transportTaskRunner.ts's runTransportTask —
-// the new LogisticsRequest/Task pool, not logisticsRunner.ts's old runTransport (that old path still
-// serves Supply only, until gh #53 cuts it over too; see graph.ts's header for the dead-Transport-code
-// note this class's old "providers()/consumers()" framing referred to).
+// the new LogisticsRequest/Task pool, not logisticsRunner.ts's old runTransport (that old path is now
+// fully dead — Supply also cut over at gh #53, to supplyTaskRunner.ts's own self-registered pool; see
+// graph.ts's header for the dead-code note this class's old "providers()/consumers()" framing referred to).
 export class Transport extends Role {
   // Matches bootstrap (100), just below supply (101): not interleaved with miner — Logistics.desiredCreeps
   // only ever asks for a transport creep once transportPoolHasConsumer (operations/logistics.ts) confirms

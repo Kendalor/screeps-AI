@@ -2,9 +2,11 @@
 // best SupplyRequest via logistics/supplyRegister.ts's tier-first-then-nearest selection (no rate math —
 // that's Transport's/Steward's pool, not this one) and drives an idle creep onto it via the same
 // Task/fork/parent chain primitive gh #45 built (logistics/task.ts), reusing behaviors/actions.ts's
-// withdraw/transfer leaves exactly as logisticsTaskRunner.ts does. Standalone: not called from any live
-// role's dispatch table yet (see supplyRegister.ts's header and ADR 0008's cutover-sequencing decision —
-// live wiring is gh #53) — driven here only by the test-only __runSupply console hook (testHooks.ts).
+// withdraw/transfer leaves exactly as logisticsTaskRunner.ts does. Live as of gh #53: empire/creeps.ts's
+// dispatchCreep sends every role==="supply" creep here each tick (replacing the old graph.ts/allocate.ts/
+// logisticsRunner.ts path — see logistics/graph.ts's header for that path's dead-code status), mirroring
+// Transport's own gh #52 cutover onto transportTaskRunner.ts. Still exercised directly by the test-only
+// __runSupplyTask console hook (testHooks.ts) too, unchanged from gh #50.
 
 import { registerSupplyRequests, pickSupplyRequest } from "../logistics/supplyRegister";
 import { fork, persistTask, resolveTask, type Task } from "../logistics/task";

@@ -26,11 +26,11 @@ export function supplyBody(energy: number, controllerLevel: number, roads = fals
   return body;
 }
 
-// A Logistics-owned mover, same as Transport: assignment comes from planLogistics via memory.logistics
-// (restricted to spawn/extension/tower sinks and non-remote sources — see logistics/graph.ts's
-// supplyProviders/supplyConsumers), not a static step table — dispatch: "logistics" routes it to
-// logisticsRunner.ts's runLogisticsMover instead of the step-table dispatch (see Role.dispatch's doc,
-// behaviors/roles/role.ts).
+// A Logistics-owned mover, same as Transport: assignment comes from its own self-registered pool as of
+// gh #53 (logistics/supplyRegister.ts's SupplyRequest — spawn/extension/tower only, tier-first-then-
+// nearest, no rate math), not a static step table — dispatch: "logistics" routes it to
+// behaviors/supplyTaskRunner.ts's runSupplyTask instead of the step-table dispatch (see Role.dispatch's
+// doc, behaviors/roles/role.ts, and empire/creeps.ts's dispatchCreep).
 export class Supply extends Role {
   // Strictly above transport (100): a starved spawn stalls the whole colony, and supply is what
   // refills extensions from storage so bigger bodies (miners/haulers sized off capacity) ever become

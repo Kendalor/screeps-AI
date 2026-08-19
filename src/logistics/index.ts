@@ -1,16 +1,12 @@
-// planLogistics: the one per-tick entry point Logistics.intents() calls. Plans Supply's fleet only
-// (the spawn/tower topper, restricted to graph.ts's supplyProviders/supplyConsumers) — wires graph +
-// allocate + reserved-folding for that one fleet, thin by design since the interesting logic lives in
-// graph.ts/allocate.ts.
-//
-// gh #52 cutover: Transport no longer plans through this module. It used to plan both fleets in one
-// coordinated pass so the two could never double-book the same node; Transport is now driven live by
-// behaviors/transportTaskRunner.ts against the new LogisticsRequest/rate-ranking system instead (see that
-// module's header) — Supply's old graph.ts/allocate.ts path here is untouched and still the live
-// spawn/extension/tower fast path (Supply's own cutover is gh #53). The two systems can't double-book a
-// node either: Supply's scope (spawnSystem/tower) and Transport's new pool's scope (everything else) are
-// already disjoint by construction (see transportRegister.ts's header) the same way graph.ts's
-// supplyProviders/supplyConsumers vs. transportProviders/consumers were.
+// planLogistics: formerly the one per-tick entry point Logistics.intents() called. gh #52 cut Transport
+// over to behaviors/transportTaskRunner.ts's new LogisticsRequest/rate-ranking system, leaving this module
+// planning Supply's fleet only; gh #53 then cut Supply over too, to behaviors/supplyTaskRunner.ts's new
+// SupplyRequest self-registration pool (logistics/supplyRegister.ts). With neither role left to plan, this
+// whole module (planLogistics, planSupply, foldReserved and everything below) is now DEAD CODE — no live
+// call path reaches it. Left in place rather than deleted here, matching gh #52's own precedent for
+// graph.ts's dead exports: full deletion (of this module, graph.ts, allocate.ts, logisticsRunner.ts's dead
+// half, memory.logistics, and the assignLogisticsTask intent) is gh #55's job, once Steward (#54) also cuts
+// over and the whole old system can be removed in one pass.
 
 import { buildCostMatrix } from "../construction/roadPathing";
 import type { RoadCostMatrix } from "../lib/pathing";

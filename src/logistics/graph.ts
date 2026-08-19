@@ -3,17 +3,16 @@
 // Reuses targets.ts's belowFillTo/isWorthwhile-shaped math so "is this container full/worth a trip" is
 // asked once, not reinvented here — same reasoning, snapshot-pure instead of live-object.
 //
-// gh #52 cutover status: `supplyProviders`/`supplyConsumers` (plus the shared `providers`/`buildConsumers`
-// they read from) are still LIVE — Supply's own cutover to the new logistics/ system is gh #53, so its old
-// path here is untouched. `transportProviders`, the bare `consumers()`, and `storageOverflow`/
-// `StorageOverflow` (allocate.ts) are now DEAD CODE: no live call path reaches them any more (Transport is
-// driven by behaviors/transportTaskRunner.ts against the new LogisticsRequest system instead — see that
-// module's header). Left in place rather than deleted here: the two families of exports share this file's
-// PRIORITY table, buildConsumers, and isNearController/isWorthwhileDrop helpers with the still-live Supply
-// path closely enough that a clean surgical split risked Supply regressions for a ticket scoped to
-// Transport only (see gh #52's own acceptance-criteria fallback). Full deletion of the dead exports (and
-// their now-vestigial test coverage in graph.test.ts/allocate.test.ts) is gh #55's job, once Steward (#54)
-// has also cut over and the whole file can be removed in one pass rather than partially gutted twice.
+// gh #53 cutover status: EVERY export in this file is now DEAD CODE — no live call path reaches any of
+// it. `transportProviders`, the bare `consumers()`, and `storageOverflow`/`StorageOverflow` (allocate.ts)
+// went dead first, at gh #52 (Transport's cutover). `supplyProviders`/`supplyConsumers` (plus the shared
+// `providers`/`buildConsumers`/`spawnTiersOwnedBySupply` they read from) went dead here at gh #53 (Supply's
+// cutover): Supply is now driven by behaviors/supplyTaskRunner.ts against logistics/supplyRegister.ts's
+// self-registered SupplyRequest pool instead — see that module's header. Left in place rather than deleted:
+// this file (and allocate.ts, logisticsRunner.ts, logistics/index.ts's planLogistics/planSupply,
+// memory.logistics, the assignLogisticsTask intent) is genuinely fully dead now, but full deletion is still
+// deferred to gh #55, once Steward (#54) also cuts over, so the old and new systems' removal happens in one
+// pass rather than three separate partial-deletion diffs across #52/#53/#54.
 
 import type { XY } from "../lib/geometry";
 import type { ColonySnapshot, SnapContainer, SnapCreep, SnapDrop, SnapRuin, SnapTombstone, SnapTower } from "../snapshot/types";
