@@ -116,41 +116,56 @@ describe("registerLinkDrainRequest", () => {
 // ---------------------------------------------------------------------------
 
 describe("registerControllerLinkTopUpRequest", () => {
+  it("returns undefined when the anchor link is missing", () => {
+    expect(registerControllerLinkTopUpRequest(undefined, stubLink("clink", 0), stubStorage(100_000))).toBeUndefined();
+  });
+
   it("returns undefined when the controller link is missing", () => {
-    expect(registerControllerLinkTopUpRequest(undefined, stubStorage(100_000))).toBeUndefined();
+    expect(registerControllerLinkTopUpRequest(stubLink("link", 0), undefined, stubStorage(100_000))).toBeUndefined();
   });
 
   it("returns undefined when storage is missing", () => {
-    expect(registerControllerLinkTopUpRequest(stubLink("clink", 0), undefined)).toBeUndefined();
+    expect(registerControllerLinkTopUpRequest(stubLink("link", 0), stubLink("clink", 0), undefined)).toBeUndefined();
   });
 
   it("returns undefined when storage has nothing to give", () => {
+    const link = stubLink("link", 0);
     const cLink = stubLink("clink", 0);
-    expect(registerControllerLinkTopUpRequest(cLink, stubStorage(0))).toBeUndefined();
+    expect(registerControllerLinkTopUpRequest(link, cLink, stubStorage(0))).toBeUndefined();
   });
 
   it("returns undefined when the controller link is already at/above CONTROLLER_LINK_LOW_FRACTION", () => {
+    const link = stubLink("link", 0);
     const cLink = stubLink("clink", Math.ceil(LINK_CAPACITY * CONTROLLER_LINK_LOW_FRACTION));
-    expect(registerControllerLinkTopUpRequest(cLink, stubStorage(100_000))).toBeUndefined();
+    expect(registerControllerLinkTopUpRequest(link, cLink, stubStorage(100_000))).toBeUndefined();
   });
 
-  it("registers an INPUT request (positive amount, wanted = free capacity) once running low, mirroring stewardBehavior.ts's controllerLinkNeedsTopUp gate", () => {
+  // Regression test: this leg must target the ANCHOR link, never the controller link — the controller
+  // link's own fullness is only the TRIGGER (mirrors stewardBehavior.ts's controllerLinkNeedsTopUp gate),
+  // never somewhere Steward physically travels to. A prior version of this function built the request
+  // against `controllerLink` directly, which sent a live Steward creep on a real multi-tile trip out to
+  // the controller link every time it ran low — confirmed live on the pserver (creep visibly leaving its
+  // anchor tile) before this test existed to catch it.
+  it("registers an INPUT request against the ANCHOR link (not the controller link) once the controller link runs low", () => {
     const stored = Math.floor(LINK_CAPACITY * CONTROLLER_LINK_LOW_FRACTION) - 1;
-    const cLink = stubLink("clink", stored);
+    const link = stubLink("link", 100, 25, 25); // anchor link: some energy already in it, has free capacity left
+    const cLink = stubLink("clink", stored, 38, 8); // controller link, far from the anchor — must never be the target
     const storage = stubStorage(100_000);
-    const request = registerControllerLinkTopUpRequest(cLink, storage);
+    const request = registerControllerLinkTopUpRequest(link, cLink, storage);
 
     expect(request).toBeDefined();
-    expect(request?.target).toBe(cLink);
+    expect(request?.target).toBe(link);
+    expect(request?.target).not.toBe(cLink);
     expect(request?.resource).toBe(RESOURCE_ENERGY);
-    expect(request?.amount).toBe(LINK_CAPACITY - stored); // requestInput: "wants delivered"
+    expect(request?.amount).toBe(LINK_CAPACITY - 100); // requestInput: the ANCHOR link's own free capacity
     expect(request?.amount).toBeGreaterThan(0);
     expect(request?.dAmountdt).toBe(0);
   });
 
-  it("returns undefined when the controller link is already full (no free capacity to want)", () => {
-    const cLink = stubLink("clink", LINK_CAPACITY);
-    expect(registerControllerLinkTopUpRequest(cLink, stubStorage(100_000))).toBeUndefined();
+  it("returns undefined when the anchor link is already full (no free capacity to want), even though the controller link is low", () => {
+    const link = stubLink("link", LINK_CAPACITY);
+    const cLink = stubLink("clink", 0);
+    expect(registerControllerLinkTopUpRequest(link, cLink, stubStorage(100_000))).toBeUndefined();
   });
 });
 
@@ -210,25 +225,38 @@ describe("registerStewardRequests", () => {
   });
 
   it("collects every qualifying leg into one pool — not just the first match (proves this replaces three independent checks, not a single if/else)", () => {
-    const link = stubLink("link1", 400); // qualifies: drain
-    const cLink = stubLink("clink", 50); // qualifies: top-up
+    // Drain and top-up both target `link` (the anchor link) but are mutually exclusive in practice — a
+    // link can't simultaneously hold enough to drain (LINK_DRAIN_FLOOR) and have free capacity to top up
+    // without emptying first — so this seeds a link ABOVE the drain floor but not literally full, letting
+    // both legs' independent conditions genuinely both qualify at once (drain: any energy > 0; top-up:
+    // gated on the CONTROLLER link's fullness, not the anchor link's own).
+    const link = stubLink("link1", 400); // qualifies: drain (has energy) AND has free capacity for top-up
+    const cLink = stubLink("clink", 50); // qualifies: controller link running low, triggers top-up
     const storage = stubStorage(800_000); // surplus
     const terminal = stubTerminal(10_000); // low
     const requests = registerStewardRequests(link, cLink, storage, terminal);
 
+    // Two of the three requests target the anchor link (drain gives energy up, top-up wants it delivered
+    // — opposite signs, both legitimate at once), plus the terminal rebalance.
     expect(requests).toHaveLength(3);
-    expect(requests.map(r => r.target)).toEqual(expect.arrayContaining([link, cLink, terminal]));
+    const targets = requests.map(r => r.target);
+    expect(targets.filter(t => t === link)).toHaveLength(2);
+    expect(targets).toContain(terminal);
+    expect(targets).not.toContain(cLink); // the controller link is only ever a trigger, never a target
   });
 
   it("omits a leg from the pool once its own condition stops qualifying, leaving the others intact", () => {
-    const link = stubLink("link1", 0); // does NOT qualify
-    const cLink = stubLink("clink", 50); // qualifies
+    const link = stubLink("link1", LINK_DRAIN_FLOOR); // at the floor: drain doesn't qualify (empty, so
+    // nothing to give) — the ONLY value that can disqualify drain, since any energy above the floor is
+    // worth draining
+    const cLink = stubLink("clink", LINK_CAPACITY); // full: controller link doesn't need topping up, so
+    // the anchor link's own emptiness (which would otherwise trigger top-up too) never gets exercised
     const storage = stubStorage(800_000);
     const terminal = stubTerminal(10_000); // qualifies
     const requests = registerStewardRequests(link, cLink, storage, terminal);
 
-    expect(requests).toHaveLength(2);
-    expect(requests.some(r => r.target === link)).toBe(false);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].target).toBe(terminal);
   });
 });
 
@@ -271,12 +299,14 @@ describe("Steward's delivery requests reuse route.ts's evaluateRoutes/pickBestRo
     return storage as unknown as Buffer;
   }
 
-  it("evaluates a via-storage detour for the controller-link top-up request, same shape a Transport delivery would get", () => {
-    const cLink = stubLink("clink", 50, 30, 30);
+  it("evaluates a via-storage detour for the controller-link top-up request (targeting the ANCHOR link), same shape a Transport delivery would get", () => {
+    const link = stubLink("link", 50, 25, 25); // the anchor link — this leg's real target, not the controller link
+    const cLink = stubLink("clink", 50, 38, 8); // far off at the controller — only a trigger, never a target
     const storage = stubStorage(800_000, 5, 5);
-    const request = registerControllerLinkTopUpRequest(cLink, storage);
+    const request = registerControllerLinkTopUpRequest(link, cLink, storage);
     expect(request).toBeDefined();
     if (!request) return;
+    expect(request.target).toBe(link);
 
     const from = pos(0, 0);
     const distanceTo = (a: RoomPosition, b: RoomPosition): number => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));

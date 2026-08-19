@@ -16,6 +16,12 @@
 // reasoning documented there) — this ticket replaces the shape of the decision (three independent checks
 // -> three ranked requests), not the numbers themselves. A future tuning pass can touch these without
 // touching the request/route reuse this ticket proves.
+//
+// Post-cutover fix: registerControllerLinkTopUpRequest originally built its request against the
+// CONTROLLER link directly, sending a live Steward creep on a real multi-tile trip out to the controller
+// (confirmed live on the pserver) — stewardBehavior.ts only ever used the controller link's fullness as a
+// TRIGGER, never as somewhere it travelled to; the actual delivery target was always the anchor link (see
+// registerControllerLinkTopUpRequest's own doc). Fixed to take both links and target the anchor one.
 
 import { requestInput, requestOutput, type LogisticsRequest } from "./request";
 
@@ -49,24 +55,30 @@ export function registerLinkDrainRequest(link: StructureLink | undefined, storag
 }
 
 /**
- * The controller link's remaining want, once it's run low (CONTROLLER_LINK_LOW_FRACTION) AND storage
- * actually has energy to give — an input request (the link WANTS energy delivered). Mirrors
- * stewardBehavior.ts's controllerLinkNeedsTopUp gate exactly. Before RCL7 (no source links yet) nothing
- * else ever puts energy into the link chain at all; links.ts's own anchor->controller leg carries it the
- * rest of the way once it lands in the anchor link (see that file's header).
+ * The ANCHOR link's remaining want, triggered once the CONTROLLER link has run low
+ * (CONTROLLER_LINK_LOW_FRACTION) AND storage actually has energy to give — an input request (the anchor
+ * link WANTS energy delivered). Mirrors stewardBehavior.ts's controllerLinkNeedsTopUp gate exactly,
+ * including its target: the controller link's own fullness is only the TRIGGER, never the delivery
+ * target — "the steward itself never goes near the controller link, which sits out of its reach at the
+ * controller, not the anchor" (stewardBehavior.ts's own comment on this leg). Before RCL7 (no source
+ * links yet) nothing else ever puts energy into the link chain at all; links.ts's own anchor->controller
+ * leg carries it the rest of the way once it lands in the anchor link (see that file's header) — a real
+ * bug shipped here once (gh #51/#54): registering this request against `controllerLink` directly sent a
+ * creep on a real multi-tile trip to the controller link, something Steward must never do.
  */
 export function registerControllerLinkTopUpRequest(
+  link: StructureLink | undefined,
   controllerLink: StructureLink | undefined,
   storage: StructureStorage | undefined
 ): LogisticsRequest | undefined {
-  if (!controllerLink || !storage) return undefined;
+  if (!link || !controllerLink || !storage) return undefined;
   if (storage.store.getUsedCapacity(RESOURCE_ENERGY) <= 0) return undefined;
   const capacity = controllerLink.store.getCapacity(RESOURCE_ENERGY);
   const used = controllerLink.store.getUsedCapacity(RESOURCE_ENERGY);
   if (used >= capacity * CONTROLLER_LINK_LOW_FRACTION) return undefined;
-  const wanted = controllerLink.store.getFreeCapacity(RESOURCE_ENERGY);
+  const wanted = link.store.getFreeCapacity(RESOURCE_ENERGY);
   if (wanted <= 0) return undefined;
-  return requestInput(controllerLink, RESOURCE_ENERGY, wanted);
+  return requestInput(link, RESOURCE_ENERGY, wanted);
 }
 
 /**
@@ -106,7 +118,7 @@ export function registerStewardRequests(
   const out: LogisticsRequest[] = [];
   const drain = registerLinkDrainRequest(link, storage);
   if (drain) out.push(drain);
-  const topUp = registerControllerLinkTopUpRequest(controllerLink, storage);
+  const topUp = registerControllerLinkTopUpRequest(link, controllerLink, storage);
   if (topUp) out.push(topUp);
   const rebalance = registerTerminalRebalanceRequest(storage, terminal);
   if (rebalance) out.push(rebalance);
