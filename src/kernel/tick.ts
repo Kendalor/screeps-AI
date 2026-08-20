@@ -10,7 +10,9 @@ import { runDrainFlags } from "../empire/drainFlags";
 import { runParadeFlags } from "../empire/paradeFlags";
 import { runSingleTargetFlags } from "../empire/singleTargetFlags";
 import { MARKET_SCAN_INTERVAL, scanMarketNow } from "../empire/market";
-import { EMPIRE_LOGISTICS_INTERVAL, runEmpireLogisticsPass } from "../empire/logistics";
+import { EMPIRE_LOGISTICS_INTERVAL, runEmpireLogisticsPass, type ColonyEmpireStock } from "../empire/logistics";
+import { BOOST_TARGETS } from "../empire/boostTargets";
+import { collectEmpireStats } from "../empire/stats";
 import { planPixels } from "../empire/pixels";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
 import { runRemoteInvaderAttacks } from "../empire/remoteInvaderAttacks";
@@ -95,7 +97,23 @@ function runMarketScan(): Intent[] {
 }
 
 function runEmpireLogistics(e: Empire): Intent[] {
-  return runEmpireLogisticsPass(e.colonies.map(c => c.name));
+  const colonyNames = e.colonies.map(c => c.name);
+  const intents = runEmpireLogisticsPass(colonyNames);
+  // Same interval as the match pass above (both gated by this SYSTEMS entry's own EMPIRE_LOGISTICS_INTERVAL)
+  // — a fresh empire-total snapshot every time the matcher itself recomputes, not persisted or reused by
+  // the matcher (decision 11, docs/empire-logistics-plan.md); see EmpireStats' own doc.
+  const stocks: ColonyEmpireStock[] = colonyNames.map(name => ({
+    colony: name,
+    storage: Game.rooms[name]?.storage?.store,
+    terminal: Game.rooms[name]?.terminal?.store
+  }));
+  Memory.stats.empire = collectEmpireStats(stocks, BOOST_TARGETS, name => Memory.colonies[name]?.empireRole, {
+    credits: Game.market.credits,
+    pixels: Game.resources[PIXEL] ?? 0,
+    cpuUnlocks: Game.resources[CPU_UNLOCK] ?? 0,
+    subscriptionTokens: Game.resources[SUBSCRIPTION_TOKEN] ?? 0
+  });
+  return intents;
 }
 
 function runAutoPickColonyTarget(e: Empire): Intent[] {

@@ -1018,6 +1018,412 @@
         }
       }
     },
+    "panel-empire-credits": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "keepLastValue(stats.gauges.empire.credits)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.empire.credits — Game.market.credits, account-wide.",
+        "id": 30,
+        "links": [],
+        "title": "Credits",
+        "vizConfig": {
+          "group": "stat",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "decimals": 0,
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "colorMode": "value",
+              "graphMode": "area",
+              "justifyMode": "auto",
+              "orientation": "auto",
+              "percentChangeColorMode": "standard",
+              "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+              "showPercentChange": false,
+              "textMode": "auto",
+              "wideLayout": true
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-empire-pixels": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "keepLastValue(stats.gauges.empire.pixels)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.empire.pixels — Game.resources[PIXEL], account-wide.",
+        "id": 31,
+        "links": [],
+        "title": "Pixels",
+        "vizConfig": {
+          "group": "stat",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "decimals": 0,
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "colorMode": "value",
+              "graphMode": "area",
+              "justifyMode": "auto",
+              "orientation": "auto",
+              "percentChangeColorMode": "standard",
+              "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+              "showPercentChange": false,
+              "textMode": "auto",
+              "wideLayout": true
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-empire-cpu-unlocks": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "keepLastValue(stats.gauges.empire.cpuUnlocks)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.empire.cpuUnlocks — Game.resources[CPU_UNLOCK], account-wide.",
+        "id": 32,
+        "links": [],
+        "title": "CPU unlocks",
+        "vizConfig": {
+          "group": "stat",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "decimals": 0,
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "colorMode": "value",
+              "graphMode": "area",
+              "justifyMode": "auto",
+              "orientation": "auto",
+              "percentChangeColorMode": "standard",
+              "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+              "showPercentChange": false,
+              "textMode": "auto",
+              "wideLayout": true
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-empire-subscription-tokens": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "keepLastValue(stats.gauges.empire.subscriptionTokens)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.empire.subscriptionTokens — Game.resources[SUBSCRIPTION_TOKEN], account-wide.",
+        "id": 33,
+        "links": [],
+        "title": "Subscription tokens",
+        "vizConfig": {
+          "group": "stat",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "decimals": 0,
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "colorMode": "value",
+              "graphMode": "area",
+              "justifyMode": "auto",
+              "orientation": "auto",
+              "percentChangeColorMode": "standard",
+              "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+              "showPercentChange": false,
+              "textMode": "auto",
+              "wideLayout": true
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-empire-resources": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(keepLastValue(stats.gauges.empire.resources.$resource), 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.empire.resources.<resource> — empire-total stock (storage+terminal summed across every owned colony), per boost-line resource. Filter with the $resource variable — 41 boost-line resources share one flat 3,000 target by default (boostTargets.ts), too dense to read unfiltered.",
+        "id": 34,
+        "links": [],
+        "title": "Empire resource stock",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "palette-classic" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 10,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 2,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }] },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last", "min", "max"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "right",
+                "showLegend": true,
+                "sortBy": "Last",
+                "sortDesc": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
+    "panel-empire-deficits": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": { "name": "${DS_GRAPHITE}" },
+                    "group": "graphite",
+                    "kind": "DataQuery",
+                    "spec": { "target": "aliasByNode(keepLastValue(stats.gauges.empire.deficits.$resource), 3)" },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Memory.stats.empire.deficits.<resource> — empire-total (effectiveTarget minus stock) summed across colonies; positive = empire-wide short, negative = empire-wide surplus. A snapshot written alongside empire/logistics.ts's own match pass for this export only — the matcher itself never persists this (decision 11, docs/empire-logistics-plan.md). Filter with $resource.",
+        "id": 35,
+        "links": [],
+        "title": "Empire resource deficit (+short / -surplus)",
+        "vizConfig": {
+          "group": "timeseries",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": { "mode": "continuous-RdYlGr" },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": true,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 15,
+                  "gradientMode": "none",
+                  "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 2,
+                  "pointSize": 5,
+                  "scaleDistribution": { "type": "linear" },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": { "group": "A", "mode": "none" },
+                  "thresholdsStyle": { "mode": "off" }
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": 0 },
+                    { "color": "red", "value": 1 }
+                  ]
+                },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "annotations": { "clustering": -1, "multiLane": false },
+              "legend": {
+                "calcs": ["last", "max"],
+                "displayMode": "table",
+                "enableFacetedFilter": false,
+                "overflow": "ellipsis",
+                "placement": "right",
+                "showLegend": true,
+                "sortBy": "Last",
+                "sortDesc": true
+              },
+              "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            }
+          },
+          "version": "13.1.3"
+        }
+      }
+    },
     "panel-remotes": {
       "kind": "Panel",
       "spec": {
@@ -1091,7 +1497,13 @@
         { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-spawnload" }, "height": 8, "width": 12, "x": 0, "y": 24 } },
         { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-census-alive" }, "height": 8, "width": 12, "x": 12, "y": 24 } },
         { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-buildings" }, "height": 8, "width": 12, "x": 0, "y": 32 } },
-        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-remotes" }, "height": 4, "width": 6, "x": 12, "y": 32 } }
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-remotes" }, "height": 4, "width": 6, "x": 12, "y": 32 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-empire-credits" }, "height": 6, "width": 6, "x": 0, "y": 40 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-empire-pixels" }, "height": 6, "width": 6, "x": 6, "y": 40 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-empire-cpu-unlocks" }, "height": 6, "width": 6, "x": 12, "y": 40 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-empire-subscription-tokens" }, "height": 6, "width": 6, "x": 18, "y": 40 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-empire-resources" }, "height": 9, "width": 24, "x": 0, "y": 46 } },
+        { "kind": "GridLayoutItem", "spec": { "element": { "kind": "ElementReference", "name": "panel-empire-deficits" }, "height": 9, "width": 24, "x": 0, "y": 55 } }
       ]
     }
   },
@@ -1142,6 +1554,31 @@
           "group": "graphite",
           "kind": "DataQuery",
           "spec": { "target": "stats.gauges.rooms.*" },
+          "version": "v0"
+        },
+        "refresh": "onDashboardLoad",
+        "regex": "",
+        "regexApplyTo": "value",
+        "skipUrlSync": false,
+        "sort": "alphabeticalAsc"
+      }
+    },
+    {
+      "kind": "QueryVariable",
+      "spec": {
+        "allowCustomValue": true,
+        "current": { "text": "All", "value": ["$__all"] },
+        "definition": "",
+        "hide": "dontHide",
+        "includeAll": true,
+        "multi": true,
+        "name": "resource",
+        "options": [],
+        "query": {
+          "datasource": { "name": "${DS_GRAPHITE}" },
+          "group": "graphite",
+          "kind": "DataQuery",
+          "spec": { "target": "stats.gauges.empire.resources.*" },
           "version": "v0"
         },
         "refresh": "onDashboardLoad",

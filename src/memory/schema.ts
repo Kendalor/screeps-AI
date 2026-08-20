@@ -609,6 +609,8 @@ export interface StatsMemory {
   // metrics() already computes as ColonyMetrics for the in-game panel, so this never re-derives from
   // Game.* directly — see collectMetrics in colony/metrics.ts.
   rooms?: Record<string, RoomStats>;
+  // Account-wide wallet + empire-scoped resource/deficit gauges — see EmpireStats' own doc.
+  empire?: EmpireStats;
 }
 
 export interface RoomStats {
@@ -625,6 +627,28 @@ export interface RoomStats {
   buildings: Record<string, { built: number; targeted: number }>;
   // Distinct rooms among this colony's currently-selected remote sources (snapshot.remoteSources).
   numRemotes: number;
+}
+
+// Account-wide (not per-colony) gauges for the Grafana forward — wallet levels plus empire-scoped
+// resource stock/deficit, written once per empire/logistics.ts's own EMPIRE_LOGISTICS_INTERVAL pass (see
+// empire/stats.ts's collectEmpireStats, the pure function this mirrors). Point-in-time levels only, same
+// "gauges only, no bot-side rates" rule as RoomStats.
+export interface EmpireStats {
+  credits: number; // Game.market.credits
+  pixels: number; // Game.resources[PIXEL]
+  cpuUnlocks: number; // Game.resources[CPU_UNLOCK]
+  subscriptionTokens: number; // Game.resources[SUBSCRIPTION_TOKEN]
+  // Empire-total stock (storage+terminal summed across every owned colony) per boost-line resource —
+  // BOOST_TARGETS' keys, not every ResourceConstant, since only stockpiled lines have a target to compare
+  // against. Keyed by resource symbol so a Grafana template variable can filter to one resource at a time
+  // instead of the dashboard rendering 41 series by default (see boostTargets.ts's own doc on that count).
+  resources?: Record<string, number>;
+  // Empire-total deficit (effectiveTarget summed across colonies minus resources[x] above) per the same
+  // resource set — positive means the empire as a whole is short, negative means net surplus. A snapshot
+  // ONLY for this export: empire/logistics.ts's own matching pass deliberately never persists this
+  // (decision 11, docs/empire-logistics-plan.md) — this is a separate write of the same computation for
+  // Grafana, not a reuse of persisted state by the matcher itself.
+  deficits?: Record<string, number>;
 }
 
 // A short window of (tick, total source energy) samples; harvest rate is diffed oldest-vs-newest. A ring rather than a
