@@ -221,6 +221,19 @@ export type Intent =
   | { kind: "setParadeAnchor"; room: string; anchor: SquadAnchorMemory }
   | { kind: "marketDeal"; order: string; amount: number; room: string }
   | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
+  // Empire logistics' colony-to-colony transfer (gh #59, empire/logistics.ts's matchEmpireRequests) — issues
+  // the sending colony's terminal.send() directly. `from`/`to` are room names, not live object refs (an
+  // EmpireTransfer carries no other identity); execute.ts resolves Game.rooms[from].terminal at dispatch
+  // time and no-ops (ERR_NOT_FOUND) if it's gone missing since the match was computed. No cooldown check
+  // here — the matching pass itself only emits a transfer for a terminal it already confirmed isn't on
+  // cooldown (see kernel/tick.ts's runEmpireLogistics), so a second guard here would just be redundant.
+  | { kind: "terminalSend"; from: string; to: string; resource: ResourceConstant; amount: number }
+  // Refreshes ColonyMemory.empireReservations for `room` — see that field's doc. A full overwrite (not a
+  // merge), emitted once per empire logistics pass for every colony that's currently a matched sender for
+  // at least one resource; execute.ts owns the Memory write. A colony with nothing to reserve this pass
+  // gets an empty object, not a skipped intent, so a stale reservation from a resource no longer matched
+  // doesn't linger past the pass that produced it.
+  | { kind: "setEmpireReservations"; room: string; reservations: Partial<Record<ResourceConstant, number>> }
   // Spends PIXEL_CPU_COST bucket for one pixel — emitted empire-wide (not per-colony) whenever the bucket
   // is full; see empire/pixels.ts.
   | { kind: "generatePixel" }

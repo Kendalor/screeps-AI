@@ -319,7 +319,26 @@ export interface ColonyMemory {
   // the planner's own authoritative claim list, not a parallel scan of colony.remoteSources. Absent only
   // wherever buildingPlan itself is absent (see that field's own doc).
   roadsBuilt?: boolean;
+  // Manually-set empire logistics bias (gh #59, docs/empire-logistics-plan.md decision 3), set via the
+  // in-game console and persisted here so it survives restarts. Undefined = neutral (roleMultiplier 1.0).
+  // Read by empire/logistics.ts's effectiveTarget to inflate ("frontline") or deflate ("backline") this
+  // colony's assigned target for every resource with a BOOST_TARGETS entry — no automatic derivation from
+  // game state (remote danger, active combat) is built; this is deliberately manual-only for now.
+  empireRole?: ColonyRole;
+  // This colony's SENDING side of the empire logistics matcher's most recent pass (gh #59 decision 6/user
+  // story 7), keyed by resource — how much of a matched-but-not-yet-sent transfer registerStewardRequests
+  // should inject as registerTerminalRebalanceRequest's empireReservedAmount, so Steward keeps replenishing
+  // the terminal toward the send in the ticks between one tier-3 pass and the next. Fully OVERWRITTEN every
+  // pass (kernel/tick.ts's runEmpireLogistics), never merged/accumulated — consistent with decision 11's
+  // "no persisted pending-send intent, recompute fresh": this is a same-tick-fresh reservation HINT for
+  // Steward's own request pool, not a durable cross-pass obligation the empire is tracking. Absent/empty
+  // between passes for a colony with nothing currently matched to send.
+  empireReservations?: Partial<Record<ResourceConstant, number>>;
 }
+
+// See ColonyMemory.empireRole's doc — pulled out as its own type so empire/logistics.ts can name it
+// without importing the whole ColonyMemory interface.
+export type ColonyRole = "frontline" | "backline";
 
 // A squad's persisted anchor tile — see ColonyMemory.drainAnchor/paradeAnchor's doc for the full rationale
 // (a fixed point the owning operation's own route advances, never re-derived from a live creep every

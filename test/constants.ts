@@ -314,6 +314,11 @@ Object.assign(globalThis, {
   // screeps/common constants — REACTION_TIME above is the cooldown for one such call, i.e. one batch.
   LAB_REACTION_AMOUNT: 5,
 
+  // gh #59's empire logistics: real engine values from @screeps/common/lib/constants.js (verified, not
+  // recalled — see docs/empire-logistics-plan.md's own header note on this).
+  TERMINAL_COOLDOWN: 10,
+  TERMINAL_MIN_SEND: 100,
+
   // Full factory commodity recipe table, copied verbatim from node_modules/@screeps/common's
   // lib/constants.js (the pserver's own copy of the real engine data — see docs.screeps.com/resources.html
   // for the human-readable chain diagrams). Used by src/empire/market.ts's manufacturingCost() for

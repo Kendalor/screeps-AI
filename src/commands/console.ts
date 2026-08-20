@@ -110,6 +110,8 @@ declare global {
   function manufactureCost(resource: string, includeDecompress?: boolean): string;
   function clearDrainTarget(room: string): string;
   function removeOperation(kind: string, room: string, target?: string): string;
+  function setEmpireRole(room: string, role: string): string;
+  function clearEmpireRole(room: string): string;
   function help(): string;
 }
 
@@ -410,6 +412,24 @@ export function installConsoleCommands(): void {
     return `cleared draining target for "${room}" — Drain operation stops attaching from the next tick`;
   };
   register("clearDrainTarget(room)", "manually stop a colony's active drain (clears ColonyMemory.draining), same effect as removing the drain flag");
+
+  global.setEmpireRole = (room: string, role: string): string => {
+    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
+    if (role !== "frontline" && role !== "backline") return `role must be "frontline" or "backline" (got "${role}")`;
+    Memory.colonies[room].empireRole = role;
+    return `set "${room}"'s empire logistics role to ${role} — takes effect on the next empireLogistics pass`;
+  };
+  register(
+    "setEmpireRole(room, role)",
+    "manually bias a colony's empire logistics target ('frontline' inflates it, 'backline' deflates it — see empire/logistics.ts's roleMultiplierFor); persists in ColonyMemory.empireRole until cleared"
+  );
+
+  global.clearEmpireRole = (room: string): string => {
+    if (!Memory.colonies[room]) return `no colony memory for "${room}" yet`;
+    Memory.colonies[room].empireRole = undefined;
+    return `cleared "${room}"'s empire logistics role — back to neutral (roleMultiplier 1.0)`;
+  };
+  register("clearEmpireRole(room)", "reset a colony's empire logistics role to neutral, same effect as never having set one");
 
   // Every kind in the SingleTargetFlagOperation family (SimpleBaitTower/Demolish/SimpleHeal/
   // AttackController, ...) shares one removal shape, so removeOperation below handles them generically

@@ -10,6 +10,7 @@ import { runDrainFlags } from "../empire/drainFlags";
 import { runParadeFlags } from "../empire/paradeFlags";
 import { runSingleTargetFlags } from "../empire/singleTargetFlags";
 import { MARKET_SCAN_INTERVAL, scanMarketNow } from "../empire/market";
+import { EMPIRE_LOGISTICS_INTERVAL, runEmpireLogisticsPass } from "../empire/logistics";
 import { planPixels } from "../empire/pixels";
 import { autoPickColonyTarget } from "../empire/pickColonyTargets";
 import { runRemoteInvaderAttacks } from "../empire/remoteInvaderAttacks";
@@ -75,16 +76,26 @@ export const SYSTEMS: System[] = [
   // Lowest tier: only fires once the bucket is already at its 10000 cap (see planPixels), which by
   // definition can't happen on a tick under CPU/bucket pressure — tier 3's own bucket<3000 guard would
   // always shed this first anyway, so tier 3 just makes that explicit instead of relying on coincidence.
-  { name: "pixels", tier: 3, scope: "empire", run: () => planPixels(Game.cpu.bucket) },
+  { name: "pixels", tier: 3, scope: "empire", run: () => planPixels(Game.cpu.bucket, typeof Game.cpu.generatePixel === "function") },
   // Account-wide (not per-colony) average resource prices, read-only — see empire/market.ts. Not yet
   // acted on by any trading logic, so this is the lowest-priority luxury; also runnable on demand via
   // the scanMarket() console command (src/commands/console.ts) without waiting for the interval.
-  { name: "market", tier: 3, scope: "empire", interval: MARKET_SCAN_INTERVAL, run: runMarketScan }
+  { name: "market", tier: 3, scope: "empire", interval: MARKET_SCAN_INTERVAL, run: runMarketScan },
+  // gh #59: inter-colony storage/terminal transfer (empire/logistics.ts) — reads live stock against
+  // empire-owned targets (empire/boostTargets.ts), matches surplus to deficit, and issues terminal.send()
+  // intents. Interval ~TERMINAL_COOLDOWN-scaled (decision 10): any one terminal can only send once per
+  // TERMINAL_COOLDOWN ticks regardless, so running this every tick would waste CPU on decisions that can't
+  // act yet.
+  { name: "empireLogistics", tier: 3, scope: "empire", interval: EMPIRE_LOGISTICS_INTERVAL, run: runEmpireLogistics }
 ];
 
 function runMarketScan(): Intent[] {
   Memory.market = scanMarketNow();
   return [];
+}
+
+function runEmpireLogistics(e: Empire): Intent[] {
+  return runEmpireLogisticsPass(e.colonies.map(c => c.name));
 }
 
 function runAutoPickColonyTarget(e: Empire): Intent[] {

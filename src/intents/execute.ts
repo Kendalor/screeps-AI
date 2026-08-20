@@ -89,6 +89,21 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       if (!from || !to) return ERR_NOT_FOUND;
       return from.transferEnergy(to);
     }
+    case "terminalSend": {
+      // gh #59's dispatch glue for empire/logistics.ts's matched colony-to-colony transfers — left
+      // committed but UNTESTED, same precedent as stewardTaskRunner.ts's own dispatch glue (see that
+      // module's header / test/unit/logistics/stewardRegister.test.ts's header for why: this exact
+      // seam â€” mockup-server-backed store-mutation testing â€” was already tried and dropped as too
+      // unreliable to seed for structurally similar code).
+      const terminal = Game.rooms[intent.from]?.terminal;
+      if (!terminal) return ERR_NOT_FOUND;
+      return terminal.send(intent.resource, intent.amount, intent.to);
+    }
+    case "setEmpireReservations": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.empireReservations = intent.reservations;
+      return OK;
+    }
     case "setCreepRole": {
       const creep = Game.getObjectById(intent.creep);
       if (!creep) return ERR_NOT_FOUND;

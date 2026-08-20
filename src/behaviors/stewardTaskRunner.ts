@@ -15,10 +15,25 @@
 // supplyTaskRunner.ts established for __runSupplyTask.
 
 import { registerStewardRequests } from "../logistics/stewardRegister";
-import { pickBestRequest, type LogisticsRequest } from "../logistics/request";
+import { pickBestRequest, scoreRequest, type LogisticsRequest } from "../logistics/request";
 import { evaluateRoutes, pickBestRoute, type Buffer } from "../logistics/route";
 import { fork, persistTask, resolveTask, type Task } from "../logistics/task";
 import { transferTo, withdrawOrPickup } from "./actions";
+
+// Every distinct resource this tick's Steward pool has a request for — mirrors
+// transportTaskRunner.ts's resourcesInPool exactly (gh #59: Steward's pool stopped being energy-only once
+// registerStewardRequests started registering a terminal-rebalance leg per BOOST_TARGETS resource, not
+// just energy — see that function's own doc).
+function resourcesInPool(pool: readonly LogisticsRequest[]): ResourceConstant[] {
+  const seen = new Set<ResourceConstant>();
+  const out: ResourceConstant[] = [];
+  for (const r of pool) {
+    if (seen.has(r.resource)) continue;
+    seen.add(r.resource);
+    out.push(r.resource);
+  }
+  return out;
+}
 
 // Mirrors logisticsTaskRunner.ts's/supplyTaskRunner.ts's isTaskComplete exactly — same Task shape, same
 // completion rule (a withdraw leg is done once the creep can't carry more, a transfer leg once it has
@@ -82,37 +97,73 @@ export function resolveStewardTriangle(creep: Creep, anchor: RoomPosition): Stew
 
 /**
  * Builds a ready-to-assign Task chain for `creep` from Steward's rate-ranked pool: registers every live
- * request (stewardRegister.ts), picks the best-scoring one via pickBestRequest (request.ts, gh #46) — no
- * reimplementation, same scorer Transport's pool will use — and for a delivery request (positive amount:
- * controller-link top-up or terminal rebalance) evaluates a buffer detour via storage using
- * route.ts's pickBestRoute (gh #47), same as Transport's pool will. A withdraw-side request (link drain)
- * has a fixed, known delivery target (storage — see stewardRegister.ts's own doc) rather than a second
- * ranking pass, since there both PRD/ADR is silent on treating storage's own "want" as competing.
- * Undefined when the pool has nothing to offer or nothing is reachable.
+ * request (stewardRegister.ts), then races EVERY resource present in the pool against every other's best
+ * pick (pickBestRequest per resource, request.ts, gh #46 — a genuine cross-resource race, the same shape
+ * transportTaskRunner.ts's planTransportTask uses via resourcesInPool, not a fixed energy-first order: an
+ * earlier version of this codebase's Transport pool tried exactly that fixed-order shortcut and it meant a
+ * long-starved mineral pickup could never outrank even a trivial energy top-up — see that module's own doc
+ * for the full incident). gh #59 made this matter for Steward specifically: registerStewardRequests now
+ * registers a terminal-rebalance leg per BOOST_TARGETS resource (GO/GHO2/XGHO2/...) alongside energy, not
+ * just energy — ranking only ever against RESOURCE_ENERGY here would silently build those mineral requests
+ * and then never act on them, exactly the kind of bug Transport's own history already warns about.
+ *
+ * For a delivery request (positive amount: controller-link top-up or terminal rebalance) this evaluates a
+ * buffer detour via storage using route.ts's pickBestRoute (gh #47), same as Transport's pool does. A
+ * withdraw-side request (link drain) has a fixed, known delivery target (storage — see
+ * stewardRegister.ts's own doc) rather than a second ranking pass, since the PRD/ADR is silent on treating
+ * storage's own "want" as competing. Undefined when the pool has nothing to offer or nothing is reachable.
  */
 export function planStewardTask(creep: Creep, triangle: StewardTriangle): Task | undefined {
-  const requests = registerStewardRequests(triangle.link, triangle.controllerLink, triangle.storage, triangle.terminal);
+  // gh #59 decision 6: an empire-matched transfer's reservation, refreshed every empire-logistics pass
+  // (~11 ticks) into ColonyMemory.empireReservations — read fresh here rather than threaded through
+  // StewardTriangle, since it's a Memory fact about the colony, not a live Game.* object like the rest of
+  // the triangle.
+  const empireReservations = Memory.colonies?.[creep.memory.home]?.empireReservations ?? {};
+  const requests = registerStewardRequests(triangle.link, triangle.controllerLink, triangle.storage, triangle.terminal, empireReservations);
   if (requests.length === 0) return undefined;
 
-  const best = pickBestRequest(requests, RESOURCE_ENERGY, target => creep.pos.getRangeTo(target.pos));
+  const distanceTo = (target: LogisticsRequest["target"]): number => creep.pos.getRangeTo(target.pos);
+  let best: LogisticsRequest | undefined;
+  let bestScore = -Infinity;
+  for (const resource of resourcesInPool(requests)) {
+    const candidate = pickBestRequest(requests, resource, distanceTo);
+    if (!candidate) continue;
+    const candidateScore = scoreRequest(candidate, distanceTo(candidate.target));
+    if (candidateScore > bestScore) {
+      best = candidate;
+      bestScore = candidateScore;
+    }
+  }
   if (!best) return undefined;
 
   if (best.amount < 0) {
-    // Output request (link drain): the link has energy to give, storage is the fixed sink — mirrors
+    // Output request (link drain): the resource has somewhere to give, storage is the fixed sink — mirrors
     // stewardBehavior.ts's drain leg exactly (withdraw link, deliver storage), no buffer detour to
     // evaluate on the giving side (route.ts's evaluateRoutes only scores detours for requestInput —
     // see that module's own doc).
     if (!triangle.storage) return undefined;
-    const withdraw: Task = { kind: "withdraw", target: best.target, resource: RESOURCE_ENERGY };
-    const deliver: Task = { kind: "transfer", target: triangle.storage, resource: RESOURCE_ENERGY };
+    const withdraw: Task = { kind: "withdraw", target: best.target, resource: best.resource };
+    const deliver: Task = { kind: "transfer", target: triangle.storage, resource: best.resource };
     return fork(withdraw, deliver);
   }
 
-  // Input request (controller-link top-up or terminal rebalance): a real delivery, so a via-storage buffer
-  // detour is worth evaluating the same way Transport's pool will (route.ts's pickBestRoute).
-  const buffers: Buffer[] = triangle.storage ? [triangle.storage] : [];
-  const carrying = creep.store.getUsedCapacity(RESOURCE_ENERGY);
-  const capacity = carrying + creep.store.getFreeCapacity(RESOURCE_ENERGY);
+  // Input request (controller-link top-up, energy terminal rebalance, or — gh #59 — a mineral's storage
+  // want): a real delivery, so a via-buffer detour is worth evaluating the same way Transport's pool does
+  // (route.ts's pickBestRoute). Both storage and terminal are offered as candidate buffers, each EXCLUDING
+  // itself when it's the request's own delivery target — a same-structure detour is a no-op, not a real
+  // route (see evaluateRoutes' own doc: it only ever compares candidates, so an empty list here is fine,
+  // never a crash). This matters concretely for registerMineralStorageWantRequest: storage is the target,
+  // so ONLY the terminal is offered as a buffer — real bug fixed here, confirmed live: excluding storage
+  // from the buffer list (correct) previously left the list EMPTY instead of substituting the terminal, so
+  // an idle Steward creep with 0 carried could never actually fetch a mineral sitting in the terminal to
+  // fill storage's want — evaluateRoutes' direct-only route delivers 0 (capped by `carrying`), and with no
+  // buffer candidate at all, the creep was handed an inert zero-amount transfer task and looked idle.
+  const candidateBuffers = [triangle.storage, triangle.terminal] as (StructureStorage | StructureTerminal | undefined)[];
+  const buffers: Buffer[] = candidateBuffers
+    .filter((b): b is StructureStorage | StructureTerminal => b !== undefined && b.id !== best.target.id)
+    .map(b => b as unknown as Buffer);
+  const carrying = creep.store.getUsedCapacity(best.resource);
+  const capacity = carrying + creep.store.getFreeCapacity(best.resource);
   const picked = pickBestRoute(best, creep.pos, buffers, carrying, capacity, (a, b) => a.getRangeTo(b));
   return picked?.task;
 }

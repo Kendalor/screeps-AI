@@ -8,16 +8,36 @@
 
 import { describe, expect, it } from "vitest";
 import { dispatchSteward } from "../../../src/empire/creeps";
+import { baseTargetFor } from "../../../src/empire/boostTargets";
 import { stubGame } from "../../helpers";
 import { clearTiles, stubTile } from "../../constants";
 
 const ANCHOR = { x: 20, y: 20 };
 const HOME = "W1N1";
 
+// Resource-agnostic — fine for the creep's own carry store and the link (this file never gives either a
+// per-resource breakdown), but NOT for storage: registerMineralStorageWantRequest now reads storage's
+// stock for every BOOST_TARGETS resource, and a resource-agnostic stub would report the SAME `used` value
+// for all ~40 of them, spawning spurious mineral wants that outrank whatever the test actually means to
+// exercise (found via a real failure here: a link-drain scenario stopped calling withdraw() at all once
+// gh #59 added the mineral want/have legs, because every unspecified mineral read as far below its own
+// target and won the cross-resource race over the link's tiny energy amount). See storageStore below.
 function store(used: number, capacity: number) {
   return {
     getUsedCapacity: () => used,
     getFreeCapacity: () => capacity - used,
+    getCapacity: () => capacity
+  };
+}
+
+// Storage's own store, resource-aware: energy uses the fixture's used/capacity as before; every
+// boost-line mineral defaults to sitting exactly at its own target (want-neutral — registers no
+// storage-want) unless the fixture is extended to override a specific one.
+function storageStore(used: number, capacity: number) {
+  return {
+    getUsedCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? used : (baseTargetFor(r) ?? 0)),
+    getFreeCapacity: (r: ResourceConstant) =>
+      r === RESOURCE_ENERGY ? capacity - used : capacity - (baseTargetFor(r) ?? 0),
     getCapacity: () => capacity
   };
 }
@@ -47,7 +67,7 @@ function stewardCreep(fixture: StewardFixture): {
   const anchorPosLike = { x: ANCHOR.x, y: ANCHOR.y, roomName: HOME };
 
   const storageObj = fixture.storage
-    ? { id: fixture.storage.id, structureType: STRUCTURE_STORAGE, pos: anchorPosLike, store: store(fixture.storage.used, fixture.storage.capacity) }
+    ? { id: fixture.storage.id, structureType: STRUCTURE_STORAGE, pos: anchorPosLike, store: storageStore(fixture.storage.used, fixture.storage.capacity) }
     : undefined;
 
   clearTiles();

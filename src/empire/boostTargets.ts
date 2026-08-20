@@ -1,0 +1,73 @@
+// Manually-edited empire resource stockpile targets (gh #59's config seam — see
+// docs/empire-logistics-plan.md decision 3/"Target config file" and boosting-reactions-plan.md's M2,
+// which this supersedes). No assignment algorithm decides who reacts what; empire/logistics.ts's matcher
+// just moves surplus toward whatever colony is short of a resource with a nonzero target here. Energy is
+// NOT listed here — its terminal floor is a flat, colony-local Steward constant
+// (logistics/stewardRegister.ts's TERMINAL_ENERGY_TARGET), independent of this empire-owned system, since
+// a terminal needs energy on hand to pay a send's fee regardless of what any resource target below says.
+//
+// Every raw mineral (H, O, U, L, K, Z, G, X — G is mined directly, not just produced) and every reaction
+// compound (RESOURCES_ALL filtered to REACTIONS' keys/values, verified against
+// node_modules/@screeps/common/lib/constants.js, not recalled) currently gets the SAME flat 3,000 target —
+// a deliberate placeholder, not a tuned number: nothing downstream (boosting/reactions) consumes stock yet,
+// so there's no real demand signal to size these against. Retune per-resource once M5/M7 exist and actual
+// consumption is observable. Omit an entry entirely to spend no storage/terminal budget or matching effort
+// on it (decision 3's "leave unused boost lines with no target at all") — not used today, every resource
+// below is intentionally included so raw mineral stock (already produced by mineralMiner) isn't left
+// unmanaged by Steward/empire logistics while reactions remain unbuilt.
+const FLAT_TARGET = 3000;
+
+const RAW_MINERALS: ResourceConstant[] = ["H", "O", "U", "L", "K", "Z", "G", "X"];
+
+// T1/T2/T3 reaction compounds across every boost line, RESOURCES_ALL order — see this file's header for
+// how this list was derived (REACTIONS' keys + values, not hand-typed from memory).
+const REACTION_COMPOUNDS: ResourceConstant[] = [
+  "OH",
+  "ZK",
+  "UL",
+  "GH",
+  "KH",
+  "LH",
+  "UH",
+  "ZH",
+  "GO",
+  "LO",
+  "ZO",
+  "KO",
+  "UO",
+  "GH2O",
+  "LH2O",
+  "KH2O",
+  "ZH2O",
+  "UH2O",
+  "GHO2",
+  "LHO2",
+  "KHO2",
+  "ZHO2",
+  "UHO2",
+  "XGH2O",
+  "XLH2O",
+  "XKH2O",
+  "XZH2O",
+  "XUH2O",
+  "XGHO2",
+  "XLHO2",
+  "XKHO2",
+  "XZHO2",
+  "XUHO2"
+];
+
+export const BOOST_TARGETS: Partial<Record<ResourceConstant, number>> = Object.fromEntries(
+  [...RAW_MINERALS, ...REACTION_COMPOUNDS].map(resource => [resource, FLAT_TARGET])
+);
+
+/** The empire-assigned base target for `resource`, or undefined if it isn't a stockpiled boost line. */
+export function baseTargetFor(resource: ResourceConstant): number | undefined {
+  return BOOST_TARGETS[resource];
+}
+
+/** Every resource with a configured target — the set both empireLogistics's matcher and Steward's
+ * terminal-rebalance registration iterate over. */
+export function boostLineResources(): ResourceConstant[] {
+  return Object.keys(BOOST_TARGETS) as ResourceConstant[];
+}
