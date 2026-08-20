@@ -14,14 +14,15 @@ import { SOURCE_SATURATING_WORK } from "./roles/miner";
 import { pickBestRoute, type Buffer } from "../logistics/route";
 import type { LogisticsRequest } from "../logistics/request";
 import { buildTargetedBy, discountedAmount, type TargetedBy } from "../logistics/targeted";
+import { pickBestPair } from "../logistics/greedyMatch";
 import { fork, persistTask, resolveTask, type Task } from "../logistics/task";
 import {
   registerControllerContainerRequest,
   registerCreepBatteryRequests,
-  registerGroundEnergy,
+  registerGroundResources,
   registerMineralContainerOutput,
   registerMinerContainerOutput,
-  registerRemoteEnergy,
+  registerRemoteGroundResources,
   registerStorageSinkRequests
 } from "../logistics/transportRegister";
 import { runLogisticsTask } from "./logisticsTaskRunner";
@@ -36,7 +37,7 @@ const LOCAL_MINER_HARVEST_RATE = SOURCE_SATURATING_WORK * HARVEST_POWER;
 // remote mining (ColonyMemory.remotes — the same list snapshot/colony.ts's own remote join reads).
 // Reading Memory directly (not a ColonySnapshot) matches this module's whole self-registration idiom;
 // `Game.rooms[name]` is undefined for any remote with no creep/observer providing vision that tick, which
-// registerRemoteEnergy naturally treats as "nothing to register" by simply not being handed that room.
+// registerRemoteGroundResources naturally treats as "nothing to register" by simply not being handed that room.
 function remoteRoomsWithVision(home: string): Room[] {
   const remotes = Memory.colonies[home]?.remotes ?? [];
   const out: Room[] = [];
@@ -66,8 +67,8 @@ export function buildTransportPool(home: Room): LogisticsRequest[] {
     if (request) out.push(request);
   }
 
-  out.push(...registerGroundEnergy(home));
-  out.push(...registerRemoteEnergy(remoteRoomsWithVision(home.name)));
+  out.push(...registerGroundResources(home));
+  out.push(...registerRemoteGroundResources(remoteRoomsWithVision(home.name)));
 
   const controller = home.controller;
   const controllerRequest = registerControllerContainerRequest(home, controller);
@@ -196,29 +197,23 @@ export function planTransportTask(creep: Creep, home: Room, otherTransportCreeps
     return picked?.task;
   }
 
-  // Empty: score every resource's best complete (withdraw+deliver) pair on the withdraw leg's own
-  // discounted rate, and take the single best pair across ALL resources — see this function's own doc.
-  // A resource with a withdraw candidate but nowhere to deliver it is skipped entirely (never scored),
-  // matching the "never carry it around forever" rule above.
-  let bestPair: { withdraw: LogisticsRequest; deliverTarget: LogisticsRequest["target"]; resource: ResourceConstant; score: number } | undefined;
-  for (const resource of resources) {
-    const bestOutput = pickBestInDirection(pool, resource, "output", creep.pos, targetedBy, creep);
-    if (!bestOutput) continue;
-    const deliverTarget = pickBestInDirection(pool, resource, "input", bestOutput.target.pos, targetedBy, creep);
-    if (!deliverTarget) continue;
+  // Empty: greedy cross-resource pairing (logistics/greedyMatch.ts's pickBestPair, gh #59 — shared with
+  // Steward's own pool so both drive the exact same matching algorithm, see that module's header) — a
+  // resource with a withdraw candidate but nowhere to deliver it is skipped entirely (never scored),
+  // matching the "never carry it around forever" rule above. Two distance functions preserve this
+  // function's original two-stage lookup: the withdraw candidate is ranked from the creep, the deliver
+  // candidate from the CHOSEN withdraw target (see pickBestPair's own doc for why collapsing these would
+  // silently change which delivery target wins).
+  const pair = pickBestPair(
+    pool,
+    r => creep.pos.getRangeTo(r.target.pos),
+    r => discountedAmount(r, targetedBy, creep),
+    (output, input) => output.target.pos.getRangeTo(input.target.pos)
+  );
+  if (!pair) return undefined;
 
-    const distance = creep.pos.getRangeTo(bestOutput.target.pos);
-    const amount = discountedAmount(bestOutput, targetedBy, creep);
-    const score = (bestOutput.multiplier * amount) / Math.max(1, distance);
-
-    if (!bestPair || score > bestPair.score) {
-      bestPair = { withdraw: bestOutput, deliverTarget: deliverTarget.target, resource, score };
-    }
-  }
-  if (!bestPair) return undefined;
-
-  const withdraw: Task = { kind: "withdraw", target: bestPair.withdraw.target, resource: bestPair.resource };
-  const deliver: Task = { kind: "transfer", target: bestPair.deliverTarget, resource: bestPair.resource };
+  const withdraw: Task = { kind: "withdraw", target: pair.output.target, resource: pair.resource };
+  const deliver: Task = { kind: "transfer", target: pair.input.target, resource: pair.resource };
   return fork(withdraw, deliver);
 }
 

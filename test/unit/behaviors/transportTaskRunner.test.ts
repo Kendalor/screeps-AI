@@ -13,7 +13,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { planTransportTask } from "../../../src/behaviors/transportTaskRunner";
 
-// buildTransportPool's registerRemoteEnergy reads Memory.colonies[home].remotes — no remote rooms are
+// buildTransportPool's registerRemoteGroundResources reads Memory.colonies[home].remotes — no remote rooms are
 // exercised by these tests, but the global must exist or that read throws before the room's own local
 // registration (source/mineral/storage) ever gets a chance to run.
 beforeEach(() => {

@@ -7,9 +7,9 @@
 // Scope, matched against graph.ts's own transportProviders()/consumers() (see that file's PRIORITY
 // table and its storageBuffer/supplyProviders/transportProviders split):
 //   - source containers' energy output (register.ts's registerMinerContainerOutput — reused, not
-//     duplicated), dropped piles/tombstones/ruins (registerGroundEnergy below), remote energy
-//     (registerRemoteEnergy below, no room-boundary special case per the PRD), the mineral container
-//     (register.ts's registerMineralContainerOutput — reused).
+//     duplicated), dropped piles/tombstones/ruins of ANY resource (registerGroundResources below),
+//     remote ground resources (registerRemoteGroundResources below, no room-boundary special case per
+//     the PRD), the mineral container (register.ts's registerMineralContainerOutput — reused).
 //   - controller container top-up to its fill floor (registerControllerContainerRequest), builder/
 //     upgrader battery requests pre-storage only (registerCreepBatteryRequests), storage as the overflow
 //     sink for energy AND mineral once it exists (registerStorageSinkRequests).
@@ -47,49 +47,69 @@ export const UPGRADER_CONTROLLER_RANGE = 5;
  */
 export { registerMinerContainerOutput, registerMineralContainerOutput };
 
+/** Every ResourceConstant a store-bearing object (tombstone/ruin) currently holds any amount of. */
+function storedResources(store: Store<ResourceConstant, false>): ResourceConstant[] {
+  return (Object.keys(store) as ResourceConstant[]).filter(r => store.getUsedCapacity(r) > 0);
+}
+
 /**
- * Every dropped energy pile, tombstone, and ruin in `room` worth a purpose-built trip
- * (DROP_WORTHWHILE_FLOOR) — mirrors graph.ts's providers() ground-pickup entries exactly (tombstone/ruin
- * gated the same floor, urgency-1-equivalent since these decay; the rate-ranking system prices that
- * urgency itself via amount/distance rather than a separate flag). Energy only, same as graph.ts's own
- * scope — nothing else is ever dropped/entombed/ruined into decay in this codebase yet.
+ * One dropped pile/tombstone/ruin's worth of output requests, gated on the TILE'S TOTAL across every
+ * resource it holds (not any single resource's own amount) — a tombstone carrying 10 energy plus 400 of a
+ * high-value boost compound is worth a trip even though neither line item alone clears
+ * DROP_WORTHWHILE_FLOOR; a dead boosted fighter's loaded compounds are exactly the case this exists for.
+ * Still emits one LogisticsRequest per resource type present (never a combined multi-resource request —
+ * see this module's header): request.ts/greedyMatch.ts/the live withdraw Task are all single-resource by
+ * design, matching a real withdraw() engine call, so the aggregation only ever affects the gate, never the
+ * request shape itself. A dropped pile only ever holds one resourceType, so its own total IS that amount.
  */
-export function registerGroundEnergy(room: Room): LogisticsRequest[] {
+function groundRequestsFor(target: Resource | Tombstone | Ruin): LogisticsRequest[] {
+  if ("resourceType" in target) {
+    return target.amount >= DROP_WORTHWHILE_FLOOR ? [requestOutput(target, target.resourceType, target.amount)] : [];
+  }
+  const resources = storedResources(target.store);
+  const total = resources.reduce((sum, r) => sum + target.store.getUsedCapacity(r), 0);
+  if (total < DROP_WORTHWHILE_FLOOR) return [];
+  return resources.map(r => requestOutput(target, r, target.store.getUsedCapacity(r)));
+}
+
+/**
+ * Every dropped pile, tombstone, and ruin in `room` worth a purpose-built trip (DROP_WORTHWHILE_FLOOR,
+ * checked against the TILE'S TOTAL across all resources — see groundRequestsFor's own doc), of ANY
+ * resource type — mirrors graph.ts's providers() ground-pickup entries in spirit (tombstone/ruin gated the
+ * same floor, urgency-1-equivalent since these decay; the rate-ranking system prices that urgency itself
+ * via amount/distance rather than a separate flag), extended beyond energy-only so a dead boosted fighter's
+ * spilled compounds (or any other valuable resource dropped/entombed/ruined) are no longer invisible to
+ * Transport's pool.
+ */
+export function registerGroundResources(room: Room): LogisticsRequest[] {
   const out: LogisticsRequest[] = [];
 
-  const drops = room.find(FIND_DROPPED_RESOURCES, { filter: d => d.resourceType === RESOURCE_ENERGY });
-  for (const d of drops) {
-    if (d.amount < DROP_WORTHWHILE_FLOOR) continue;
-    out.push(requestOutput(d, RESOURCE_ENERGY, d.amount));
-  }
+  const drops = room.find(FIND_DROPPED_RESOURCES);
+  for (const d of drops) out.push(...groundRequestsFor(d));
 
   const tombstones = room.find(FIND_TOMBSTONES);
-  for (const t of tombstones) {
-    const stored = t.store.getUsedCapacity(RESOURCE_ENERGY);
-    if (stored < DROP_WORTHWHILE_FLOOR) continue;
-    out.push(requestOutput(t, RESOURCE_ENERGY, stored));
-  }
+  for (const t of tombstones) out.push(...groundRequestsFor(t));
 
   const ruins = room.find(FIND_RUINS);
-  for (const r of ruins) {
-    const stored = r.store.getUsedCapacity(RESOURCE_ENERGY);
-    if (stored < DROP_WORTHWHILE_FLOOR) continue;
-    out.push(requestOutput(r, RESOURCE_ENERGY, stored));
-  }
+  for (const r of ruins) out.push(...groundRequestsFor(r));
 
   return out;
 }
 
 /**
- * A remote room's container energy as an ordinary withdraw request — no room-boundary special case, no
- * travelHome-style guard (ADR 0008's "drop travelHome's hard reservation-span guard" decision: the
- * targetedBy predicted-amount discount, applied by the caller's ranking pass, is what keeps a remote
- * pickup from over-committing a home consumer, not a refusal to register at all). Same worthwhile floor
- * as a home ground pile. `rooms` is every remote room this colony currently has vision into with a
- * selected/mined source — the caller (transportTaskRunner.ts) supplies live Room objects for whichever
- * remote rooms it can currently see, mirroring register.ts's own "read Game.* directly" idiom.
+ * A remote room's container energy as an ordinary withdraw request, PLUS every dropped pile/tombstone/
+ * ruin of any resource type (same tile-total gate as registerGroundResources — see that function's own
+ * doc) — no room-boundary special case, no travelHome-style guard (ADR 0008's "drop travelHome's hard
+ * reservation-span guard" decision: the targetedBy predicted-amount discount, applied by the caller's
+ * ranking pass, is what keeps a remote pickup from over-committing a home consumer, not a refusal to
+ * register at all). The container itself stays energy-only (it's the remote miner's own container, not a
+ * decay-prone pickup) — only the ground pickups need the any-resource treatment, since those are what a
+ * dead invader/defender's spilled boosts would show up as. `rooms` is every remote room this colony
+ * currently has vision into with a selected/mined source — the caller (transportTaskRunner.ts) supplies
+ * live Room objects for whichever remote rooms it can currently see, mirroring register.ts's own "read
+ * Game.* directly" idiom.
  */
-export function registerRemoteEnergy(rooms: readonly Room[]): LogisticsRequest[] {
+export function registerRemoteGroundResources(rooms: readonly Room[]): LogisticsRequest[] {
   const out: LogisticsRequest[] = [];
   for (const room of rooms) {
     const containers = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }) as StructureContainer[];
@@ -98,23 +118,15 @@ export function registerRemoteEnergy(rooms: readonly Room[]): LogisticsRequest[]
       if (stored < DROP_WORTHWHILE_FLOOR) continue;
       out.push(requestOutput(c, RESOURCE_ENERGY, stored));
     }
-    const drops = room.find(FIND_DROPPED_RESOURCES, { filter: d => d.resourceType === RESOURCE_ENERGY });
-    for (const d of drops) {
-      if (d.amount < DROP_WORTHWHILE_FLOOR) continue;
-      out.push(requestOutput(d, RESOURCE_ENERGY, d.amount));
-    }
+
+    const drops = room.find(FIND_DROPPED_RESOURCES);
+    for (const d of drops) out.push(...groundRequestsFor(d));
+
     const tombstones = room.find(FIND_TOMBSTONES);
-    for (const t of tombstones) {
-      const stored = t.store.getUsedCapacity(RESOURCE_ENERGY);
-      if (stored < DROP_WORTHWHILE_FLOOR) continue;
-      out.push(requestOutput(t, RESOURCE_ENERGY, stored));
-    }
+    for (const t of tombstones) out.push(...groundRequestsFor(t));
+
     const ruins = room.find(FIND_RUINS);
-    for (const r of ruins) {
-      const stored = r.store.getUsedCapacity(RESOURCE_ENERGY);
-      if (stored < DROP_WORTHWHILE_FLOOR) continue;
-      out.push(requestOutput(r, RESOURCE_ENERGY, stored));
-    }
+    for (const r of ruins) out.push(...groundRequestsFor(r));
   }
   return out;
 }
