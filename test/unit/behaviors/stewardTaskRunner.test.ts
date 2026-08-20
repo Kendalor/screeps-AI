@@ -1,14 +1,16 @@
-// Regression coverage for planStewardTask's cross-resource race (behaviors/stewardTaskRunner.ts) — gh #59
-// generalized registerStewardRequests to register a terminal-rebalance leg per BOOST_TARGETS resource
-// (GO/GHO2/XGHO2/...) alongside energy, but planStewardTask still ranked ONLY against RESOURCE_ENERGY
-// (pickBestRequest(requests, RESOURCE_ENERGY, ...)) — every mineral rebalance request got built into the
-// pool and then silently never picked, so a Steward creep could never actually move a mineral from storage
-// to terminal. Fixed to race every resource present in the pool against every other's best pick, the same
-// shape transportTaskRunner.ts's planTransportTask already uses via its own resourcesInPool (see that
-// file's header for the identical incident: a fixed energy-first order there once made a long-starved
-// mineral pickup structurally unable to outrank a routine energy hop). This file drives planStewardTask
-// itself against minimal stubs of the exact Game API surface it reads, same pattern
-// transportTaskRunner.test.ts/stewardRegister.test.ts already use.
+// Regression coverage for planStewardTask's cross-resource pairing (behaviors/stewardTaskRunner.ts) —
+// gh #59 fix: planStewardTask used to score each resource's single best request in isolation
+// (pickBestRequest, sign-agnostic) with no check that a real opposite-signed counterpart existed. A
+// permanently-unfillable want (e.g. a never-mined mineral's storage-want, pinned at the full flat target
+// since storage holds none of it) could then win the cross-resource race by magnitude alone and starve
+// every real, fulfillable request behind it — confirmed live on the pserver: X sat at 3000 in the
+// terminal, 0 in storage, and Steward never moved it because a same-scoring or higher-scoring one-sided
+// want for an entirely different, never-mined resource kept winning instead. Fixed by routing
+// planStewardTask through the SAME greedy cross-resource pairing algorithm Transport's pool uses
+// (logistics/greedyMatch.ts's pickBestPair) — a resource is only ever a candidate if BOTH a real output
+// and a real input exist for it right now; a one-sided want or have, however large, is never scored and
+// never wins. This file drives planStewardTask itself against minimal stubs of the exact Game API surface
+// it reads, same pattern transportTaskRunner.test.ts/stewardRegister.test.ts already use.
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { planStewardTask, type StewardTriangle } from "../../../src/behaviors/stewardTaskRunner";
@@ -38,7 +40,8 @@ function pos(x: number, y: number, roomName = "W1N1"): RoomPosition {
 // registerMineralStorageWantRequest registers for EVERY boostLineResources() entry, not just the one a
 // test cares about — an unspecified resource's stock defaults to its OWN target here (want-neutral, "at
 // target, nothing wanted"), not to 0 (which would spawn a spurious want for all ~40 other configured
-// resources at once and win the cross-resource race by sheer numbers). Explicit `stored` overrides win.
+// resources at once, though under the new pairing rule those wants are harmless anyway since none of them
+// has a matching terminal-have — this default is kept so tests stay focused on the resource(s) they name).
 function neutralMineralStock(overrides: Partial<Record<ResourceConstant, number>>): Partial<Record<ResourceConstant, number>> {
   const neutral: Partial<Record<ResourceConstant, number>> = {};
   for (const r of boostLineResources()) neutral[r] = baseTargetFor(r) ?? 0;
@@ -83,17 +86,10 @@ function stubCreep(p: RoomPosition, store: Partial<Record<ResourceConstant, numb
   } as unknown as Creep;
 }
 
-describe("planStewardTask's cross-resource race", () => {
-  it("fetches a mineral from the TERMINAL to fill storage's want — not left inert with no buffer (regression: confirmed live)", () => {
+describe("planStewardTask's greedy cross-resource pairing", () => {
+  it("fetches a mineral from the TERMINAL to fill storage's want (regression: confirmed live)", () => {
     // The exact scenario found live: an empire transfer landed 3,000 X in the terminal; storage holds
-    // none. Storage's want (registerMineralStorageWantRequest) is real and scores highest, but its
-    // delivery TARGET is storage itself — offering storage as a buffer would be a same-structure no-op
-    // (correctly excluded), and a prior version of planStewardTask excluded storage WITHOUT substituting
-    // the terminal, leaving the buffer list empty. With no buffer, evaluateRoutes only scores a direct
-    // route, which caps deliverable amount at what the creep already carries (0 for an idle creep) — so
-    // the "task" it built delivered 0 and the creep looked permanently idle despite 3,000 real, sitting,
-    // fetchable X. Fixed: the terminal is now offered as a buffer whenever it ISN'T the request's own
-    // target, so an idle creep withdraws from the terminal first, then delivers to storage.
+    // none. Storage's want (input) and the terminal's have (output) are a real matched pair for X.
     const storage = stubStorage({ energy: 0, X: 0 }, 5, 5);
     const terminal = stubTerminal({ energy: TERMINAL_CAPACITY, X: 3000 }, 20, 20);
     const triangle: StewardTriangle = { storage, terminal };
@@ -109,28 +105,47 @@ describe("planStewardTask's cross-resource race", () => {
     expect(task?.parent?.target).toBe(storage); // then delivers to storage, the request's real target
   });
 
-  it("picks a mineral (GO) storage-want task when it is the only qualifying request — not silently dropped", () => {
-    // No energy leg qualifies (storage empty, terminal full); GO's storage-want qualifies (storage well
-    // below its own target) — before the fix this request was built by registerStewardRequests but
-    // pickBestRequest(requests, RESOURCE_ENERGY, ...) would only ever look at RESOURCE_ENERGY and return
-    // undefined, dropping GO on the floor even though it was the only real work available.
+  it("a one-sided storage-want with NO matching terminal supply is never picked, however large (the live bug)", () => {
+    // The actual live bug: O/U/L/K/Z/G-style never-mined minerals register a full-target storage-want
+    // (permanently unfillable — terminal has none) that used to win the old single-sided race by
+    // magnitude alone. Under the pairing rule, GO's storage-want has no matching terminal-have, so it's
+    // never even a candidate — even though it's the ONLY registered request besides energy (which also
+    // doesn't qualify here), planStewardTask must return undefined, not a phantom 0-amount task.
     const storage = stubStorage({ energy: 0, GO: 0 }, 5, 5);
-    const terminal = stubTerminal({ energy: TERMINAL_CAPACITY, GO: 0 }, 20, 20); // no GO to fetch — direct is the only option
+    const terminal = stubTerminal({ energy: TERMINAL_CAPACITY, GO: 0 }, 20, 20); // no GO to fetch — no pair possible
+    const triangle: StewardTriangle = { storage, terminal };
+    const creep = stubCreep(pos(20, 20));
+
+    const task = planStewardTask(creep, triangle);
+
+    expect(task).toBeUndefined();
+  });
+
+  it("a one-sided want never blocks a DIFFERENT resource's real, fulfillable pair (the live bug's actual symptom)", () => {
+    // Reproduces the live scenario directly: GO has only a one-sided storage-want (no terminal supply,
+    // unfulfillable, scores at the max possible amount since storage holds none) sitting alongside X's
+    // real two-sided pair (terminal has 2,200 X — smaller than GO's phantom 3,000 want). The old
+    // single-sided race let GO's larger phantom amount win and starve X forever; the pairing rule must
+    // skip GO (no counterpart) and pick X (a real pair) instead, regardless of GO's larger raw amount.
+    const storage = stubStorage({ energy: 0, GO: 0, X: 800 }, 5, 5); // X: min(3000-800, free) storage-want = 2200
+    const terminal = stubTerminal({ energy: TERMINAL_CAPACITY, GO: 0, X: 2200 }, 20, 20);
     const triangle: StewardTriangle = { storage, terminal };
     const creep = stubCreep(pos(20, 20));
 
     const task = planStewardTask(creep, triangle);
 
     expect(task).toBeDefined();
-    expect(task?.resource).toBe("GO");
-    // No buffer holds any GO to withdraw, so this resolves as a direct transfer (delivering 0 for now —
-    // it stays pending until GO actually shows up somewhere Steward can fetch it from).
-    expect(task?.kind).toBe("transfer");
-    expect(task?.target).toBe(storage);
+    expect(task?.resource).toBe("X");
+    expect(task?.kind).toBe("withdraw");
+    expect(task?.target).toBe(terminal);
+    expect(task?.parent?.target).toBe(storage);
   });
 
-  it("picks a mineral (GO) terminal-have (drain) task when it is the only qualifying request", () => {
-    const storage = stubStorage({ energy: 0, GO: GO_TARGET }, 5, 5); // at target — no storage-want
+  it("picks a mineral (GO) terminal-have (drain) task when it is the only qualifying pair", () => {
+    // Storage must be BELOW target for a real GO input to exist — the terminal-have (output) needs a
+    // genuine opposite-signed counterpart to pair against under the new rule; "storage already at target"
+    // would leave the have side one-sided and unpickable (see the live bug this fix addresses).
+    const storage = stubStorage({ energy: 0, GO: 500 }, 5, 5); // below target — a real storage-want exists
     const terminal = stubTerminal({ energy: TERMINAL_CAPACITY, GO: 500 }, 20, 20); // has stock to give
     const triangle: StewardTriangle = { storage, terminal };
     const creep = stubCreep(pos(20, 20));
@@ -141,11 +156,11 @@ describe("planStewardTask's cross-resource race", () => {
     expect(task?.resource).toBe("GO");
     expect(task?.kind).toBe("withdraw");
     expect(task?.target).toBe(terminal);
-    expect(task?.parent?.target).toBe(storage); // fixed sink, same as link-drain
+    expect(task?.parent?.target).toBe(storage);
   });
 
   it("races a big mineral terminal-have against a small energy want and picks the higher-scoring one, regardless of resource", () => {
-    const storage = stubStorage({ energy: 900_000, GO: GO_TARGET }, 5, 5); // GO at target — isolates the terminal-have leg
+    const storage = stubStorage({ energy: 900_000, GO: 500 }, 5, 5); // below target — a real GO pair exists
     const terminal = stubTerminal({ energy: TERMINAL_CAPACITY - 10, GO: 50_000 }, 20, 20); // energy: tiny 10-unit want; GO: huge have
     const triangle: StewardTriangle = { storage, terminal };
     const creep = stubCreep(pos(20, 20));
@@ -156,7 +171,7 @@ describe("planStewardTask's cross-resource race", () => {
     expect(task?.resource).toBe("GO"); // the far bigger amount wins, not whichever resource happens to be RESOURCE_ENERGY
   });
 
-  it("still picks energy when it is the only qualifying request (no regression on the pre-gh-#59 behavior)", () => {
+  it("still picks energy when it is the only qualifying pair (no regression on the pre-gh-#59 behavior)", () => {
     const storage = stubStorage({ energy: 800_000 }, 5, 5);
     const terminal = stubTerminal({ energy: 10_000 }, 20, 20);
     const triangle: StewardTriangle = { storage, terminal };
@@ -166,13 +181,13 @@ describe("planStewardTask's cross-resource race", () => {
 
     expect(task).toBeDefined();
     expect(task?.resource).toBe(RESOURCE_ENERGY);
-    expect(task?.kind).toBe("withdraw"); // same via-storage-detour reasoning as the GO-only test above
+    expect(task?.kind).toBe("withdraw");
     expect(task?.parent?.target).toBe(terminal);
   });
 
-  it("uses the winning request's own resource on BOTH legs of an output (withdraw+deliver) task, not a hardcoded energy leg", () => {
+  it("uses the winning pair's own resource on BOTH legs of the withdraw+deliver task, not a hardcoded energy leg", () => {
     // Link drain is energy-only in practice (no mineral link exists), but this proves the fork()'d pair's
-    // resource is read from `best.resource` rather than a literal RESOURCE_ENERGY baked into the Task.
+    // resource is read from the matched pair rather than a literal RESOURCE_ENERGY baked into the Task.
     const link = {
       id: "link1" as Id<StructureLink>,
       pos: pos(10, 10),
@@ -194,5 +209,74 @@ describe("planStewardTask's cross-resource race", () => {
     expect(task?.resource).toBe(RESOURCE_ENERGY);
     expect(task?.parent?.resource).toBe(RESOURCE_ENERGY);
     expect(task?.parent?.target).toBe(storage);
+  });
+
+  it("link drain pairs against storage's own implicit energy want (gh #59: links resolved as real pairs, not a hardcoded sink)", () => {
+    // The link has energy to give (drain, output) and storage's own implicit input request (free
+    // capacity) is its real pairing partner (stewardRegister.ts's registerStorageEnergyRequests) — no
+    // other energy input exists here (no controller link, no terminal), so this proves the pairing
+    // resolves correctly even when storage's implicit request is the ONLY thing making the pair possible.
+    const link = {
+      id: "link1" as Id<StructureLink>,
+      pos: pos(10, 10),
+      structureType: STRUCTURE_LINK,
+      store: {
+        getUsedCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? 800 : 0),
+        getCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? 800 : 0),
+        getFreeCapacity: () => 0
+      }
+    } as unknown as StructureLink;
+    const storage = stubStorage({ energy: 500_000 }, 5, 5); // plenty of free capacity to receive the drain
+    const triangle: StewardTriangle = { link, storage };
+    const creep = stubCreep(pos(10, 10));
+
+    const task = planStewardTask(creep, triangle);
+
+    expect(task).toBeDefined();
+    expect(task?.kind).toBe("withdraw");
+    expect(task?.target).toBe(link);
+    expect(task?.parent?.target).toBe(storage);
+  });
+
+  it("controller-link top-up pairs against storage's own implicit energy have", () => {
+    const link = {
+      id: "link1" as Id<StructureLink>,
+      pos: pos(10, 10),
+      structureType: STRUCTURE_LINK,
+      store: {
+        getUsedCapacity: () => 0,
+        getCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? 800 : 0),
+        getFreeCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? 800 : 0)
+      }
+    } as unknown as StructureLink;
+    const controllerLink = {
+      id: "clink1" as Id<StructureLink>,
+      pos: pos(30, 30),
+      structureType: STRUCTURE_LINK,
+      store: {
+        getUsedCapacity: () => 0, // empty — well below CONTROLLER_LINK_LOW_FRACTION
+        getCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? 800 : 0),
+        getFreeCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? 800 : 0)
+      }
+    } as unknown as StructureLink;
+    const storage = stubStorage({ energy: 500_000 }, 5, 5); // has energy to give
+    const triangle: StewardTriangle = { link, controllerLink, storage };
+    const creep = stubCreep(pos(10, 10));
+
+    const task = planStewardTask(creep, triangle);
+
+    expect(task).toBeDefined();
+    expect(task?.kind).toBe("withdraw");
+    expect(task?.target).toBe(storage); // withdraws energy from storage
+    expect(task?.parent?.target).toBe(link); // delivers to the anchor link
+  });
+
+  it("returns undefined when the pool is empty (no storage at all)", () => {
+    const triangle: StewardTriangle = {};
+    const creep = stubCreep(pos(10, 10));
+
+    const task = planStewardTask(creep, triangle);
+
+    expect(task).toBeUndefined();
   });
 });

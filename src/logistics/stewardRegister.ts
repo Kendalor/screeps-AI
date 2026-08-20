@@ -2,10 +2,10 @@
 // Transport's" decision): the anchor link/storage/terminal triangle stewardBehavior.ts manages today via
 // hand-tuned fixed thresholds (LINK_DRAIN_FLOOR, STORAGE_SURPLUS_FRACTION, TERMINAL_LOW_FRACTION,
 // CONTROLLER_LINK_LOW_FRACTION — see that file), expressed instead as real signed LogisticsRequests so the
-// three legs compete under request.ts's scoreRequest/pickBestRequest and route.ts's buffer-detour
-// evaluation, same as Transport's pool will (#52+), rather than three independent if-checks run in a fixed
-// order. This module builds the requests only — selection reuses pickBestRequest/pickBestRoute directly
-// (see behaviors/stewardTaskRunner.ts), no reimplementation of either.
+// legs compete under logistics/greedyMatch.ts's pickBestPair (gh #59 — the same greedy cross-resource
+// pairing algorithm Transport's pool uses), rather than three independent if-checks run in a fixed order.
+// This module builds the requests only — selection reuses pickBestPair directly (see
+// behaviors/stewardTaskRunner.ts), no reimplementation of it.
 //
 // Self-registration reads live Game.* state directly, same as register.ts/supplyRegister.ts (ADR 0008's
 // scoped departure from ColonySnapshot for src/logistics/ only). links.ts's own hardwired, unconditional,
@@ -60,72 +60,99 @@ export const RESOURCE_STORAGE_SURPLUS_MULTIPLIER = 1.0;
 export const CONTROLLER_LINK_LOW_FRACTION = 0.5;
 
 /**
- * The anchor link's energy, if it holds enough to be worth draining (LINK_DRAIN_FLOOR) — an output
- * request (the link HAS energy to give up). Steward's pool pairs an output request like this with a fixed,
- * known delivery target (storage — the only place a drained link's energy has ever gone, see
- * stewardBehavior.ts's own drain leg) rather than a separate requestInput on storage: storage's own
- * capacity is never the constraint on whether this leg is worth doing, the link's fullness is.
+ * The anchor link's energy, if it holds enough to be worth draining (LINK_DRAIN_FLOOR) — a MATCHED PAIR
+ * (the link HAS energy to give up; storage, up to the same amount, WANTS it — the only place a drained
+ * link's energy has ever gone, see stewardBehavior.ts's own drain leg).
+ *
+ * Returns BOTH sides directly (gh #59: greedyMatch.ts's pickBestPair requires a genuine opposite-signed
+ * counterpart to exist before pairing at all) rather than relying on a separate, generic "storage always
+ * offers energy" pool entry — found live during testing: a shared/unconditional storage energy request
+ * sized independently of THIS specific leg could still outscore and displace the link's own (correct,
+ * smaller) amount for pickBestPair's "best output" slot purely by raw magnitude, then fail to pair at all
+ * once its own opposite-signed twin got excluded as a same-target detour (storage matching itself) —
+ * silently breaking link drain entirely even though a valid link<->storage pair existed in the pool. Storage
+ * is capacity-unconstrained for energy in practice (never the reason this leg wouldn't fire), so its output
+ * side here is simply capped at the link's own drain amount — never larger, so it can never win the "best
+ * output" slot away from the link's own request when both exist (they're the same request pair, not two
+ * independent candidates racing each other).
  */
-export function registerLinkDrainRequest(link: StructureLink | undefined, storage: StructureStorage | undefined): LogisticsRequest | undefined {
+export function registerLinkDrainRequest(
+  link: StructureLink | undefined,
+  storage: StructureStorage | undefined
+): { output: LogisticsRequest; input: LogisticsRequest } | undefined {
   if (!link || !storage) return undefined;
   const stored = link.store.getUsedCapacity(RESOURCE_ENERGY);
   if (stored <= LINK_DRAIN_FLOOR) return undefined;
-  return requestOutput(link, RESOURCE_ENERGY, stored);
+  return { output: requestOutput(link, RESOURCE_ENERGY, stored), input: requestInput(storage, RESOURCE_ENERGY, stored) };
 }
 
 /**
  * The ANCHOR link's remaining want, triggered once the CONTROLLER link has run low
- * (CONTROLLER_LINK_LOW_FRACTION) AND storage actually has energy to give — an input request (the anchor
- * link WANTS energy delivered). Mirrors stewardBehavior.ts's controllerLinkNeedsTopUp gate exactly,
- * including its target: the controller link's own fullness is only the TRIGGER, never the delivery
- * target — "the steward itself never goes near the controller link, which sits out of its reach at the
- * controller, not the anchor" (stewardBehavior.ts's own comment on this leg). Before RCL7 (no source
- * links yet) nothing else ever puts energy into the link chain at all; links.ts's own anchor->controller
- * leg carries it the rest of the way once it lands in the anchor link (see that file's header) — a real
- * bug shipped here once (gh #51/#54): registering this request against `controllerLink` directly sent a
- * creep on a real multi-tile trip to the controller link, something Steward must never do.
+ * (CONTROLLER_LINK_LOW_FRACTION) AND storage actually has energy to give — a MATCHED PAIR (the anchor link
+ * WANTS energy delivered; storage, up to the same amount, HAS it to give). Mirrors stewardBehavior.ts's
+ * controllerLinkNeedsTopUp gate exactly, including its target: the controller link's own fullness is only
+ * the TRIGGER, never the delivery target — "the steward itself never goes near the controller link, which
+ * sits out of its reach at the controller, not the anchor" (stewardBehavior.ts's own comment on this leg).
+ * Before RCL7 (no source links yet) nothing else ever puts energy into the link chain at all; links.ts's own
+ * anchor->controller leg carries it the rest of the way once it lands in the anchor link (see that file's
+ * header) — a real bug shipped here once (gh #51/#54): registering this request against `controllerLink`
+ * directly sent a creep on a real multi-tile trip to the controller link, something Steward must never do.
+ *
+ * Returns BOTH sides directly, same reasoning as registerLinkDrainRequest's own doc — storage's output side
+ * is capped at exactly `wanted` (the link's own free capacity), never larger, so it can't win the "best
+ * output" slot away from a genuinely bigger request elsewhere (e.g. terminal rebalance) nor fail to pair
+ * with its own twin.
  */
 export function registerControllerLinkTopUpRequest(
   link: StructureLink | undefined,
   controllerLink: StructureLink | undefined,
   storage: StructureStorage | undefined
-): LogisticsRequest | undefined {
+): { input: LogisticsRequest; output: LogisticsRequest } | undefined {
   if (!link || !controllerLink || !storage) return undefined;
-  if (storage.store.getUsedCapacity(RESOURCE_ENERGY) <= 0) return undefined;
+  const storageHas = storage.store.getUsedCapacity(RESOURCE_ENERGY);
+  if (storageHas <= 0) return undefined;
   const capacity = controllerLink.store.getCapacity(RESOURCE_ENERGY);
   const used = controllerLink.store.getUsedCapacity(RESOURCE_ENERGY);
   if (used >= capacity * CONTROLLER_LINK_LOW_FRACTION) return undefined;
-  const wanted = link.store.getFreeCapacity(RESOURCE_ENERGY);
+  const wanted = Math.min(link.store.getFreeCapacity(RESOURCE_ENERGY), storageHas);
   if (wanted <= 0) return undefined;
-  return requestInput(link, RESOURCE_ENERGY, wanted);
+  return { input: requestInput(link, RESOURCE_ENERGY, wanted), output: requestOutput(storage, RESOURCE_ENERGY, wanted) };
 }
 
 /**
  * The terminal's remaining energy want, once storage has a genuine surplus AND the terminal itself is
- * below TERMINAL_ENERGY_LOW — an input request (the terminal WANTS energy delivered). A FLAT absolute
- * target (TERMINAL_ENERGY_TARGET/TERMINAL_ENERGY_LOW), colony-local Steward policy, independent of the
- * empire-owned BOOST_TARGETS system entirely — energy has no empire-assigned target to be relative to, and
- * terminal energy specifically can't wait for a storage-surplus fraction if it doesn't already sit at a
- * usable floor, since it's needed immediately to pay any send's fee. Requires BOTH conditions together
- * (mirrors stewardBehavior.ts's original storage->terminal rebalance gate exactly) so this can't oscillate
- * against Logistics' own storage-as-source/sink switch — unlike the mineral want/have pair below, this
- * stays a single paired function rather than two independent one-sided requests, since the two-condition
- * gate is deliberately part of energy's own design (see this function's git history for the reasoning).
- * The want is capped at TERMINAL_ENERGY_TARGET (not the terminal's full 300,000 capacity) — the whole point
- * of a flat target is that Steward stops filling the terminal with energy once it reaches that floor, not
- * that it dumps all of storage's surplus in.
+ * below TERMINAL_ENERGY_LOW — a MATCHED PAIR (the terminal WANTS energy delivered; storage, up to the same
+ * amount, HAS it to give). A FLAT absolute target (TERMINAL_ENERGY_TARGET/TERMINAL_ENERGY_LOW),
+ * colony-local Steward policy, independent of the empire-owned BOOST_TARGETS system entirely — energy has
+ * no empire-assigned target to be relative to, and terminal energy specifically can't wait for a
+ * storage-surplus fraction if it doesn't already sit at a usable floor, since it's needed immediately to
+ * pay any send's fee. Requires BOTH conditions together (mirrors stewardBehavior.ts's original
+ * storage->terminal rebalance gate exactly) so this can't oscillate against Logistics' own
+ * storage-as-source/sink switch — unlike the mineral want/have pair below, this stays a single paired
+ * function rather than two independent one-sided requests, since the two-condition gate is deliberately
+ * part of energy's own design (see this function's git history for the reasoning). The want is capped at
+ * TERMINAL_ENERGY_TARGET (not the terminal's full 300,000 capacity) — the whole point of a flat target is
+ * that Steward stops filling the terminal with energy once it reaches that floor, not that it dumps all of
+ * storage's surplus in.
+ *
+ * Returns BOTH sides as a real pair (gh #59: greedyMatch.ts's pickBestPair requires a genuine
+ * opposite-signed counterpart to exist before pairing at all) — storage's OUTPUT here is capped at exactly
+ * the same `wanted` amount, sized to THIS leg alone (same reasoning as registerLinkDrainRequest's own doc:
+ * a shared, unconditional storage energy request independent of any one leg was tried and reverted, since
+ * it could crowd out a smaller leg's own real amount for pickBestPair's "best output" slot). Each leg owns
+ * its own scale.
  *
  * `empireReservedAmount` (gh #59 decision 6/user story 7): a matched empire transfer raises the computed
  * wanted amount to at least this much — `max(ordinaryWant, empireReservedAmount)` — so the terminal keeps
  * replenishing toward a pending send even once its own ordinary gate would otherwise stop asking, while
- * still competing for Steward's attention via the normal scoreRequest ranking rather than bypassing it.
+ * still competing for Steward's attention via the normal pickBestPair ranking rather than bypassing it.
  * Ignored (no floor) when omitted/0 — the ordinary rebalance behavior is untouched by default.
  */
 export function registerTerminalEnergyRebalanceRequest(
   storage: StructureStorage | undefined,
   terminal: StructureTerminal | undefined,
   empireReservedAmount = 0
-): LogisticsRequest | undefined {
+): { input: LogisticsRequest; output: LogisticsRequest } | undefined {
   if (!storage || !terminal) return undefined;
   const storageSurplus = storage.store.getUsedCapacity(RESOURCE_ENERGY) > storage.store.getCapacity(RESOURCE_ENERGY) * STORAGE_SURPLUS_FRACTION;
   if (!storageSurplus) return undefined;
@@ -134,7 +161,9 @@ export function registerTerminalEnergyRebalanceRequest(
   const towardTarget = Math.min(TERMINAL_ENERGY_TARGET - terminalUsed, terminal.store.getFreeCapacity(RESOURCE_ENERGY));
   const wanted = Math.max(towardTarget, empireReservedAmount);
   if (wanted <= 0) return undefined;
-  return requestInput(terminal, RESOURCE_ENERGY, wanted);
+  const available = Math.min(wanted, storage.store.getUsedCapacity(RESOURCE_ENERGY));
+  if (available <= 0) return undefined;
+  return { input: requestInput(terminal, RESOURCE_ENERGY, wanted), output: requestOutput(storage, RESOURCE_ENERGY, available) };
 }
 
 /**
@@ -142,13 +171,13 @@ export function registerTerminalEnergyRebalanceRequest(
  * registerTerminalEnergyRebalanceRequest for that), whenever storage sits below its own target — an input
  * request (storage WANTS `resource` delivered). Unconditional on the terminal's own state: this is one
  * independent, one-sided half of the mineral want/have pair (the other half is
- * registerMineralTerminalHaveRequest below) — both land in the SAME flat pool
- * (registerStewardRequests) and are paired/scored by request.ts's scoreRequest/pickBestRequest, the same
- * way registerLinkDrainRequest's output request and registerControllerLinkTopUpRequest's input request
- * already coexist on the anchor link without either function checking the other's threshold internally.
- * Deliberately NOT gated on "does the terminal currently have any to give" — pickBestRequest already only
- * pairs an input with SOME matching-resource output that exists; a storage want with nothing to fill it is
- * simply never picked, same as any other unfillable request in the pool.
+ * registerMineralTerminalHaveRequest below) — both land in the SAME flat pool (registerStewardRequests) and
+ * are paired by greedyMatch.ts's pickBestPair, the same way registerLinkDrainRequest's output request and
+ * registerControllerLinkTopUpRequest's input request already coexist on the anchor link without either
+ * function checking the other's threshold internally. Deliberately NOT gated on "does the terminal
+ * currently have any to give" — pickBestPair already requires a real opposite-signed counterpart to exist
+ * before pairing at all (see that module's own doc); a storage want with nothing to fill it is simply never
+ * picked, same as any other unfillable request in the pool.
  */
 export function registerMineralStorageWantRequest(storage: StructureStorage | undefined, resource: ResourceConstant): LogisticsRequest | undefined {
   if (!storage) return undefined;
@@ -191,13 +220,55 @@ export function registerMineralTerminalHaveRequest(
 }
 
 /**
- * Every live request in Steward's pool right now: link-drain, controller-link top-up, energy's paired
- * terminal rebalance, and — per BOOST_TARGETS resource — a mineral storage-want plus a mineral
- * terminal-have, all landing in ONE flat pool so request.ts's scoreRequest/pickBestRequest does the actual
- * pairing (see registerMineralStorageWantRequest's own doc for why the mineral legs are two independent
- * one-sided requests rather than a single paired function, unlike energy). `storage` is required for every
- * leg (mirrors stewardBehavior.ts, where every branch already guards on `storage` existing) — a colony
- * with no storage yet has nothing for Steward's pool to rank.
+ * EXPERIMENTAL (gh #59 follow-up, not yet load-bearing): storage's surplus above `target *
+ * RESOURCE_STORAGE_SURPLUS_MULTIPLIER`, if any — an output request (storage HAS more than its own surplus
+ * threshold, the rest belongs in the terminal per decision 7). This is the leg that was designed
+ * ("storage surplus threshold ≈ some factor above target", docs/empire-logistics-plan.md decision 7) but
+ * never actually implemented — confirmed live: a mineral sitting at several times its target (e.g. H at
+ * 24,688 vs a 3,000 target) never moved anywhere, since the pool only ever had a storage-WANT (fires only
+ * below target) and a terminal-HAVE (drains terminal->storage), nothing offering storage's own overflow
+ * outward. Registered here as storage's OUTPUT half; registerMineralStorageOverflowWantRequest below is
+ * its INPUT counterpart (terminal side) so greedyMatch.ts's pickBestPair has a real pair to match, same
+ * shape as every other leg in this file.
+ */
+export function registerMineralStorageSurplusRequest(storage: StructureStorage | undefined, resource: ResourceConstant): LogisticsRequest | undefined {
+  if (!storage) return undefined;
+  const target = baseTargetFor(resource);
+  if (target == null) return undefined;
+  const surplusThreshold = target * RESOURCE_STORAGE_SURPLUS_MULTIPLIER;
+  const storageUsed = storage.store.getUsedCapacity(resource);
+  const surplus = storageUsed - surplusThreshold;
+  if (surplus <= 0) return undefined;
+  return requestOutput(storage, resource, surplus);
+}
+
+/**
+ * EXPERIMENTAL (gh #59 follow-up, not yet load-bearing): the terminal's remaining free capacity for
+ * `resource` — an input request (the terminal can absorb storage's overflow, decision 7's "terminal holds
+ * surplus-above-target plus a send-buffer"). Unconditional beyond "does the terminal exist and have room" —
+ * same "no gate on the other side, pickBestPair only pairs what's actually fulfillable" reasoning as
+ * registerMineralStorageWantRequest's own doc.
+ */
+export function registerMineralStorageOverflowWantRequest(terminal: StructureTerminal | undefined, resource: ResourceConstant): LogisticsRequest | undefined {
+  if (!terminal) return undefined;
+  const target = baseTargetFor(resource);
+  if (target == null) return undefined;
+  const free = terminal.store.getFreeCapacity(resource);
+  if (free <= 0) return undefined;
+  return requestInput(terminal, resource, free);
+}
+
+/**
+ * Every live request in Steward's pool right now: link-drain, controller-link top-up, and energy's
+ * terminal rebalance — each a MATCHED PAIR now (registerLinkDrainRequest/registerControllerLinkTopUpRequest/
+ * registerTerminalEnergyRebalanceRequest each return both their own output and input side directly, see
+ * registerLinkDrainRequest's own doc for why storage's counterpart is sized/scoped per-leg rather than a
+ * single shared, unconditional "storage always offers energy" pool entry) — plus, per BOOST_TARGETS
+ * resource, a mineral storage-want plus a mineral terminal-have (still two independent one-sided requests,
+ * unlike energy's paired legs — see registerMineralStorageWantRequest's own doc for why). All land in ONE
+ * flat pool so greedyMatch.ts's pickBestPair does the actual cross-resource race. `storage` is required for
+ * every leg (mirrors stewardBehavior.ts, where every branch already guards on `storage` existing) — a
+ * colony with no storage yet has nothing for Steward's pool to rank.
  *
  * `empireReservations`, keyed by resource, is gh #59 decision 6's injected protection/floor: for energy it
  * raises registerTerminalEnergyRebalanceRequest's wanted amount; for a mineral it protects that much of the
@@ -213,18 +284,24 @@ export function registerStewardRequests(
 ): LogisticsRequest[] {
   const out: LogisticsRequest[] = [];
   const drain = registerLinkDrainRequest(link, storage);
-  if (drain) out.push(drain);
+  if (drain) out.push(drain.output, drain.input);
   const topUp = registerControllerLinkTopUpRequest(link, controllerLink, storage);
-  if (topUp) out.push(topUp);
+  if (topUp) out.push(topUp.input, topUp.output);
 
   const energyRebalance = registerTerminalEnergyRebalanceRequest(storage, terminal, empireReservations[RESOURCE_ENERGY] ?? 0);
-  if (energyRebalance) out.push(energyRebalance);
+  if (energyRebalance) out.push(energyRebalance.input, energyRebalance.output);
 
   for (const resource of boostLineResources()) {
     const storageWant = registerMineralStorageWantRequest(storage, resource);
     if (storageWant) out.push(storageWant);
     const terminalHave = registerMineralTerminalHaveRequest(terminal, resource, empireReservations[resource] ?? 0);
     if (terminalHave) out.push(terminalHave);
+
+    // EXPERIMENTAL (see registerMineralStorageSurplusRequest's own doc) — storage overflow -> terminal.
+    const storageSurplus = registerMineralStorageSurplusRequest(storage, resource);
+    if (storageSurplus) out.push(storageSurplus);
+    const overflowWant = registerMineralStorageOverflowWantRequest(terminal, resource);
+    if (overflowWant) out.push(overflowWant);
   }
   return out;
 }

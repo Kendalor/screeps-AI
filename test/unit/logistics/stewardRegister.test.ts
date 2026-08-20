@@ -96,23 +96,29 @@ describe("registerLinkDrainRequest", () => {
     expect(registerLinkDrainRequest(stubLink("link1", 400), undefined)).toBeUndefined();
   });
 
-  it("registers an OUTPUT request (negative amount) once the link holds any energy above the floor", () => {
+  it("registers a matched pair (link OUTPUT, storage INPUT) once the link holds any energy above the floor", () => {
+    // gh #59: registerLinkDrainRequest returns BOTH sides now (greedyMatch.ts's pickBestPair requires a
+    // genuine opposite-signed counterpart to exist before pairing at all) — see its own doc for why a
+    // shared, unconditional "storage always offers energy" pool entry was tried and reverted.
     const link = stubLink("link1", 400);
     const storage = stubStorage(0);
-    const request = registerLinkDrainRequest(link, storage);
+    const pair = registerLinkDrainRequest(link, storage);
 
-    expect(request).toBeDefined();
-    expect(request?.target).toBe(link);
-    expect(request?.resource).toBe(RESOURCE_ENERGY);
-    expect(request?.amount).toBe(-400); // requestOutput: "has to give", not "wants delivered"
-    expect(request?.dAmountdt).toBe(-0);
-    expect(request?.multiplier).toBe(1);
+    expect(pair).toBeDefined();
+    expect(pair?.output.target).toBe(link);
+    expect(pair?.output.resource).toBe(RESOURCE_ENERGY);
+    expect(pair?.output.amount).toBe(-400); // requestOutput: "has to give", not "wants delivered"
+    expect(pair?.output.dAmountdt).toBe(-0);
+    expect(pair?.output.multiplier).toBe(1);
+    expect(pair?.input.target).toBe(storage);
+    expect(pair?.input.amount).toBe(400); // storage's counterpart mirrors the same amount
   });
 
   it("registers even a trivial amount — no fullness threshold on this leg (matches stewardBehavior.ts's LINK_DRAIN_FLOOR=0)", () => {
     const link = stubLink("link1", 1);
-    const request = registerLinkDrainRequest(link, stubStorage(0));
-    expect(request?.amount).toBe(-1);
+    const pair = registerLinkDrainRequest(link, stubStorage(0));
+    expect(pair?.output.amount).toBe(-1);
+    expect(pair?.input.amount).toBe(1);
   });
 });
 
@@ -151,20 +157,24 @@ describe("registerControllerLinkTopUpRequest", () => {
   // against `controllerLink` directly, which sent a live Steward creep on a real multi-tile trip out to
   // the controller link every time it ran low — confirmed live on the pserver (creep visibly leaving its
   // anchor tile) before this test existed to catch it.
-  it("registers an INPUT request against the ANCHOR link (not the controller link) once the controller link runs low", () => {
+  it("registers a matched pair (link INPUT, storage OUTPUT) against the ANCHOR link (not the controller link) once the controller link runs low", () => {
+    // gh #59: registerControllerLinkTopUpRequest returns BOTH sides now — see registerLinkDrainRequest's
+    // own doc for why (a shared, unconditional storage energy request was tried and reverted).
     const stored = Math.floor(LINK_CAPACITY * CONTROLLER_LINK_LOW_FRACTION) - 1;
     const link = stubLink("link", 100, 25, 25); // anchor link: some energy already in it, has free capacity left
     const cLink = stubLink("clink", stored, 38, 8); // controller link, far from the anchor — must never be the target
     const storage = stubStorage(100_000);
-    const request = registerControllerLinkTopUpRequest(link, cLink, storage);
+    const pair = registerControllerLinkTopUpRequest(link, cLink, storage);
 
-    expect(request).toBeDefined();
-    expect(request?.target).toBe(link);
-    expect(request?.target).not.toBe(cLink);
-    expect(request?.resource).toBe(RESOURCE_ENERGY);
-    expect(request?.amount).toBe(LINK_CAPACITY - 100); // requestInput: the ANCHOR link's own free capacity
-    expect(request?.amount).toBeGreaterThan(0);
-    expect(request?.dAmountdt).toBe(0);
+    expect(pair).toBeDefined();
+    expect(pair?.input.target).toBe(link);
+    expect(pair?.input.target).not.toBe(cLink);
+    expect(pair?.input.resource).toBe(RESOURCE_ENERGY);
+    expect(pair?.input.amount).toBe(LINK_CAPACITY - 100); // requestInput: the ANCHOR link's own free capacity
+    expect(pair?.input.amount).toBeGreaterThan(0);
+    expect(pair?.input.dAmountdt).toBe(0);
+    expect(pair?.output.target).toBe(storage);
+    expect(pair?.output.amount).toBe(-(LINK_CAPACITY - 100)); // storage's counterpart mirrors the same amount
   });
 
   it("returns undefined when the anchor link is already full (no free capacity to want), even though the controller link is low", () => {
@@ -196,27 +206,32 @@ describe("registerTerminalEnergyRebalanceRequest", () => {
     expect(registerTerminalEnergyRebalanceRequest(storage, terminal)).toBeUndefined();
   });
 
-  it("registers an INPUT request once BOTH storage has a surplus AND the terminal is below TERMINAL_ENERGY_LOW, mirroring stewardBehavior.ts's combined gate", () => {
+  it("registers a matched PAIR once BOTH storage has a surplus AND the terminal is below TERMINAL_ENERGY_LOW, mirroring stewardBehavior.ts's combined gate", () => {
+    // gh #59: registerTerminalEnergyRebalanceRequest returns BOTH sides now (greedyMatch.ts's pickBestPair
+    // requires a genuine opposite-signed counterpart to exist before pairing at all) — the terminal's
+    // input (want) and storage's own output (has, capped at the same amount), not a bare one-sided request.
     const storage = stubStorage(800_000);
     const terminalStored = 10_000;
     const terminal = stubTerminal(terminalStored);
-    const request = registerTerminalEnergyRebalanceRequest(storage, terminal);
+    const pair = registerTerminalEnergyRebalanceRequest(storage, terminal);
 
-    expect(request).toBeDefined();
-    expect(request?.target).toBe(terminal);
-    expect(request?.resource).toBe(RESOURCE_ENERGY);
+    expect(pair).toBeDefined();
+    expect(pair?.input.target).toBe(terminal);
+    expect(pair?.input.resource).toBe(RESOURCE_ENERGY);
     // Capped at the flat TERMINAL_ENERGY_TARGET (50,000), NOT the terminal's full 300,000 free capacity —
     // gh #59's whole point in switching energy off a percent-of-capacity basis: Steward should top the
     // terminal up to a small usable floor, not dump all of storage's surplus into it.
-    expect(request?.amount).toBe(TERMINAL_ENERGY_TARGET - terminalStored);
-    expect(request?.amount).toBeGreaterThan(0);
+    expect(pair?.input.amount).toBe(TERMINAL_ENERGY_TARGET - terminalStored);
+    expect(pair?.input.amount).toBeGreaterThan(0);
+    expect(pair?.output.target).toBe(storage);
+    expect(pair?.output.amount).toBe(-(TERMINAL_ENERGY_TARGET - terminalStored)); // storage's output mirrors the same amount
   });
 
   it("caps the want at TERMINAL_ENERGY_TARGET even though far more free capacity exists in the terminal", () => {
     const storage = stubStorage(800_000);
     const terminal = stubTerminal(0); // 300,000 free capacity available, but only 50,000 should ever be asked for
-    const request = registerTerminalEnergyRebalanceRequest(storage, terminal);
-    expect(request?.amount).toBe(TERMINAL_ENERGY_TARGET);
+    const pair = registerTerminalEnergyRebalanceRequest(storage, terminal);
+    expect(pair?.input.amount).toBe(TERMINAL_ENERGY_TARGET);
   });
 
   it("requires BOTH conditions — a low terminal alone (no storage surplus) does not register", () => {
@@ -229,9 +244,9 @@ describe("registerTerminalEnergyRebalanceRequest", () => {
     const storage = stubStorage(800_000);
     const terminal = stubTerminal(10_000);
     const ordinary = registerTerminalEnergyRebalanceRequest(storage, terminal);
-    const reserved = registerTerminalEnergyRebalanceRequest(storage, terminal, (ordinary?.amount ?? 0) + 20_000);
+    const reserved = registerTerminalEnergyRebalanceRequest(storage, terminal, (ordinary?.input.amount ?? 0) + 20_000);
 
-    expect(reserved?.amount).toBe((ordinary?.amount ?? 0) + 20_000);
+    expect(reserved?.input.amount).toBe((ordinary?.input.amount ?? 0) + 20_000);
   });
 });
 
@@ -394,6 +409,10 @@ describe("the mineral want/have pair together (storage 4,000 GO / terminal 1,000
 
 describe("registerStewardRequests", () => {
   it("returns an empty pool when nothing in the triangle qualifies", () => {
+    // gh #59: each leg (link-drain, controller-topup, terminal-rebalance) now builds its OWN storage
+    // counterpart directly, sized/gated to that specific leg — there's no longer a separate, unconditional
+    // "storage always offers energy" pool entry independent of whether any leg actually needs it (see
+    // registerLinkDrainRequest's own doc for why that shared-entry design was tried and reverted).
     const link = stubLink("link1", 0);
     const cLink = stubLink("clink", LINK_CAPACITY);
     const storage = stubStorage(0);
@@ -413,12 +432,15 @@ describe("registerStewardRequests", () => {
     const terminal = stubTerminal(10_000); // low
     const requests = registerStewardRequests(link, cLink, storage, terminal);
 
-    // Two of the three requests target the anchor link (drain gives energy up, top-up wants it delivered
-    // — opposite signs, both legitimate at once), plus the terminal rebalance.
-    expect(requests).toHaveLength(3);
+    // Each of the three legs (link-drain, controller-topup, terminal-rebalance) is now a matched pair: 2
+    // requests apiece (its own leg's target + storage's paired counterpart) — 6 total. The link is targeted
+    // twice (drain's output, topup's input); storage three times (drain's input counterpart, topup's output
+    // counterpart, rebalance's output counterpart); terminal once (rebalance's input).
+    expect(requests).toHaveLength(6);
     const targets = requests.map(r => r.target);
     expect(targets.filter(t => t === link)).toHaveLength(2);
     expect(targets).toContain(terminal);
+    expect(targets.filter(t => t === storage)).toHaveLength(3);
     expect(targets).not.toContain(cLink); // the controller link is only ever a trigger, never a target
   });
 
@@ -429,10 +451,12 @@ describe("registerStewardRequests", () => {
     const terminal = stubMultiTerminal({ energy: TERMINAL_CAPACITY, GO: 0 }); // energy full (no energy leg); GO empty (no have leg)
     const requests = registerStewardRequests(link, cLink, storage, terminal);
 
-    expect(requests).toHaveLength(1);
-    expect(requests[0].resource).toBe("GO");
-    expect(requests[0].target).toBe(storage);
-    expect(requests[0].amount).toBeGreaterThan(0); // storage WANTS delivered
+    // Scoped to GO specifically — the pool also carries an experimental terminal-overflow-want leg per
+    // resource now (registerMineralStorageOverflowWantRequest), so an exact total pool length is no longer
+    // a stable assertion here.
+    const goStorageWant = requests.find(r => r.resource === "GO" && r.target === storage);
+    expect(goStorageWant).toBeDefined();
+    expect(goStorageWant?.amount).toBeGreaterThan(0); // storage WANTS delivered
   });
 
   it("also registers a mineral terminal-have leg when the terminal holds any of a boost-line resource", () => {
@@ -443,10 +467,9 @@ describe("registerStewardRequests", () => {
     const terminal = stubMultiTerminal({ energy: TERMINAL_CAPACITY, GO: 500 }); // energy full (no energy leg); GO to give
     const requests = registerStewardRequests(link, cLink, storage, terminal);
 
-    expect(requests).toHaveLength(1);
-    expect(requests[0].resource).toBe("GO");
-    expect(requests[0].target).toBe(terminal);
-    expect(requests[0].amount).toBe(-500); // terminal HAS to give, its full stock
+    const goTerminalHave = requests.find(r => r.resource === "GO" && r.target === terminal && r.amount < 0);
+    expect(goTerminalHave).toBeDefined();
+    expect(goTerminalHave?.amount).toBe(-500); // terminal HAS to give, its full stock
   });
 
   it("protects a mineral empireReservations amount from the terminal-have drain, same colony-wide pool", () => {
@@ -458,9 +481,11 @@ describe("registerStewardRequests", () => {
     const ordinary = registerStewardRequests(link, cLink, storage, terminal);
     const reserved = registerStewardRequests(link, cLink, storage, terminal, { GO: 3200 });
 
-    expect(ordinary.filter(r => r.resource === "GO")).toHaveLength(1); // only the terminal-have leg
-    expect(ordinary.find(r => r.resource === "GO")?.amount).toBe(-4000); // nothing protected: full stock offered
-    expect(reserved.find(r => r.resource === "GO")?.amount).toBe(-800); // 3200 protected, only the rest offered
+    // Scoped to the specific terminal-have leg (output, target=terminal) rather than every GO request —
+    // the experimental storage-overflow leg also registers GO entries now (storage is exactly at target,
+    // not above it, so it shouldn't fire here, but scoping keeps this test robust either way).
+    expect(ordinary.find(r => r.resource === "GO" && r.target === terminal && r.amount < 0)?.amount).toBe(-4000); // nothing protected: full stock offered
+    expect(reserved.find(r => r.resource === "GO" && r.target === terminal && r.amount < 0)?.amount).toBe(-800); // 3200 protected, only the rest offered
   });
 
   it("omits a leg from the pool once its own condition stops qualifying, leaving the others intact", () => {
@@ -473,26 +498,39 @@ describe("registerStewardRequests", () => {
     const terminal = stubTerminal(10_000); // qualifies
     const requests = registerStewardRequests(link, cLink, storage, terminal);
 
-    expect(requests).toHaveLength(1);
-    expect(requests[0].target).toBe(terminal);
+    // Only the terminal rebalance pair (terminal input + storage output) — drain and top-up both fail
+    // their own gates (link empty, controller link full), so neither leg (nor its storage counterpart)
+    // appears at all.
+    expect(requests).toHaveLength(2);
+    const targets = requests.map(r => r.target);
+    expect(targets).toContain(terminal);
+    expect(targets.filter(t => t === storage)).toHaveLength(1);
+    expect(targets).not.toContain(link); // drain didn't qualify, and nothing else targets the link here
   });
 });
 
 // ---------------------------------------------------------------------------
-// Reuse proof: the built requests feed directly into request.ts's/route.ts's REAL functions — no
-// reimplementation of scoring or buffer-detour logic anywhere in stewardRegister.ts.
+// Reuse proof: the built requests feed directly into request.ts's/greedyMatch.ts's REAL functions — no
+// reimplementation of scoring or pairing logic anywhere in stewardRegister.ts. planStewardTask
+// (stewardTaskRunner.ts) drives the live pool through greedyMatch.ts's pickBestPair, not pickBestRequest
+// directly — but pickBestRequest remains real, reusable infra any pool of LogisticsRequests can be scored
+// with (e.g. a single-direction lookup), so this proves stewardRegister.ts's output is genuinely that
+// generic shape, not something bespoke.
 // ---------------------------------------------------------------------------
 
-describe("Steward's pool reuses request.ts's pickBestRequest (gh #46) directly", () => {
-  it("ranks a high-rate terminal want above a low-rate link drain even though stewardBehavior.ts would have checked the link branch first", () => {
+describe("Steward's pool is plain LogisticsRequests, reusable with request.ts's pickBestRequest (gh #46)", () => {
+  it("ranks a high-rate terminal want above a low-rate link drain by amount/distance, same as any other pool", () => {
     // Both targets equidistant from the creep (distance 1) so amount alone decides the rate race —
     // proves ranking is real (scoreRequest's multiplier*amount/distance), not registration-order luck.
+    // Storage's own implicit requests are isolated out here by scoping pickBestRequest to only the
+    // OUTPUT-direction candidates that aren't storage itself (storage's 800,000 output would otherwise
+    // trivially dominate any energy amount a link or terminal could ever register).
     const link = stubLink("link1", 1); // tiny drain: rate 1/1 = 1
     const cLink = stubLink("clink", LINK_CAPACITY); // full: no top-up request
     const storage = stubStorage(800_000);
     const terminal = stubTerminal(10_000); // big want: rate (TERMINAL_ENERGY_TARGET-10000)/1 = 40000
 
-    const requests = registerStewardRequests(link, cLink, storage, terminal);
+    const requests = registerStewardRequests(link, cLink, storage, terminal).filter(r => r.target !== storage);
     expect(requests).toHaveLength(2); // link drain + terminal rebalance
 
     const best = pickBestRequest(requests, RESOURCE_ENERGY, () => 1); // same distance for every candidate
@@ -505,7 +543,7 @@ describe("Steward's pool reuses request.ts's pickBestRequest (gh #46) directly",
     const storage = stubStorage(800_000);
     const terminal = stubTerminal(10_000); // wants TERMINAL_ENERGY_TARGET-10000=40000, but placed far away below
 
-    const requests = registerStewardRequests(link, cLink, storage, terminal);
+    const requests = registerStewardRequests(link, cLink, storage, terminal).filter(r => r.target !== storage);
     const distanceTo = (target: { id: string }) => (target.id === "terminal1" ? 10_000 : 1); // rate 40000/10000 = 4
     const best = pickBestRequest(requests, RESOURCE_ENERGY, t => distanceTo(t as unknown as { id: string }));
     expect(best?.target).toBe(link);
@@ -521,9 +559,10 @@ describe("Steward's delivery requests reuse route.ts's evaluateRoutes/pickBestRo
     const link = stubLink("link", 50, 25, 25); // the anchor link — this leg's real target, not the controller link
     const cLink = stubLink("clink", 50, 38, 8); // far off at the controller — only a trigger, never a target
     const storage = stubStorage(800_000, 5, 5);
-    const request = registerControllerLinkTopUpRequest(link, cLink, storage);
-    expect(request).toBeDefined();
-    if (!request) return;
+    const pair = registerControllerLinkTopUpRequest(link, cLink, storage);
+    expect(pair).toBeDefined();
+    if (!pair) return;
+    const request = pair.input;
     expect(request.target).toBe(link);
 
     const from = pos(0, 0);
@@ -545,9 +584,10 @@ describe("Steward's delivery requests reuse route.ts's evaluateRoutes/pickBestRo
   it("picks the direct route when the creep already carries enough to satisfy the request outright", () => {
     const terminal = stubTerminal(10_000, 2, 0);
     const storage = stubStorage(800_000, 40, 40); // far away — a detour here would only lose distance
-    const request = registerTerminalEnergyRebalanceRequest(storage, terminal);
-    expect(request).toBeDefined();
-    if (!request) return;
+    const pair = registerTerminalEnergyRebalanceRequest(storage, terminal);
+    expect(pair).toBeDefined();
+    if (!pair) return;
+    const request = pair.input;
 
     const from = pos(1, 0); // adjacent to terminal
     const distanceTo = (a: RoomPosition, b: RoomPosition): number => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -560,9 +600,10 @@ describe("Steward's delivery requests reuse route.ts's evaluateRoutes/pickBestRo
   it("a link-drain (output) request never gets a buffer detour scored — evaluateRoutes only detours delivery requests", () => {
     const link = stubLink("link1", 400);
     const storage = stubStorage(0);
-    const request = registerLinkDrainRequest(link, storage);
-    expect(request).toBeDefined();
-    if (!request) return;
+    const pair = registerLinkDrainRequest(link, storage);
+    expect(pair).toBeDefined();
+    if (!pair) return;
+    const request = pair.output;
 
     const distanceTo = (a: RoomPosition, b: RoomPosition): number => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
     const routes = evaluateRoutes(request, pos(0, 0), [asBuffer(storage)], 0, 50, distanceTo);
