@@ -25,11 +25,14 @@ export class DemolisherRole extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return demolisherBody(energy);
   }
+  // 0: recycleIfOperationGone — no-op while the Demolish flag/op is still live; see that step's own doc
+  // (behaviors/types.ts) for the "flag pulled while alive" recycle path this pre-empts with.
   // 1: advance on the live followFlag position (see moveToFlag's doc — dragging the flag redirects the
   // creep immediately), dismantling whatever hostile structure sits nearest the flag once in range.
   // 2: once damaged, flee/heal (see fleeAndHeal's doc) until back to full health, then step 1 resumes
   // and walks it straight back in.
   static override readonly steps: Step[] = [
+    { do: "recycleIfOperationGone" },
     { do: "moveToFlag", when: "damaged" },
     { do: "dismantle", at: { find: "hostileStructure", prefer: "nearestToFlag" } },
     { do: "fleeAndHeal", when: "healthy" }

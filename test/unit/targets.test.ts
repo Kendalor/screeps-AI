@@ -1180,6 +1180,36 @@ describe("resolveTarget hostileStructure excludes the controller", () => {
 
     expect((got as { id: string }).id).toBe("tower1");
   });
+
+  // A target room's active safe mode protects its owner's structures completely: dismantle()/attack()
+  // still "fire" every tick (didAct stays true — a real API call was made) but deal no damage, so a
+  // demolisher/bait tower locked onto a structure there never makes progress and never falls through to
+  // anything else either. Confirmed live: a demolisher stuck permanently re-running its dismantle step
+  // against a target room that had gone into safe mode. Emptying the pool while safeMode is active makes
+  // resolveTarget report "nothing to do," same as the room having no hostile structures at all.
+  it("offers nothing while the target room's safe mode is active, even with real hostile structures present", () => {
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    const creep = {
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { find: () => [tower], controller: { safeMode: 1234 } }
+    } as unknown as Creep;
+
+    const got = resolveTarget(creep, { find: "hostileStructure" });
+
+    expect(got).toBeNull();
+  });
+
+  it("still resolves a genuine hostile structure once safe mode is inactive", () => {
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    const creep = {
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { find: () => [tower], controller: { safeMode: undefined } }
+    } as unknown as Creep;
+
+    const got = resolveTarget(creep, { find: "hostileStructure" });
+
+    expect((got as { id: string }).id).toBe("tower1");
+  });
 });
 
 // requireReachableAlive excludes a pickup a low-ticksToLive creep would die walking to, using

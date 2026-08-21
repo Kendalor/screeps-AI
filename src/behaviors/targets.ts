@@ -722,9 +722,17 @@ function findCandidates(
       // fighting the actual keeper monster, so lairs are excluded the same way the controller is.
       // Confirmed live: attacker_W47N14_73031997 locked onto a keeperLair in W46N14 instead of the
       // level-0 invader core that justified the room-level attack sponsorship in the first place.
-      return room
-        .find(FIND_HOSTILE_STRUCTURES)
-        .filter(s => s.structureType !== STRUCTURE_CONTROLLER && s.structureType !== STRUCTURE_KEEPER_LAIR);
+      // Under an active safe mode the room's owner is fully protected — dismantle()/attack() still
+      // resolve a target and "fire" every tick (didAct stays true) but deal no damage, so a demolisher/
+      // bait tower locked onto one never makes any real progress and never falls through to anything
+      // else either. Confirmed live: a demolisher stuck permanently re-running step 2 (dismantle) against
+      // a target room that had gone into safe mode. Emptying the pool while safeMode is active makes
+      // resolveTarget report "nothing to do" instead, same as the room having no hostile structures at all.
+      return room.controller?.safeMode
+        ? []
+        : room
+            .find(FIND_HOSTILE_STRUCTURES)
+            .filter(s => s.structureType !== STRUCTURE_CONTROLLER && s.structureType !== STRUCTURE_KEEPER_LAIR);
     case "hostileConstructionSite":
       return room.find(FIND_HOSTILE_CONSTRUCTION_SITES);
     case "constructionSite": {

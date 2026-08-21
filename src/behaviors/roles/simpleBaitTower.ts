@@ -40,6 +40,7 @@ export class SimpleBaitTowerRole extends Role {
   // dismantle. No damaged/healthy retreat leg here: retreatPart above pre-empts the whole step table once
   // HEAL is gone (see runOne's dispatch order), so these steps only ever run while still able to self-heal.
   static override readonly steps: Step[] = [
+    { do: "recycleIfOperationGone" },
     { do: "baitTowerAdvance", when: "damaged" },
     { do: "fleeAndHeal", when: "healthy" }
   ];

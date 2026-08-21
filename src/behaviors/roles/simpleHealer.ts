@@ -40,6 +40,7 @@ export class SimpleHealerRole extends Role {
   // Advance on the live followFlag position, then heal whichever friendly creep there (self included) is
   // most damaged.
   static override readonly steps: Step[] = [
+    { do: "recycleIfOperationGone" },
     { do: "healerAdvance" },
     { do: "heal", at: { find: "friendly", where: "damaged", prefer: "nearestDamaged" } }
   ];
