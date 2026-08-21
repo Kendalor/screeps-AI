@@ -1,6 +1,6 @@
 // resolveTarget(spec) is the one place that searches for targets.
 
-import { ATTACK_POWER, RANGED_ATTACK_POWER, effectiveHp } from "../lib/combat";
+import { ATTACK_POWER, HEAL_ASSIST_RANGE, RANGED_ATTACK_POWER, effectiveHp } from "../lib/combat";
 import { wrapFn } from "../lib/profiler";
 import type { Prefer, TargetSpec } from "./types";
 
@@ -431,6 +431,28 @@ function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomO
       const bSelf = (b as unknown as { id?: Id<_HasId> }).id === creep.id;
       if (aSelf !== bSelf) return aSelf ? -1 : 1;
       return damageFraction(a) - damageFraction(b);
+    });
+    return sorted[0] ?? null;
+  }
+  if (prefer === "nearestDamaged") {
+    // SimpleHealerRole's own use: within heal-assist range (3 — see lib/combat.ts's HEAL_ASSIST_RANGE)
+    // travel cost is already ~0 (a healer can act this same tick regardless of which in-range patient it
+    // picks), so severity decides there — same lowest-hits-fraction-first rule as "mostDamaged", self
+    // always sorting first. Beyond that range travel time dominates, so range to the healer's OWN position
+    // decides instead: a badly hurt ally across the room isn't worth a multi-tile detour past an ally
+    // standing right next to the healer right now. getRangeTo (not findClosestByPath) — cheap enough to
+    // run this sort every tick, same idiom "nearestToFlag" below already uses.
+    const sorted = [...pool].sort((a, b) => {
+      const aSelf = (a as unknown as { id?: Id<_HasId> }).id === creep.id;
+      const bSelf = (b as unknown as { id?: Id<_HasId> }).id === creep.id;
+      if (aSelf !== bSelf) return aSelf ? -1 : 1;
+      const aPos = (a as unknown as { pos: RoomPosition }).pos;
+      const bPos = (b as unknown as { pos: RoomPosition }).pos;
+      const aInRange = creep.pos.getRangeTo(aPos) <= HEAL_ASSIST_RANGE;
+      const bInRange = creep.pos.getRangeTo(bPos) <= HEAL_ASSIST_RANGE;
+      if (aInRange && bInRange) return damageFraction(a) - damageFraction(b);
+      if (aInRange !== bInRange) return aInRange ? -1 : 1;
+      return creep.pos.getRangeTo(aPos) - creep.pos.getRangeTo(bPos);
     });
     return sorted[0] ?? null;
   }
