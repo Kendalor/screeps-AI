@@ -7,6 +7,14 @@ import { roleDef } from "./roles";
 
 const NEARBY_MOVER_RANGE = 2;
 
+function isMover(creep: Creep, self: Creep): boolean {
+  // A foreign creep (Invader NPC, another player's) has no `memory` at all — checked before
+  // indexing .role, or one wandering within range throws and aborts the WHOLE empire-wide creeps
+  // system for the tick (every creep after it in Game.creeps iteration order silently freezes).
+  // Confirmed live on shard1: an Invader in W47N15 crashed this every tick it stayed in range.
+  return creep.id !== self.id && !!creep.memory && !!roleDef(creep.memory.role)?.mover;
+}
+
 // Cheap early-out: don't bother evacuating a road tile unless some road-using creep (Role.mover, e.g.
 // hauler/transport/supply/scout/defender) is actually nearby to want it. Most ticks nobody's within
 // range, so this skips the tile-search/travelTo work below entirely.
@@ -15,15 +23,25 @@ function moverNearby(pos: RoomPosition, self: Creep): boolean {
     for (let y = Math.max(0, pos.y - NEARBY_MOVER_RANGE); y <= Math.min(49, pos.y + NEARBY_MOVER_RANGE); y++) {
       const found = new RoomPosition(x, y, pos.roomName)
         .lookFor(LOOK_CREEPS)
-        // A foreign creep (Invader NPC, another player's) has no `memory` at all — checked before
-        // indexing .role, or one wandering within range throws and aborts the WHOLE empire-wide creeps
-        // system for the tick (every creep after it in Game.creeps iteration order silently freezes).
-        // Confirmed live on shard1: an Invader in W47N15 crashed this every tick it stayed in range.
-        .some(creep => creep.id !== self.id && creep.memory && roleDef(creep.memory.role)?.mover);
+        .some(creep => isMover(creep, self));
       if (found) return true;
     }
   }
   return false;
+}
+
+// A mover standing directly adjacent (range 1, excluding self) — the only case a same-tick position
+// swap is possible. lookFor per neighbouring tile, same approach as moverNearby above — the test
+// double's findInRange only understands FIND_STRUCTURES/FIND_MY_CONSTRUCTION_SITES, not creep finds.
+function adjacentMover(self: Creep): Creep | undefined {
+  for (let x = Math.max(0, self.pos.x - 1); x <= Math.min(49, self.pos.x + 1); x++) {
+    for (let y = Math.max(0, self.pos.y - 1); y <= Math.min(49, self.pos.y + 1); y++) {
+      if (x === self.pos.x && y === self.pos.y) continue;
+      const found = new RoomPosition(x, y, self.pos.roomName).lookFor(LOOK_CREEPS).find(creep => isMover(creep, self));
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 function isRoad(pos: RoomPosition): boolean {
@@ -66,5 +84,22 @@ export function stepOffRoad(creep: Creep, workPos: RoomPosition, range: number):
   const candidate = tilesInRange(workPos, range, creep.pos).find(
     pos => !pos.isEqualTo(creep.pos) && !isRoad(pos) && isWalkable(pos) && isFreeForCreep(pos, creep)
   );
-  if (candidate) creep.travelTo(candidate);
+  if (candidate) {
+    creep.travelTo(candidate);
+    return;
+  }
+
+  // No free tile to evacuate to — a packed bunker core can surround a work tile entirely with
+  // obstacles (spawns/storage/link) and other road tiles already occupied by other movers, so
+  // tilesInRange legitimately finds nothing. Confirmed live on shard1/W47N14: a builder parked at
+  // (35,7) had every neighboring tile either an obstacle structure or another creep, and sat there
+  // blocking the corridor indefinitely since Traveler's own stuck-counter fallback never engages —
+  // this creep never calls travelTo toward a real destination, so it never registers as "stuck".
+  // Trade places with an adjacent mover instead: both creeps move() into each other's tile this same
+  // tick, which is legal even though each tile is "occupied" going in (Screeps resolves swaps).
+  const neighbor = adjacentMover(creep);
+  if (neighbor) {
+    creep.move(creep.pos.getDirectionTo(neighbor.pos));
+    neighbor.move(neighbor.pos.getDirectionTo(creep.pos));
+  }
 }

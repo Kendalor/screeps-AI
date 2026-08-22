@@ -6,12 +6,13 @@ import { stubGame } from "../helpers";
 const ROOM = "W1N1";
 const OPEN_TERRAIN = { getTerrain: () => ({ get: () => 0 }) };
 
-function creepAt(x: number, y: number): Creep & { travelTo: ReturnType<typeof vi.fn> } {
+function creepAt(x: number, y: number): Creep & { travelTo: ReturnType<typeof vi.fn>; move: ReturnType<typeof vi.fn> } {
   return {
     id: "me",
     pos: new RoomPosition(x, y, ROOM),
-    travelTo: vi.fn()
-  } as unknown as Creep & { travelTo: ReturnType<typeof vi.fn> };
+    travelTo: vi.fn(),
+    move: vi.fn()
+  } as unknown as Creep & { travelTo: ReturnType<typeof vi.fn>; move: ReturnType<typeof vi.fn> };
 }
 
 beforeEach(() => {
@@ -89,5 +90,58 @@ describe("stepOffRoad", () => {
     stepOffRoad(creep, new RoomPosition(25, 25, ROOM), 1);
 
     expect(creep.travelTo).toHaveBeenCalledWith(expect.objectContaining({ x: 26, y: 25 }));
+  });
+
+  // Confirmed live on shard1/W47N14: a packed bunker core can surround a working creep's road tile
+  // entirely with obstacle structures (spawns/storage/link), so there is no free tile to evacuate to
+  // at all — every candidate tilesInRange() finds is either an obstacle or a road. Traveler's own
+  // stuck-counter fallback never engages here either, since this creep never calls travelTo toward a
+  // real destination. The creep must instead trade places with whichever mover is blocked beside it.
+  it("swaps places with an adjacent mover when no free tile exists to step off to", () => {
+    // Every neighbour is either a wall or, at (26,25), the road tile the blocked mover already occupies.
+    stubGame({
+      rooms: {
+        [ROOM]: {
+          getTerrain: () => ({
+            get: (x: number, y: number) => (x === 25 && y === 25 ? 0 : x === 26 && y === 25 ? 0 : TERRAIN_MASK_WALL)
+          })
+        }
+      }
+    });
+    stubTile(ROOM, 25, 25, { structure: [{ structureType: STRUCTURE_ROAD }] });
+    stubTile(ROOM, 26, 25, {
+      structure: [{ structureType: STRUCTURE_ROAD }],
+      creep: [{ id: "mover", pos: new RoomPosition(26, 25, ROOM), memory: { role: "transport" }, move: vi.fn() }]
+    });
+    const creep = creepAt(25, 25);
+
+    stepOffRoad(creep, new RoomPosition(25, 25, ROOM), 1);
+
+    expect(creep.travelTo).not.toHaveBeenCalled();
+    expect(creep.move).toHaveBeenCalledWith(RIGHT);
+  });
+
+  it("does not swap with a non-mover neighbour (nothing gained — it isn't trying to get through)", () => {
+    stubGame({
+      rooms: {
+        [ROOM]: {
+          getTerrain: () => ({
+            get: (x: number, y: number) => (x === 25 && y === 25 ? 0 : x === 26 && y === 25 ? 0 : TERRAIN_MASK_WALL)
+          })
+        }
+      }
+    });
+    stubTile(ROOM, 25, 25, { structure: [{ structureType: STRUCTURE_ROAD }] });
+    stubTile(ROOM, 26, 25, {
+      structure: [{ structureType: STRUCTURE_ROAD }],
+      creep: [{ id: "other-builder", pos: new RoomPosition(26, 25, ROOM), memory: { role: "builder" } }]
+    });
+    stubNearbyMover(ROOM, 27, 25); // range-2: triggers evacuation, but too far away to be a swap candidate
+    const creep = creepAt(25, 25);
+
+    stepOffRoad(creep, new RoomPosition(25, 25, ROOM), 1);
+
+    expect(creep.travelTo).not.toHaveBeenCalled();
+    expect(creep.move).not.toHaveBeenCalled();
   });
 });
