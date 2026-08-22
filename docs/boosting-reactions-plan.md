@@ -294,4 +294,6 @@ by the time it's built.
   market-buying policy would want too — "short on K, no local source, not worth reacting, buy it." Not
   needed for the core loop to work (M5's reaction planner simply doesn't fire if raw minerals aren't in
   stock, same as M7's stock check failing), and buying is a genuinely separate capability (empire-level
-  price/timing risk) worth its own plan later.
+  price/timing risk) worth its own plan later. **Designed, not yet built: see `docs/market-plan.md`** —
+  plugs into `empire/logistics.ts`'s `matchEmpireRequests` leftover (M4's mechanism, per that doc's
+  decision 2) rather than M3's shortfall directly, since M4 already supersedes M3's cross-colony half.
