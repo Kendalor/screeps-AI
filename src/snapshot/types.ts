@@ -220,6 +220,10 @@ export interface VisibleRoom {
   // fortified core (deploys defenders, surrounded by ramparts — not a target we can clear yet).
   // Undefined when no core is present. remoteInvaderAttacks.ts uses this to attack only level-0 cores.
   invaderCoreLevel?: number;
+  // Whether this room's controller currently has safe mode active — hostiles present can't act (or be
+  // acted on) at all, so Defense drops a sponsored target the moment this flips true rather than waiting
+  // for hostileCount to reach 0 (it may never, since safe mode doesn't evict them).
+  safeMode: boolean;
 }
 
 // What mining last recorded for a source, so an operation can tell a real change from rewriting the same values.

@@ -45,6 +45,7 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
       room: name,
       info: Memory.rooms?.[name]?.scouted,
       hostileCount: hostileCreeps.length + hostileStructures.length,
+      safeMode: (r.controller?.safeMode ?? 0) > 0,
       ...(invaderCore ? { invaderCoreLevel: invaderCore.level } : {})
     });
 

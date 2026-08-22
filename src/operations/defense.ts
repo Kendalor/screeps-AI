@@ -45,11 +45,12 @@ function roomsWithHostiles(colony: ColonySnapshot): string[] {
   return rooms;
 }
 
-// Flag-sponsored defend targets (ColonyMemory.defending) not yet seen clear — the defensive equivalent of
-// Attack's openTargets. Vision-gated the same way roomCleared() is below: a target the colony has never
-// scouted must not read as already-clear just because no visibleRooms entry says otherwise.
+// Flag-sponsored defend targets (ColonyMemory.defending) not yet seen clear or safe-moded — the defensive
+// equivalent of Attack's openTargets. Vision-gated the same way roomCleared()/roomSafeModed() are below: a
+// target the colony has never scouted must not read as already-clear just because no visibleRooms entry
+// says otherwise.
 function openSponsoredTargets(colony: ColonySnapshot): string[] {
-  return colony.defending.filter(t => !roomCleared(colony, t));
+  return colony.defending.filter(t => !roomCleared(colony, t) && !roomSafeModed(colony, t));
 }
 
 // True once `room` has been seen this tick (someone in the empire has vision of it) with no hostiles left
@@ -57,6 +58,13 @@ function openSponsoredTargets(colony: ColonySnapshot): string[] {
 // visibleRooms must never read as cleared).
 function roomCleared(colony: ColonySnapshot, room: string): boolean {
   return colony.visibleRooms.find(r => r.room === room)?.hostileCount === 0;
+}
+
+// True once `room` has been seen this tick with safe mode active — hostiles present can't act (or be hit)
+// at all, so a sponsored target stops needing a defender even though hostileCount may stay nonzero for the
+// whole duration (safe mode doesn't evict them, just neuters them).
+function roomSafeModed(colony: ColonySnapshot, room: string): boolean {
+  return colony.visibleRooms.find(r => r.room === room)?.safeMode === true;
 }
 
 // Total hostile count across every invaded room — home (live count) plus one nominal hostile per invaded
@@ -100,12 +108,15 @@ export class Defense extends Operation {
 
   // Direct tower action plus keeping every defender's cross-room assignment current.
   public override intents(colony: ColonySnapshot): Intent[] {
-    // Drop any flag-sponsored target that's been seen clear — the defensive equivalent of Attack's own
-    // cleared-target cleanup (see operations/attack.ts's intents()). Home/remote hostile rooms need no
-    // equivalent bookkeeping: they're derived fresh from live snapshot state every tick, not durable
-    // memory, so there's nothing to remove.
-    const cleared = colony.defending.filter(t => roomCleared(colony, t));
-    for (const target of cleared) log.debugRoom(colony.name, `defense: ${target} seen clear — dropping as a sponsored target`);
+    // Drop any flag-sponsored target that's been seen clear or has gone into safe mode — the defensive
+    // equivalent of Attack's own cleared-target cleanup (see operations/attack.ts's intents()). Home/remote
+    // hostile rooms need no equivalent bookkeeping: they're derived fresh from live snapshot state every
+    // tick, not durable memory, so there's nothing to remove.
+    const cleared = colony.defending.filter(t => roomCleared(colony, t) || roomSafeModed(colony, t));
+    for (const target of cleared) {
+      const reason = roomSafeModed(colony, target) ? "entered safe mode" : "seen clear";
+      log.debugRoom(colony.name, `defense: ${target} ${reason} — dropping as a sponsored target`);
+    }
     const out: Intent[] = [
       ...cleared.map(target => ({ kind: "removeDefendTarget" as const, room: colony.name, target })),
       ...defendTargetRoomIntents(colony, roomsWithHostiles(colony))

@@ -333,4 +333,23 @@ describe("Defense sponsored targets (defending)", () => {
     const intents = defense.intents(snap);
     expect(intents.some(i => i.kind === "removeDefendTarget")).toBe(false);
   });
+
+  it("does not request a defender for a sponsored target that's gone into safe mode, even with hostiles still present", () => {
+    const snap = colonySnap({
+      hostiles: [],
+      defending: ["W9N9"],
+      visibleRooms: [visibleRoom("W9N9", undefined, 2, undefined, true)]
+    });
+    expect(defense.desiredCreeps(snap)).toEqual([]);
+  });
+
+  it("drops a sponsored target once it's gone into safe mode, emitting removeDefendTarget", () => {
+    const snap = colonySnap({
+      hostiles: [],
+      defending: ["W9N9"],
+      visibleRooms: [visibleRoom("W9N9", undefined, 2, undefined, true)]
+    });
+    const intents = defense.intents(snap);
+    expect(intents).toContainEqual({ kind: "removeDefendTarget", room: "W1N1", target: "W9N9" });
+  });
 });
