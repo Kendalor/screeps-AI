@@ -268,6 +268,25 @@ describe("haulerBody (must stay 1:1 carry:move so a loaded carrier never fatigue
   });
 });
 
+describe("haulerBody with roads=true (2:1 carry:move set is 3 parts, not 2 — caps differently)", () => {
+  const body = (energy: number) => haulerBody(energy, true);
+
+  it("is always a valid, affordable body with CARRY and 2:1 CARRY:MOVE", () => {
+    for (const e of ENERGY_LEVELS) {
+      const b = body(e);
+      expectValidBody(b);
+      expectAffordable(body, e);
+      expect(b).toContain(CARRY);
+      expect(b.filter(p => p === MOVE).length).toBe(Math.floor(b.filter(p => p === CARRY).length / 2));
+    }
+  });
+
+  it("caps the body at the 50-part limit even though a set is 3 parts (25 sets would be 75)", () => {
+    const capped = body(50_000);
+    expect(capped.length).toBeLessThanOrEqual(MAX_BODY_PARTS);
+  });
+});
+
 describe("miner role", () => {
   it("upkeeps its own container (repair < 70%, build the site) before harvesting, then link over container", () => {
     expect(roleDef("miner")).toBe(ROLES.miner);

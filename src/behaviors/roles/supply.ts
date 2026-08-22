@@ -12,7 +12,11 @@ export const config = {
 } as const;
 
 const SUPPLY_SET: BodyPartConstant[] = [CARRY, CARRY, MOVE];
-const MAX_HAULER_SETS = 25; // matches hauler.ts's cap — 25 sets = 50 parts, the hard body cap
+const MAX_BODY_PARTS = 50; // engine hard cap (MAX_CREEP_SIZE)
+// A full-size hauler body's set count, at this same SUPPLY_SET shape (3 parts/set) — halved below to
+// size a supply creep at half a hauler's carry, not derived from a fixed 25 (which assumed a 2-part
+// set and would silently double once anything past the /2 halving changed).
+const MAX_HAULER_SETS = Math.floor(MAX_BODY_PARTS / SUPPLY_SET.length);
 
 export function supplyBody(energy: number, controllerLevel: number, roads = false): BodyPartConstant[] {
   if (controllerLevel < config.twoSupplyRcl) return haulerBody(energy, roads);
