@@ -271,7 +271,7 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
       }
       return best;
     };
-    intents.push(...marketFallback(leftover, terminalCapacityPct, market?.orders ?? {}, myOrders, bestBuyOrder));
+    intents.push(...marketFallback(leftover, terminalCapacityPct, market?.orders ?? {}, market?.prices ?? {}, myOrders, bestBuyOrder));
   }
 
   return intents;

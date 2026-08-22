@@ -17,6 +17,21 @@ export const MARKET_TRADING_ENABLED = __SERVER__ === "main";
 // everything else the colony needs to receive (decision 6).
 const FORCE_SELL_CAPACITY_PCT = 0.9;
 
+// Guardrail band around the 7-day avgPrice: never buy more than 20% above it, never sell more than 20%
+// below it. A live order-book price outside this band isn't traded at all this pass (not clamped to the
+// band edge) — the empire only ever trades on its own terms, never chases a thin/manipulated order book.
+// Does not apply to the force-sell escape hatch (sellPath's capacityPct branch), which is deliberately
+// price-blind by design (decision 6) — a jammed terminal needs to clear regardless of price.
+const GUARDRAIL_BAND = 0.2;
+
+function withinBuyGuardrail(buyPrice: number, avgPrice: number | undefined): boolean {
+  return avgPrice !== undefined && buyPrice <= avgPrice * (1 - GUARDRAIL_BAND);
+}
+
+function withinSellGuardrail(sellPrice: number, avgPrice: number | undefined): boolean {
+  return avgPrice !== undefined && sellPrice >= avgPrice * (1 + GUARDRAIL_BAND);
+}
+
 /** The credit cost to buy a full BOOST_TARGETS quantity of every boost-line resource, at today's live
  * sell price (falling back to the slower-moving history average when no live sell price is cached yet) —
  * "how much would it cost, right now, to buy the entire standing stockpile target from scratch" (decision
@@ -67,6 +82,7 @@ export function marketFallback(
   leftover: readonly EmpireRequest[],
   terminalCapacityPct: (colony: string, resource: ResourceConstant) => number,
   orders: MarketStats["orders"],
+  prices: MarketStats["prices"],
   myOrders: readonly LiveOrder[],
   bestBuyOrder: (resource: ResourceConstant) => { id: string; price: number } | undefined
 ): Intent[] {
@@ -84,13 +100,22 @@ export function marketFallback(
   for (const entry of leftover) {
     const { colony, resource, amount } = entry;
     if (amount === 0) continue;
+    const avgPrice = (prices as Record<string, { avgPrice: number } | undefined>)[resource]?.avgPrice;
 
     if (amount < 0) {
-      wanted.add(`${colony}:${resource}:sell`);
-      sellPath(colony, resource, terminalCapacityPct(colony, resource), orders, byKey, bestBuyOrder, intents);
+      const capacityPct = terminalCapacityPct(colony, resource);
+      // The force-sell branch is price-blind by design (decision 6) — always "wanted" regardless of the
+      // guardrail. The normal priced branch only counts as wanted (kept alive, not pruned) when the live
+      // sellMin actually clears the guardrail this pass.
+      if (capacityPct >= FORCE_SELL_CAPACITY_PCT || withinSellGuardrail(orders[resource]?.sellMin ?? -Infinity, avgPrice)) {
+        wanted.add(`${colony}:${resource}:sell`);
+      }
+      sellPath(colony, resource, capacityPct, orders, avgPrice, byKey, bestBuyOrder, intents);
     } else {
-      wanted.add(`${colony}:${resource}:buy`);
-      buyPath(colony, resource, orders, byKey, intents);
+      if (withinBuyGuardrail(orders[resource]?.buyMax ?? Infinity, avgPrice)) {
+        wanted.add(`${colony}:${resource}:buy`);
+      }
+      buyPath(colony, resource, orders, avgPrice, byKey, intents);
     }
   }
 
@@ -110,6 +135,7 @@ function sellPath(
   resource: ResourceConstant,
   capacityPct: number,
   orders: MarketStats["orders"],
+  avgPrice: number | undefined,
   byKey: Map<string, LiveOrder>,
   bestBuyOrder: (resource: ResourceConstant) => { id: string; price: number } | undefined,
   intents: Intent[]
@@ -119,8 +145,9 @@ function sellPath(
 
   if (capacityPct >= FORCE_SELL_CAPACITY_PCT) {
     // Force-sell: dump into the best current live buy order (any player's) immediately, ignoring price —
-    // a jammed terminal blocks everything else the colony needs to receive (decision 6). No real buy
-    // order to deal against yet this pass simply means nothing force-sells this tick.
+    // a jammed terminal blocks everything else the colony needs to receive (decision 6). Deliberately NOT
+    // guardrailed: a jammed terminal must clear regardless of price, that's the whole point of this branch.
+    // No real buy order to deal against yet this pass simply means nothing force-sells this tick.
     const buy = bestBuyOrder(resource);
     if (buy) intents.push({ kind: "marketDeal", order: buy.id, amount: ORDER_AMOUNT, room: colony });
     return;
@@ -128,6 +155,9 @@ function sellPath(
 
   const sellPrice = orders[resource]?.sellMin;
   if (sellPrice === undefined) return;
+  // Guardrail: never sell more than 20% below the 7-day average — a live sellMin below that band is
+  // rejected outright this pass (not clamped up to the band edge), same as if no price were cached at all.
+  if (!withinSellGuardrail(sellPrice, avgPrice)) return;
   if (existing) {
     intents.push({ kind: "marketReprice", order: existing.id, price: sellPrice });
     if (existing.remainingAmount < ORDER_AMOUNT) {
@@ -142,6 +172,7 @@ function buyPath(
   colony: string,
   resource: ResourceConstant,
   orders: MarketStats["orders"],
+  avgPrice: number | undefined,
   byKey: Map<string, LiveOrder>,
   intents: Intent[]
 ): void {
@@ -149,6 +180,9 @@ function buyPath(
   // convenience spend, not this design's own boost-line buying.
   const buyPrice = orders[resource]?.buyMax;
   if (buyPrice === undefined) return;
+  // Guardrail: never buy more than 20% above the 7-day average — a live buyMax above that band is
+  // rejected outright this pass (not clamped down to the band edge), same as if no price were cached.
+  if (!withinBuyGuardrail(buyPrice, avgPrice)) return;
   const key = `${colony}:${resource}:buy`;
   const existing = byKey.get(key);
   if (existing) {
