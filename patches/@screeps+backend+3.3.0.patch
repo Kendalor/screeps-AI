@@ -1,7 +1,25 @@
 diff --git a/node_modules/@screeps/backend/lib/cronjobs.js b/node_modules/@screeps/backend/lib/cronjobs.js
-index 6b0ae50..cc4ffd3 100644
+index 6b0ae50..9de8652 100644
 --- a/node_modules/@screeps/backend/lib/cronjobs.js
 +++ b/node_modules/@screeps/backend/lib/cronjobs.js
+@@ -177,7 +177,7 @@ function sendNotifications() {
+ 
+ async function roomsForceUpdate() {
+     const gameTime = await common.getGametime();
+-    const activeRooms = await utils.getActiveRooms();
++    const activeRooms = (await utils.getActiveRooms()) || [];
+     const rooms = await db.rooms.find({status: {$ne: 'out of borders'}, _id: {$nin: activeRooms}});
+     for(let room of rooms) {
+         if (!room.nextForceUpdateTime || gameTime >= room.nextForceUpdateTime) {
+@@ -374,7 +374,7 @@ async function genInvaders() {
+         return q.all(promises);
+     }
+ 
+-    const activeRooms = await utils.getActiveRooms();
++    const activeRooms = (await utils.getActiveRooms()) || [];
+     const rooms = await db.rooms.find({status: 'normal', _id: {$nin: activeRooms}});
+     for(const room of rooms) {
+         const objects = await db['rooms.objects'].find({room: room._id, type: {$in: ['source','controller','creep']}});
 @@ -593,7 +593,8 @@ async function genDeposits(){
  
          const rooms = await db['rooms'].find({_id: {$in: sectorEdges}, bus: true, status: 'normal', depositType: {$exists: true}});
@@ -12,3 +30,36 @@ index 6b0ae50..cc4ffd3 100644
          }
          const busyRooms = sectorDeposits.map(i => i.room);
          const freeRooms = _.reject(rooms, r => _.includes(busyRooms, r._id));
+diff --git a/node_modules/@screeps/backend/lib/strongholds.js b/node_modules/@screeps/backend/lib/strongholds.js
+index b47a06e..8424e7a 100644
+--- a/node_modules/@screeps/backend/lib/strongholds.js
++++ b/node_modules/@screeps/backend/lib/strongholds.js
+@@ -28,11 +28,17 @@ async function spawnStronghold(roomName, opts = {}) {
+ 
+     const gameTime = await common.getGametime();
+ 
+-    const [{terrain}, objects] = await q.all([
++    const [terrainDoc, objects] = await q.all([
+         db['rooms.terrain'].findOne({room: roomName}),
+         db['rooms.objects'].find({room: roomName, type: {$in: [C.STRUCTURE_RAMPART, ...C.OBSTACLE_OBJECT_TYPES]}})
+     ]);
+ 
++    if(!terrainDoc) {
++        console.log(`spawnStronghold: no terrain for room ${roomName}, skipping`);
++        return q.reject('no terrain');
++    }
++    const {terrain} = terrainDoc;
++
+     const templateNames = opts.templateName ? [opts.templateName] : _.keys(strongholds.templates);
+ 
+     const controller = _(objects).filter({type: C.STRUCTURE_CONTROLLER}).first();
+@@ -157,7 +163,8 @@ async function selectRoom(sectorCenter) {
+                 const room = _.sample(possibleRooms);
+                 return spawnStronghold(room._id, {deployTime: strongholdDeployTime});
+             }
+-        });
++        })
++        .catch(e => console.log(`selectRoom: ${e}`));
+ };
+ 
+ async function buildMapGrid() {
