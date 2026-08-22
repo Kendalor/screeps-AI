@@ -70,13 +70,16 @@ const ORDER_AMOUNT = 3000; // flat per-order size; no partial-fill sizing in thi
  * at most one buy and one sell standing order per resource per colony — repriced/extended in place, never
  * cancelled-and-recreated, and pruned once no longer needed.
  *
- * `terminalCapacityPct`, `myOrders`, and `bestBuyOrder` are all injected (same pattern
+ * `terminalCapacityPct`, `myOrders`, `bestBuyOrder`, and `bestSellOrder` are all injected (same pattern
  * matchEmpireRequests already uses for receiverFreeCapacity/sendCost) so this stays a pure function over
  * plain stubs, no live Game.* lookup inside.
  * - `myOrders`: OUR OWN live standing orders (Game.market.orders) — what reprice/extend/prune act on.
  * - `bestBuyOrder`: the best (highest-price) live buy order ANY player currently has for a resource —
  *   distinct from `myOrders`/`orders[resource].buyMax`, since force-selling needs a real dealable order id
  *   belonging to whoever's actually offering to buy, not our own cached summary price.
+ * - `bestSellOrder`: the best (lowest-price) live sell order ANY player currently has for a resource — the
+ *   buy-side mirror of `bestBuyOrder`, used to immediately deal on a good-deal price instead of waiting on
+ *   a standing buy order (see buyPath).
  */
 export function marketFallback(
   leftover: readonly EmpireRequest[],
@@ -84,7 +87,8 @@ export function marketFallback(
   orders: MarketStats["orders"],
   prices: MarketStats["prices"],
   myOrders: readonly LiveOrder[],
-  bestBuyOrder: (resource: ResourceConstant) => { id: string; price: number } | undefined
+  bestBuyOrder: (resource: ResourceConstant) => { id: string; price: number } | undefined,
+  bestSellOrder: (resource: ResourceConstant) => { id: string; price: number; remainingAmount: number } | undefined
 ): Intent[] {
   const intents: Intent[] = [];
 
@@ -112,10 +116,13 @@ export function marketFallback(
       }
       sellPath(colony, resource, capacityPct, orders, avgPrice, byKey, bestBuyOrder, intents);
     } else {
-      if (withinBuyGuardrail(orders[resource]?.buyMax ?? Infinity, avgPrice)) {
+      // A good-deal immediate buy (below) is a one-shot deal(), not a standing order — it deliberately
+      // does NOT mark "wanted", so any standing buy order left over from a previous pass gets pruned
+      // below instead of sitting there duplicating what the deal already bought.
+      const dealt = buyPath(colony, resource, orders, avgPrice, byKey, bestSellOrder, intents);
+      if (!dealt && withinBuyGuardrail(orders[resource]?.buyMax ?? Infinity, avgPrice)) {
         wanted.add(`${colony}:${resource}:buy`);
       }
-      buyPath(colony, resource, orders, avgPrice, byKey, intents);
     }
   }
 
@@ -168,21 +175,36 @@ function sellPath(
   }
 }
 
+/** Returns true when a good-deal immediate deal() was emitted this pass (see marketFallback's `dealt`
+ * handling above) — false means the standing-buy-order path ran instead (or nothing at all). */
 function buyPath(
   colony: string,
   resource: ResourceConstant,
   orders: MarketStats["orders"],
   avgPrice: number | undefined,
   byKey: Map<string, LiveOrder>,
+  bestSellOrder: (resource: ResourceConstant) => { id: string; price: number; remainingAmount: number } | undefined,
   intents: Intent[]
-): void {
+): boolean {
+  // Good-deal immediate buy: a live sell order at or below the 7-day average is worth taking right now
+  // rather than waiting on a standing buy order to maybe get filled — "immediately buy if it's a good
+  // deal (close to average price or below)". Checked BEFORE the guardrail/standing-order path below, and
+  // skipped entirely with no cached avgPrice (no reference price means no "good deal" judgement possible).
+  if (avgPrice !== undefined) {
+    const sell = bestSellOrder(resource);
+    if (sell && sell.price <= avgPrice) {
+      intents.push({ kind: "marketDeal", order: sell.id, amount: Math.min(ORDER_AMOUNT, sell.remainingAmount), room: colony });
+      return true;
+    }
+  }
+
   // Not gated on the credit reserve (decision 6) — the reserve is scoped for future non-boost-line
   // convenience spend, not this design's own boost-line buying.
   const buyPrice = orders[resource]?.buyMax;
-  if (buyPrice === undefined) return;
+  if (buyPrice === undefined) return false;
   // Guardrail: never buy more than 20% above the 7-day average — a live buyMax above that band is
   // rejected outright this pass (not clamped down to the band edge), same as if no price were cached.
-  if (!withinBuyGuardrail(buyPrice, avgPrice)) return;
+  if (!withinBuyGuardrail(buyPrice, avgPrice)) return false;
   const key = `${colony}:${resource}:buy`;
   const existing = byKey.get(key);
   if (existing) {
@@ -193,4 +215,5 @@ function buyPath(
   } else {
     intents.push({ kind: "marketCreateOrder", room: colony, resource, amount: ORDER_AMOUNT, price: buyPrice, type: "buy" });
   }
+  return false;
 }

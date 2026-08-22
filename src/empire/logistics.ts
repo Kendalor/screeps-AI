@@ -271,7 +271,16 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
       }
       return best;
     };
-    intents.push(...marketFallback(leftover, terminalCapacityPct, market?.orders ?? {}, market?.prices ?? {}, myOrders, bestBuyOrder));
+    const bestSellOrder = (resource: ResourceConstant): { id: string; price: number; remainingAmount: number } | undefined => {
+      let best: { id: string; price: number; remainingAmount: number } | undefined;
+      for (const o of Game.market.getAllOrders({ type: ORDER_SELL, resourceType: resource })) {
+        if (!best || o.price < best.price) best = { id: o.id, price: o.price, remainingAmount: o.remainingAmount };
+      }
+      return best;
+    };
+    intents.push(
+      ...marketFallback(leftover, terminalCapacityPct, market?.orders ?? {}, market?.prices ?? {}, myOrders, bestBuyOrder, bestSellOrder)
+    );
   }
 
   return intents;
