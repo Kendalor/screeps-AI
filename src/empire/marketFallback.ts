@@ -17,6 +17,14 @@ export const MARKET_TRADING_ENABLED = __SERVER__ === "main";
 // everything else the colony needs to receive (decision 6).
 const FORCE_SELL_CAPACITY_PCT = 0.9;
 
+// Per-resource terminal-fullness threshold BELOW which a surplus doesn't sell at all, even at a great
+// price — the empire holds onto boost-line surplus rather than trading it away just because leftover has
+// a negative entry for it. Only once a resource is genuinely eating a large share of the terminal's own
+// capacity (a resource occupying X% of a terminal's TOTAL capacity is what terminalCapacityPct actually
+// measures — see its own doc) does the normal priced sell path kick in; short of that, but at/above
+// FORCE_SELL_CAPACITY_PCT, the price-blind escape hatch still applies regardless of this floor.
+const SELL_CAPACITY_PCT = 0.8;
+
 // Guardrail band around the 7-day avgPrice: never buy more than 20% above it, never sell more than 20%
 // below it. A live order-book price outside this band isn't traded at all this pass (not clamped to the
 // band edge) — the empire only ever trades on its own terms, never chases a thin/manipulated order book.
@@ -109,9 +117,14 @@ export function marketFallback(
     if (amount < 0) {
       const capacityPct = terminalCapacityPct(colony, resource);
       // The force-sell branch is price-blind by design (decision 6) — always "wanted" regardless of the
-      // guardrail. The normal priced branch only counts as wanted (kept alive, not pruned) when the live
-      // sellMin actually clears the guardrail this pass.
-      if (capacityPct >= FORCE_SELL_CAPACITY_PCT || withinSellGuardrail(orders[resource]?.sellMin ?? -Infinity, avgPrice)) {
+      // guardrail or SELL_CAPACITY_PCT. The normal priced branch only counts as wanted (kept alive, not
+      // pruned) when the terminal is actually full enough to bother selling AND the live sellMin clears
+      // the price guardrail this pass — a surplus below SELL_CAPACITY_PCT just sits, full stop, however
+      // good the price is (see sellPath).
+      if (
+        capacityPct >= FORCE_SELL_CAPACITY_PCT ||
+        (capacityPct >= SELL_CAPACITY_PCT && withinSellGuardrail(orders[resource]?.sellMin ?? -Infinity, avgPrice))
+      ) {
         wanted.add(`${colony}:${resource}:sell`);
       }
       sellPath(colony, resource, capacityPct, orders, avgPrice, byKey, bestBuyOrder, intents);
@@ -159,6 +172,12 @@ function sellPath(
     if (buy) intents.push({ kind: "marketDeal", order: buy.id, amount: ORDER_AMOUNT, room: colony });
     return;
   }
+
+  // Below SELL_CAPACITY_PCT, a surplus doesn't sell at all — having a leftover deficit-negative entry
+  // (an empire-wide surplus over BOOST_TARGETS) isn't by itself a reason to trade; only a terminal that's
+  // genuinely filling up with this resource is. Falling through to nothing here also means an existing
+  // standing order gets pruned once capacity drops back below this floor (see marketFallback's `wanted`).
+  if (capacityPct < SELL_CAPACITY_PCT) return;
 
   const sellPrice = orders[resource]?.sellMin;
   if (sellPrice === undefined) return;
