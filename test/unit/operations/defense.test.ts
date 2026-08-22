@@ -291,9 +291,11 @@ describe("Defense sponsored targets (defending)", () => {
     expect(requests[0].memory.role).toBe("defender");
   });
 
-  it("does not request a defender for a sponsored target already seen clear", () => {
+  it("still requests a defender for a sponsored target already seen clear — a defend flag is a standing garrison order, not a one-shot strike", () => {
     const snap = colonySnap({ hostiles: [], defending: ["W9N9"], visibleRooms: [visibleRoom("W9N9", undefined, 0)] });
-    expect(defense.desiredCreeps(snap)).toEqual([]);
+    const requests = defense.desiredCreeps(snap);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].memory.role).toBe("defender");
   });
 
   it("still requests for a sponsored target that's never been scouted (absent from visibleRooms)", () => {
@@ -322,10 +324,10 @@ describe("Defense sponsored targets (defending)", () => {
     expect(intents).toContainEqual({ kind: "setDefendTargetRoom", creep: expect.any(String), room: "W1N1" });
   });
 
-  it("drops a sponsored target once seen clear, emitting removeDefendTarget", () => {
+  it("keeps a sponsored target once seen clear — dropping it is defendFlags.ts's job (flag removed), not a hostile-count trigger", () => {
     const snap = colonySnap({ hostiles: [], defending: ["W9N9"], visibleRooms: [visibleRoom("W9N9", undefined, 0)] });
     const intents = defense.intents(snap);
-    expect(intents).toContainEqual({ kind: "removeDefendTarget", room: "W1N1", target: "W9N9" });
+    expect(intents.some(i => i.kind === "removeDefendTarget")).toBe(false);
   });
 
   it("keeps a sponsored target that's still hostile", () => {
