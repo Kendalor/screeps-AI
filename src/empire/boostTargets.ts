@@ -8,14 +8,20 @@
 //
 // Every raw mineral (H, O, U, L, K, Z, G, X — G is mined directly, not just produced) and every reaction
 // compound (RESOURCES_ALL filtered to REACTIONS' keys/values, verified against
-// node_modules/@screeps/common/lib/constants.js, not recalled) currently gets the SAME flat 3,000 target —
-// a deliberate placeholder, not a tuned number: nothing downstream (boosting/reactions) consumes stock yet,
-// so there's no real demand signal to size these against. Retune per-resource once M5/M7 exist and actual
+// node_modules/@screeps/common/lib/constants.js, not recalled) gets a target below — still a deliberate
+// placeholder split, not a tuned number: nothing downstream (boosting/reactions) consumes stock yet, so
+// there's no real demand signal to size these against. Retune per-resource once M5/M7 exist and actual
 // consumption is observable. Omit an entry entirely to spend no storage/terminal budget or matching effort
 // on it (decision 3's "leave unused boost lines with no target at all") — not used today, every resource
 // below is intentionally included so raw mineral stock (already produced by mineralMiner) isn't left
 // unmanaged by Steward/empire logistics while reactions remain unbuilt.
-const FLAT_TARGET = 3000;
+//
+// MOVE (ZO/ZHO2/XZHO2) and CARRY (KH/KH2O/XKH2O) boost compounds are targeted at 0 — see BOOSTS.move/
+// BOOSTS.carry in node_modules/@screeps/common/lib/constants.js — since those boost lines aren't wanted
+// in the empire stockpile at all right now.
+const BASE_MINERAL_TARGET = 3000;
+const COMPOUND_TARGET = 6000;
+const UNWANTED_BOOST_TARGET = 0;
 
 const RAW_MINERALS: ResourceConstant[] = ["H", "O", "U", "L", "K", "Z", "G", "X"];
 
@@ -57,9 +63,14 @@ const REACTION_COMPOUNDS: ResourceConstant[] = [
   "XUHO2"
 ];
 
-export const BOOST_TARGETS: Partial<Record<ResourceConstant, number>> = Object.fromEntries(
-  [...RAW_MINERALS, ...REACTION_COMPOUNDS].map(resource => [resource, FLAT_TARGET])
-);
+// MOVE and CARRY boost lines (all three tiers each) are zeroed out below regardless of the compound target.
+const UNWANTED_BOOST_COMPOUNDS: ResourceConstant[] = ["ZO", "ZHO2", "XZHO2", "KH", "KH2O", "XKH2O"];
+
+export const BOOST_TARGETS: Partial<Record<ResourceConstant, number>> = Object.fromEntries([
+  ...RAW_MINERALS.map(resource => [resource, BASE_MINERAL_TARGET]),
+  ...REACTION_COMPOUNDS.map(resource => [resource, COMPOUND_TARGET]),
+  ...UNWANTED_BOOST_COMPOUNDS.map(resource => [resource, UNWANTED_BOOST_TARGET])
+]);
 
 /** The empire-assigned base target for `resource`, or undefined if it isn't a stockpiled boost line. */
 export function baseTargetFor(resource: ResourceConstant): number | undefined {
