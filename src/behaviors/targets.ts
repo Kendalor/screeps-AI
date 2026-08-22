@@ -713,7 +713,22 @@ function findCandidates(
       // Losing here means initiating: a defender/attacker that's already being shot at by something
       // still fights back via nearbyMeleeThreat/kiting in interpreter.ts, which this pool exclusion
       // never touches — only which target gets PICKED to walk toward and attack first.
-      return room.find(FIND_HOSTILE_CREEPS).filter(h => !wouldLoseTo(creep, h));
+      //
+      // Under an active safe mode the room's owner is fully protected — attack() still resolves a target
+      // and "fires" every tick (didAct stays true) but deals no damage, so a defender locked onto one never
+      // makes any real progress. Worse than hostileStructure's identical problem below: emptying this pool
+      // doesn't just stop wasted action, it's the ONLY thing that can unstick a defender at all here —
+      // validLock's defendTargetRoom check (this file, above) only invalidates a lock once the target's
+      // position leaves defendTargetRoom, but reassigning defendTargetRoom itself does nothing to a target
+      // that hasn't moved; resolveTarget then immediately falls through to THIS pool, which — without the
+      // safeMode guard — just hands back the same still-there hostile (or any other one in the room) and
+      // re-locks, so the defender never leaves. Confirmed live: defender_W45N17_73181330 stuck permanently
+      // re-fighting in a safe-moded room for 1000+ ticks after Defense reassigned its defendTargetRoom
+      // elsewhere, because this pool kept re-supplying a target to lock onto in the room it was meant to
+      // leave. Emptying the pool while safeMode is active makes resolveTarget report "nothing to do"
+      // instead, same as the room having no hostile creeps at all — the attack step then falls through
+      // (targetGone) and moveToRoom (this role's preceding step) takes over on the next pass.
+      return room.controller?.safeMode ? [] : room.find(FIND_HOSTILE_CREEPS).filter(h => !wouldLoseTo(creep, h));
     case "hostileStructure":
       // FIND_HOSTILE_STRUCTURES includes a hostile-owned/reserved room's controller — creep.attack()
       // rejects a StructureController outright (ERR_INVALID_TARGET; only attackController touches one,

@@ -592,6 +592,24 @@ describe("resolveTarget hostile pool excludes fights the creep would lose", () =
 
     expect((got as { id: string }).id).toBe("attacker");
   });
+
+  // Under an active safe mode the room's owner is fully protected — attack() would resolve a target and
+  // "fire" every tick but deal no damage, so the pool empties out instead (same rule hostileStructure's
+  // case already has). This is the ONLY thing that can unstick a defender whose defendTargetRoom just got
+  // reassigned away from a safe-moded room it's still standing in: validLock only drops a lock once the
+  // TARGET's own position leaves defendTargetRoom, which never happens for a target that hasn't moved — so
+  // without this, resolveTarget just re-hands back the same (or another) in-room hostile and re-locks.
+  it("offers nothing while the room's own controller is under active safe mode, even to a creep that would win the fight", () => {
+    const invader = fakeHostileWithHits("invader", [ATTACK], 100);
+    stubGame({ objects: { invader } });
+
+    const creep = fighterCreep("defender", Array(4).fill(RANGED_ATTACK), 250, [invader]);
+    (creep.room as unknown as { controller: { safeMode: number } }).controller = { safeMode: 1234 };
+
+    const got = resolveTarget(creep, { find: "hostile" });
+
+    expect(got).toBeNull();
+  });
 });
 
 describe("resolveTarget pile claim limits", () => {
