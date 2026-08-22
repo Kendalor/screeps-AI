@@ -9,9 +9,10 @@ import { pickRemotes } from "../mining/pickRemotes";
 import { remoteSourceLoadParts } from "../mining/load";
 import { PARTS_PER_SPAWN } from "../colony/metrics";
 import type { Intent } from "../intents/types";
-import { findPath, type FindPath } from "../construction/planner";
+import { findPath, type FindPath, type RoadPathResult } from "../construction/planner";
 import { log } from "../lib/log";
 import { isExitTile } from "../lib/remotePath";
+import { range, type XY } from "../lib/geometry";
 import type { PlacedStructure } from "../construction/stamp";
 import type { BodyContext } from "../behaviors/types";
 import type { ColonySnapshot, SnapCreep } from "../snapshot/types";
@@ -44,6 +45,24 @@ function sourceStructureType(rcl: number): BuildableStructureConstant {
 }
 
 const workOf = (c: SnapCreep): number => countPart(c.body, WORK); // live WORK, spawning included
+
+// A link built range-1 of the source occupies one of the (often only 1-2) open harvest tiles outright —
+// on some sources that's the ONLY open tile, permanently locking a miner out of its own source. A
+// container never had this problem (a miner stands ON it while harvesting), but a miner does NOT stand
+// on a link — it harvests beside it and transfers in. Pulling the link back to range 2 frees that tile:
+// the miner stands on the range-1 road tile between link and source instead, range 1 of both. `route`
+// is the already-computed range-1 anchor->source path (route.path's last entry is that miner-adjacent
+// tile) — walked backward for the first earlier tile that's actually range >=2 from the source, rather
+// than blindly taking path[length-2], since a diagonal approach can occasionally keep two consecutive
+// steps both at range 1. Falls back to the range-1 spot itself if the path is too short to pull back
+// (e.g. source sits right next to the anchor) — better a link that reintroduces the old problem on a rare
+// layout than no claim at all.
+function linkSpot(route: RoadPathResult, source: XY): XY {
+  for (let i = route.path.length - 2; i >= 0; i--) {
+    if (range(route.path[i], source) >= 2) return route.path[i];
+  }
+  return route.structurePos;
+}
 
 export class Mining extends Operation {
   public readonly kind = "mining";
@@ -206,13 +225,21 @@ export class Mining extends Operation {
       const sourcePos = new RoomPosition(source.x, source.y, colony.name);
       const route = findPath(anchorPos, sourcePos, 1); // no opts — sources are never inside the bunker footprint
       if (route.path.length === 0) continue; // no path found; findPath already logged
-      out.push({ x: route.structurePos.x, y: route.structurePos.y, type, sourceId: source.id });
+      // A link sits one tile further back than a container (see linkSpot's doc) so the miner's own
+      // range-1 tile — route.structurePos, the path's last entry — stays open for it to stand on
+      // instead of being occupied by the structure itself. A container keeps the old range-1 placement:
+      // the miner stands ON it, same as always.
+      const spot = type === "link" ? linkSpot(route, source) : route.structurePos;
+      out.push({ x: spot.x, y: spot.y, type, sourceId: source.id });
       // Claimed source-outward (reversed from path order, which runs anchor->source) so a builder
       // paves the tiles nearest the source first and works back toward the anchor. Exit-tile filtering
       // is now the planner's own consolidate() step, not this loop's concern. route.path is the real
-      // PathFinder.search result — every step AFTER the anchor, never including it — so the last entry
-      // is the container/link and everything before it is road.
-      const roadTiles = route.path.slice(0, -1);
+      // PathFinder.search result — every step AFTER the anchor, never including it. Everything up to and
+      // including the miner's own range-1 tile is road; a link claim on an earlier tile has already
+      // removed that one tile from this slice via the `spot`-based cut below (never double-claimed as
+      // both road and structure), while a container claim removes its own last (and only) tile the same
+      // way `roadTiles` always excluded it.
+      const roadTiles = route.path.filter(p => !(p.x === spot.x && p.y === spot.y));
       for (let i = roadTiles.length - 1; i >= 0; i--) {
         out.push({ x: roadTiles[i].x, y: roadTiles[i].y, type: ROAD, sourceId: source.id });
       }
@@ -267,20 +294,29 @@ export class Mining extends Operation {
         const sourcePos = new RoomPosition(source.x, source.y, colony.name);
         const route = findPath(colony, anchorPos, sourcePos, 1); // reads matrixCache — see planner.ts's cross-tick guarantee
         if (route.path.length === 0) continue; // no path found; findPath already logged
-        const spot = route.structurePos;
+        const spot = route.structurePos; // the miner's own range-1 tile — unchanged whether a container or a link is fed
         const container = colony.containers.find(c => c.x === spot.x && c.y === spot.y);
+        // A source's spot hosts a container pre-RCL7; from RCL7 on, a link sits one tile further back
+        // instead (see structures()'s linkSpot — freeing the miner's own range-1 tile rather than
+        // occupying it), so the link search must check that pulled-back tile, not `spot` itself, or
+        // planLinkTransfers (logistics/links.ts) can never find it via sourceMemory[...].linkId and a
+        // built source link just sits full forever.
+        const linkPos = linkSpot(route, source);
+        const link = colony.links.find(l => l.x === linkPos.x && l.y === linkPos.y);
         const recorded = colony.sourceMemory[source.id];
 
         const spotUnchanged = recorded?.spot?.x === spot.x && recorded?.spot?.y === spot.y;
         const containerUnchanged = !container || recorded?.containerId === container.id; // execute.ts only ever adds an id
-        if (spotUnchanged && containerUnchanged) continue;
+        const linkUnchanged = !link || recorded?.linkId === link.id; // same only-ever-adds rule
+        if (spotUnchanged && containerUnchanged && linkUnchanged) continue;
 
         out.push({
           kind: "recordSourceSpot",
           room: colony.name,
           source: source.id,
           spot: { x: spot.x, y: spot.y },
-          ...(container ? { container: container.id } : {})
+          ...(container ? { container: container.id } : {}),
+          ...(link ? { link: link.id } : {})
         });
       }
     }

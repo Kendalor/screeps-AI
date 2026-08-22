@@ -19,8 +19,11 @@ function nearMatches(creep: Creep, s: { pos: RoomPosition }, near: Near | undefi
     case undefined:
       return true;
     case "assignedSource": {
+      // Range 2, not 1: a source container sits at range 1 (the miner stands on it), but a source link
+      // sits one tile further back at range 2 — freeing the miner's own range-1 tile instead of occupying
+      // it (see operations/mining.ts's linkSpot). Both must resolve through this one check.
       const source = creep.memory.sourceId && (Game.getObjectById(creep.memory.sourceId) as Source | null);
-      return !!source && s.pos.inRangeTo(source.pos, 1);
+      return !!source && s.pos.inRangeTo(source.pos, 2);
     }
     case "assignedMineral": {
       const mineral = creep.memory.mineralId && (Game.getObjectById(creep.memory.mineralId) as Mineral | null);

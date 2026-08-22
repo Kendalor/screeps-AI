@@ -22,7 +22,9 @@ export type TargetSpec =
       share?: Share;
       prefer?: Prefer;
       // Positional discriminator, the only way to tell same-typed structures apart by where they sit:
-      //  - "assignedSource": range 1 of the creep's memory.sourceId — a miner's own source container/link.
+      //  - "assignedSource": range 2 of the creep's memory.sourceId — a miner's own source container
+      //    (range 1, the miner stands on it) or link (range 2, pulled back so the miner's range-1 tile
+      //    stays free — see operations/mining.ts's linkSpot).
       //  - "controller": range 2 of the room controller — the controller container (an upgrader parked on
       //    it stays in upgrade range). This is the hauler's fill target.
       //  - "notController": the complement — every container that is NOT the controller's, i.e. the source

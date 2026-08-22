@@ -11,7 +11,7 @@ import { REMOTE_MINER_PRIORITY } from "../../../src/behaviors/roles/miner";
 import { Mining } from "../../../src/operations/mining";
 import { findPath, resetFindPathCacheForTests, type FindPath } from "../../../src/construction/planner";
 import type { PlacedStructure } from "../../../src/construction/stamp";
-import { colonySnap, containerAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt, spawn } from "../../fixtures";
+import { colonySnap, containerAt, linkAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt, spawn } from "../../fixtures";
 import { stubPathFinderSingleRoom } from "../../constants";
 import type { ColonySnapshot } from "../../../src/snapshot/types";
 import type { Intent } from "../../../src/intents/types";
@@ -39,6 +39,17 @@ function expectedRoute(anchor: XY, source: XY, rcl = 3) {
 }
 
 const expectedSpot = (anchor: XY, source: XY, rcl = 3) => expectedRoute(anchor, source, rcl).structurePos;
+
+// Mirrors production's linkSpot (operations/mining.ts): a link sits one tile further back along the
+// route than a container, freeing the miner's own range-1 tile (expectedSpot) instead of occupying it.
+function expectedLinkSpot(anchor: XY, source: XY, rcl = 7): XY {
+  const route = expectedRoute(anchor, source, rcl);
+  for (let i = route.path.length - 2; i >= 0; i--) {
+    const p = route.path[i];
+    if (Math.max(Math.abs(p.x - source.x), Math.abs(p.y - source.y)) >= 2) return p;
+  }
+  return route.structurePos;
+}
 
 const minerRequests = (snap: Parameters<Mining["desiredCreeps"]>[0]) =>
   mining.desiredCreeps(snap).filter(r => r.memory.role === "miner");
@@ -540,10 +551,23 @@ describe("Mining.structures", () => {
     const source = sourceAt(20, 10);
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7, energyCapacity: 800 });
 
-    const spot = expectedSpot(anchor, source, 7);
+    const spot = expectedLinkSpot(anchor, source, 7);
     expect(mining.structures(snap, findPathFor(snap)).filter(s => s.type !== "road")).toEqual([
       { x: spot.x, y: spot.y, type: "link", sourceId: source.id }
     ]);
+  });
+
+  // The link is pulled back to range 2 of the source (not the range-1 spot a container would sit on),
+  // so the miner's own range-1 tile is left open to stand on instead of being occupied by the link.
+  it("leaves the miner's range-1 tile open (as road, not the link) at RCL7", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7, energyCapacity: 800 });
+
+    const minerSpot = expectedSpot(anchor, source, 7);
+    const placed = mining.structures(snap, findPathFor(snap));
+    expect(placed).toContainEqual({ x: minerSpot.x, y: minerSpot.y, type: "road", sourceId: source.id });
+    expect(placed.find(s => s.x === minerSpot.x && s.y === minerSpot.y && s.type === "link")).toBeUndefined();
   });
 
   // The container is only worth having if haulers can reach it, and findPath computes the whole
@@ -906,6 +930,68 @@ describe("Mining.intents", () => {
       controllerLevel: 3,
       containers: [container],
       sourceMemory: { [source.id]: { spot: { x: spot.x, y: spot.y }, containerId: container.id } }
+    });
+
+    expect(mining.intents(snap)).toEqual([]);
+  });
+
+  // At RCL7+ the source's spot hosts a link instead of a container (sourceStructureType swaps the
+  // placed type, same tile) — this must be detected and recorded the same way, or a built source link
+  // never gets its id into sourceMemory[...].linkId and planLinkTransfers (logistics/links.ts) can
+  // never find it to drain.
+  it("records the link id once one exists on the source's spot", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7);
+    const linkSpot = expectedLinkSpot(anchor, source, 7);
+    const link = linkAt(linkSpot.x, linkSpot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [link]
+    });
+
+    expect(mining.intents(snap)).toContainEqual(
+      expect.objectContaining({ kind: "recordSourceSpot", source: source.id, spot: { x: spot.x, y: spot.y }, link: link.id })
+    );
+  });
+
+  it("still emits when a link appears on an already-recorded spot", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7);
+    const linkSpot = expectedLinkSpot(anchor, source, 7);
+    const link = linkAt(linkSpot.x, linkSpot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [link],
+      // Spot recorded, link id not yet — the one case a write still has something to add.
+      sourceMemory: { [source.id]: { spot: { x: spot.x, y: spot.y } } }
+    });
+
+    expect(mining.intents(snap)).toContainEqual(
+      expect.objectContaining({ kind: "recordSourceSpot", link: link.id })
+    );
+  });
+
+  it("emits nothing once both spot and link are recorded", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7);
+    const linkSpot = expectedLinkSpot(anchor, source, 7);
+    const link = linkAt(linkSpot.x, linkSpot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [link],
+      sourceMemory: { [source.id]: { spot: { x: spot.x, y: spot.y }, linkId: link.id } }
     });
 
     expect(mining.intents(snap)).toEqual([]);
