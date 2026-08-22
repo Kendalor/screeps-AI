@@ -296,13 +296,21 @@ export class Mining extends Operation {
         if (route.path.length === 0) continue; // no path found; findPath already logged
         const spot = route.structurePos; // the miner's own range-1 tile — unchanged whether a container or a link is fed
         const container = colony.containers.find(c => c.x === spot.x && c.y === spot.y);
-        // A source's spot hosts a container pre-RCL7; from RCL7 on, a link sits one tile further back
-        // instead (see structures()'s linkSpot — freeing the miner's own range-1 tile rather than
-        // occupying it), so the link search must check that pulled-back tile, not `spot` itself, or
-        // planLinkTransfers (logistics/links.ts) can never find it via sourceMemory[...].linkId and a
-        // built source link just sits full forever.
-        const linkPos = linkSpot(route, source);
-        const link = colony.links.find(l => l.x === linkPos.x && l.y === linkPos.y);
+        // Detected by proximity to the source (range <=2, matching linkSpot's own pullback ceiling),
+        // not by matching the exact tile linkSpot computes today — mirrors upgrading.ts's controller-link
+        // detection for the identical reason: a link built before the range-2 pullback existed (or nudged
+        // aside by a later road/obstacle change) sits one tile off from where a fresh route lands, and an
+        // exact-match search would never see it again, leaving it full forever even though it's real and
+        // working. Anchor/controller link ids are excluded so a nearby non-source link (rare, but the
+        // controller link legitimately can sit close to a source in a cramped layout) is never misfiled
+        // as this source's link — same non-structural, id-based exclusion links.ts's own regression
+        // test (the "mystery link" case) already relies on.
+        const link = colony.links.find(
+          l =>
+            l.id !== colony.linkNetwork.storage &&
+            l.id !== colony.linkNetwork.controller &&
+            range(l, source) <= 2
+        );
         const recorded = colony.sourceMemory[source.id];
 
         const spotUnchanged = recorded?.spot?.x === spot.x && recorded?.spot?.y === spot.y;

@@ -996,6 +996,48 @@ describe("Mining.intents", () => {
 
     expect(mining.intents(snap)).toEqual([]);
   });
+
+  // Regression: a live colony can have a source link built BEFORE the range-2 pullback existed, sitting
+  // at the old range-1 tile (expectedSpot) instead of today's expectedLinkSpot. An exact-tile search
+  // would never see it again — it just sits full forever, invisible to planLinkTransfers. Detection has
+  // to tolerate this (range <=2 of the source, not an exact match), same tolerance upgrading.ts's
+  // controller-link detection already gives itself.
+  it("still finds a legacy source link sitting at the old range-1 spot", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7); // range-1: where a pre-pullback link would have landed
+    const link = linkAt(spot.x, spot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [link]
+    });
+
+    expect(mining.intents(snap)).toContainEqual(expect.objectContaining({ kind: "recordSourceSpot", link: link.id }));
+  });
+
+  // The anchor/controller links must never be misfiled as a source's link just because they happen to
+  // sit within range 2 of it (a cramped layout can put the controller link close to a source) — mirrors
+  // links.ts's own "mystery link" regression for the identical id-based exclusion.
+  it("does not claim the anchor or controller link even if one sits within range of a source", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7);
+    const anchorLink = linkAt(spot.x + 1, spot.y); // within range 2 of the source, but already known
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [anchorLink],
+      linkNetwork: { storage: anchorLink.id }
+    });
+
+    const recorded = mining.intents(snap).find(i => i.kind === "recordSourceSpot");
+    expect(recorded && "link" in recorded ? recorded.link : undefined).toBeUndefined();
+  });
 });
 
 // The remote-route equivalent of recordSourceSpot's container bookkeeping — closes the loop so
