@@ -500,14 +500,18 @@ function moveToRoom(
 // the creep on its very next move. Falls back to plain moveToRoom(targetRoom) behavior whenever followFlag
 // is unset or the named flag no longer exists (removed, or a creep spawned before this field existed), so
 // a missing flag never strands the creep — it still has somewhere to walk. Self-completes (acted:false)
-// once standing exactly on the flag's tile, letting whatever step follows take over as primary
-// (AttackControllerRole's own doc spells this out). SimpleHealerRole does NOT use this step — see
-// healerAdvanceStep below for why it needs its own, earlier-yielding variant.
+// once within range 1 of the flag — matching the travelTo call below, NOT requiring the exact tile: a
+// flag dropped on an unwalkable target (e.g. an AttackController flag placed right on the controller) can
+// never satisfy isEqualTo, which used to strand the creep circling at range 1 forever, its "attack" step
+// never taking over (confirmed live: attackController never fired a single tick). Letting whatever step
+// follows take over as primary once merely in range (AttackControllerRole's own doc spells this out).
+// SimpleHealerRole does NOT use this step — see healerAdvanceStep below for why it needs its own,
+// earlier-yielding variant.
 function moveToFlagStep(creep: Creep): StepResult {
   const flag = creep.memory.followFlag ? Game.flags[creep.memory.followFlag] : undefined;
   if (!flag) return moveToRoom(creep, { to: "targetRoom" });
 
-  if (creep.pos.isEqualTo(flag.pos)) return { acted: false, didAct: false };
+  if (creep.pos.inRangeTo(flag.pos, 1)) return { acted: false, didAct: false };
   creep.travelTo(flag.pos, { range: 1 });
   return { acted: true, didAct: false };
 }

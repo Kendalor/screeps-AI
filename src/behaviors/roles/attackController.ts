@@ -29,8 +29,8 @@ export class AttackControllerRole extends Role {
   // 0: recycleIfOperationGone — no-op while the AttackController flag/op is still live; see that step's
   // own doc (behaviors/types.ts) for the "flag pulled while alive" recycle path this pre-empts with.
   // 1: walk onto the live followFlag position (falls back to targetRoom — see moveToFlag's doc). Once
-  // standing exactly on the flag's tile, moveToFlagStep returns acted:false and runOne's same-tick retry
-  // loop falls straight through to step 2 (same fall-through demolisher.ts's dismantle step relies on).
+  // within range 1 of the flag, moveToFlagStep returns acted:false and runOne's same-tick retry loop
+  // falls straight through to step 2 (same fall-through demolisher.ts's dismantle step relies on).
   // 2: attackController the room's controller (its own range-1 travelTo, independent of the flag's exact
   // placement) for life — no retreat/heal leg, unlike SimpleBaitTower/Demolisher; retreatPart above is
   // this role's only defensive behavior.
