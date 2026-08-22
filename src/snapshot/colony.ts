@@ -470,13 +470,8 @@ function remoteRoomVision(
     // a threat before it lands a hit) or direct evidence one of our creeps is already being hurt (catches
     // any exotic body the part-list misses). An unarmed scout/claimer passing through triggers neither, so
     // it's no longer a reason to pull staffing or tear down an already-built route (see mining.ts's
-    // structures() and building.ts's unsafeRemoteRooms, both gated on this). A room under active safe mode
-    // is never dangerous regardless of body composition: whoever's protected by it can't be attacked or
-    // attack out, so any hostiles just standing there (ours or hostile-owned) are inert — without this, a
-    // remote whose owner safe-modes mid-invasion keeps reading as invaded for the rest of the safe mode
-    // window (Defense's roomsWithHostiles/openSponsoredTargets both key off this danger flag).
-    const safeModed = (room.controller?.safeMode ?? 0) > 0;
-    const allHostiles = safeModed ? [] : room.find(FIND_HOSTILE_CREEPS);
+    // structures() and building.ts's unsafeRemoteRooms, both gated on this).
+    const allHostiles = room.find(FIND_HOSTILE_CREEPS);
     const hostiles = allHostiles.some(isCombatCapable) || hasDamagedFriendly(room) ? allHostiles : [];
     // How long the room should still be considered dangerous once we lose vision of it: the latest tick
     // any current hostile is expected to still be alive. A creep with no ticksToLive (some invader-core
