@@ -13,7 +13,9 @@ export const DEMOLISHER_MIN_COST = bodyCost(DEMOLISHER_BASE_BODY);
 export const MAX_BODY_COST = 2000;
 
 function demolisherBody(energy: number): BodyPartConstant[] {
-  const numSets = Math.min(Math.floor(energy / DEMOLISHER_MIN_COST), MAX_BODY_COST);
+  const maxSetsByCost = Math.floor(MAX_BODY_COST / DEMOLISHER_MIN_COST);
+  const maxSetsBySize = Math.floor(MAX_CREEP_SIZE / 2); // one WORK + one MOVE per set
+  const numSets = Math.min(Math.floor(energy / DEMOLISHER_MIN_COST), maxSetsByCost, maxSetsBySize);
   return new Array(2 * numSets).fill(WORK).fill(MOVE, numSets);
 }
 
