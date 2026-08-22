@@ -1383,4 +1383,28 @@ describe("Mining.intents — remote selection", () => {
     const ids = intent!.remotes.flatMap(r => r.sources.map(s => s.id));
     expect(ids).toContain("better");
   });
+
+  // A currently-selected remote room claimed by another player must drop out of ColonyMemory.remotes
+  // promptly, not wait out remoteReevaluateEvery (5000 ticks) — mining/reservation/construction already
+  // stop staffing/reserving/building it the instant ownership is observed (their own ownedBy gates), but
+  // leaving the dead entry selected that long would keep it occupying a MAX_REMOTE_SOURCES slot and
+  // reporting as "active" in ColonyMemory.remotes for no reason. Off BOTH throttle cadences (not a
+  // multiple of remoteSelectionEvery=1000 or remoteReevaluateEvery=5000) to prove the ownedBy check itself
+  // is what forces reevaluate early, not either normal cadence.
+  it("evicts a currently-selected remote room the tick it's observed claimed by another player", () => {
+    const owned = remoteSourceAt(25, 25, "W2N1", { distance: 60, ownedBy: "SomePlayer" });
+    const snap = colonySnap({
+      tick: 1001,
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      spawns: [spawn()],
+      remoteSources: [owned],
+      scoutTargets: [scoutTarget("W2N1", scouted({ owner: "SomePlayer", hostile: true }))]
+    });
+
+    const [intent] = setRemotesOf(snap);
+    expect(intent).toBeDefined();
+    expect(intent.remotes).toEqual([]);
+  });
 });

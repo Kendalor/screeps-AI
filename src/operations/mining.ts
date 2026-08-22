@@ -412,9 +412,17 @@ export class Mining extends Operation {
    * arrived, or a closer room only just scouted) — see pickRemotes' `reevaluate` flag. Structures/miners
    * already built for an evicted source aren't cleaned up here; staffing gates downstream stop working a
    * source once it drops out of colony.remoteSources.
+   *
+   * A third, ad-hoc trigger forces reevaluate early: any currently-selected source whose room is now
+   * OWNED by another player (colony.remoteSources[].ownedBy — see snapshot/colony.ts's remoteRoomVision).
+   * mining/reservation/construction already stop staffing/reserving/building it the same tick ownership is
+   * observed (their own ownedBy gates), but pickRemotes itself excludes a hostile candidate only by never
+   * re-admitting it (info.hostile at candidate-build time) — without this, the dead entry would otherwise
+   * sit in ColonyMemory.remotes, unstaffed but still selected, for up to remoteReevaluateEvery ticks.
    */
   private remoteSelection(colony: ColonySnapshot, colonyRequestParts: number): Intent | undefined {
-    const reevaluate = colony.tick % config.remoteReevaluateEvery === 0;
+    const ownedByOther = colony.remoteSources.some(s => s.ownedBy !== undefined);
+    const reevaluate = colony.tick % config.remoteReevaluateEvery === 0 || ownedByOther;
     if (colony.tick % config.remoteSelectionEvery !== 0 && !reevaluate) return undefined;
 
     const { remotes, strikes } = pickRemotes({
@@ -430,7 +438,11 @@ export class Mining extends Operation {
       excludedSourceIds: this.siblingRemoteSourceIds,
       strikes: colony.remoteStrikes
     });
-    if (remotes.length === 0) return undefined;
+    // A genuinely empty result is silent UNLESS something was actually selected before — that case is a
+    // real eviction (e.g. every currently-selected source just got claimed out from under this colony) and
+    // must be written so ColonyMemory.remotes actually clears, not merely silenced the same as "nothing
+    // worthwhile has ever been scouted" would be.
+    if (remotes.length === 0 && colony.remoteSources.length === 0) return undefined;
     return { kind: "setRemotes", room: colony.name, remotes, strikes };
   }
 
