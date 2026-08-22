@@ -349,3 +349,7 @@ console.log(`\nWrote ${seedFile}:`);
 console.log(`  ${roomDocs.length} room(s), ${terrainDocs.length} terrain doc(s), ${objectDocs.length} object(s)`);
 console.log(`  (missing/skipped: ${missing})`);
 console.log("\n`npm run reset:server` will now load this as a clean, grid-aligned copy of the World block.");
+console.log("After starting `npm run watch:server`, also run `npm run regen-map-assets` -- the");
+console.log("map-view PNGs under server/assets/map/ are separate static files reset:server doesn't");
+console.log("touch, so without this the client's map view will show stale/missing room tiles even");
+console.log("though the underlying terrain data (what you see inside a room) is already correct.");

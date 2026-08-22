@@ -23,6 +23,8 @@
     "extract:world-objects": "node scripts/extract-world-objects.mjs",
     "bake:terrain-seed": "node scripts/bake-terrain-seed.mjs",
     "bake:objects-seed": "node scripts/bake-objects-seed.mjs",
+    "bake:world-block": "node scripts/bake-world-block.mjs",
+    "regen-map-assets": "node scripts/regen-map-assets.mjs",
     "make:empty-seed": "node scripts/make-empty-seed.mjs",
     "set-pserver-password": "node scripts/set-pserver-password.mjs",
     "prebuild": "npm test",
