@@ -491,9 +491,17 @@ function remoteRoomVision(
     // Who holds the reservation, when it isn't us — e.g. "Invader" after a STRUCTURE_INVADER_CORE
     // reserves the controller. Never our own username; a reservation we placed reads via `reserved` above.
     const reservedBy = reservation !== undefined && reservation.username !== me ? reservation.username : undefined;
+    // Who OWNS the controller (claimed, level 1+), when it isn't us — a wholly different, stronger state
+    // than reservedBy (see ownedBy's doc on RemoteRoomVision). Unlike safe mode, this doesn't expire: a
+    // claimed room stays unminable/unstaffable for as long as someone else holds it, regardless of whether
+    // they currently have safe mode up, a defended presence, or nothing at all sitting in it.
+    const ownedBy = room.controller?.owner !== undefined && room.controller.owner.username !== me
+      ? room.controller.owner.username
+      : undefined;
     out[remote.room] = {
       reserved: reservation !== undefined && reservation.username === me,
       reservedBy,
+      ownedBy,
       danger: hostiles.length,
       dangerUntil,
       openTilesBySource,

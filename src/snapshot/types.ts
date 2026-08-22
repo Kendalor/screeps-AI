@@ -153,6 +153,10 @@ export interface SnapRemoteSource extends XY {
   // STRUCTURE_INVADER_CORE reserves it). Undefined when unreserved or reserved by us — never re-derive
   // "is this foreign" elsewhere, this field is already filtered at the source (see remoteRoomVision).
   reservedBy?: string;
+  // Username currently OWNING the controller (claimed, level 1+), when it isn't us. Distinct from
+  // reservedBy (a claim, not a reservation) — see RemoteRoomVision.ownedBy's doc for why it's a separate
+  // field. Undefined when unowned or owned by us.
+  ownedBy?: string;
   danger: number; // hostile presence in the room; > 0 means stop staffing/reserving
   // The cached home->source path (see RemoteSourceMemory.route), room-tagged tile by tile. Absent until
   // resolveRemoteRoom has computed it at least once (e.g. selected but no anchor yet). Mining turns this

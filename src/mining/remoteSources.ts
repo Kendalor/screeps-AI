@@ -22,6 +22,14 @@ export interface RemoteRoomVision {
   // Username currently holding the controller reservation, when it isn't us (e.g. "Invader"). Undefined
   // when unreserved or reserved by us — see `reserved` above for that case.
   reservedBy?: string;
+  // Username currently OWNING the controller (claimed, level 1+), when it isn't us. A wholly different
+  // game state from reservedBy (reservation vs. claim) — deliberately not folded into it, so a reader of
+  // reservedBy can trust it means exactly "reserved," not "reserved or claimed." Undefined when unowned or
+  // owned by us. Unlike danger (which drives Defense dispatch too), owning another player's room is never
+  // a reason to send a defender — there's nothing to fight if it's quiet — so this stays its own gate,
+  // wired into the same "stop staffing/reserving/building here" checks reservedBy already has (mining.ts,
+  // reservation.ts, construction.ts/operations/construction.ts), not into danger.
+  ownedBy?: string;
   danger: number; // hostile count in the room right now
   // Game.time until which the room's hostiles are expected to still be present — the max of their own
   // ticksToLive, so losing vision (e.g. the miner that saw them dies) doesn't reset danger to "safe"
@@ -66,6 +74,10 @@ export function buildRemoteSources(
         // dangerUntil, a reservation doesn't decay on its own — no time-based expiry here, it only
         // clears the next time the room is seen with no foreign reservation (see recordRemoteDanger).
         reservedBy: live ? live.reservedBy : remote.reservedBy,
+        // No memory fallback (unlike reservedBy): ownership isn't cached in RemoteMemory today, so a room
+        // we've lost vision of simply can't report it — the room stays selectable/staffable off stale data
+        // until we see it again, same gap dangerUntil's caching exists specifically to close for danger.
+        ownedBy: live?.ownedBy,
         danger,
         route: src.route,
         routeBuilt: src.routeBuilt

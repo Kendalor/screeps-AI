@@ -354,6 +354,21 @@ describe("Mining.desiredCreeps — remote miners", () => {
     expect(remoteMinerRequests(snap)).toEqual([]);
   });
 
+  // A room another player has CLAIMED (level 1+, not merely reserved) stops new miner requests too —
+  // reserveController/claimController both reject outright against it, so it's unminable regardless of
+  // whether it currently has any hostile creep in it or safe mode active.
+  it("skips a remote source whose room is owned by another player", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const owned = remoteSourceAt(25, 25, "W2N1", { distance: 60, ownedBy: "SomePlayer" });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [owned],
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    expect(remoteMinerRequests(snap)).toEqual([]);
+  });
+
   // Regression: reservedBy must never suppress requests for a room WE reserve — only a foreign
   // reservation should pause staffing (see remoteSources.test.ts's join invariant).
   it("still requests a remote miner for a room reserved by us", () => {

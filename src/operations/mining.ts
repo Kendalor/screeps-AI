@@ -125,13 +125,15 @@ export class Mining extends Operation {
 
     const remote: CreepRequest[] = [];
     for (const source of colony.remoteSources) {
-      // A hostile remote, or one reserved by someone else (e.g. an Invader-core reservation), stops new
-      // miners; in-flight ones age out. reservedBy is already filtered to exclude our own reservation
-      // (see remoteRoomVision) — never re-derive that check here.
-      if (source.danger > 0 || source.reservedBy !== undefined) {
+      // A hostile remote, one owned by another player, or one reserved by someone else (e.g. an
+      // Invader-core reservation), stops new miners; in-flight ones age out. reservedBy/ownedBy are
+      // already filtered to exclude us (see remoteRoomVision) — never re-derive either check here.
+      if (source.danger > 0 || source.ownedBy !== undefined || source.reservedBy !== undefined) {
         log.debugRoom(
           colony.name,
-          `mining skip remote ${source.room}: ${source.danger > 0 ? "danger" : `reservedBy=${source.reservedBy}`}`
+          `mining skip remote ${source.room}: ${
+            source.danger > 0 ? "danger" : source.ownedBy !== undefined ? `ownedBy=${source.ownedBy}` : `reservedBy=${source.reservedBy}`
+          }`
         );
         continue;
       }
