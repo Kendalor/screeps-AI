@@ -62,7 +62,7 @@ afterAll(() => {
 });
 
 test(
-  "a Supply-role creep tops off a tower ahead of farther spawn/extensions, using only self-registered live state",
+  "a Supply-role creep tops off a low tower ahead of farther spawn/extensions, then lets spawn/extension compete once the tower clears the low-energy threshold",
   async () => {
     const spawn = (await colony.structures("spawn"))[0];
     const towers = await colony.structures("tower");
@@ -94,10 +94,13 @@ test(
     });
 
     const towerCapacity = towers.reduce((sum, t) => sum + ((t.storeCapacityResource as { energy?: number } | undefined)?.energy ?? 0), 0);
+    // Matches supplyRegister.ts's TOWER_LOW_FRACTION: below this, the tower outranks spawn/extension
+    // outright; at or above it, tower and spawn/extension are the same tier (nearest wins).
+    const towerLowCeiling = towerCapacity * 0.5;
 
     const ladder = new CheckpointLadder([
-      { name: "tower filled first", by: 150 },
-      { name: "spawn/extension get a real (creep-sized) delivery once the tower no longer wants any", by: 400 }
+      { name: "tower reaches the low-energy threshold first", by: 150 },
+      { name: "spawn/extension get a real (creep-sized) delivery once the tower clears the threshold", by: 400 }
     ]);
 
     // spawns/tick.js's real engine mechanic: a spawn below SPAWN_ENERGY_CAPACITY regenerates 1
@@ -107,10 +110,11 @@ test(
     // can't be asserted as spawnEnergy===0 — the passive drift alone violates that within a few ticks
     // regardless of what Supply does. Instead this tracks spawn+extension's per-tick delta and treats
     // anything beyond the passive ceiling (1/tick, generously doubled for safety margin) as a real
-    // creep-carried delivery — which the tier-first rule says must not happen before the tower is full.
+    // creep-carried delivery — which the tier-first rule says must not happen before the tower clears
+    // the low-energy threshold.
     const PASSIVE_SPAWN_REGEN_CEILING = 2;
     let prevSpawnExt = 0;
-    let creepDeliveredToSpawnExtBeforeTowerFull = false;
+    let creepDeliveredToSpawnExtBeforeTowerClearedLow = false;
 
     await colony.runUntil(
       async () => ladder.firstMissed() === null,
@@ -122,22 +126,23 @@ test(
         const spawnEnergy = await colony.energyIn("spawn");
         const extEnergy = await colony.energyIn("extension");
         const spawnExt = spawnEnergy + extEnergy;
-        const towerFull = towerEnergy >= towerCapacity;
+        const towerClearedLow = towerEnergy > towerLowCeiling;
         const spawnExtDelta = spawnExt - prevSpawnExt;
 
-        if (!towerFull && spawnExtDelta > PASSIVE_SPAWN_REGEN_CEILING) {
-          creepDeliveredToSpawnExtBeforeTowerFull = true;
+        if (!towerClearedLow && spawnExtDelta > PASSIVE_SPAWN_REGEN_CEILING) {
+          creepDeliveredToSpawnExtBeforeTowerClearedLow = true;
         }
 
         await ladder.sample(tick, name => {
           switch (name) {
-            case "tower filled first":
-              return towerFull;
-            case "spawn/extension get a real (creep-sized) delivery once the tower no longer wants any":
-              // A jump bigger than the passive ceiling, after the tower stopped wanting more — proves
-              // the creep actually moved on to spawn/extension once tier-first freed it up, not just
-              // that time passed and the engine's own passive regen crept spawn up on its own.
-              return towerFull && spawnExtDelta > PASSIVE_SPAWN_REGEN_CEILING;
+            case "tower reaches the low-energy threshold first":
+              return towerClearedLow;
+            case "spawn/extension get a real (creep-sized) delivery once the tower clears the threshold":
+              // A jump bigger than the passive ceiling, after the tower cleared the low-energy
+              // threshold — proves the creep actually moved on to spawn/extension once the tower
+              // dropped to base tier, not just that time passed and the engine's own passive regen
+              // crept spawn up on its own.
+              return towerClearedLow && spawnExtDelta > PASSIVE_SPAWN_REGEN_CEILING;
             default:
               return false;
           }
@@ -149,8 +154,8 @@ test(
 
     expect(ladder.firstMissed(), `checkpoint ladder:\n${ladder.report()}`).toBeNull();
     expect(
-      creepDeliveredToSpawnExtBeforeTowerFull,
-      "the creep delivered a creep-sized batch to spawn/extension before the tower was full — tier-first was violated"
+      creepDeliveredToSpawnExtBeforeTowerClearedLow,
+      "the creep delivered a creep-sized batch to spawn/extension before the tower cleared the low-energy threshold — promotion rule was violated"
     ).toBe(false);
 
     const finalTower = await colony.energyIn("tower");

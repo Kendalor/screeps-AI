@@ -24,14 +24,18 @@ export interface SupplyRequest {
   tier: number;
 }
 
-// Matches graph.ts's PRIORITY ordering exactly for the two tiers Supply's restricted view ever sees
-// (supplyConsumers() filters to spawnSystem/tower only) — tower ranks above spawn/extension: an empty
-// tower during an attack is worse than a spawn/extension shortfall (see graph.ts's own comment on this).
-// Lower number = higher priority, so pickSupplyRequest's tier-first comparison is a plain numeric min.
+// Tower and spawn/extension share one base tier: a topped-off tower isn't worth detouring a creep past a
+// starved spawn for, so ordinary tower top-off competes on distance like everything else. A tower only
+// jumps the queue once it's actually running low (see TOWER_LOW_FRACTION below) — an empty tower during
+// an attack is worse than a spawn/extension shortfall, but a merely-not-full one isn't. Lower number =
+// higher priority, so pickSupplyRequest's tier-first comparison is a plain numeric min.
 export const SUPPLY_TIER = {
-  tower: 0,
-  spawnSystem: 1
+  towerLow: 0,
+  base: 1
 } as const;
+
+/** A tower at or below this fraction of capacity is promoted to the higher-priority tier. */
+export const TOWER_LOW_FRACTION = 0.5;
 
 /**
  * Registers every spawn/extension in `room` with free energy capacity as SupplyRequests, at the
@@ -47,12 +51,16 @@ export function registerSpawnSystemRequests(room: Room): SupplyRequest[] {
   for (const s of structures) {
     const wanted = s.store.getFreeCapacity(RESOURCE_ENERGY);
     if (wanted <= 0) continue;
-    out.push({ target: s, wanted, tier: SUPPLY_TIER.spawnSystem });
+    out.push({ target: s, wanted, tier: SUPPLY_TIER.base });
   }
   return out;
 }
 
-/** Registers every tower in `room` with free energy capacity as SupplyRequests, at the tower tier. */
+/**
+ * Registers every tower in `room` with free energy capacity as SupplyRequests. A tower at or below
+ * TOWER_LOW_FRACTION of capacity is promoted to the higher-priority tier (it needs the energy urgently,
+ * e.g. mid-attack); otherwise it competes at the same base tier as spawn/extension, nearest-first.
+ */
 export function registerTowerRequests(room: Room): SupplyRequest[] {
   const out: SupplyRequest[] = [];
   const towers = room.find(FIND_MY_STRUCTURES, {
@@ -61,7 +69,9 @@ export function registerTowerRequests(room: Room): SupplyRequest[] {
   for (const t of towers) {
     const wanted = t.store.getFreeCapacity(RESOURCE_ENERGY);
     if (wanted <= 0) continue;
-    out.push({ target: t, wanted, tier: SUPPLY_TIER.tower });
+    const capacity = t.store.getCapacity(RESOURCE_ENERGY) ?? 0;
+    const low = capacity > 0 && t.store.getUsedCapacity(RESOURCE_ENERGY) <= capacity * TOWER_LOW_FRACTION;
+    out.push({ target: t, wanted, tier: low ? SUPPLY_TIER.towerLow : SUPPLY_TIER.base });
   }
   return out;
 }
