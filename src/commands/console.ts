@@ -390,15 +390,16 @@ export function installConsoleCommands(): void {
   register("resetScoutedAnchors()", "clear cached bunker-anchor fit (anchor/anchorChecked) on every scouted, non-owned room, so it's recomputed under the current BUNKER_RADIUS next time that room is observed; owned colonies are never touched");
 
   global.scanMarket = (): string => {
-    Memory.market = scanMarketNow();
-    const count = Object.keys(Memory.market.prices).length;
+    const mem = (Memory.stats.market ??= { tick: 0, prices: {}, orders: {} });
+    Object.assign(mem, scanMarketNow());
+    const count = Object.keys(mem.prices).length;
     return `market scan complete: ${count} resources priced (tick ${Game.time})`;
   };
-  register("scanMarket()", "manually scan Game.market.getHistory() and refresh Memory.market now, instead of waiting for the tier-3 interval");
+  register("scanMarket()", "manually scan Game.market.getHistory() and refresh Memory.stats.market now, instead of waiting for the tier-3 interval");
 
   global.manufactureCost = (resource: string, includeDecompress?: boolean): string => {
-    const prices = Memory.market?.prices ?? {};
-    if (!Memory.market) return `no market data yet — run scanMarket() first (falling back to unpriced base resources only)\n${formatManufacturingCost(manufacturingCost(resource, prices, includeDecompress))}`;
+    const prices = Memory.stats.market?.prices ?? {};
+    if (!Memory.stats.market) return `no market data yet — run scanMarket() first (falling back to unpriced base resources only)\n${formatManufacturingCost(manufacturingCost(resource, prices, includeDecompress))}`;
     return formatManufacturingCost(manufacturingCost(resource, prices, includeDecompress));
   };
   register(

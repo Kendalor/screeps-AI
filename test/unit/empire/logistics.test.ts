@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import {
   computeEmpireRequests,
   effectiveTargetFor,
-  marketFallback,
   matchEmpireRequests,
   roleMultiplierFor,
   type EmpireRequest,
@@ -232,13 +231,5 @@ describe("matchEmpireRequests send-cost accounting for RESOURCE_ENERGY", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// marketFallback: structural stub only (decision 13)
-// ---------------------------------------------------------------------------
-
-describe("marketFallback", () => {
-  it("is a no-op stub that returns nothing yet", () => {
-    const leftover = [req("A", "GO", 5000)];
-    expect(marketFallback(leftover)).toBeUndefined();
-  });
-});
+// marketFallback's own decision logic (gh #60) is unit-tested in test/unit/empire/marketFallback.test.ts —
+// this file stays scoped to matchEmpireRequests/computeEmpireRequests, the colony-to-colony phase.

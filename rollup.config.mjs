@@ -62,7 +62,13 @@ export default {
       preventAssignment: true,
       values: {
         __PROFILER_ENABLED__: JSON.stringify(profilerEnabled),
-        __GIT_COMMIT__: JSON.stringify(gitCommit)
+        __GIT_COMMIT__: JSON.stringify(gitCommit),
+        // gh #60: gates market trading (empire/marketOrders.ts, empire/marketFallback.ts) out of every
+        // build but push-main — trading against a local pserver's market is meaningless activity that
+        // shouldn't run there at all. A build-time constant, not a runtime Game.shard.name check: see
+        // docs/market-plan.md decision 10 for why the latter was rejected (shard naming is incidental,
+        // undocumented config, not a guaranteed distinction).
+        __SERVER__: JSON.stringify(dest ?? "unknown")
       }
     }),
     typescript({ tsconfig: "./tsconfig.json" }),

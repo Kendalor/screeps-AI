@@ -99,6 +99,27 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       if (!terminal) return ERR_NOT_FOUND;
       return terminal.send(intent.resource, intent.amount, intent.to);
     }
+    case "marketDeal": {
+      return Game.market.deal(intent.order, intent.amount, intent.room);
+    }
+    case "marketCreateOrder": {
+      return Game.market.createOrder({
+        type: intent.type === "buy" ? ORDER_BUY : ORDER_SELL,
+        resourceType: intent.resource,
+        price: intent.price,
+        totalAmount: intent.amount,
+        roomName: intent.room
+      });
+    }
+    case "marketReprice": {
+      return Game.market.changeOrderPrice(intent.order, intent.price);
+    }
+    case "marketExtendOrder": {
+      return Game.market.extendOrder(intent.order, intent.amount);
+    }
+    case "marketCancelOrder": {
+      return Game.market.cancelOrder(intent.order);
+    }
     case "setEmpireReservations": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.empireReservations = intent.reservations;
@@ -452,7 +473,7 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
       return OK;
     }
     default:
-      log.error(`no actuator for intent kind "${intent.kind}" yet`);
+      log.error(`no actuator for intent kind "${(intent as Intent).kind}" yet`);
       return OK; // already logged; don't double-report
   }
 }

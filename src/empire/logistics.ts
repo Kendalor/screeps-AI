@@ -4,7 +4,7 @@
 // storage+terminal stock against an empire-owned, role-biased target and emits a signed EmpireRequest per
 // colony per resource (decision 2/4); matchEmpireRequests pairs the biggest surplus against the biggest
 // deficit per resource (decision 5), capped by congestion (decision 12) and send-cost accounting
-// (decision 8), leaving anything unpaired for the market-fallback stub (decision 13).
+// (decision 8), leaving anything unpaired for the market-fallback phase (gh #60, empire/marketFallback.ts).
 //
 // Data source is live Game.* (storage/terminal .store), not ColonySnapshot — an explicit extension of ADR
 // 0008's src/logistics/ self-registration carve-out to empire scope (decision 9). This module itself takes
@@ -15,6 +15,7 @@
 import type { ColonyRole } from "../memory/schema";
 import type { Intent } from "../intents/types";
 import { BOOST_TARGETS } from "./boostTargets";
+import { MARKET_TRADING_ENABLED, marketFallback } from "./marketFallback";
 
 /** One signed unit of empire-scale transport demand — mirrors LogisticsRequest's shape (positive = wants
  * delivered, negative = has to give) but scoped to a colony rather than a live in-room target, and with no
@@ -186,16 +187,6 @@ export function matchEmpireRequests(
   return { matches, leftover };
 }
 
-/**
- * Third phase (decision 1/13): whatever matchEmpireRequests couldn't pair colony-to-colony falls through
- * here. Structurally present, does nothing yet — full market mechanics (price limits, credit budget,
- * buy-vs-deal) are a deliberately deferred, separate design session. Named and typed so a future
- * implementation slots in without restructuring the pipeline above it.
- */
-export function marketFallback(leftover: readonly EmpireRequest[]): void {
-  void leftover;
-}
-
 // Tier-3 SYSTEMS interval (kernel/tick.ts), ~TERMINAL_COOLDOWN-scaled (decision 10): any single terminal
 // can only send once per TERMINAL_COOLDOWN ticks regardless, so a full pass every tick would waste CPU
 // recomputing decisions that can't act yet. Exported so the SYSTEMS entry can't drift from this number,
@@ -236,7 +227,7 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
     Game.rooms[colony]?.terminal?.store.getFreeCapacity(resource) ?? 0;
   const sendCost: SendCost = (amount, from, to) => Game.market.calcTransactionCost(amount, from, to);
 
-  const { matches } = matchEmpireRequests(requests, receiverFreeCapacity, sendCost);
+  const { matches, leftover } = matchEmpireRequests(requests, receiverFreeCapacity, sendCost);
 
   const intents: Intent[] = [];
   const reservations = new Map<string, Partial<Record<ResourceConstant, number>>>();
@@ -253,5 +244,35 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
   for (const name of colonyNames) {
     intents.push({ kind: "setEmpireReservations", room: name, reservations: reservations.get(name) ?? {} });
   }
+
+  // gh #60: market-fallback phase (docs/market-plan.md) — whatever couldn't be paired colony-to-colony
+  // gets resolved against the real market instead. Same cadence as the match pass above (decision 2), a
+  // pure continuation of the same decision. Compiled out (MARKET_TRADING_ENABLED false) on every build but
+  // push-main — never runs against a local pserver's meaningless market.
+  if (MARKET_TRADING_ENABLED) {
+    const terminalCapacityPct = (colony: string, resource: ResourceConstant): number => {
+      const terminal = Game.rooms[colony]?.terminal;
+      if (!terminal) return 0;
+      return terminal.store.getUsedCapacity(resource) / terminal.store.getCapacity(resource);
+    };
+    const market = Memory.stats.market;
+    const myOrders = Object.values(Game.market.orders).map(o => ({
+      id: o.id,
+      type: o.type === ORDER_BUY ? ("buy" as const) : ("sell" as const),
+      resourceType: o.resourceType as ResourceConstant,
+      roomName: o.roomName,
+      remainingAmount: o.remainingAmount,
+      price: o.price
+    }));
+    const bestBuyOrder = (resource: ResourceConstant): { id: string; price: number } | undefined => {
+      let best: { id: string; price: number } | undefined;
+      for (const o of Game.market.getAllOrders({ type: ORDER_BUY, resourceType: resource })) {
+        if (!best || o.price > best.price) best = { id: o.id, price: o.price };
+      }
+      return best;
+    };
+    intents.push(...marketFallback(leftover, terminalCapacityPct, market?.orders ?? {}, myOrders, bestBuyOrder));
+  }
+
   return intents;
 }

@@ -10,6 +10,7 @@ import { runDrainFlags } from "../empire/drainFlags";
 import { runParadeFlags } from "../empire/paradeFlags";
 import { runSingleTargetFlags } from "../empire/singleTargetFlags";
 import { MARKET_SCAN_INTERVAL, scanMarketNow } from "../empire/market";
+import { ORDER_SCAN_INTERVAL, runOrderScan } from "../empire/marketOrders";
 import { EMPIRE_LOGISTICS_INTERVAL, runEmpireLogisticsPass, type ColonyEmpireStock } from "../empire/logistics";
 import { BOOST_TARGETS } from "../empire/boostTargets";
 import { collectEmpireStats } from "../empire/stats";
@@ -83,6 +84,12 @@ export const SYSTEMS: System[] = [
   // acted on by any trading logic, so this is the lowest-priority luxury; also runnable on demand via
   // the scanMarket() console command (src/commands/console.ts) without waiting for the interval.
   { name: "market", tier: 3, scope: "empire", interval: MARKET_SCAN_INTERVAL, run: runMarketScan },
+  // gh #60: live order-book scan (empire/marketOrders.ts) — the most volatile part of market data, so it
+  // refreshes far more often than the price-history scan above despite getAllOrders() being the pricier
+  // call. Deliberately its own SYSTEMS entry, not run in the same call frame as empireLogistics below, so
+  // a full market scan never has to happen at the same moment as a full empire-logistics matching pass
+  // (docs/market-plan.md decision 4). No-ops (dead-code-eliminated) outside the push-main build.
+  { name: "marketOrders", tier: 3, scope: "empire", interval: ORDER_SCAN_INTERVAL, run: runMarketOrderScan },
   // gh #59: inter-colony storage/terminal transfer (empire/logistics.ts) — reads live stock against
   // empire-owned targets (empire/boostTargets.ts), matches surplus to deficit, and issues terminal.send()
   // intents. Interval ~TERMINAL_COOLDOWN-scaled (decision 10): any one terminal can only send once per
@@ -92,7 +99,13 @@ export const SYSTEMS: System[] = [
 ];
 
 function runMarketScan(): Intent[] {
-  Memory.market = scanMarketNow();
+  const mem = (Memory.stats.market ??= { tick: 0, prices: {}, orders: {} });
+  Object.assign(mem, scanMarketNow());
+  return [];
+}
+
+function runMarketOrderScan(): Intent[] {
+  runOrderScan();
   return [];
 }
 

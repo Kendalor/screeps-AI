@@ -7,7 +7,11 @@ export default defineConfig({
     __PROFILER_ENABLED__: "false",
     // Matches rollup.config.mjs's git-derived replace; a fixed placeholder under test so stats output
     // doesn't depend on the sandbox's git state.
-    __GIT_COMMIT__: '"test"'
+    __GIT_COMMIT__: '"test"',
+    // Fixed to "main" under test so the market-trading modules (empire/marketOrders.ts,
+    // empire/marketFallback.ts) it gates are always importable/unit-testable — the gating itself is a
+    // build-time rollup substitution, explicitly out of unit-test scope (see docs/market-plan.md).
+    __SERVER__: '"main"'
   },
   test: {
     environment: "node",

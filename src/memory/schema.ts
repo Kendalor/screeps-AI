@@ -15,9 +15,6 @@ declare global {
     expansion: ExpansionMemory;
     stats: StatsMemory;
     metrics: Record<string, ColonyMetricsMemory>; // cross-tick harvest-rate window; everything else in a report is derived fresh
-    // Latest valid-day avgPrice/stddevPrice per resource, from Game.market.getHistory() — owned by
-    // empire/market.ts, refreshed every MARKET_SCAN_INTERVAL ticks (tier-3) or via scanMarket() console command.
-    market?: MarketMemory;
     // Console-editable player reputation (Memory.playerReputation["Foo"] = "hostile"), also written
     // automatically when we observe a player's creep attack us — see memory/reputation.ts's
     // recordHostileAction. Absent entries default to "neutral" (reputationOf), never assumed hostile.
@@ -611,6 +608,11 @@ export interface StatsMemory {
   rooms?: Record<string, RoomStats>;
   // Account-wide wallet + empire-scoped resource/deficit gauges — see EmpireStats' own doc.
   empire?: EmpireStats;
+  // Market price-history + live order-book caches (gh #60) — see MarketStats' own doc. A sibling of
+  // EmpireStats, not nested inside it: independently-scoped, differently-cadenced concerns (EmpireStats is
+  // written once per empire-logistics match pass; MarketStats is written by two separate scans) that
+  // should be free to grow independently.
+  market?: MarketStats;
 }
 
 export interface RoomStats {
@@ -657,9 +659,18 @@ export interface ColonyMetricsMemory {
   harvestSamples: { tick: number; sourceEnergy: number }[]; // oldest first, capped at HARVEST_WINDOW entries
 }
 
-export interface MarketMemory {
-  tick: number; // Game.time this snapshot was taken
-  // Latest day with valid price data per resource (days with no trades can carry null/NaN stats,
-  // which summarizeMarketHistory skips rather than recording).
-  prices: Partial<Record<MarketResourceConstant, { date: string; avgPrice: number; stddevPrice: number }>>;
+export interface MarketStats {
+  // Game.time this snapshot was last refreshed — ONE shared field, not per-resource: prices/orders always
+  // refresh together as one full scan each, so a per-resource copy would only duplicate this number ~41x
+  // for no new information (see docs/market-plan.md decision 5).
+  tick: number;
+  // Latest valid-day avgPrice/stddevPrice per resource, from Game.market.getHistory() — no per-entry
+  // `date` (unlike the old MarketMemory this replaces): the container-level `tick` above already answers
+  // every freshness question downstream code needs.
+  prices: Partial<Record<MarketResourceConstant, { avgPrice: number; stddevPrice: number }>>;
+  // Best current buy price and best current sell price per BOOST_TARGETS resource, from
+  // Game.market.getAllOrders() — see empire/marketOrders.ts. Scoped to BOOST_TARGETS resources only, not
+  // every ResourceConstant (decision 1). buyMax/sellMin are independently optional: a resource with no
+  // live orders of one type simply has that side omitted, not zeroed.
+  orders: Partial<Record<ResourceConstant, { buyMax?: number; sellMin?: number }>>;
 }

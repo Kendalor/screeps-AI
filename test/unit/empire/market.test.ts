@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summarizeMarketHistory, manufacturingCost } from "../../../src/empire/market";
-import type { MarketMemory } from "../../../src/memory/schema";
+import type { MarketStats } from "../../../src/memory/schema";
 
 function entry(overrides: Partial<PriceHistory>): PriceHistory {
   return {
@@ -25,7 +25,7 @@ describe("summarizeMarketHistory", () => {
     const result = summarizeMarketHistory(history, 1000);
 
     expect(result.tick).toBe(1000);
-    expect(result.prices[RESOURCE_ENERGY]).toEqual({ date: "2026-08-03", avgPrice: 3, stddevPrice: 0.3 });
+    expect(result.prices[RESOURCE_ENERGY]).toEqual({ avgPrice: 3, stddevPrice: 0.3 });
   });
 
   it("falls back to the latest valid day when the most recent day has null price data", () => {
@@ -41,7 +41,7 @@ describe("summarizeMarketHistory", () => {
 
     const result = summarizeMarketHistory(history, 1000);
 
-    expect(result.prices[RESOURCE_ENERGY]).toEqual({ date: "2026-08-01", avgPrice: 1, stddevPrice: 0.1 });
+    expect(result.prices[RESOURCE_ENERGY]).toEqual({ avgPrice: 1, stddevPrice: 0.1 });
   });
 
   it("keeps multiple resources independently", () => {
@@ -52,8 +52,8 @@ describe("summarizeMarketHistory", () => {
 
     const result = summarizeMarketHistory(history, 1000);
 
-    expect(result.prices[RESOURCE_ENERGY]).toEqual({ date: "2026-08-01", avgPrice: 1, stddevPrice: 0.1 });
-    expect(result.prices[RESOURCE_OXYGEN]).toEqual({ date: "2026-08-01", avgPrice: 5, stddevPrice: 0.5 });
+    expect(result.prices[RESOURCE_ENERGY]).toEqual({ avgPrice: 1, stddevPrice: 0.1 });
+    expect(result.prices[RESOURCE_OXYGEN]).toEqual({ avgPrice: 5, stddevPrice: 0.5 });
   });
 
   it("returns an empty prices object when every day is invalid", () => {
@@ -68,10 +68,10 @@ describe("summarizeMarketHistory", () => {
 });
 
 describe("manufacturingCost", () => {
-  function prices(entries: Record<string, number>): MarketMemory["prices"] {
-    const out: MarketMemory["prices"] = {};
+  function prices(entries: Record<string, number>): MarketStats["prices"] {
+    const out: MarketStats["prices"] = {};
     for (const [resource, avgPrice] of Object.entries(entries)) {
-      out[resource as keyof MarketMemory["prices"]] = { date: "2026-08-01", avgPrice, stddevPrice: 0 };
+      out[resource as keyof MarketStats["prices"]] = { avgPrice, stddevPrice: 0 };
     }
     return out;
   }

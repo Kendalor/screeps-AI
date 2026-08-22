@@ -25,6 +25,79 @@ describe("actuator", () => {
     expect(activateSafeMode).toHaveBeenCalledTimes(1);
   });
 
+  // gh #60's four new market dispatch cases — same stubGame() + spy pattern as every other case in this
+  // file; stubGame doesn't stub Game.market itself, so each case attaches it directly afterward.
+  it("deals a market order via Game.market.deal", () => {
+    const deal = vi.fn(() => OK);
+    stubGame();
+    (globalThis as { Game: { market: unknown } }).Game.market = { deal };
+
+    execute([{ kind: "marketDeal", order: "order1", amount: 500, room: "W1N1" }]);
+
+    expect(deal).toHaveBeenCalledTimes(1);
+    expect(deal).toHaveBeenCalledWith("order1", 500, "W1N1");
+  });
+
+  it("creates a market order via Game.market.createOrder", () => {
+    const createOrder = vi.fn(() => OK);
+    stubGame();
+    (globalThis as { Game: { market: unknown } }).Game.market = { createOrder };
+
+    execute([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 3000, price: 2.5, type: "buy" }]);
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder).toHaveBeenCalledWith({
+      type: ORDER_BUY,
+      resourceType: RESOURCE_OXYGEN,
+      price: 2.5,
+      totalAmount: 3000,
+      roomName: "W1N1"
+    });
+  });
+
+  it("creates a sell order with ORDER_SELL when the intent's type is sell", () => {
+    const createOrder = vi.fn(() => OK);
+    stubGame();
+    (globalThis as { Game: { market: unknown } }).Game.market = { createOrder };
+
+    execute([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 3000, price: 2.5, type: "sell" }]);
+
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({ type: ORDER_SELL }));
+  });
+
+  it("reprices a market order via Game.market.changeOrderPrice", () => {
+    const changeOrderPrice = vi.fn(() => OK);
+    stubGame();
+    (globalThis as { Game: { market: unknown } }).Game.market = { changeOrderPrice };
+
+    execute([{ kind: "marketReprice", order: "order1", price: 3.1 }]);
+
+    expect(changeOrderPrice).toHaveBeenCalledTimes(1);
+    expect(changeOrderPrice).toHaveBeenCalledWith("order1", 3.1);
+  });
+
+  it("extends a market order via Game.market.extendOrder", () => {
+    const extendOrder = vi.fn(() => OK);
+    stubGame();
+    (globalThis as { Game: { market: unknown } }).Game.market = { extendOrder };
+
+    execute([{ kind: "marketExtendOrder", order: "order1", amount: 1000 }]);
+
+    expect(extendOrder).toHaveBeenCalledTimes(1);
+    expect(extendOrder).toHaveBeenCalledWith("order1", 1000);
+  });
+
+  it("cancels a market order via Game.market.cancelOrder", () => {
+    const cancelOrder = vi.fn(() => OK);
+    stubGame();
+    (globalThis as { Game: { market: unknown } }).Game.market = { cancelOrder };
+
+    execute([{ kind: "marketCancelOrder", order: "order1" }]);
+
+    expect(cancelOrder).toHaveBeenCalledTimes(1);
+    expect(cancelOrder).toHaveBeenCalledWith("order1");
+  });
+
   it("spawns with a deterministic name after a successful dry run", () => {
     const spawnCreep = vi.fn(() => OK);
     stubGame({ time: 1234567, objects: { spawn1: openSpawn(spawnCreep) } });

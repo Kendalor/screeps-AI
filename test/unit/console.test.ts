@@ -176,7 +176,8 @@ describe("console: operationKinds", () => {
 });
 
 describe("console: scanMarket", () => {
-  it("refreshes Memory.market and reports the priced resource count", () => {
+  it("refreshes Memory.stats.market and reports the priced resource count", () => {
+    Memory.stats = { version: 1 };
     (globalThis as Record<string, unknown>).Game = {
       time: 12345,
       market: {
@@ -189,8 +190,8 @@ describe("console: scanMarket", () => {
 
     const result = global.scanMarket();
 
-    expect(Memory.market?.tick).toBe(12345);
-    expect(Memory.market?.prices[RESOURCE_ENERGY]).toEqual({ date: "2026-08-01", avgPrice: 1, stddevPrice: 0.1 });
+    expect(Memory.stats.market?.tick).toBe(12345);
+    expect(Memory.stats.market?.prices[RESOURCE_ENERGY]).toEqual({ avgPrice: 1, stddevPrice: 0.1 });
     expect(result).toMatch(/2 resources priced \(tick 12345\)/);
   });
 });

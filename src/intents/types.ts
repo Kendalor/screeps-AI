@@ -219,8 +219,14 @@ export type Intent =
   // own intents() at the moment a squad first welds up (seeding the value from the live squad's position).
   | { kind: "setDrainAnchor"; room: string; anchor: SquadAnchorMemory }
   | { kind: "setParadeAnchor"; room: string; anchor: SquadAnchorMemory }
+  // gh #60's four market side effects — one Intent kind per distinct Game.market.* call, matching this
+  // codebase's existing one-kind-per-API-call convention (see docs/market-plan.md decision 8). Emitted by
+  // empire/marketFallback.ts's buy/sell/reprice/prune decision logic.
   | { kind: "marketDeal"; order: string; amount: number; room: string }
-  | { kind: "marketOrder"; room: string; resource: ResourceConstant; amount: number; price: number }
+  | { kind: "marketCreateOrder"; room: string; resource: ResourceConstant; amount: number; price: number; type: "buy" | "sell" }
+  | { kind: "marketReprice"; order: string; price: number }
+  | { kind: "marketExtendOrder"; order: string; amount: number }
+  | { kind: "marketCancelOrder"; order: string }
   // Empire logistics' colony-to-colony transfer (gh #59, empire/logistics.ts's matchEmpireRequests) — issues
   // the sending colony's terminal.send() directly. `from`/`to` are room names, not live object refs (an
   // EmpireTransfer carries no other identity); execute.ts resolves Game.rooms[from].terminal at dispatch

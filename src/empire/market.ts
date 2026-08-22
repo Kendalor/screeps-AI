@@ -3,28 +3,34 @@
 // same "live-game read written near where it's read" shape. Trading (createOrder/deal) is a separate,
 // unbuilt follow-up.
 
-import type { MarketMemory } from "../memory/schema";
+import type { MarketStats } from "../memory/schema";
 
 // Tier-3 SYSTEMS interval (see kernel/tick.ts); exported so the console's scanMarket() and the SYSTEMS
 // entry can't drift apart from this number.
 export const MARKET_SCAN_INTERVAL = 20000;
 
-export function summarizeMarketHistory(history: readonly PriceHistory[], tick: number): MarketMemory {
-  const prices: MarketMemory["prices"] = {};
+export function summarizeMarketHistory(history: readonly PriceHistory[], tick: number): Pick<MarketStats, "tick" | "prices"> {
+  const prices: MarketStats["prices"] = {};
+  // Tracks the latest valid `date` seen per resource TRANSIENTLY, to pick the latest of several days —
+  // getHistory() is documented oldest-first, so this could also just take the last valid element; either
+  // is fine internally. Only the write to Memory (the returned `prices`) drops `date`, since MarketStats'
+  // container-level `tick` already answers every freshness question downstream code needs.
+  const latestDate = new Map<string, string>();
   for (const entry of history) {
     // Skip days with no valid price data (e.g. no trades that day) — don't let a null/undefined
     // avgPrice overwrite a still-valid earlier day, and don't record a null price at all.
     if (entry.avgPrice == null || entry.stddevPrice == null) continue;
-    const existing = prices[entry.resourceType];
+    const seenDate = latestDate.get(entry.resourceType);
     // getHistory() returns each resource's days oldest-first; keep whichever valid day is latest.
-    if (!existing || entry.date > existing.date) {
-      prices[entry.resourceType] = { date: entry.date, avgPrice: entry.avgPrice, stddevPrice: entry.stddevPrice };
+    if (!seenDate || entry.date > seenDate) {
+      latestDate.set(entry.resourceType, entry.date);
+      prices[entry.resourceType] = { avgPrice: entry.avgPrice, stddevPrice: entry.stddevPrice };
     }
   }
   return { tick, prices };
 }
 
-export function scanMarketNow(): MarketMemory {
+export function scanMarketNow(): Pick<MarketStats, "tick" | "prices"> {
   return summarizeMarketHistory(Game.market.getHistory(), Game.time);
 }
 
@@ -70,7 +76,7 @@ const BASE_RESOURCES = new Set(["H", "O", "U", "L", "K", "Z", "G", "X", "energy"
 
 export function manufacturingCost(
   resource: string,
-  prices: MarketMemory["prices"],
+  prices: MarketStats["prices"],
   includeDecompress = false,
   seen: Set<string> = new Set()
 ): ManufacturingCost {

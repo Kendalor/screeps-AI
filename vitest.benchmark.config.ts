@@ -20,7 +20,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   define: {
     __PROFILER_ENABLED__: "false",
-    __GIT_COMMIT__: '"test"'
+    __GIT_COMMIT__: '"test"',
+    __SERVER__: '"pserver"'
   },
   test: {
     environment: "node",

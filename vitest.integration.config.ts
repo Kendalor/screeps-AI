@@ -24,7 +24,10 @@ export default defineConfig({
     // Matches rollup.config.mjs's PROFILE-gated replace — some fixtures import src/ modules directly
     // alongside the rollup-bundled bot, so this must be defined here too or that import throws.
     __PROFILER_ENABLED__: "false",
-    __GIT_COMMIT__: '"test"'
+    __GIT_COMMIT__: '"test"',
+    // Integration/benchmark harnesses boot the real bundled bot against a local pserver — "pserver" here
+    // matches that reality and exercises market.ts's gating exactly like a real pserver build would.
+    __SERVER__: '"pserver"'
   },
   test: {
     environment: "node",

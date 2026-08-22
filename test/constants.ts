@@ -234,6 +234,9 @@ Object.assign(globalThis, {
   ERR_GCL_NOT_ENOUGH: -15,
   ERR_ACCESS_DENIED: -16,
 
+  ORDER_SELL: "sell",
+  ORDER_BUY: "buy",
+
   RESOURCE_ENERGY: "energy",
   RESOURCE_HYDROGEN: "H",
   RESOURCE_OXYGEN: "O",
