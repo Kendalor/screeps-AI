@@ -153,6 +153,10 @@ export interface SnapRemoteSource extends XY {
   // STRUCTURE_INVADER_CORE reserves it). Undefined when unreserved or reserved by us — never re-derive
   // "is this foreign" elsewhere, this field is already filtered at the source (see remoteRoomVision).
   reservedBy?: string;
+  // Username currently OWNING the controller (claimed, level 1+), when it isn't us. Distinct from
+  // reservedBy (a claim, not a reservation) — see RemoteRoomVision.ownedBy's doc for why it's a separate
+  // field. Undefined when unowned or owned by us.
+  ownedBy?: string;
   danger: number; // hostile presence in the room; > 0 means stop staffing/reserving
   // The cached home->source path (see RemoteSourceMemory.route), room-tagged tile by tile. Absent until
   // resolveRemoteRoom has computed it at least once (e.g. selected but no anchor yet). Mining turns this
@@ -220,6 +224,10 @@ export interface VisibleRoom {
   // fortified core (deploys defenders, surrounded by ramparts — not a target we can clear yet).
   // Undefined when no core is present. remoteInvaderAttacks.ts uses this to attack only level-0 cores.
   invaderCoreLevel?: number;
+  // Whether this room's controller currently has safe mode active — hostiles present can't act (or be
+  // acted on) at all, so Defense drops a sponsored target the moment this flips true rather than waiting
+  // for hostileCount to reach 0 (it may never, since safe mode doesn't evict them).
+  safeMode: boolean;
 }
 
 // What mining last recorded for a source, so an operation can tell a real change from rewriting the same values.

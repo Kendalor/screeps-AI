@@ -79,16 +79,17 @@ function wantedBuilders(colony: ColonySnapshot): number {
   return Math.min(config.maxBuilders, bodies);
 }
 
-// A remote room currently unsafe/off-limits to work in: hostile presence, or a controller reservation
-// held by ANYONE else (invader core or player alike — unlike Reservation's own gate, which deliberately
-// lets a claimer contest an Invader's reservation, a builder has no way to contest either kind and must
-// not be walked into either). Mining's own harvest gate already stops miners the same way (source.danger
-// > 0 || source.reservedBy !== undefined, see mining.ts), so a site there would never get worked anyway —
-// this just stops Building from claiming/placing/dispatching into a room that can't be built efficiently.
+// A remote room currently unsafe/off-limits to work in: hostile presence, owned by another player, or a
+// controller reservation held by ANYONE else (invader core or player alike — unlike Reservation's own
+// gate, which deliberately lets a claimer contest an Invader's reservation, a builder has no way to
+// contest either kind and must not be walked into either). Mining's own harvest gate already stops miners
+// the same way (source.danger > 0 || source.ownedBy !== undefined || source.reservedBy !== undefined, see
+// mining.ts), so a site there would never get worked anyway — this just stops Building from
+// claiming/placing/dispatching into a room that can't be built efficiently.
 function unsafeRemoteRooms(colony: ColonySnapshot): Set<string> {
   const out = new Set<string>();
   for (const s of colony.remoteSources) {
-    if (s.danger > 0 || s.reservedBy !== undefined) out.add(s.room);
+    if (s.danger > 0 || s.ownedBy !== undefined || s.reservedBy !== undefined) out.add(s.room);
   }
   return out;
 }

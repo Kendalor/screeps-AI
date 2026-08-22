@@ -27,18 +27,21 @@ export class Reservation extends Operation {
 
     const out: CreepRequest[] = [];
     for (const [room, sources] of this.byRoom(colony.remoteSources)) {
-      // A hostile room, or one already reserved by another PLAYER, stops reserving (age-out, not retreat).
-      // reservedBy excludes our own reservation by construction (see remoteRoomVision) — a claimer we
-      // sent must not read as "someone else reserved this." An Invader-core reservation is deliberately
-      // NOT a stop condition here: unlike a player's reservation (which claimController/reserveController
-      // both reject outright), reserveController contests an Invader reservation just fine, ticking it
-      // down same as a fresh room — so a claimer sent at an invader-held room competes for it instead of
-      // sitting out.
-      if (sources.some(s => s.danger > 0 || (s.reservedBy !== undefined && s.reservedBy !== INVADER_USERNAME))) {
-        const blocker = sources.find(s => s.danger > 0 || s.reservedBy !== undefined);
+      // A hostile room, one already OWNED by another player (reserveController fails outright against a
+      // claimed controller, same as claimController would), or one already reserved by another PLAYER,
+      // stops reserving (age-out, not retreat). reservedBy/ownedBy exclude our own claim/reservation by
+      // construction (see remoteRoomVision) — a claimer we sent must not read as "someone else holds
+      // this." An Invader-core reservation is deliberately NOT a stop condition here: unlike a player's
+      // reservation (which claimController/reserveController both reject outright), reserveController
+      // contests an Invader reservation just fine, ticking it down same as a fresh room — so a claimer
+      // sent at an invader-held room competes for it instead of sitting out.
+      if (sources.some(s => s.danger > 0 || s.ownedBy !== undefined || (s.reservedBy !== undefined && s.reservedBy !== INVADER_USERNAME))) {
+        const blocker = sources.find(s => s.danger > 0 || s.ownedBy !== undefined || s.reservedBy !== undefined);
         log.debugRoom(
           colony.name,
-          `reservation skip ${room}: ${blocker?.danger ? "danger" : `reservedBy=${blocker?.reservedBy}`}`
+          `reservation skip ${room}: ${
+            blocker?.danger ? "danger" : blocker?.ownedBy !== undefined ? `ownedBy=${blocker.ownedBy}` : `reservedBy=${blocker?.reservedBy}`
+          }`
         );
         continue;
       }

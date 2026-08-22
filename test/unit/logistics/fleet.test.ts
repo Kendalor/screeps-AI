@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 import { harvestIncome, haulDistance, type IncomeConfig } from "../../../src/logistics/fleet";
-import { colonySnap, remoteSourceAt, snapCreep } from "../../fixtures";
+import { colonySnap, remoteSourceAt, snapCreep, sourceAt } from "../../fixtures";
 
 const config: IncomeConfig = {
   sourceRegenPerTick: 10,
@@ -60,6 +60,32 @@ describe("harvestIncome", () => {
     // No local sources exist in this fixture, so the local cap is 0 — an unassigned miner's WORK must
     // not leak into the remote source's income just because a remote exists.
     expect(harvestIncome(miners, colony, config)).toBe(0);
+  });
+
+  // A source with a built link never needs a hauler — its output moves via linkSend, not Transport's
+  // pool (see logistics/links.ts). harvestIncome/haulDistance price the HAULER fleet specifically
+  // (Logistics.wantedTransport's only caller), so a linked source's income must drop out entirely, not
+  // just stop being credited to a creep.
+  it("excludes a linked local source's WORK from hauler income entirely", () => {
+    const source = sourceAt(20, 10);
+    const colony = colonySnap({ sources: [source], sourceMemory: { [source.id]: { linkId: "link1" as Id<StructureLink> } } });
+    const miners = [snapCreep("miner", { body: minerBody, memory: { sourceId: source.id } })];
+    expect(harvestIncome(miners, colony, config)).toBe(0);
+  });
+
+  it("still counts an unlinked source's miner normally alongside a linked one", () => {
+    const linked = sourceAt(10, 10, "src_linked");
+    const unlinked = sourceAt(15, 15, "src_unlinked");
+    const colony = colonySnap({
+      sources: [linked, unlinked],
+      sourceMemory: { [linked.id]: { linkId: "link1" as Id<StructureLink> } }
+    });
+    const miners = [
+      snapCreep("miner", { body: minerBody, memory: { sourceId: linked.id } }), // linked — excluded
+      snapCreep("miner", { body: minerBody, memory: { sourceId: unlinked.id } }) // unlinked — counted
+    ];
+    // Only unlinked's 10 raw energy/tick counts; regen cap is also scoped to the 1 haul-needing source (10).
+    expect(harvestIncome(miners, colony, config)).toBe(10);
   });
 });
 

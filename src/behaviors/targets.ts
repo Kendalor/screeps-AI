@@ -1,6 +1,6 @@
 // resolveTarget(spec) is the one place that searches for targets.
 
-import { ATTACK_POWER, RANGED_ATTACK_POWER, effectiveHp } from "../lib/combat";
+import { ATTACK_POWER, HEAL_ASSIST_RANGE, RANGED_ATTACK_POWER, effectiveHp } from "../lib/combat";
 import { wrapFn } from "../lib/profiler";
 import type { Prefer, TargetSpec } from "./types";
 
@@ -19,8 +19,11 @@ function nearMatches(creep: Creep, s: { pos: RoomPosition }, near: Near | undefi
     case undefined:
       return true;
     case "assignedSource": {
+      // Range 2, not 1: a source container sits at range 1 (the miner stands on it), but a source link
+      // sits one tile further back at range 2 — freeing the miner's own range-1 tile instead of occupying
+      // it (see operations/mining.ts's linkSpot). Both must resolve through this one check.
       const source = creep.memory.sourceId && (Game.getObjectById(creep.memory.sourceId) as Source | null);
-      return !!source && s.pos.inRangeTo(source.pos, 1);
+      return !!source && s.pos.inRangeTo(source.pos, 2);
     }
     case "assignedMineral": {
       const mineral = creep.memory.mineralId && (Game.getObjectById(creep.memory.mineralId) as Mineral | null);
@@ -434,6 +437,28 @@ function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomO
     });
     return sorted[0] ?? null;
   }
+  if (prefer === "nearestDamaged") {
+    // SimpleHealerRole's own use: within heal-assist range (3 — see lib/combat.ts's HEAL_ASSIST_RANGE)
+    // travel cost is already ~0 (a healer can act this same tick regardless of which in-range patient it
+    // picks), so severity decides there — same lowest-hits-fraction-first rule as "mostDamaged", self
+    // always sorting first. Beyond that range travel time dominates, so range to the healer's OWN position
+    // decides instead: a badly hurt ally across the room isn't worth a multi-tile detour past an ally
+    // standing right next to the healer right now. getRangeTo (not findClosestByPath) — cheap enough to
+    // run this sort every tick, same idiom "nearestToFlag" below already uses.
+    const sorted = [...pool].sort((a, b) => {
+      const aSelf = (a as unknown as { id?: Id<_HasId> }).id === creep.id;
+      const bSelf = (b as unknown as { id?: Id<_HasId> }).id === creep.id;
+      if (aSelf !== bSelf) return aSelf ? -1 : 1;
+      const aPos = (a as unknown as { pos: RoomPosition }).pos;
+      const bPos = (b as unknown as { pos: RoomPosition }).pos;
+      const aInRange = creep.pos.getRangeTo(aPos) <= HEAL_ASSIST_RANGE;
+      const bInRange = creep.pos.getRangeTo(bPos) <= HEAL_ASSIST_RANGE;
+      if (aInRange && bInRange) return damageFraction(a) - damageFraction(b);
+      if (aInRange !== bInRange) return aInRange ? -1 : 1;
+      return creep.pos.getRangeTo(aPos) - creep.pos.getRangeTo(bPos);
+    });
+    return sorted[0] ?? null;
+  }
   if (prefer === "mostThreatening") {
     // Highest threat tier first; nearest-by-path breaks ties within a tier so a defender still engages
     // the closer of two equally-armed hostiles.
@@ -688,7 +713,22 @@ function findCandidates(
       // Losing here means initiating: a defender/attacker that's already being shot at by something
       // still fights back via nearbyMeleeThreat/kiting in interpreter.ts, which this pool exclusion
       // never touches — only which target gets PICKED to walk toward and attack first.
-      return room.find(FIND_HOSTILE_CREEPS).filter(h => !wouldLoseTo(creep, h));
+      //
+      // Under an active safe mode the room's owner is fully protected — attack() still resolves a target
+      // and "fires" every tick (didAct stays true) but deals no damage, so a defender locked onto one never
+      // makes any real progress. Worse than hostileStructure's identical problem below: emptying this pool
+      // doesn't just stop wasted action, it's the ONLY thing that can unstick a defender at all here —
+      // validLock's defendTargetRoom check (this file, above) only invalidates a lock once the target's
+      // position leaves defendTargetRoom, but reassigning defendTargetRoom itself does nothing to a target
+      // that hasn't moved; resolveTarget then immediately falls through to THIS pool, which — without the
+      // safeMode guard — just hands back the same still-there hostile (or any other one in the room) and
+      // re-locks, so the defender never leaves. Confirmed live: defender_W45N17_73181330 stuck permanently
+      // re-fighting in a safe-moded room for 1000+ ticks after Defense reassigned its defendTargetRoom
+      // elsewhere, because this pool kept re-supplying a target to lock onto in the room it was meant to
+      // leave. Emptying the pool while safeMode is active makes resolveTarget report "nothing to do"
+      // instead, same as the room having no hostile creeps at all — the attack step then falls through
+      // (targetGone) and moveToRoom (this role's preceding step) takes over on the next pass.
+      return room.controller?.safeMode ? [] : room.find(FIND_HOSTILE_CREEPS).filter(h => !wouldLoseTo(creep, h));
     case "hostileStructure":
       // FIND_HOSTILE_STRUCTURES includes a hostile-owned/reserved room's controller — creep.attack()
       // rejects a StructureController outright (ERR_INVALID_TARGET; only attackController touches one,
@@ -700,9 +740,17 @@ function findCandidates(
       // fighting the actual keeper monster, so lairs are excluded the same way the controller is.
       // Confirmed live: attacker_W47N14_73031997 locked onto a keeperLair in W46N14 instead of the
       // level-0 invader core that justified the room-level attack sponsorship in the first place.
-      return room
-        .find(FIND_HOSTILE_STRUCTURES)
-        .filter(s => s.structureType !== STRUCTURE_CONTROLLER && s.structureType !== STRUCTURE_KEEPER_LAIR);
+      // Under an active safe mode the room's owner is fully protected — dismantle()/attack() still
+      // resolve a target and "fire" every tick (didAct stays true) but deal no damage, so a demolisher/
+      // bait tower locked onto one never makes any real progress and never falls through to anything
+      // else either. Confirmed live: a demolisher stuck permanently re-running step 2 (dismantle) against
+      // a target room that had gone into safe mode. Emptying the pool while safeMode is active makes
+      // resolveTarget report "nothing to do" instead, same as the room having no hostile structures at all.
+      return room.controller?.safeMode
+        ? []
+        : room
+            .find(FIND_HOSTILE_STRUCTURES)
+            .filter(s => s.structureType !== STRUCTURE_CONTROLLER && s.structureType !== STRUCTURE_KEEPER_LAIR);
     case "hostileConstructionSite":
       return room.find(FIND_HOSTILE_CONSTRUCTION_SITES);
     case "constructionSite": {

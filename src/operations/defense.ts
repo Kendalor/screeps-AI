@@ -3,7 +3,7 @@
 // Always attached (operationsFor(), unlike Attack/Colonize/Drain/Parade — see operations/index.ts), so a
 // flag-requested rescue of another room doesn't get its own operation class: a "defend"/"defend:<room>"
 // flag (defendFlags.ts) just adds a room to ColonyMemory.defending, which this pools alongside home/remote
-// hostiles into the same shared defender fleet (see roomsWithHostiles/openSponsoredTargets below).
+// hostiles into the same shared defender fleet (see roomsToDefend/openSponsoredTargets below).
 
 import { roleDef } from "../behaviors/roles";
 import type { Intent } from "../intents/types";
@@ -30,13 +30,16 @@ export const TOWER_REPAIR_RANGE = 6;
 const HOSTILES_PER_DEFENDER = 2;
 const MAX_DEFENDERS = 3; // hard ceiling — a bigger incursion than this needs the player's attention, not an ever-growing spawn queue
 
-// Every room currently holding a hostile — home first (already vision-covered every tick, and the room
-// most worth holding), then remotes nearest first, then any flag-sponsored `defending` target still open
-// (see openSponsoredTargets below — a rescue of another colony's room, or any arbitrary room, requested
-// via a "defend"/"defend:<room>" flag and handed off through defendFlags.ts/addDefendTarget). remoteSources'
-// danger is vision-independent (cached via RemoteMemory.dangerUntil, see remote-danger-until), so a
-// defender still gets dispatched at an invaded remote the colony has since lost direct vision of.
-function roomsWithHostiles(colony: ColonySnapshot): string[] {
+// Every room a defender should be standing in — home first (already vision-covered every tick, and the
+// room most worth holding), then invaded remotes nearest first, then any flag-sponsored `defending` target
+// still open (see openSponsoredTargets below — a rescue of another colony's room, or any arbitrary room,
+// requested via a "defend"/"defend:<room>" flag and handed off through defendFlags.ts/addDefendTarget).
+// Unlike home/remotes (both hostile-count-gated), a sponsored target stays listed even once it reads clear
+// of hostiles — it's a standing garrison order, not "go fight and then stop" (see openSponsoredTargets'
+// doc). remoteSources' danger is vision-independent (cached via RemoteMemory.dangerUntil, see
+// remote-danger-until), so a defender still gets dispatched at an invaded remote the colony has since lost
+// direct vision of.
+function roomsToDefend(colony: ColonySnapshot): string[] {
   const rooms: string[] = [];
   if (colony.hostiles.length > 0) rooms.push(colony.name);
   const remoteRooms = new Set(colony.remoteSources.filter(s => s.danger > 0).map(s => s.room));
@@ -45,18 +48,22 @@ function roomsWithHostiles(colony: ColonySnapshot): string[] {
   return rooms;
 }
 
-// Flag-sponsored defend targets (ColonyMemory.defending) not yet seen clear — the defensive equivalent of
-// Attack's openTargets. Vision-gated the same way roomCleared() is below: a target the colony has never
-// scouted must not read as already-clear just because no visibleRooms entry says otherwise.
+// Flag-sponsored defend targets (ColonyMemory.defending) not currently a dead zone — unlike Attack's
+// openTargets, a sponsored target is deliberately NOT dropped just for reading clear of hostiles: a
+// "defend"/"defend:<room>" flag is a standing garrison order ("hold this room"), not a one-shot "clear
+// this room" strike — it stays open for as long as the flag itself stays placed (defendFlags.ts owns
+// removing the target once the flag disappears, see that file's header). The only thing that still pulls
+// a target out from under the flag is roomSafeModed(): a safe-moded room is a dead zone regardless of
+// intent, nothing our creeps do there has any effect (see roomSafeModed's doc).
 function openSponsoredTargets(colony: ColonySnapshot): string[] {
-  return colony.defending.filter(t => !roomCleared(colony, t));
+  return colony.defending.filter(t => !roomSafeModed(colony, t));
 }
 
-// True once `room` has been seen this tick (someone in the empire has vision of it) with no hostiles left
-// — same rule Attack's roomCleared uses (see operations/attack.ts's header for why absence from
-// visibleRooms must never read as cleared).
-function roomCleared(colony: ColonySnapshot, room: string): boolean {
-  return colony.visibleRooms.find(r => r.room === room)?.hostileCount === 0;
+// True once `room` has been seen this tick with safe mode active — hostiles present can't act (or be hit)
+// at all, so a sponsored target stops needing a defender even though hostileCount may stay nonzero for the
+// whole duration (safe mode doesn't evict them, just neuters them).
+function roomSafeModed(colony: ColonySnapshot, room: string): boolean {
+  return colony.visibleRooms.find(r => r.room === room)?.safeMode === true;
 }
 
 // Total hostile count across every invaded room — home (live count) plus one nominal hostile per invaded
@@ -84,11 +91,13 @@ function defendTargetRoomIntents(colony: ColonySnapshot, invadedRooms: string[])
 export class Defense extends Operation {
   public readonly kind = "defense";
 
-  // Only while hostiles are actually present somewhere (home, a remote, or an open sponsored target) — a
-  // defender idling with nothing to fight is pure upkeep cost, so the request (and the creep) disappears
-  // the instant every invaded room clears.
+  // Only while there's actually somewhere to stand: home/a remote with a live hostile, or an open
+  // sponsored garrison target — a defender idling with nowhere assigned is pure upkeep cost, so the
+  // request (and the creep) disappears once every invaded room clears AND every sponsored target's flag
+  // is gone. A sponsored target alone (even with zero current hostiles) still keeps this non-empty — see
+  // roomsToDefend's doc for why a garrison order doesn't need an active fight to justify staffing.
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
-    const invadedRooms = roomsWithHostiles(colony);
+    const invadedRooms = roomsToDefend(colony);
     if (invadedRooms.length === 0) return [];
     const wanted = Math.min(MAX_DEFENDERS, Math.ceil(totalThreat(colony, invadedRooms) / HOSTILES_PER_DEFENDER));
     log.debugRoom(
@@ -100,15 +109,16 @@ export class Defense extends Operation {
 
   // Direct tower action plus keeping every defender's cross-room assignment current.
   public override intents(colony: ColonySnapshot): Intent[] {
-    // Drop any flag-sponsored target that's been seen clear — the defensive equivalent of Attack's own
-    // cleared-target cleanup (see operations/attack.ts's intents()). Home/remote hostile rooms need no
+    // Drop any flag-sponsored target that's gone into safe mode — a dead zone regardless of the flag
+    // still standing (see openSponsoredTargets' doc for why merely-clear targets are deliberately NOT
+    // dropped here the way Attack drops its one-shot targets). Home/remote hostile rooms need no
     // equivalent bookkeeping: they're derived fresh from live snapshot state every tick, not durable
     // memory, so there's nothing to remove.
-    const cleared = colony.defending.filter(t => roomCleared(colony, t));
-    for (const target of cleared) log.debugRoom(colony.name, `defense: ${target} seen clear — dropping as a sponsored target`);
+    const deadZoned = colony.defending.filter(t => roomSafeModed(colony, t));
+    for (const target of deadZoned) log.debugRoom(colony.name, `defense: ${target} entered safe mode — dropping as a sponsored target`);
     const out: Intent[] = [
-      ...cleared.map(target => ({ kind: "removeDefendTarget" as const, room: colony.name, target })),
-      ...defendTargetRoomIntents(colony, roomsWithHostiles(colony))
+      ...deadZoned.map(target => ({ kind: "removeDefendTarget" as const, room: colony.name, target })),
+      ...defendTargetRoomIntents(colony, roomsToDefend(colony))
     ];
     if (colony.hostiles.length > 0) {
       // Towerless and invaded: safemode is the only defence left, so it short-circuits the rest.

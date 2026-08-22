@@ -11,7 +11,7 @@ import { REMOTE_MINER_PRIORITY } from "../../../src/behaviors/roles/miner";
 import { Mining } from "../../../src/operations/mining";
 import { findPath, resetFindPathCacheForTests, type FindPath } from "../../../src/construction/planner";
 import type { PlacedStructure } from "../../../src/construction/stamp";
-import { colonySnap, containerAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt, spawn } from "../../fixtures";
+import { colonySnap, containerAt, linkAt, openTerrain, remoteSourceAt, scouted, scoutTarget, snapCreep, snapCreeps, sourceAt, spawn } from "../../fixtures";
 import { stubPathFinderSingleRoom } from "../../constants";
 import type { ColonySnapshot } from "../../../src/snapshot/types";
 import type { Intent } from "../../../src/intents/types";
@@ -39,6 +39,17 @@ function expectedRoute(anchor: XY, source: XY, rcl = 3) {
 }
 
 const expectedSpot = (anchor: XY, source: XY, rcl = 3) => expectedRoute(anchor, source, rcl).structurePos;
+
+// Mirrors production's linkSpot (operations/mining.ts): a link sits one tile further back along the
+// route than a container, freeing the miner's own range-1 tile (expectedSpot) instead of occupying it.
+function expectedLinkSpot(anchor: XY, source: XY, rcl = 7): XY {
+  const route = expectedRoute(anchor, source, rcl);
+  for (let i = route.path.length - 2; i >= 0; i--) {
+    const p = route.path[i];
+    if (Math.max(Math.abs(p.x - source.x), Math.abs(p.y - source.y)) >= 2) return p;
+  }
+  return route.structurePos;
+}
 
 const minerRequests = (snap: Parameters<Mining["desiredCreeps"]>[0]) =>
   mining.desiredCreeps(snap).filter(r => r.memory.role === "miner");
@@ -343,6 +354,21 @@ describe("Mining.desiredCreeps — remote miners", () => {
     expect(remoteMinerRequests(snap)).toEqual([]);
   });
 
+  // A room another player has CLAIMED (level 1+, not merely reserved) stops new miner requests too —
+  // reserveController/claimController both reject outright against it, so it's unminable regardless of
+  // whether it currently has any hostile creep in it or safe mode active.
+  it("skips a remote source whose room is owned by another player", () => {
+    const local = sourceAt(20, 10, "local", 1);
+    const owned = remoteSourceAt(25, 25, "W2N1", { distance: 60, ownedBy: "SomePlayer" });
+    const snap = colonySnap({
+      sources: [local],
+      remoteSources: [owned],
+      creeps: [...snapCreeps("hauler", 5), satMiner({ memory: { sourceId: local.id, op: "mining:W1N1" } })]
+    });
+
+    expect(remoteMinerRequests(snap)).toEqual([]);
+  });
+
   // Regression: reservedBy must never suppress requests for a room WE reserve — only a foreign
   // reservation should pause staffing (see remoteSources.test.ts's join invariant).
   it("still requests a remote miner for a room reserved by us", () => {
@@ -540,10 +566,23 @@ describe("Mining.structures", () => {
     const source = sourceAt(20, 10);
     const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7, energyCapacity: 800 });
 
-    const spot = expectedSpot(anchor, source, 7);
+    const spot = expectedLinkSpot(anchor, source, 7);
     expect(mining.structures(snap, findPathFor(snap)).filter(s => s.type !== "road")).toEqual([
       { x: spot.x, y: spot.y, type: "link", sourceId: source.id }
     ]);
+  });
+
+  // The link is pulled back to range 2 of the source (not the range-1 spot a container would sit on),
+  // so the miner's own range-1 tile is left open to stand on instead of being occupied by the link.
+  it("leaves the miner's range-1 tile open (as road, not the link) at RCL7", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const snap = colonySnap({ anchor, sources: [source], controllerLevel: 7, energyCapacity: 800 });
+
+    const minerSpot = expectedSpot(anchor, source, 7);
+    const placed = mining.structures(snap, findPathFor(snap));
+    expect(placed).toContainEqual({ x: minerSpot.x, y: minerSpot.y, type: "road", sourceId: source.id });
+    expect(placed.find(s => s.x === minerSpot.x && s.y === minerSpot.y && s.type === "link")).toBeUndefined();
   });
 
   // The container is only worth having if haulers can reach it, and findPath computes the whole
@@ -910,6 +949,110 @@ describe("Mining.intents", () => {
 
     expect(mining.intents(snap)).toEqual([]);
   });
+
+  // At RCL7+ the source's spot hosts a link instead of a container (sourceStructureType swaps the
+  // placed type, same tile) — this must be detected and recorded the same way, or a built source link
+  // never gets its id into sourceMemory[...].linkId and planLinkTransfers (logistics/links.ts) can
+  // never find it to drain.
+  it("records the link id once one exists on the source's spot", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7);
+    const linkSpot = expectedLinkSpot(anchor, source, 7);
+    const link = linkAt(linkSpot.x, linkSpot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [link]
+    });
+
+    expect(mining.intents(snap)).toContainEqual(
+      expect.objectContaining({ kind: "recordSourceSpot", source: source.id, spot: { x: spot.x, y: spot.y }, link: link.id })
+    );
+  });
+
+  it("still emits when a link appears on an already-recorded spot", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7);
+    const linkSpot = expectedLinkSpot(anchor, source, 7);
+    const link = linkAt(linkSpot.x, linkSpot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [link],
+      // Spot recorded, link id not yet — the one case a write still has something to add.
+      sourceMemory: { [source.id]: { spot: { x: spot.x, y: spot.y } } }
+    });
+
+    expect(mining.intents(snap)).toContainEqual(
+      expect.objectContaining({ kind: "recordSourceSpot", link: link.id })
+    );
+  });
+
+  it("emits nothing once both spot and link are recorded", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7);
+    const linkSpot = expectedLinkSpot(anchor, source, 7);
+    const link = linkAt(linkSpot.x, linkSpot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [link],
+      sourceMemory: { [source.id]: { spot: { x: spot.x, y: spot.y }, linkId: link.id } }
+    });
+
+    expect(mining.intents(snap)).toEqual([]);
+  });
+
+  // Regression: a live colony can have a source link built BEFORE the range-2 pullback existed, sitting
+  // at the old range-1 tile (expectedSpot) instead of today's expectedLinkSpot. An exact-tile search
+  // would never see it again — it just sits full forever, invisible to planLinkTransfers. Detection has
+  // to tolerate this (range <=2 of the source, not an exact match), same tolerance upgrading.ts's
+  // controller-link detection already gives itself.
+  it("still finds a legacy source link sitting at the old range-1 spot", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7); // range-1: where a pre-pullback link would have landed
+    const link = linkAt(spot.x, spot.y);
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [link]
+    });
+
+    expect(mining.intents(snap)).toContainEqual(expect.objectContaining({ kind: "recordSourceSpot", link: link.id }));
+  });
+
+  // The anchor/controller links must never be misfiled as a source's link just because they happen to
+  // sit within range 2 of it (a cramped layout can put the controller link close to a source) — mirrors
+  // links.ts's own "mystery link" regression for the identical id-based exclusion.
+  it("does not claim the anchor or controller link even if one sits within range of a source", () => {
+    const anchor = { x: 10, y: 10 };
+    const source = sourceAt(20, 10);
+    const spot = expectedSpot(anchor, source, 7);
+    const anchorLink = linkAt(spot.x + 1, spot.y); // within range 2 of the source, but already known
+    const snap = colonySnap({
+      anchor,
+      sources: [source],
+      controllerLevel: 7,
+      energyCapacity: 800,
+      links: [anchorLink],
+      linkNetwork: { storage: anchorLink.id }
+    });
+
+    const recorded = mining.intents(snap).find(i => i.kind === "recordSourceSpot");
+    expect(recorded && "link" in recorded ? recorded.link : undefined).toBeUndefined();
+  });
 });
 
 // The remote-route equivalent of recordSourceSpot's container bookkeeping — closes the loop so
@@ -1239,5 +1382,29 @@ describe("Mining.intents — remote selection", () => {
     expect(intent).toBeDefined();
     const ids = intent!.remotes.flatMap(r => r.sources.map(s => s.id));
     expect(ids).toContain("better");
+  });
+
+  // A currently-selected remote room claimed by another player must drop out of ColonyMemory.remotes
+  // promptly, not wait out remoteReevaluateEvery (5000 ticks) — mining/reservation/construction already
+  // stop staffing/reserving/building it the instant ownership is observed (their own ownedBy gates), but
+  // leaving the dead entry selected that long would keep it occupying a MAX_REMOTE_SOURCES slot and
+  // reporting as "active" in ColonyMemory.remotes for no reason. Off BOTH throttle cadences (not a
+  // multiple of remoteSelectionEvery=1000 or remoteReevaluateEvery=5000) to prove the ownedBy check itself
+  // is what forces reevaluate early, not either normal cadence.
+  it("evicts a currently-selected remote room the tick it's observed claimed by another player", () => {
+    const owned = remoteSourceAt(25, 25, "W2N1", { distance: 60, ownedBy: "SomePlayer" });
+    const snap = colonySnap({
+      tick: 1001,
+      anchor: { x: 25, y: 25 },
+      controllerLevel: 3,
+      energyCapacity: 800,
+      spawns: [spawn()],
+      remoteSources: [owned],
+      scoutTargets: [scoutTarget("W2N1", scouted({ owner: "SomePlayer", hostile: true }))]
+    });
+
+    const [intent] = setRemotesOf(snap);
+    expect(intent).toBeDefined();
+    expect(intent.remotes).toEqual([]);
   });
 });

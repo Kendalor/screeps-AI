@@ -11,9 +11,11 @@
 // pass here drops just that one target (removeDefendTarget) — the rest of a colony's other
 // flag-sponsored targets, plus its own home/remote hostiles, are untouched, since Defense pools every
 // target behind one shared defender fleet (see defense.ts's header) rather than one operation per target.
-// The reverse also holds: when Defense's own completion logic removes a target on its own (room seen
-// clear — see defense.ts's intents()), execute.ts prunes defendingFlags for it, and this module's third
-// pass notices the now-orphaned flag name and removes the actual flag.
+// The reverse also holds: when Defense's own completion logic removes a target on its own (the room has
+// gone into another player's safe mode and turned into a dead zone — a merely-clear room is deliberately
+// NOT auto-dropped, a defend flag is a standing garrison order, see defense.ts's openSponsoredTargets doc),
+// execute.ts prunes defendingFlags for it, and this module's third pass notices the now-orphaned flag name
+// and removes the actual flag.
 //
 // One flag = one handoff, same dedup shape as before: placing the same flag again while its target is
 // already being defended is a harmless no-op.

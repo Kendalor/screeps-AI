@@ -45,6 +45,7 @@ export const buildEmpireSnapshot = wrapFn(function buildEmpireSnapshot(): Empire
       room: name,
       info: Memory.rooms?.[name]?.scouted,
       hostileCount: hostileCreeps.length + hostileStructures.length,
+      safeMode: (r.controller?.safeMode ?? 0) > 0,
       ...(invaderCore ? { invaderCoreLevel: invaderCore.level } : {})
     });
 
@@ -470,7 +471,16 @@ function remoteRoomVision(
     // any exotic body the part-list misses). An unarmed scout/claimer passing through triggers neither, so
     // it's no longer a reason to pull staffing or tear down an already-built route (see mining.ts's
     // structures() and building.ts's unsafeRemoteRooms, both gated on this).
-    const allHostiles = room.find(FIND_HOSTILE_CREEPS);
+    //
+    // A room under another player's active safe mode is a dead zone for us, not a safe one: safe mode
+    // blocks every hostile action FROM the protected owner's enemies, which is what we are here — our
+    // creeps can't mine (harvesting their room's resources counts as hostile), can't fight, can't heal
+    // usefully, can't do anything but sit there. Treating it as zero danger isn't "it's safe to stay", it's
+    // "there's nothing our creeps can do here right now" — so a defender has no reason to go, and a miner
+    // has no reason to stay (mining.ts's remote skip and Defense's roomsWithHostiles both key off danger).
+    // Only applies to a controller we don't own; our own safe mode (room.controller.my) protects US instead.
+    const enemySafeModed = room.controller !== undefined && !room.controller.my && (room.controller.safeMode ?? 0) > 0;
+    const allHostiles = enemySafeModed ? [] : room.find(FIND_HOSTILE_CREEPS);
     const hostiles = allHostiles.some(isCombatCapable) || hasDamagedFriendly(room) ? allHostiles : [];
     // How long the room should still be considered dangerous once we lose vision of it: the latest tick
     // any current hostile is expected to still be alive. A creep with no ticksToLive (some invader-core
@@ -481,9 +491,17 @@ function remoteRoomVision(
     // Who holds the reservation, when it isn't us — e.g. "Invader" after a STRUCTURE_INVADER_CORE
     // reserves the controller. Never our own username; a reservation we placed reads via `reserved` above.
     const reservedBy = reservation !== undefined && reservation.username !== me ? reservation.username : undefined;
+    // Who OWNS the controller (claimed, level 1+), when it isn't us — a wholly different, stronger state
+    // than reservedBy (see ownedBy's doc on RemoteRoomVision). Unlike safe mode, this doesn't expire: a
+    // claimed room stays unminable/unstaffable for as long as someone else holds it, regardless of whether
+    // they currently have safe mode up, a defended presence, or nothing at all sitting in it.
+    const ownedBy = room.controller?.owner !== undefined && room.controller.owner.username !== me
+      ? room.controller.owner.username
+      : undefined;
     out[remote.room] = {
       reserved: reservation !== undefined && reservation.username === me,
       reservedBy,
+      ownedBy,
       danger: hostiles.length,
       dangerUntil,
       openTilesBySource,

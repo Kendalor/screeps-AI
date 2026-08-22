@@ -30,23 +30,40 @@ function isOnRemoteSource(sourceId: SnapCreep["memory"]["sourceId"], remotes: re
   return sourceId !== undefined && remotes.some(r => r.id === sourceId);
 }
 
+// A source with a built link needs no hauler at all — its output moves for free via linkSend
+// (logistics/links.ts) straight to the storage/anchor link, never through Transport's pool. Excluded
+// from every part of this bucket (WORK, regen cap, distance average) so a linked source stops pricing
+// hauler headcount the moment its link goes up, exactly as it stops needing one in reality.
+function hasLink(colony: ColonySnapshot, sourceId: SnapCreep["memory"]["sourceId"]): boolean {
+  // DeepReadonly-wrapped, same as isOnRemoteSource's own sourceId above — doesn't structurally match
+  // Id<Source> closely enough to index sourceMemory with directly; the cast is safe, it's still the
+  // same underlying string id.
+  return sourceId !== undefined && colony.sourceMemory[sourceId as Id<Source>]?.linkId !== undefined;
+}
+
 // Local sources' WORK, pooled exactly as before remote mining existed: every miner NOT assigned to a
 // selected remote source counts as local, including creeps predating stage 2 / general-pool miners with
-// no sourceId at all (PRD §6) — a remote source only ever gets credit for a miner explicitly on it.
+// no sourceId at all (PRD §6) — a remote source only ever gets credit for a miner explicitly on it. A
+// sourceId-less miner can't be attributed to a specific (possibly linked) source, so it always counts
+// toward hauling — conservative over-provisioning beats silently starving a real haul need.
 function localBucket(miners: readonly SnapCreep[], colony: ColonySnapshot, config: IncomeConfig, off: XY | null): SourceBucket {
   const workParts = miners.reduce((sum, c) => {
-    return isOnRemoteSource(c.memory.sourceId, colony.remoteSources) ? sum : sum + countPart(c.body, WORK);
+    if (isOnRemoteSource(c.memory.sourceId, colony.remoteSources)) return sum;
+    if (hasLink(colony, c.memory.sourceId)) return sum;
+    return sum + countPart(c.body, WORK);
   }, 0);
   const raw = workParts * HARVEST_POWER;
-  const regenCap = Math.min(config.roomIncomeCap, colony.sources.length * config.sourceRegenPerTick);
+
+  const haulSources = colony.sources.filter(source => !hasLink(colony, source.id));
+  const regenCap = Math.min(config.roomIncomeCap, haulSources.length * config.sourceRegenPerTick);
 
   let distance = config.defaultHaulDistance;
-  if (off && colony.sources.length > 0) {
-    const total = colony.sources.reduce((sum: number, source: SnapSource) => {
+  if (off && haulSources.length > 0) {
+    const total = haulSources.reduce((sum: number, source: SnapSource) => {
       const spot = colony.sourceMemory[source.id]?.spot ?? source;
       return sum + range(off, spot);
     }, 0);
-    distance = Math.max(1, Math.round(total / colony.sources.length));
+    distance = Math.max(1, Math.round(total / haulSources.length));
   }
 
   return { income: Math.min(raw, regenCap), distance };
@@ -64,10 +81,12 @@ function remoteBuckets(miners: readonly SnapCreep[], remotes: readonly SnapRemot
 }
 
 /**
- * Harvestable income right now: local sources (pooled, capped as before remote mining existed) plus
- * every staffed remote source (priced individually against its own reserved/unreserved regen cap, see
- * mining/remoteEconomics.ts's grossHarvest). Takes the miner list rather than filtering the snapshot
- * itself so each caller controls ownership-scoping (Mining.owned() vs. a colony-wide read).
+ * Income a hauler-role transport fleet actually needs to move right now: local non-linked sources
+ * (pooled, capped as before remote mining existed) plus every staffed remote source (priced individually
+ * against its own reserved/unreserved regen cap, see mining/remoteEconomics.ts's grossHarvest). A local
+ * source with a built link contributes nothing here — its output moves via linkSend, never a creep (see
+ * localBucket's hasLink). Takes the miner list rather than filtering the snapshot itself so each caller
+ * controls ownership-scoping (Mining.owned() vs. a colony-wide read).
  */
 export function harvestIncome(miners: readonly SnapCreep[], colony: ColonySnapshot, config: IncomeConfig): number {
   const local = localBucket(miners, colony, config, dropOff(colony));

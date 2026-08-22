@@ -178,9 +178,16 @@ export function scoutTarget(room: string, info?: ScoutInfo, origin = "W1N1"): Sc
 
 // A room with ambient vision this tick — Scouting's passive-recording input. Only a name and what
 // was last observed; no distance/type, since passive recording doesn't care where the room sits.
-// hostileCount defaults to 0 (clear) — pass it explicitly for Attack tests that need a hostile room.
-export function visibleRoom(room: string, info?: ScoutInfo, hostileCount = 0, invaderCoreLevel?: number): VisibleRoom {
-  return { room, info, hostileCount, ...(invaderCoreLevel !== undefined ? { invaderCoreLevel } : {}) };
+// hostileCount defaults to 0 (clear), safeMode defaults to false — pass explicitly for tests that need
+// a hostile or safe-moded room.
+export function visibleRoom(
+  room: string,
+  info?: ScoutInfo,
+  hostileCount = 0,
+  invaderCoreLevel?: number,
+  safeMode = false
+): VisibleRoom {
+  return { room, info, hostileCount, safeMode, ...(invaderCoreLevel !== undefined ? { invaderCoreLevel } : {}) };
 }
 
 // A recorded observation, seen `tick` ticks ago (Game.time in tests defaults to 0, so pass an

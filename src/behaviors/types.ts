@@ -4,8 +4,8 @@ import type { RoleName } from "../memory/schema";
 // Sources ignore this and use their open harvest-tile count as the cap instead.
 export type Share = "allow" | "avoid" | number;
 
-// Selection strategy a step declares outright, no implicit fallback: "nearest" (default) is closest, "largest" ranks a drop pile by amount, "mostProgress" ranks a construction site closest to done, "mostDamaged" ranks a structure by lowest hits fraction (the repair counterpart of "mostProgress"), "mostThreatening" ranks a hostile creep by body composition (attacker > healer > unarmed), nearest as the tiebreaker, "nearestToFlag" ranks by range to creep.memory.demolishFlag's live position rather than the acting creep's own position (falls back to "nearest" whenever the flag is unset or gone).
-export type Prefer = "nearest" | "largest" | "mostProgress" | "mostDamaged" | "mostThreatening" | "nearestToFlag";
+// Selection strategy a step declares outright, no implicit fallback: "nearest" (default) is closest, "largest" ranks a drop pile by amount, "mostProgress" ranks a construction site closest to done, "mostDamaged" ranks a structure by lowest hits fraction (the repair counterpart of "mostProgress"), "mostThreatening" ranks a hostile creep by body composition (attacker > healer > unarmed), nearest as the tiebreaker, "nearestToFlag" ranks by range to creep.memory.demolishFlag's live position rather than the acting creep's own position (falls back to "nearest" whenever the flag is unset or gone), "nearestDamaged" (SimpleHealerRole's own use) ranks by lowest hits fraction among patients within heal-assist range of the acting creep, then falls back to plain range-to-self for anyone farther out — so a healer stops for a hurt ally standing right next to it instead of always beelining for whoever's most hurt anywhere in the room.
+export type Prefer = "nearest" | "largest" | "mostProgress" | "mostDamaged" | "mostThreatening" | "nearestToFlag" | "nearestDamaged";
 
 export type TargetSpec =
   | {
@@ -22,7 +22,9 @@ export type TargetSpec =
       share?: Share;
       prefer?: Prefer;
       // Positional discriminator, the only way to tell same-typed structures apart by where they sit:
-      //  - "assignedSource": range 1 of the creep's memory.sourceId — a miner's own source container/link.
+      //  - "assignedSource": range 2 of the creep's memory.sourceId — a miner's own source container
+      //    (range 1, the miner stands on it) or link (range 2, pulled back so the miner's range-1 tile
+      //    stays free — see operations/mining.ts's linkSpot).
       //  - "controller": range 2 of the room controller — the controller container (an upgrader parked on
       //    it stays in upgrade range). This is the hauler's fill target.
       //  - "notController": the complement — every container that is NOT the controller's, i.e. the source
@@ -165,6 +167,21 @@ export type Step = ({
     // SELF_SUFFICIENT_ENERGY_CAP on its own, the room's normal operations (Bootstrap et al) take over and
     // the settler recycles itself for a partial energy refund rather than idling out its natural lifespan.
     | { do: "recycle"; aboveEnergyCapacity: number }
+    // Pre-empting leg for every SingleTargetFlagOperation-spawned role (SimpleBaitTowerRole,
+    // DemolisherRole, SimpleHealerRole, AttackControllerRole — the flag/oneShot family, see
+    // operations/singleTargetFlagOperation.ts): a no-op fall-through while creep.memory.op's originating
+    // operation is still listed in ColonyMemory.singleTargetOps (the flag handoff hasn't been withdrawn
+    // and, for a "oneShot" op, hasn't self-terminated yet — see SingleTargetOpState's "wanted<=0 reads as
+    // absent" rule). Once that entry is gone — the flag was pulled, or removeOperation was run, while this
+    // creep was still alive — there's no longer any operation left to do the creep's job for, so it walks
+    // to a spawn in its OWN home room and recycleCreep's itself for a partial refund rather than idling out
+    // its natural lifespan doing nothing (SingleTargetFlagOperation never re-adopts an orphaned creep; it's
+    // filtered out of `owned()` the moment memory.op no longer matches any live instance's name). Ownerless
+    // creeps (memory.op unset — predates its requester) always no-op here, same fail-open convention
+    // `owned()` itself uses. Meant to be listed FIRST in a role's step table so it pre-empts every other
+    // step uniformly the instant the operation disappears, rather than being woven into each step
+    // individually.
+    | { do: "recycleIfOperationGone" }
     // Engage the nearest hostile: ranged-attack at range 3 if the body has RANGED_ATTACK, else close to
     // melee range 1. Never self-completes on store state (a fighter carries nothing) — only targetGone
     // (no hostile left in the room) ends it, same as reserve.
@@ -206,15 +223,31 @@ export type Step = ({
     // Store-less, never self-completes on store state — only the when:"healthy" gate ends it, once hits
     // recovers to hitsMax.
     | { do: "fleeAndHeal" }
-    // Shared advance leg for every flag-following role: walks toward creep.memory.followFlag's LIVE
-    // position, read straight from Game.flags every tick — no memory-cached destination the way
-    // moveToPos's drainRallyPos/paradeRallyPos are (an owning operation would have to refresh those every
-    // tick anyway; a flag is already live in Game.flags, so the step just reads it directly). Dragging
-    // the flag in the client redirects the creep immediately. Falls back to moveToRoom's targetRoom
-    // behavior when followFlag is unset or the named flag no longer exists (removed, or a creep that
-    // predates this field) — never a standing no-op. Never self-completes here; the caller's
-    // when:"damaged" gate is what stops this step once the creep takes a hit.
+    // Plain advance leg for flag-following roles that do their combat/heal work in a separate step
+    // (DemolisherRole's "dismantle"): walks toward creep.memory.followFlag's LIVE position, read straight
+    // from Game.flags every tick — no memory-cached destination the way moveToPos's drainRallyPos/
+    // paradeRallyPos are (an owning operation would have to refresh those every tick anyway; a flag is
+    // already live in Game.flags, so the step just reads it directly). Dragging the flag in the client
+    // redirects the creep immediately. Falls back to moveToRoom's targetRoom behavior when followFlag is
+    // unset or the named flag no longer exists (removed, or a creep that predates this field) — never a
+    // standing no-op. Never self-completes on its own; whatever step follows it (or, for
+    // SimpleBaitTowerRole's cousin below, the when:"damaged" gate) is what stops it. SimpleHealerRole uses
+    // its own "healerAdvance" variant below instead — see that step's doc for why.
     | { do: "moveToFlag" }
+    // SimpleBaitTowerRole's own advance leg — moveToFlag's simple walk PLUS the self-heal-while-moving and
+    // attack-nearest-hostile-structure/creep behavior a lone bait creep needs, since it has no separate
+    // "attack" step of its own the way Demolisher/SimpleHealer do. Same live followFlag tracking and
+    // moveToRoom fallback as moveToFlag. Never self-completes here; the caller's when:"damaged" gate is
+    // what stops this step once the creep takes a hit.
+    | { do: "baitTowerAdvance" }
+    // SimpleHealerRole's own advance leg — moveToFlag's simple walk PLUS yielding (letting the creep's
+    // "heal" step take over as primary) the moment any friendly creep in the room is damaged, not only once
+    // the flag's exact tile is reached. moveToFlag's plain "arrived on the exact tile" yield is too late for
+    // a healer: the flag's exact tile can be occupied or otherwise unreachable, which would leave the
+    // healer marching for it forever, walking straight past a hurt ally without ever stopping to heal (see
+    // interpreter.ts's healerAdvanceStep). Kept as its own step rather than folded into moveToFlag so
+    // DemolisherRole/AttackControllerRole's advance behavior stays untouched by SimpleHealer's needs.
+    | { do: "healerAdvance" }
   );
 
 export interface TaskState {

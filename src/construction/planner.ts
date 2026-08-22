@@ -95,14 +95,15 @@ export function existingAt(colony: ColonySnapshot, p: PlacedStructure): boolean 
 }
 
 // Remote rooms currently unsafe to place a site or send a builder into — same definition as
-// operations/construction.ts's unsafeRemoteRooms (danger or a reservation held by someone else). Mining's
-// own claim no longer withholds itself for this (see mining.ts's structures()), so this is now the
-// only thing stopping a site from going up in a dangerous remote room; the home-room leg of the same
-// route is never affected, since roomOf() only reads this set for non-home placements.
+// operations/construction.ts's unsafeRemoteRooms (danger, another player's ownership, or a reservation
+// held by someone else). Mining's own claim no longer withholds itself for this (see mining.ts's
+// structures()), so this is now the only thing stopping a site from going up in a dangerous remote room;
+// the home-room leg of the same route is never affected, since roomOf() only reads this set for non-home
+// placements.
 export function unsafeRemoteRooms(colony: ColonySnapshot): Set<string> {
   const out = new Set<string>();
   for (const s of colony.remoteSources) {
-    if (s.danger > 0 || s.reservedBy !== undefined) out.add(s.room);
+    if (s.danger > 0 || s.ownedBy !== undefined || s.reservedBy !== undefined) out.add(s.room);
   }
   return out;
 }

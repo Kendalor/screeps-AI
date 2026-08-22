@@ -73,6 +73,13 @@ describe("Reservation demand", () => {
     expect(claimerRequests(colonySnap({ ...affordable, remoteSources: [remote] }))).toEqual([]);
   });
 
+  // A claimed (owned) room rejects reserveController outright, same as claimController would — never
+  // worth sending a claimer to contest, unlike an Invader-core reservation below.
+  it("skips a remote room owned by another player", () => {
+    const remote = remoteSourceAt(25, 25, "W2N1", { distance: 60, ownedBy: "SomePlayer" });
+    expect(claimerRequests(colonySnap({ ...affordable, remoteSources: [remote] }))).toEqual([]);
+  });
+
   // An Invader-core reservation is not a player's — reserveController contests it (ticks it down)
   // instead of being rejected outright the way it would against a player's reservation, so a claimer
   // should still be requested to go compete for the room rather than sit out.

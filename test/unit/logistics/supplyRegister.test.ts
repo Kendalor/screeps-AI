@@ -24,30 +24,38 @@ describe("pickSupplyRequest", () => {
   });
 
   it("picks the only candidate when there is one", () => {
-    const only = stubRequest("a", SUPPLY_TIER.spawnSystem);
+    const only = stubRequest("a", SUPPLY_TIER.base);
     expect(pickSupplyRequest([only], HOME, () => 5)).toBe(only);
   });
 
-  it("a tower always beats a spawn/extension, even when much farther away", () => {
-    const nearSpawn = stubRequest("spawn", SUPPLY_TIER.spawnSystem);
-    const farTower = stubRequest("tower", SUPPLY_TIER.tower);
+  it("a low tower always beats a base-tier spawn/extension, even when much farther away", () => {
+    const nearSpawn = stubRequest("spawn", SUPPLY_TIER.base);
+    const farTower = stubRequest("tower", SUPPLY_TIER.towerLow);
     const ranges: Record<string, number> = { spawn: 1, tower: 20 };
     const picked = pickSupplyRequest([nearSpawn, farTower], HOME, t => ranges[(t as unknown as { id: string }).id]);
     expect(picked).toBe(farTower);
   });
 
+  it("a tower above the low-energy threshold competes at the same base tier as spawn/extension — nearest wins", () => {
+    const nearSpawn = stubRequest("spawn", SUPPLY_TIER.base);
+    const farTower = stubRequest("tower", SUPPLY_TIER.base);
+    const ranges: Record<string, number> = { spawn: 1, tower: 20 };
+    const picked = pickSupplyRequest([nearSpawn, farTower], HOME, t => ranges[(t as unknown as { id: string }).id]);
+    expect(picked).toBe(nearSpawn);
+  });
+
   it("within the same tier, the nearest wins", () => {
-    const near = stubRequest("near", SUPPLY_TIER.spawnSystem);
-    const far = stubRequest("far", SUPPLY_TIER.spawnSystem);
+    const near = stubRequest("near", SUPPLY_TIER.base);
+    const far = stubRequest("far", SUPPLY_TIER.base);
     const ranges: Record<string, number> = { near: 2, far: 9 };
     const picked = pickSupplyRequest([far, near], HOME, t => ranges[(t as unknown as { id: string }).id]);
     expect(picked).toBe(near);
   });
 
   it("never picks based on wanted amount — only tier then distance", () => {
-    const small = stubRequest("small", SUPPLY_TIER.spawnSystem);
+    const small = stubRequest("small", SUPPLY_TIER.base);
     small.wanted = 1;
-    const big = stubRequest("big", SUPPLY_TIER.spawnSystem);
+    const big = stubRequest("big", SUPPLY_TIER.base);
     big.wanted = 500;
     // Same distance: earlier-seen candidate keeps the win (strict "<" comparison), not the bigger wanted.
     const picked = pickSupplyRequest([small, big], HOME, () => 3);

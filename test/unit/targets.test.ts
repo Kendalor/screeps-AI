@@ -510,7 +510,12 @@ describe("resolveTarget prefer ordering", () => {
 function fighterCreep(id: string, body: BodyPartConstant[], hits: number, candidates: object[]): Creep {
   return {
     id,
-    pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+    pos: {
+      x: 5,
+      y: 5,
+      findClosestByPath: (list: object[]) => list[0] ?? null,
+      inRangeTo: (p: { x: number; y: number }, range: number) => Math.max(Math.abs(5 - p.x), Math.abs(5 - p.y)) <= range
+    },
     room: { find: () => candidates },
     hits,
     getActiveBodyparts: (part: BodyPartConstant) => body.filter(p => p === part).length
@@ -519,10 +524,10 @@ function fighterCreep(id: string, body: BodyPartConstant[], hits: number, candid
 
 // A hostile with real combat stats, so it can appear on either side of the comparison (the fakeHostile
 // helper above never sets top-level hits, only per-part hits within `body`).
-function fakeHostileWithHits(id: string, body: BodyPartConstant[], hits: number): object {
+function fakeHostileWithHits(id: string, body: BodyPartConstant[], hits: number, pos: { x: number; y: number } = { x: 5, y: 5 }): object {
   return {
     id,
-    pos: { x: 5, y: 5 },
+    pos,
     body: body.map(type => ({ type, hits: 100 })),
     my: false,
     hits,
@@ -537,13 +542,26 @@ function fakeHostileWithHits(id: string, body: BodyPartConstant[], hits: number)
 describe("resolveTarget hostile pool excludes fights the creep would lose", () => {
   it("excludes a hostile that would kill the creep before the creep kills it", () => {
     // Guardian: 100 dps (10 ATTACK), 2000 hits vs. a starter defender: 10 dps (1 RANGED_ATTACK), 50 hits.
-    // Guardian kills us in 0.5 ticks; we'd need 200 ticks to kill it — an easy loss.
-    const guardian = fakeHostileWithHits("guardian", Array(10).fill(ATTACK), 2000);
+    // Guardian kills us in 0.5 ticks; we'd need 200 ticks to kill it — an easy loss. Placed outside the
+    // defender's own engagement range (4, beyond ranged range 3) — not yet in a fight, so the exclusion
+    // still applies; see the "already within engagement range" test below for the in-range bypass.
+    const guardian = fakeHostileWithHits("guardian", Array(10).fill(ATTACK), 2000, { x: 9, y: 5 });
     stubGame({ objects: { guardian } });
 
     const got = resolveTarget(fighterCreep("defender", [RANGED_ATTACK], 50, [guardian]), { find: "hostile" });
 
     expect(got).toBeNull();
+  });
+
+  it("still offers a hostile it would lose to once already within its own engagement range — a defender must fight back rather than never engage at all", () => {
+    // Same outgunned guardian as above, but sitting at range 3 (the defender's own RANGED_ATTACK_RANGE)
+    // instead of range 4 — already close enough to be shooting/being shot rather than merely approached.
+    const guardian = fakeHostileWithHits("guardian", Array(10).fill(ATTACK), 2000, { x: 8, y: 5 });
+    stubGame({ objects: { guardian } });
+
+    const got = resolveTarget(fighterCreep("defender", [RANGED_ATTACK], 50, [guardian]), { find: "hostile" });
+
+    expect((got as { id: string }).id).toBe("guardian");
   });
 
   it("still offers a hostile the creep can beat", () => {
@@ -573,6 +591,24 @@ describe("resolveTarget hostile pool excludes fights the creep would lose", () =
     const got = resolveTarget(collectorCreep("me", 200, [attacker]), { find: "hostile" });
 
     expect((got as { id: string }).id).toBe("attacker");
+  });
+
+  // Under an active safe mode the room's owner is fully protected — attack() would resolve a target and
+  // "fire" every tick but deal no damage, so the pool empties out instead (same rule hostileStructure's
+  // case already has). This is the ONLY thing that can unstick a defender whose defendTargetRoom just got
+  // reassigned away from a safe-moded room it's still standing in: validLock only drops a lock once the
+  // TARGET's own position leaves defendTargetRoom, which never happens for a target that hasn't moved — so
+  // without this, resolveTarget just re-hands back the same (or another) in-room hostile and re-locks.
+  it("offers nothing while the room's own controller is under active safe mode, even to a creep that would win the fight", () => {
+    const invader = fakeHostileWithHits("invader", [ATTACK], 100);
+    stubGame({ objects: { invader } });
+
+    const creep = fighterCreep("defender", Array(4).fill(RANGED_ATTACK), 250, [invader]);
+    (creep.room as unknown as { controller: { safeMode: number } }).controller = { safeMode: 1234 };
+
+    const got = resolveTarget(creep, { find: "hostile" });
+
+    expect(got).toBeNull();
   });
 });
 
@@ -1159,6 +1195,36 @@ describe("resolveTarget hostileStructure excludes the controller", () => {
     stubGame({ objects: { lair1: lair, tower1: tower } });
 
     const got = resolveTarget(creepFinding([tower]), { find: "hostileStructure" }, "lair1" as Id<_HasId>);
+
+    expect((got as { id: string }).id).toBe("tower1");
+  });
+
+  // A target room's active safe mode protects its owner's structures completely: dismantle()/attack()
+  // still "fire" every tick (didAct stays true — a real API call was made) but deal no damage, so a
+  // demolisher/bait tower locked onto a structure there never makes progress and never falls through to
+  // anything else either. Confirmed live: a demolisher stuck permanently re-running its dismantle step
+  // against a target room that had gone into safe mode. Emptying the pool while safeMode is active makes
+  // resolveTarget report "nothing to do," same as the room having no hostile structures at all.
+  it("offers nothing while the target room's safe mode is active, even with real hostile structures present", () => {
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    const creep = {
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { find: () => [tower], controller: { safeMode: 1234 } }
+    } as unknown as Creep;
+
+    const got = resolveTarget(creep, { find: "hostileStructure" });
+
+    expect(got).toBeNull();
+  });
+
+  it("still resolves a genuine hostile structure once safe mode is inactive", () => {
+    const tower = fakeSite("tower1", { structureType: STRUCTURE_TOWER, free: 50 });
+    const creep = {
+      pos: { x: 5, y: 5, findClosestByPath: (list: object[]) => list[0] ?? null },
+      room: { find: () => [tower], controller: { safeMode: undefined } }
+    } as unknown as Creep;
+
+    const got = resolveTarget(creep, { find: "hostileStructure" });
 
     expect((got as { id: string }).id).toBe("tower1");
   });

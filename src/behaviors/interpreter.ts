@@ -31,6 +31,7 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   attackController: "move", // store-less AttackController creep attacks for life — never self-completes, same as reserve
   renew: "move", // store-less — see renewStep: falls through via acted:false whenever renewal isn't needed/possible
   recycle: "move", // store-less — see recycleStep: falls through via acted:false whenever the threshold isn't met yet
+  recycleIfOperationGone: "move", // store-less — see recycleIfOperationGoneStep: falls through while the owning operation is still live
   moveToRoom: "move", // never self-completes on store state — arrival (targetGone) is the only completion
   moveToPos: "move", // same as moveToRoom — completes only via targetGone (never set; see moveToPos's own doc)
   sit: "move",
@@ -38,7 +39,9 @@ const STEP_KIND: Record<Step["do"], StepKind> = {
   heal: "move", // store-less healer — never self-completes; ends only via targetGone (target gone)
   trample: "move", // store-less — never self-completes; ends only via targetGone (site destroyed by standing on it)
   fleeAndHeal: "move", // store-less — never self-completes on store state; ends only via the when:"healthy" gate
-  moveToFlag: "move" // store-less — never self-completes on store state; ends only via the when:"damaged" gate
+  moveToFlag: "move", // store-less — never self-completes; whatever step follows it (or a when gate) ends it
+  baitTowerAdvance: "move", // store-less — never self-completes on store state; ends only via the when:"damaged" gate
+  healerAdvance: "move" // store-less — never self-completes; ends via arrival OR any damaged friendly (see healerAdvanceStep)
 };
 
 // The engine's per-tick action pipelines (docs.screeps.com/simultaneous-actions.html): harvest/build/
@@ -231,6 +234,8 @@ export const runStep = wrapFn(function runStep(
       return renewStep(creep, step.below, locked, allowTravel);
     case "recycle":
       return recycleStep(creep, step.aboveEnergyCapacity, locked, allowTravel);
+    case "recycleIfOperationGone":
+      return recycleIfOperationGoneStep(creep, locked, allowTravel);
     case "attack":
       return attackStep(creep, step.from, locked, allowTravel);
     case "trample":
@@ -249,6 +254,10 @@ export const runStep = wrapFn(function runStep(
       return allowTravel ? fleeAndHealStep(creep) : { acted: false, didAct: false };
     case "moveToFlag":
       return allowTravel ? moveToFlagStep(creep) : { acted: false, didAct: false };
+    case "baitTowerAdvance":
+      return allowTravel ? baitTowerAdvanceStep(creep) : { acted: false, didAct: false };
+    case "healerAdvance":
+      return allowTravel ? healerAdvanceStep(creep) : { acted: false, didAct: false };
   }
 },
 "interpreter:runStep");
@@ -485,14 +494,52 @@ function moveToRoom(
   return { acted: true, didAct: false };
 }
 
-// Shared advance leg for every flag-following role (SimpleBaitTowerRole, DemolisherRole,
-// SimpleHealerRole — see the Step union's doc): walks toward creep.memory.followFlag's CURRENT position,
-// read straight from Game.flags every tick — dragging the flag in the client redirects the creep on its
-// very next move. Falls back to plain moveToRoom(targetRoom) behavior whenever followFlag is unset or
-// the named flag no longer exists (removed, or a creep spawned before this field existed), so a missing
-// flag never strands the creep — it still has somewhere to walk. Never self-completes on arrival; the
-// caller's when:"damaged" gate is what ends this step once the creep takes a hit.
+// Shared advance leg for flag-following roles that do their combat/heal work in a separate step
+// (DemolisherRole's "dismantle" — see the Step union's doc): walks toward creep.memory.followFlag's
+// CURRENT position, read straight from Game.flags every tick — dragging the flag in the client redirects
+// the creep on its very next move. Falls back to plain moveToRoom(targetRoom) behavior whenever followFlag
+// is unset or the named flag no longer exists (removed, or a creep spawned before this field existed), so
+// a missing flag never strands the creep — it still has somewhere to walk. Self-completes (acted:false)
+// once within range 1 of the flag — matching the travelTo call below, NOT requiring the exact tile: a
+// flag dropped on an unwalkable target (e.g. an AttackController flag placed right on the controller) can
+// never satisfy isEqualTo, which used to strand the creep circling at range 1 forever, its "attack" step
+// never taking over (confirmed live: attackController never fired a single tick). Letting whatever step
+// follows take over as primary once merely in range (AttackControllerRole's own doc spells this out).
+// SimpleHealerRole does NOT use this step — see healerAdvanceStep below for why it needs its own,
+// earlier-yielding variant.
 function moveToFlagStep(creep: Creep): StepResult {
+  const flag = creep.memory.followFlag ? Game.flags[creep.memory.followFlag] : undefined;
+  if (!flag) return moveToRoom(creep, { to: "targetRoom" });
+
+  if (creep.pos.inRangeTo(flag.pos, 1)) return { acted: false, didAct: false };
+  creep.travelTo(flag.pos, { range: 1 });
+  return { acted: true, didAct: false };
+}
+
+// SimpleHealerRole's own advance leg (see the Step union's doc): identical live-flag walk to
+// moveToFlagStep, PLUS yielding (acted:false) the moment any friendly creep in the room is damaged, not
+// only once the flag's exact tile is reached. moveToFlagStep's plain "arrived on the exact tile" yield
+// (used by AttackControllerRole/DemolisherRole) is too late for a healer: if the flag's exact tile is
+// occupied or otherwise unreachable, the creep would march for it forever and never actually stop to heal
+// anyone — confirmed live: a healer with a damaged squadmate right beside it kept marching for the flag's
+// exact tile and never healed. Kept as its own step (rather than adding this check to the shared
+// moveToFlagStep) so DemolisherRole/AttackControllerRole's advance behavior is untouched by SimpleHealer's
+// needs.
+function healerAdvanceStep(creep: Creep): StepResult {
+  const flag = creep.memory.followFlag ? Game.flags[creep.memory.followFlag] : undefined;
+  if (!flag) return moveToRoom(creep, { to: "targetRoom" });
+
+  if (creep.pos.isEqualTo(flag.pos)) return { acted: false, didAct: false };
+  if (creep.room.find(FIND_MY_CREEPS).some(c => c.hits < c.hitsMax)) return { acted: false, didAct: false };
+  creep.travelTo(flag.pos, { range: 1 });
+  return { acted: true, didAct: false };
+}
+
+// SimpleBaitTowerRole's own advance leg (see the Step union's doc): same live-flag walk as
+// moveToFlagStep, plus the self-heal-while-moving and attack-nearest-hostile behavior a lone bait creep
+// needs since it has no separate "attack" step the way Demolisher/SimpleHealer do. Never self-completes
+// on arrival; the caller's when:"damaged" gate is what ends this step once the creep takes a hit.
+function baitTowerAdvanceStep(creep: Creep): StepResult {
   const flag = creep.memory.followFlag ? Game.flags[creep.memory.followFlag] : undefined;
   if (!flag) return moveToRoom(creep, { to: "targetRoom" });
 
@@ -554,12 +601,12 @@ function nearestReachableExit(creep: Creep): RoomPosition | undefined {
   return result.path[result.path.length - 1];
 }
 
-// Live target room for the flag-following family (see moveToFlagStep's own doc): a followFlag's CURRENT
-// room, read straight from Game.flags every tick same as moveToFlagStep's own position read, so dragging
-// the flag across a border updates retreat/re-entry behavior on the very same tick the creep's advance
-// leg starts following it there too — the two legs never disagree about which room is "home turf" for a
-// dragged flag the way a frozen creep.memory.targetRoom snapshot would. Falls back to targetRoom whenever
-// followFlag is unset or the named flag no longer exists, same fallback moveToFlagStep uses.
+// Live target room for the flag-following family (see moveToFlagStep/baitTowerAdvanceStep's own docs): a
+// followFlag's CURRENT room, read straight from Game.flags every tick same as those steps' own position
+// read, so dragging the flag across a border updates retreat/re-entry behavior on the very same tick the
+// creep's advance leg starts following it there too — the two legs never disagree about which room is
+// "home turf" for a dragged flag the way a frozen creep.memory.targetRoom snapshot would. Falls back to
+// targetRoom whenever followFlag is unset or the named flag no longer exists, same fallback those steps use.
 function liveTargetRoom(creep: Creep): string | undefined {
   const flag = creep.memory.followFlag ? Game.flags[creep.memory.followFlag] : undefined;
   return flag ? flag.pos.roomName : creep.memory.targetRoom;
@@ -879,6 +926,59 @@ function renewStep(creep: Creep, below: number, locked: Id<_HasId> | undefined, 
 function recycleStep(creep: Creep, aboveEnergyCapacity: number, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
   if (creep.room.name !== creep.memory.targetRoom) return { acted: false, didAct: false };
   if (creep.room.energyCapacityAvailable < aboveEnergyCapacity) return { acted: false, didAct: false };
+
+  const spawn = resolveTarget(creep, { find: "structure", type: STRUCTURE_SPAWN }, locked);
+  if (!spawn) return { acted: false, didAct: false };
+  const spawnPos = (spawn as StructureSpawn).pos;
+
+  if (!creep.pos.inRangeTo(spawnPos, 1)) {
+    if (!allowTravel) return { acted: false, didAct: false };
+    creep.travelTo(spawnPos, { range: 1 });
+    return { acted: true, didAct: false, target: (spawn as unknown as { id: Id<_HasId> }).id };
+  }
+
+  const result = (spawn as StructureSpawn).recycleCreep(creep);
+  return { acted: true, didAct: result === OK, target: (spawn as unknown as { id: Id<_HasId> }).id };
+}
+
+// True once creep.memory.op no longer names a live SingleTargetFlagOperation instance — the flag was
+// pulled (or removeOperation was run) while this creep was still alive. `op` is stamped as
+// opName(kind, colonyRoom) (spawn/request.ts) — kind never contains ":", so splitting on the first colon
+// recovers it cleanly. Looks straight at ColonyMemory.singleTargetOps (the same durable state Colony's
+// constructor reads every tick to decide which operation instances to attach — see colony/index.ts) rather
+// than anything derived, so this never disagrees with "is an operation actually going to own this creep
+// this tick." `wanted > 0` mirrors Colony's own attach-gate (a "oneShot" op zeroes `wanted` on its own
+// self-termination but the entry can briefly still be present — see SingleTargetOpState's doc) and
+// singleTargetOps.ts's own reconciliation delay, so a creep doesn't wrongly recycle itself one tick early
+// on that account. Ownerless creeps (memory.op unset — predates its requester) read as "not gone": there's
+// no operation to have lost, so this step must stay a no-op for them, same fail-open convention `owned()`
+// itself uses (operations/operation.ts).
+function singleTargetOpGone(creep: Creep): boolean {
+  const op = creep.memory.op;
+  if (!op) return false;
+  const colonMatch = /^([^:]+):(.+)$/.exec(op);
+  if (!colonMatch) return false;
+  const [, kind] = colonMatch;
+  const target = creep.memory.targetRoom;
+  if (!target) return false;
+  const state = Memory.colonies[creep.memory.home]?.singleTargetOps?.[kind]?.[target];
+  return !state || state.wanted <= 0;
+}
+
+// Pre-empting leg for every SingleTargetFlagOperation-spawned role (see the "recycleIfOperationGone" Step
+// doc): a no-op fall-through while the owning operation is still live (singleTargetOpGone false). Once
+// it's gone, walks to a spawn in the creep's OWN home room (never targetRoom/followFlag's room — the
+// creep may be standing anywhere in a hostile target room when this fires, and that room's spawn, if any,
+// isn't ours to use) and recycleCreep's itself there for a partial energy refund, same hand-rolled
+// spawn-approach-then-act shape recycleStep/renewStep use. Holds the creep in place once started, same as
+// recycleStep — there's nothing left to do once the operation is gone.
+function recycleIfOperationGoneStep(creep: Creep, locked: Id<_HasId> | undefined, allowTravel: boolean): StepResult {
+  if (!singleTargetOpGone(creep)) return { acted: false, didAct: false };
+
+  if (creep.room.name !== creep.memory.home) {
+    if (!allowTravel) return { acted: false, didAct: false };
+    return moveToRoom(creep, { room: creep.memory.home });
+  }
 
   const spawn = resolveTarget(creep, { find: "structure", type: STRUCTURE_SPAWN }, locked);
   if (!spawn) return { acted: false, didAct: false };

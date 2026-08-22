@@ -34,13 +34,14 @@ export class SimpleBaitTowerRole extends Role {
   static override body(energy: number): BodyPartConstant[] {
     return simpleBaitTowerBody(energy);
   }
-  // Advance on the live followFlag position (see moveToFlag's doc — dragging the flag redirects the creep
-  // immediately), attacking whatever hostile structure sits nearest the flag (the tower it's baiting, most
-  // of the time) once in range — same "nearestToFlag" targeting Demolisher uses for dismantle. No
-  // damaged/healthy retreat leg here: retreatPart above pre-empts the whole step table once HEAL is gone
-  // (see runOne's dispatch order), so these steps only ever run while still able to self-heal.
+  // Advance on the live followFlag position (see baitTowerAdvance's doc — dragging the flag redirects the
+  // creep immediately), attacking whatever hostile structure sits nearest the flag (the tower it's
+  // baiting, most of the time) once in range — same "nearestToFlag" targeting Demolisher uses for
+  // dismantle. No damaged/healthy retreat leg here: retreatPart above pre-empts the whole step table once
+  // HEAL is gone (see runOne's dispatch order), so these steps only ever run while still able to self-heal.
   static override readonly steps: Step[] = [
-    { do: "moveToFlag", when: "damaged" },
+    { do: "recycleIfOperationGone" },
+    { do: "baitTowerAdvance", when: "damaged" },
     { do: "fleeAndHeal", when: "healthy" }
   ];
 }
