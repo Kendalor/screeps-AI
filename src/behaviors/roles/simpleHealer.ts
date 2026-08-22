@@ -22,10 +22,11 @@ import { Role } from "./role";
 const SIMPLE_HEALER_SET: BodyPartConstant[] = [HEAL, MOVE];
 
 export const SIMPLE_HEALER_MIN_COST = bodyCost(SIMPLE_HEALER_SET);
-export const MAX_BODY_COST = 2000;
+const MAX_BODY_PARTS = 50; // engine hard cap (MAX_CREEP_SIZE)
+const MAX_HEALER_SETS = Math.floor(MAX_BODY_PARTS / SIMPLE_HEALER_SET.length);
 
 function simpleHealerBody(energy: number): BodyPartConstant[] {
-  const numSets = Math.min(Math.floor(energy / SIMPLE_HEALER_MIN_COST), MAX_BODY_COST);
+  const numSets = Math.min(Math.floor(energy / SIMPLE_HEALER_MIN_COST), MAX_HEALER_SETS);
   return [...parts(HEAL, numSets), ...parts(MOVE, numSets)];
 }
 

@@ -30,13 +30,15 @@ const CARRIER_SET: BodyPartConstant[] = [CARRY, MOVE];
 // 2:1 CARRY:MOVE once the relevant route is built: a loaded creep on road only needs 1 MOVE per 2 CARRY
 // to stay at full speed.
 const CARRIER_SET_ROADS: BodyPartConstant[] = [CARRY, CARRY, MOVE];
-const MAX_CARRIER_SETS = 25; // 25 sets = 50 parts, the hard body cap
+const MAX_BODY_PARTS = 50; // engine hard cap (MAX_CREEP_SIZE), regardless of set shape
 
 // Shared CARRY/MOVE body shape for the colony's carrier-style roles (supply, transport) — sized by
-// affordable sets of the CARRY:MOVE ratio, road-aware.
+// affordable sets of the CARRY:MOVE ratio, road-aware. Capped by part count, not set count, since
+// CARRIER_SET_ROADS is 3 parts/set — 25 of those would be 75 parts, well past MAX_CREEP_SIZE.
 export function haulerBody(energy: number, roads = false): BodyPartConstant[] {
   const set = roads ? CARRIER_SET_ROADS : CARRIER_SET;
-  const sets = affordableSets(energy, set, 1, MAX_CARRIER_SETS);
+  const maxSets = Math.floor(MAX_BODY_PARTS / set.length);
+  const sets = affordableSets(energy, set, 1, maxSets);
   let body: BodyPartConstant[] = [];
   for (let i = 0; i < sets; i++) {
     body = body.concat(set);
