@@ -12,9 +12,16 @@
 // never wins. This file drives planStewardTask itself against minimal stubs of the exact Game API surface
 // it reads, same pattern transportTaskRunner.test.ts/stewardRegister.test.ts already use.
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { planStewardTask, type StewardTriangle } from "../../../src/behaviors/stewardTaskRunner";
-import { baseTargetFor, boostLineResources } from "../../../src/empire/boostTargets";
+import { baseTargetFor, boostLineResources, setLiquidationModeOverrideForTest } from "../../../src/empire/boostTargets";
+
+// This file exercises planStewardTask against real (non-liquidating) BOOST_TARGETS numbers — force
+// LIQUIDATION_MODE off regardless of its current hand-edited value (see
+// setLiquidationModeOverrideForTest's own doc). Set at module scope: GO_TARGET below is captured eagerly
+// during test collection, before any beforeEach hook would run.
+setLiquidationModeOverrideForTest(false);
+afterAll(() => setLiquidationModeOverrideForTest(undefined));
 
 const STORAGE_CAPACITY = 1_000_000;
 const TERMINAL_CAPACITY = 300_000;

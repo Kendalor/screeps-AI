@@ -11,7 +11,7 @@
 // calls Game.getObjectById/creep.withdraw/creep.travelTo) is therefore left committed but UNTESTED — see
 // this file's own header note repeated in the PR/commit description.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   CONTROLLER_LINK_LOW_FRACTION,
   LINK_DRAIN_FLOOR,
@@ -26,9 +26,18 @@ import {
   TERMINAL_ENERGY_LOW,
   TERMINAL_ENERGY_TARGET
 } from "../../../src/logistics/stewardRegister";
-import { baseTargetFor, boostLineResources } from "../../../src/empire/boostTargets";
+import { baseTargetFor, boostLineResources, setLiquidationModeOverrideForTest } from "../../../src/empire/boostTargets";
 import { pickBestRequest } from "../../../src/logistics/request";
 import { evaluateRoutes, pickBestRoute, type Buffer } from "../../../src/logistics/route";
+
+// This whole file exercises Steward's NORMAL (non-liquidating) rebalance behavior against real
+// BOOST_TARGETS numbers — force LIQUIDATION_MODE off regardless of its current hand-edited value in
+// boostTargets.ts (see setLiquidationModeOverrideForTest's own doc). Set at module scope, not
+// beforeEach/afterEach: several describe blocks below capture baseTargetFor(...)! into a module/describe-
+// scoped const (e.g. GO_TARGET) eagerly during test COLLECTION, before any beforeEach hook would ever run —
+// the override has to already be in place by then.
+setLiquidationModeOverrideForTest(false);
+afterAll(() => setLiquidationModeOverrideForTest(undefined));
 
 const LINK_CAPACITY = 800;
 const STORAGE_CAPACITY = 1_000_000;
@@ -382,7 +391,7 @@ describe("registerMineralTerminalHaveRequest", () => {
   });
 });
 
-describe("the mineral want/have pair together (storage 4,000 GO / terminal 1,000 GO / target 3,000)", () => {
+describe("the mineral want/have pair together (storage above target / terminal 1,000 GO / target from boostTargets.ts)", () => {
   // The exact scenario that surfaced the original bug: storage already has genuine surplus above target
   // AND the terminal holds some below-target amount. Both requests should exist simultaneously so
   // pickBestRequest (not either registration function) decides what happens next — see
@@ -391,7 +400,7 @@ describe("the mineral want/have pair together (storage 4,000 GO / terminal 1,000
   const GO_TARGET = baseTargetFor("GO")!;
 
   it("storage still wants topping up (it's below its own target) even though the terminal separately has stock to give", () => {
-    const storage = stubMultiStorage({ GO: 4000 });
+    const storage = stubMultiStorage({ GO: GO_TARGET + 1000 });
     expect(registerMineralStorageWantRequest(storage, "GO")).toBeUndefined(); // already above target — nothing wanted
   });
 

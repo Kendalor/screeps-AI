@@ -17,8 +17,8 @@ import type { Intent } from "../intents/types";
 import type { CreepRequest } from "../spawn/request";
 import { boostedRequestsInCensus } from "./boostCensus";
 import { aggregateBoostDemand, type CreepBoostDemand } from "./boostDemand";
-import { BOOST_TARGETS } from "./boostTargets";
-import { LIQUIDATION_MODE, MARKET_TRADING_ENABLED, marketFallback } from "./marketFallback";
+import { baseTargetFor, boostLineResources, LIQUIDATION_MODE } from "./boostTargets";
+import { MARKET_TRADING_ENABLED, marketFallback } from "./marketFallback";
 
 /** One signed unit of empire-scale transport demand — mirrors LogisticsRequest's shape (positive = wants
  * delivered, negative = has to give) but scoped to a colony rather than a live in-room target, and with no
@@ -330,14 +330,17 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
     storage: Game.rooms[name]?.storage?.store,
     terminal: Game.rooms[name]?.terminal?.store
   }));
-  // LIQUIDATION_MODE (empire/marketFallback.ts): every target collapses to 0, so EVERY colony's full
-  // current stock reads as pure surplus and none reads as a deficit — matchEmpireRequests then has no
-  // opposite-signed side to pair against for these resources at all, so colony-to-colony redistribution
-  // becomes a structural no-op on its own (nothing special-cased here to "skip" it) and the entire
-  // stockpile flows straight through to `leftover`, ready for marketFallback's now-looser sell floor to
-  // actually clear it. Recomputed fresh from BOOST_TARGETS' own keys every pass rather than cached, same
-  // "no persisted intermediate state" rule decision 11 already applies to `requests`/`leftover` themselves.
-  const targets = LIQUIDATION_MODE ? (Object.fromEntries(Object.keys(BOOST_TARGETS).map(r => [r, 0])) as typeof BOOST_TARGETS) : BOOST_TARGETS;
+  // Built from baseTargetFor rather than reading BOOST_TARGETS directly, so LIQUIDATION_MODE (now owned by
+  // boostTargets.ts, see its own doc) is honored automatically: with it on, every target collapses to 0, so
+  // EVERY colony's full current stock reads as pure surplus and none reads as a deficit — matchEmpireRequests
+  // then has no opposite-signed side to pair against for these resources at all, so colony-to-colony
+  // redistribution becomes a structural no-op on its own (nothing special-cased here to "skip" it) and the
+  // entire stockpile flows straight through to `leftover`, ready for marketFallback's now-looser sell floor
+  // to actually clear it. Recomputed fresh every pass rather than cached, same "no persisted intermediate
+  // state" rule decision 11 already applies to `requests`/`leftover` themselves.
+  const targets = Object.fromEntries(
+    boostLineResources().map(resource => [resource, baseTargetFor(resource)])
+  ) as Partial<Record<ResourceConstant, number>>;
   // A colony whose terminal is on cooldown can still be a RECEIVER this pass (its deficit is real) but
   // must not be offered as a SURPLUS candidate (decision 11: a cooldown-blocked match is dropped, not
   // persisted) — its surplus request (amount <= 0, "has to give") is filtered out here, before matching,

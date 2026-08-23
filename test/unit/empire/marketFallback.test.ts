@@ -238,7 +238,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
     const orders: MarketStats["orders"] = { O: { sellMin: 11 } }; // 11 < 10*1.2=12 -> blocked
 
-    expect(marketFallback(leftover, () => 0.85, orders, avgPrices, noOrders, noBestBuy, noBestSell)).toEqual([]);
+    expect(marketFallback(leftover, () => 0.85, orders, avgPrices, noOrders, noBestBuy, noBestSell, undefined, false)).toEqual([]);
   });
 
   it("sells right at the 20%-above-average edge", () => {
@@ -274,7 +274,7 @@ describe("marketFallback", () => {
     const orders: MarketStats["orders"] = { O: { sellMin: 11 } }; // now too cheap (<12)
     const existing = [order({ id: "sell1", type: "sell", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 3000, price: 13 })];
 
-    const intents = marketFallback(leftover, () => 0.85, orders, avgPrices, existing, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, () => 0.85, orders, avgPrices, existing, noBestBuy, noBestSell, undefined, false);
 
     expect(intents).toEqual([{ kind: "marketCancelOrder", order: "sell1" }]);
   });
@@ -287,7 +287,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
     const orders: MarketStats["orders"] = { O: { sellMin: 50 } }; // way above the guardrail band, would sell if capacity allowed it
 
-    expect(marketFallback(leftover, () => 0.79, orders, avgPrices, noOrders, noBestBuy, noBestSell)).toEqual([]);
+    expect(marketFallback(leftover, () => 0.79, orders, avgPrices, noOrders, noBestBuy, noBestSell, undefined, false)).toEqual([]);
   });
 
   it("sells right at the sell-capacity floor edge", () => {
@@ -304,7 +304,7 @@ describe("marketFallback", () => {
     const orders: MarketStats["orders"] = { O: { sellMin: 13 } }; // still a fine price
     const existing = [order({ id: "sell1", type: "sell", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 3000, price: 13 })];
 
-    const intents = marketFallback(leftover, () => 0.5, orders, avgPrices, existing, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, () => 0.5, orders, avgPrices, existing, noBestBuy, noBestSell, undefined, false);
 
     expect(intents).toEqual([{ kind: "marketCancelOrder", order: "sell1" }]);
   });
@@ -528,11 +528,11 @@ describe("marketFallback", () => {
       expect(marketFallback(leftover, () => 0, orders, {}, noOrders, noBestBuy, noBestSell, undefined, true)).toEqual([]);
     });
 
-    it("still uses the normal ±20% guardrail (not the liquidation floor) when liquidationMode is false/omitted", () => {
+    it("still uses the normal ±20% guardrail (not the liquidation floor) when liquidationMode is false", () => {
       const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
       const orders: MarketStats["orders"] = { O: { sellMin: 9 } }; // clears the liquidation floor (8) but not the normal one (12)
 
-      expect(marketFallback(leftover, () => 0.85, orders, liqPrices, noOrders, noBestBuy, noBestSell)).toEqual([]);
+      expect(marketFallback(leftover, () => 0.85, orders, liqPrices, noOrders, noBestBuy, noBestSell, undefined, false)).toEqual([]);
     });
 
     it("force-sell stays unguarded and unaffected by liquidationMode either way", () => {

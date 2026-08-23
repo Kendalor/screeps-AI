@@ -8,6 +8,7 @@
 import type { EmpireRequest } from "./logistics";
 import type { Intent } from "../intents/types";
 import type { MarketStats } from "../memory/schema";
+import { LIQUIDATION_MODE } from "./boostTargets";
 
 declare const __SERVER__: string;
 export const MARKET_TRADING_ENABLED = __SERVER__ === "main";
@@ -24,20 +25,17 @@ export const MARKET_TRADING_ENABLED = __SERVER__ === "main";
 // constant directly — keeps this function callable with an override in tests.
 export const BUYING_ACTIVATED = false;
 
-// Liquidation switch: flip to true and redeploy to empty out the empire's ENTIRE boost-line stockpile —
-// every colony's full current stock of every BOOST_TARGETS resource becomes sellable surplus, not just
-// what's above its normal target (see runEmpireLogisticsPass, which swaps in an all-zero targets map for
-// computeEmpireRequests while this is true — that's what actually reclassifies "stock" as "surplus", not
-// anything in this file). Buying is naturally unaffected by (and unnecessary alongside) this: a target of
-// 0 can never produce a positive deficit, so buyPath simply never fires for these resources regardless of
-// BUYING_ACTIVATED — no separate wiring needed to "turn buying off" here.
-// While this is true, sellPath (below) also: (1) ignores SELL_CAPACITY_PCT entirely — waiting for a
+// LIQUIDATION_MODE itself now lives in boostTargets.ts (re-exported here for existing importers) since it
+// primarily controls baseTargetFor/BOOST_TARGETS — collapsing every configured resource's target to 0 is
+// what actually reclassifies a colony's full stock as "surplus" for both Steward and
+// runEmpireLogisticsPass's computeEmpireRequests, not anything in this file. See boostTargets.ts's own doc
+// for the full mechanism. What THIS file does while it's on: buyPath naturally never fires for these
+// resources (a target of 0 can never produce a positive deficit, so BUYING_ACTIVATED needs no separate
+// override here), and sellPath (below) additionally (1) ignores SELL_CAPACITY_PCT entirely — waiting for a
 // terminal to fill up defeats the point of a deliberate liquidation — and (2) swaps the normal ±20%
 // avgPrice guardrail for a looser, liquidation-specific floor (see withinLiquidationSellGuardrail) so a
 // large stockpile actually clears instead of sitting just as gated as it would in normal operation.
-// Same manual, hand-edited (not runtime Memory) convention as BUYING_ACTIVATED, for the same reason:
-// nothing in this file should be able to silently start liquidating the stockpile on its own.
-export const LIQUIDATION_MODE = true;
+export { LIQUIDATION_MODE };
 
 // Per-resource terminal-fullness threshold above which a surplus force-sells immediately (ignoring the
 // normal price floor) instead of maintaining a priced standing order — a jammed terminal blocks

@@ -72,9 +72,41 @@ export const BOOST_TARGETS: Partial<Record<ResourceConstant, number>> = Object.f
   ...UNWANTED_BOOST_COMPOUNDS.map(resource => [resource, UNWANTED_BOOST_TARGET])
 ]);
 
-/** The empire-assigned base target for `resource`, or undefined if it isn't a stockpiled boost line. */
+// Liquidation switch: flip to true and redeploy to empty out the empire's ENTIRE boost-line stockpile —
+// baseTargetFor collapses every configured resource's target to 0 (still `undefined` for anything not in
+// BOOST_TARGETS at all — a target of 0 and "not tracked" are different states, see baseTargetFor's own
+// doc). This is the single source of truth for the flag: Steward (logistics/stewardRegister.ts) and the
+// empire matcher (empire/logistics.ts's runEmpireLogisticsPass) both call baseTargetFor/BOOST_TARGETS and
+// so both see the zeroed targets automatically, with no separate wiring in either module. Concretely, with
+// every target at 0: registerMineralStorageWantRequest never fires (storage stops pulling resource in),
+// registerMineralStorageSurplusRequest's threshold becomes 0 so a colony's ENTIRE storage stock reads as
+// surplus and gets pushed to the terminal, and runEmpireLogisticsPass's computeEmpireRequests reads every
+// colony's full stock as surplus with no deficit side to pair against — so colony-to-colony redistribution
+// becomes a structural no-op and the whole stockpile flows through to marketFallback's leftover, ready for
+// its own looser liquidation sell floor (see marketFallback.ts's own LIQUIDATION_MODE-gated logic) to
+// actually clear it. Same manual, hand-edited (not runtime Memory) convention as marketFallback.ts's
+// BUYING_ACTIVATED, for the same reason: nothing should be able to silently start liquidating the
+// stockpile on its own.
+export const LIQUIDATION_MODE = true;
+
+// Test-only override for LIQUIDATION_MODE, since the constant above is intentionally not a function
+// parameter (baseTargetFor/BOOST_TARGETS are called unparameterized throughout the codebase — Steward and
+// runEmpireLogisticsPass alike just want "today's real target", not a value threaded through every call
+// site). Lets tests exercise normal (non-liquidating) target behavior regardless of LIQUIDATION_MODE's
+// current hand-edited value above, same need marketFallback.ts's own `liquidationMode` parameter serves for
+// its exported functions. Must be reset (setLiquidationModeOverrideForTest(undefined)) after use — afterEach
+// in a test file, not left dangling for other test files to trip over.
+let liquidationModeOverride: boolean | undefined;
+export function setLiquidationModeOverrideForTest(value: boolean | undefined): void {
+  liquidationModeOverride = value;
+}
+
+/** The empire-assigned base target for `resource`, or undefined if it isn't a stockpiled boost line.
+ * Collapses to 0 for every tracked resource while LIQUIDATION_MODE is on — see its own doc. */
 export function baseTargetFor(resource: ResourceConstant): number | undefined {
-  return BOOST_TARGETS[resource];
+  const target = BOOST_TARGETS[resource];
+  if (target === undefined) return undefined;
+  return (liquidationModeOverride ?? LIQUIDATION_MODE) ? 0 : target;
 }
 
 /** Every resource with a configured target — the set both empireLogistics's matcher and Steward's
