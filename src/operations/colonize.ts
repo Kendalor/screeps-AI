@@ -1,53 +1,36 @@
-// Colonize owns one colonizer (claims the target's controller) and up to MAX_SETTLERS settler creeps
-// (bootstrap the room from nothing once claimed), both sent at a single target room. Not wired into
-// operationsFor() — no colony gets this by default (see operations/index.ts); a colony only carries it
-// for a target listed in ColonyMemory.colonizing (snapshot.colonizing), written once by a flag/auto-pick
-// handoff (addColonizeTarget — see colonizeFlags.ts/pickColonyTargets.ts) and read every tick by
-// Colony's constructor (colony/index.ts) to attach a real, ongoing Colonize instance per target — the
-// same durable-memory-list shape Reservation/Mining use for remotes, not a one-shot creep-spawning
-// bypass. The colonizer/settler bodies this operation requests spawn through the completely normal
+// Colonize owns exactly one colonizer (claims the target's controller) sent at a single target room.
+// Not wired into operationsFor() — no colony gets this by default (see operations/index.ts); a colony
+// only carries it for a target listed in ColonyMemory.colonizing (snapshot.colonizing), written once by
+// a flag/auto-pick handoff (addColonizeTarget — see colonizeFlags.ts/pickColonyTargets.ts) and read
+// every tick by Colony's constructor (colony/index.ts) to attach a real, ongoing Colonize instance per
+// target — the same durable-memory-list shape Reservation/Mining use for remotes, not a one-shot
+// creep-spawning bypass. The colonizer body this operation requests spawns through the completely normal
 // per-tick arbiter (empire/spawning.ts's planSpawning), same as every other operation's demand.
 //
-// The colonizer itself stops being requested the moment the target is claimed — targetEnergyCapacity is
-// only ever defined once the target shows up as a real Colony (see its own doc below) — since the
-// colonizer that landed the claim suicides that same tick (claimStep in behaviors/interpreter.ts) and
-// would otherwise read as "zero owned, request another" the very next tick.
+// The colonizer stops being requested the moment the target is claimed — targetEnergyCapacity is only
+// ever defined once the target shows up as a real Colony (see its own doc below) — since the colonizer
+// that landed the claim suicides that same tick (claimStep in behaviors/interpreter.ts) and would
+// otherwise read as "zero owned, request another" the very next tick.
 //
-// Settlers spawn in parallel with the colonizer, not after it claims (project decision: faster bootstrap
-// beats the risk of a wasted settler body on a failed claim). They stop being requested once any of:
-//  - MAX_SETTLERS are already owned for this target;
-//  - the colonizer has seen the target controller genuinely owned by another player
-//    (memory.claimOwnedByOther — see claimStep in behaviors/interpreter.ts). Deliberately NOT any
-//    claimController failure code: a contested reservation (attackController fighting it down, possibly
-//    across several colonizer lives) is temporary and winnable, never grounds to give up on;
-//  - the target has succeeded — either it has its own spawn built (targetSpawnBuilt; see targetColonized's
-//    doc) or it has become self-sufficient (energyCapacity >= SELF_SUFFICIENT_ENERGY_CAP). Neither is
-//    derivable from the sponsor's own ColonySnapshot — the target only becomes a real Colony once its
-//    controller is claimed — so the constructor takes both as explicit optional parameters, the same
-//    pattern Operation.intents()'s colonyRequestParts uses for an externally-computed value an operation
-//    needs but can't derive from its own snapshot alone. Colony (colony/index.ts) is the caller: it looks
-//    the target up in the wider colony list it's constructed from before building each active Colonize.
+// Bootstrapping the newly-claimed room from nothing (harvest/build/upgrade, first spawn included) is no
+// longer this operation's job: once claimed, the target shows up as a real Colony with spawns.length===0,
+// which Bootstrap's own noSpawnRequests (operations/bootstrap.ts) now handles identically to a wiped
+// established colony losing its spawn — one unified "owned room, no spawn" path instead of two. This
+// also removes the awkward window where a target was claimed but not yet visible as its own Colony.
 //
-// The SAME conditions (target genuinely owned by someone else, target colonized, target self-sufficient)
-// also drive removal: intents() emits removeColonizeTarget once any holds, deleting this target from
-// ColonyMemory.colonizing so the operation stops being attached from the next tick on — the operation's
-// own, explicit cleanup, not an implicit "no creeps left" inference.
+// The removal condition (target genuinely owned by someone else) still drives cleanup: intents() emits
+// removeColonizeTarget once it holds, deleting this target from ColonyMemory.colonizing so the operation
+// stops being attached from the next tick on. Success (claimed, spawn built) also removes it — Bootstrap
+// takes over from there and Colonize itself has nothing left to do at a room it no longer needs to watch.
 
 import { roleDef } from "../behaviors/roles";
 import { COLONIZER_COST } from "../behaviors/roles/colonizer";
-import { SELF_SUFFICIENT_ENERGY_CAP, SETTLER_MIN_COST } from "../behaviors/roles/settler";
 import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import { bodyContext } from "../spawn/bodyContext";
 import { opName, type CreepRequest } from "../spawn/request";
 import { Operation } from "./operation";
-
-export const MAX_SETTLERS = 4;
-// Owned by behaviors/roles/settler.ts (the settler's own recycle threshold) — re-exported here since
-// every existing caller/test imports it from this file. See settler.ts's doc for why the same threshold
-// drives both the settler's self-recycle decision and Colonize's stop-sponsoring decision.
-export { SELF_SUFFICIENT_ENERGY_CAP };
 
 export class Colonize extends Operation {
   public readonly kind = "colonize";
@@ -56,12 +39,8 @@ export class Colonize extends Operation {
     room: string,
     private readonly targetRoom: string,
     // The target's own energyCapacity, if it's already a real Colony (controller claimed). Undefined
-    // while the claim hasn't landed yet — settlers still spawn during that window (see header).
-    private readonly targetEnergyCapacity?: number,
-    // Whether the target's own spawn has been built yet (its ColonySnapshot lists at least one spawn).
-    // Only meaningful once targetEnergyCapacity is defined (the controller is claimed) — see
-    // targetColonized's doc for why this alone already counts as success.
-    private readonly targetSpawnBuilt = false
+    // while the claim hasn't landed yet.
+    private readonly targetEnergyCapacity?: number
   ) {
     super(room);
   }
@@ -75,7 +54,7 @@ export class Colonize extends Operation {
   }
 
   public override desiredCreeps(colony: ColonySnapshot): CreepRequest[] {
-    return [...this.desiredColonizer(colony), ...this.desiredSettlers(colony)];
+    return this.desiredColonizer(colony);
   }
 
   private desiredColonizer(colony: ColonySnapshot): CreepRequest[] {
@@ -112,61 +91,27 @@ export class Colonize extends Operation {
    * behaviors/interpreter.ts). Deliberately NOT keyed off claimError/ERR_INVALID_TARGET generally: a
    * contested reservation (attackController fighting it down) is a temporary, winnable state — a
    * colonizer can die mid-fight and a fresh one just resumes, never terminal on its own. Shared by
-   * desiredSettlers (stop requesting) and intents() (remove the target from ColonyMemory.colonizing
-   * entirely). */
+   * intents() (remove the target from ColonyMemory.colonizing entirely). */
   private claimFailedPermanently(colony: ColonySnapshot): boolean {
     const colonizers = this.owned(colony, "colonizer").filter(c => c.memory.targetRoom === this.targetRoom);
     return colonizers.some(c => c.memory.claimOwnedByOther === true);
   }
 
-  /** True once the target can sustain itself through its own normal operations — see
-   * SELF_SUFFICIENT_ENERGY_CAP's doc. Shared by desiredSettlers and intents(), same reason as above. */
-  private targetSelfSufficient(): boolean {
-    return this.targetEnergyCapacity !== undefined && this.targetEnergyCapacity >= SELF_SUFFICIENT_ENERGY_CAP;
-  }
-
-  /** True once the target has succeeded outright: its controller is claimed (targetEnergyCapacity
-   * defined — see the constructor's doc) AND its own first spawn is built. This is a strictly earlier
-   * success signal than targetSelfSufficient — a colony with a fresh spawn is done needing the sponsor's
-   * settlers well before it climbs to SELF_SUFFICIENT_ENERGY_CAP's energy capacity, since from that point
-   * on Bootstrap and the rest of its own normal operations take over growing it. Shared by
-   * desiredSettlers and intents(), same reason as targetSelfSufficient. */
-  private targetColonized(): boolean {
-    return this.targetEnergyCapacity !== undefined && this.targetSpawnBuilt;
-  }
-
-  private desiredSettlers(colony: ColonySnapshot): CreepRequest[] {
-    if (colony.energyCapacity < SETTLER_MIN_COST) return [];
-    if (this.targetColonized() || this.targetSelfSufficient()) return [];
-    if (this.claimFailedPermanently(colony)) return [];
-
-    const settlers = this.owned(colony, "settler").filter(c => c.memory.targetRoom === this.targetRoom);
-    if (settlers.length >= MAX_SETTLERS) return [];
-
-    const body = orderBody(roleDef("settler")?.body(colony.energyCapacity, bodyContext(colony)) ?? []);
-    return [
-      {
-        body,
-        priority: roleDef("settler")!.priority,
-        memory: { role: "settler", home: colony.name, op: this.name },
-        targetRoom: this.targetRoom,
-        // Pinned to the sponsor — see desiredColonizer's comment above. Settler's priority (65) is tuned to
-        // beat a sponsor's OWN economy roles (see settler.ts), not to win a spawn slot on some other colony
-        // entirely; unpinned, a busy sponsor spawn let planSpawning reroute settler demand onto a completely
-        // unrelated colony's spawn, starving that colony's own lower-priority requests indefinitely.
-        spawnRoom: colony.name
-      }
-    ];
+  /** True once the target has succeeded: its controller is claimed (targetEnergyCapacity defined — see
+   * the constructor's doc). From here on the target is a real Colony and Bootstrap's own noSpawnRequests
+   * (operations/bootstrap.ts) takes over building it up from nothing, same as any other spawn-less owned
+   * room — this operation's job (landing the claim) is already done. */
+  private targetClaimed(): boolean {
+    return this.targetEnergyCapacity !== undefined;
   }
 
   /** Removes this target from ColonyMemory.colonizing once its job is done or permanently failed — see
-   * this file's header for why the same conditions drive both "stop requesting settlers" and "stop
-   * existing as an operation at all." Not gated on live creep count: the target having succeeded
-   * (colonized or self-sufficient) or the claim failing is true regardless of whether a colonizer/settler
-   * happens to still be alive that exact tick, and either condition already implies no further useful
-   * work remains. */
+   * this file's header for why the same conditions drive both "stop requesting" and "stop existing as an
+   * operation at all." Not gated on live creep count: the target having been claimed or the claim failing
+   * is true regardless of whether a colonizer happens to still be alive that exact tick, and either
+   * condition already implies no further useful work remains for this operation. */
   public override intents(colony: ColonySnapshot): Intent[] {
-    if (this.targetColonized() || this.targetSelfSufficient() || this.claimFailedPermanently(colony)) {
+    if (this.targetClaimed() || this.claimFailedPermanently(colony)) {
       return [{ kind: "removeColonizeTarget", room: colony.name, target: this.targetRoom }];
     }
     return [];

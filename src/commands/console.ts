@@ -62,7 +62,7 @@ const FLAG_OPERATIONS: readonly FlagOperationInfo[] = [
     trigger: 'flag "colonize" or "colonize:<room>" (or auto-pick via pickColonyTargets)',
     minEnergyCapacity: COLONIZER_COST,
     gateDetail: "cheapest legal colonizer body (1 CLAIM set) — colonizeSponsor.ts",
-    spawns: `1 colonizer (claims the controller, min ${COLONIZER_COST}e) + up to 4 settlers once claimed (min ${SETTLER_MIN_COST}e each)`
+    spawns: `1 colonizer (claims the controller, min ${COLONIZER_COST}e); once claimed, Bootstrap's own no-spawn recovery takes over with up to 4 settlers (min ${SETTLER_MIN_COST}e each)`
   },
   {
     kind: "attack",

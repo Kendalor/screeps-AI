@@ -141,8 +141,9 @@ export type Intent =
   // (pickColonyTargets.ts), records that flag's name into ColonyMemory.colonizingFlags so the target's
   // lifetime can be tied back to it — see that field's doc.
   | { kind: "addColonizeTarget"; room: string; target: string; flag?: string }
-  // Colonize.intents() owns removal: the target either finished (reached SELF_SUFFICIENT_ENERGY_CAP) or
-  // failed permanently (terminal claimController error) — see colonize.ts for the exact condition.
+  // Colonize.intents() owns removal: the target either finished (controller claimed — Bootstrap's own
+  // no-spawn recovery takes over building it up from there) or failed permanently (terminal
+  // claimController error) — see colonize.ts for the exact condition.
   // execute.ts also prunes any colonizingFlags entry for this target, but deliberately does NOT remove
   // the flag itself from Game.flags — that's colonizeFlags.ts's job (it owns the only Game.flags mutation
   // for this operation), reading the now-orphaned memory entry back on its next pass. See that file's header.

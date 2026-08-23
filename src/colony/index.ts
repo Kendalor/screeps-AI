@@ -46,9 +46,6 @@ export class Colony {
   // working without threading the full list through everywhere; Empire always passes the real one.
   public constructor(public readonly snapshot: ColonySnapshot, allSnapshots: readonly ColonySnapshot[] = []) {
     const targetCapacity = new Map(allSnapshots.map(s => [s.name, s.energyCapacity]));
-    // Same lookup as targetCapacity above, for Colonize's earlier "spawn built" success signal — see
-    // Colonize's targetSpawnBuilt doc.
-    const targetSpawnBuilt = new Map(allSnapshots.map(s => [s.name, s.spawns.length > 0]));
     // Every OTHER colony's currently-selected remote source ids, so Mining's pickRemotes never converges
     // two colonies onto the same source (see Mining's constructor doc). Read off remoteSources (the
     // already-joined live view), not ColonyMemory.remotes directly, so this stays snapshot-pure like
@@ -64,7 +61,7 @@ export class Colony {
       // fact, not derived from a live colonizer/settler creep's own memory the way this used to work
       // (fragile: nothing observed a target existed until a creep for it already did, leaving a real gap
       // between "flag resolved" and "operation attached").
-      ...snapshot.colonizing.map(t => new Colonize(snapshot.name, t, targetCapacity.get(t), targetSpawnBuilt.get(t))),
+      ...snapshot.colonizing.map(t => new Colonize(snapshot.name, t, targetCapacity.get(t))),
       // Attack isn't in operationsFor() either (no colony gets it by default), same reason: attached only
       // while at least one target is listed in ColonyMemory.attacking, a flag handoff's addAttackTarget
       // (see attackFlags.ts). ONE instance pools every listed target behind a shared attacker (see

@@ -212,15 +212,15 @@ export interface ColonyMemory {
   // evicted, or never picked) are pruned by pickRemotes each reevaluate pass so this can't grow unbounded.
   remoteStrikes?: Partial<Record<Id<Source>, number>>;
   danger: number; // owned by defense
-  // Target rooms this colony is actively colonizing (sponsoring a colonizer/settler for), owned by
-  // colonize.ts. Written once when a flag/auto-pick resolves this colony as the sponsor
-  // (addColonizeTarget), read every tick by Colony's constructor to attach a real Colonize operation per
-  // listed target — the durable equivalent of `remotes` above, so the operation's existence is a plain
-  // memory fact rather than derived indirectly from a live colonizer/settler creep's own memory (the
-  // latter was fragile: nothing observed it until a creep already existed, so the handoff from "flag
-  // resolved" to "operation attached" had a real gap). Removed (removeColonizeTarget) once the target's
-  // job is done (reached SELF_SUFFICIENT_ENERGY_CAP) or permanently failed (terminal claimController
-  // error) — see colonize.ts's own removal logic.
+  // Target rooms this colony is actively colonizing (sponsoring a colonizer for), owned by colonize.ts.
+  // Written once when a flag/auto-pick resolves this colony as the sponsor (addColonizeTarget), read
+  // every tick by Colony's constructor to attach a real Colonize operation per listed target — the
+  // durable equivalent of `remotes` above, so the operation's existence is a plain memory fact rather
+  // than derived indirectly from a live colonizer creep's own memory (the latter was fragile: nothing
+  // observed it until a creep already existed, so the handoff from "flag resolved" to "operation
+  // attached" had a real gap). Removed (removeColonizeTarget) once the target's controller is claimed
+  // (Bootstrap's own no-spawn recovery takes over from there) or permanently failed (terminal
+  // claimController error) — see colonize.ts's own removal logic.
   colonizing: string[];
   // Which of `colonizing`'s targets was added by a live flag, and that flag's name — target room key,
   // flag name value. Only present for flag-sponsored targets; an auto-picked one (pickColonyTargets.ts)
