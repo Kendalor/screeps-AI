@@ -12,6 +12,18 @@ import type { MarketStats } from "../memory/schema";
 declare const __SERVER__: string;
 export const MARKET_TRADING_ENABLED = __SERVER__ === "main";
 
+// Emergency kill switch for the buy side only (selling/force-selling is unaffected — a jammed terminal
+// still needs to clear regardless of buying policy). Flip to false and redeploy to immediately stop ALL
+// compound buying: no new standing buy orders, no reprice/extend of existing ones, no good-deal immediate
+// deal()s — and every standing buy order this account currently has open gets cancelled outright the very
+// next pass, regardless of whether its leftover entry still looks "wanted". Added after a live incident
+// where unbounded buying (pre-dating the wantedAmount sizing fix) burned through the account's entire
+// credit balance — this is a manual, hand-edited stop, deliberately NOT a runtime Memory flag (nothing in
+// this file should be able to silently re-enable spending on its own). Exported only so
+// runEmpireLogisticsPass can pass it through explicitly rather than marketFallback reading the module
+// constant directly — keeps this function callable with an override in tests.
+export const BUYING_ACTIVATED = false;
+
 // Per-resource terminal-fullness threshold above which a surplus force-sells immediately (ignoring the
 // normal price floor) instead of maintaining a priced standing order — a jammed terminal blocks
 // everything else the colony needs to receive (decision 6).
@@ -110,7 +122,8 @@ export function marketFallback(
   prices: MarketStats["prices"],
   myOrders: readonly LiveOrder[],
   bestBuyOrder: (resource: ResourceConstant) => { id: string; price: number } | undefined,
-  bestSellOrder: (resource: ResourceConstant) => { id: string; price: number; remainingAmount: number } | undefined
+  bestSellOrder: (resource: ResourceConstant) => { id: string; price: number; remainingAmount: number } | undefined,
+  buyingActivated: boolean = BUYING_ACTIVATED
 ): Intent[] {
   const intents: Intent[] = [];
 
@@ -142,7 +155,7 @@ export function marketFallback(
         wanted.add(`${colony}:${resource}:sell`);
       }
       sellPath(colony, resource, wantedAmount(amount), capacityPct, orders, avgPrice, byKey, bestBuyOrder, intents);
-    } else {
+    } else if (buyingActivated) {
       // A good-deal immediate buy (below) is a one-shot deal(), not a standing order — it deliberately
       // does NOT mark "wanted", so any standing buy order left over from a previous pass gets pruned
       // below instead of sitting there duplicating what the deal already bought.
@@ -151,6 +164,9 @@ export function marketFallback(
         wanted.add(`${colony}:${resource}:buy`);
       }
     }
+    // else: buying is switched off (BUYING_ACTIVATED=false) — this leftover entry contributes nothing;
+    // `wanted` is never marked for the buy side, so any standing buy order this colony+resource already
+    // has gets picked up by the prune pass below and cancelled, same as if the deficit no longer existed.
   }
 
   // Prune (decision 6, point 3): a standing order this module previously placed, whose colony+resource+

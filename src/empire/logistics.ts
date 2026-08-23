@@ -206,11 +206,22 @@ export const EMPIRE_LOGISTICS_INTERVAL = TERMINAL_COOLDOWN + 1;
  * runs — it simply isn't offered as a candidate sender this pass. It's still included as a potential
  * RECEIVER (a deficit is real regardless of its own terminal's cooldown), since cooldown only blocks
  * SENDING, not receiving.
+ *
+ * A colony with NO terminal at all (as opposed to merely on cooldown) is excluded from `computeEmpireRequests`
+ * entirely — it can never send (`terminalSend`), never receive one (`receiverFreeCapacity` would floor it to
+ * 0 anyway), and never place a market order (Game.market.createOrder/deal both require a terminal in that
+ * room). Generating a request for it produces a phantom deficit/surplus that nothing in this system can ever
+ * resolve: confirmed live for a colony missing its terminal — its stale "deficit" absorbed a whole
+ * colony-to-colony match round against real surplus elsewhere before the congestion cap (0 free capacity)
+ * finally zeroed the match out, and it skewed the empire-wide `deficits` stat (a raw signed sum) into looking
+ * artificially small/healthy despite two real, unrelated problems (colonies overstocked past target, one
+ * colony permanently starved) mostly cancelling each other out in that one number.
  */
 export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[] {
-  const sendableSet = new Set(colonyNames.filter(name => (Game.rooms[name]?.terminal?.cooldown ?? 0) === 0));
+  const terminalColonies = colonyNames.filter(name => Game.rooms[name]?.terminal !== undefined);
+  const sendableSet = new Set(terminalColonies.filter(name => (Game.rooms[name]?.terminal?.cooldown ?? 0) === 0));
 
-  const stocks: ColonyEmpireStock[] = colonyNames.map(name => ({
+  const stocks: ColonyEmpireStock[] = terminalColonies.map(name => ({
     colony: name,
     storage: Game.rooms[name]?.storage?.store,
     terminal: Game.rooms[name]?.terminal?.store

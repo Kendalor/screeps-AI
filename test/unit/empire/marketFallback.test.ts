@@ -77,7 +77,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
     const orders: MarketStats["orders"] = { O: { buyMax: 3 } }; // 3 <= 10*0.8=8, within band
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell, true);
 
     expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 500, price: 3, type: "buy" }]);
   });
@@ -86,7 +86,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 50000)];
     const orders: MarketStats["orders"] = { O: { buyMax: 3 } };
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell, true);
 
     expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 3000, price: 3, type: "buy" }]);
   });
@@ -105,7 +105,7 @@ describe("marketFallback", () => {
     const orders: MarketStats["orders"] = { O: { buyMax: 3 } };
     const existing = [order({ id: "buy1", type: "buy", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 3000, price: 2 })];
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell, true);
 
     // remainingAmount (3000) already exceeds wanted (500) — no extend, only reprice.
     expect(intents).toEqual([{ kind: "marketReprice", order: "buy1", price: 3 }]);
@@ -116,7 +116,7 @@ describe("marketFallback", () => {
     const orders: MarketStats["orders"] = { O: { buyMax: 3 } };
     const existing = [order({ id: "buy1", type: "buy", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 1000, price: 2 })];
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell, true);
 
     // wanted = min(3000, 5000) = 3000; extend tops up from 1000 to 3000.
     expect(intents).toContainEqual({ kind: "marketReprice", order: "buy1", price: 3 });
@@ -130,7 +130,7 @@ describe("marketFallback", () => {
     const orders: MarketStats["orders"] = { O: { buyMax: 3 } };
     const existing = [order({ id: "buy1", type: "buy", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 3000, price: 2 })];
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell, true);
 
     expect(intents).toEqual([{ kind: "marketReprice", order: "buy1", price: 3 }]);
   });
@@ -189,7 +189,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 500), req("W2N2", RESOURCE_OXYGEN, -700)];
     const orders: MarketStats["orders"] = { O: { buyMax: 3, sellMin: 13 } };
 
-    const intents = marketFallback(leftover, () => 0.85, orders, avgPrices, noOrders, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, () => 0.85, orders, avgPrices, noOrders, noBestBuy, noBestSell, true);
 
     expect(intents).toContainEqual({ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 500, price: 3, type: "buy" });
     expect(intents).toContainEqual({ kind: "marketCreateOrder", room: "W2N2", resource: RESOURCE_OXYGEN, amount: 700, price: 13, type: "sell" });
@@ -197,7 +197,7 @@ describe("marketFallback", () => {
 
   it("emits nothing for a buy-path resource with no cached buyMax yet", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
-    expect(marketFallback(leftover, noCapacity, {}, avgPrices, noOrders, noBestBuy, noBestSell)).toEqual([]);
+    expect(marketFallback(leftover, noCapacity, {}, avgPrices, noOrders, noBestBuy, noBestSell, true)).toEqual([]);
   });
 
   it("emits nothing for an above-sell-capacity-floor sell-path resource with no cached sellMin yet", () => {
@@ -222,14 +222,14 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
     const orders: MarketStats["orders"] = { O: { buyMax: 9 } }; // 9 > 10*0.8=8 -> blocked
 
-    expect(marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell)).toEqual([]);
+    expect(marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell, true)).toEqual([]);
   });
 
   it("buys right at the 20%-below-average edge", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
     const orders: MarketStats["orders"] = { O: { buyMax: 8 } }; // exactly 10*0.8
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell, true);
 
     expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 500, price: 8, type: "buy" }]);
   });
@@ -255,7 +255,7 @@ describe("marketFallback", () => {
     const sellLeftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
     const orders: MarketStats["orders"] = { O: { buyMax: 0.01, sellMin: 999 } };
 
-    expect(marketFallback(buyLeftover, noCapacity, orders, {}, noOrders, noBestBuy, noBestSell)).toEqual([]);
+    expect(marketFallback(buyLeftover, noCapacity, orders, {}, noOrders, noBestBuy, noBestSell, true)).toEqual([]);
     expect(marketFallback(sellLeftover, () => 0.85, orders, {}, noOrders, noBestBuy, noBestSell)).toEqual([]);
   });
 
@@ -264,7 +264,7 @@ describe("marketFallback", () => {
     const orders: MarketStats["orders"] = { O: { buyMax: 9 } }; // now too expensive (>8)
     const existing = [order({ id: "buy1", type: "buy", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 3000, price: 7 })];
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell, true);
 
     expect(intents).toEqual([{ kind: "marketCancelOrder", order: "buy1" }]);
   });
@@ -339,7 +339,7 @@ describe("marketFallback", () => {
     const orders: MarketStats["orders"] = { O: { buyMax: 3 } }; // would otherwise place a standing buy at 3
     const bestSellOrder = () => ({ id: "cheapSell", price: 9, remainingAmount: 3000 }); // 9 <= avgPrice(10)
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, bestSellOrder);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, bestSellOrder, true);
 
     expect(intents).toEqual([{ kind: "marketDeal", order: "cheapSell", amount: 500, room: "W1N1" }]);
   });
@@ -348,7 +348,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
     const bestSellOrder = () => ({ id: "atAverage", price: 10, remainingAmount: 3000 }); // exactly avgPrice
 
-    const intents = marketFallback(leftover, noCapacity, {}, avgPrices, noOrders, noBestBuy, bestSellOrder);
+    const intents = marketFallback(leftover, noCapacity, {}, avgPrices, noOrders, noBestBuy, bestSellOrder, true);
 
     expect(intents).toEqual([{ kind: "marketDeal", order: "atAverage", amount: 500, room: "W1N1" }]);
   });
@@ -358,7 +358,7 @@ describe("marketFallback", () => {
     const orders: MarketStats["orders"] = { O: { buyMax: 3 } };
     const bestSellOrder = () => ({ id: "expensiveSell", price: 11, remainingAmount: 3000 }); // 11 > avgPrice(10)
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, bestSellOrder);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, bestSellOrder, true);
 
     expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 500, price: 3, type: "buy" }]);
   });
@@ -367,7 +367,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
     const orders: MarketStats["orders"] = { O: { buyMax: 3 } };
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell, true);
 
     expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 500, price: 3, type: "buy" }]);
   });
@@ -376,7 +376,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
     const bestSellOrder = () => ({ id: "cheapSell", price: 0.01, remainingAmount: 3000 });
 
-    const intents = marketFallback(leftover, noCapacity, {}, {}, noOrders, noBestBuy, bestSellOrder);
+    const intents = marketFallback(leftover, noCapacity, {}, {}, noOrders, noBestBuy, bestSellOrder, true);
 
     // No avgPrice means no "good deal" judgement is possible; buyMax is also missing here so nothing at
     // all is emitted (same as any other missing-price case).
@@ -387,7 +387,7 @@ describe("marketFallback", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, 5000)];
     const bestSellOrder = () => ({ id: "smallSell", price: 5, remainingAmount: 1200 });
 
-    const intents = marketFallback(leftover, noCapacity, {}, avgPrices, noOrders, noBestBuy, bestSellOrder);
+    const intents = marketFallback(leftover, noCapacity, {}, avgPrices, noOrders, noBestBuy, bestSellOrder, true);
 
     // wanted = min(3000, 5000) = 3000, but the order only has 1200 left.
     expect(intents).toEqual([{ kind: "marketDeal", order: "smallSell", amount: 1200, room: "W1N1" }]);
@@ -399,11 +399,62 @@ describe("marketFallback", () => {
     const existing = [order({ id: "buy1", type: "buy", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 3000, price: 2 })];
     const bestSellOrder = () => ({ id: "cheapSell", price: 9, remainingAmount: 3000 });
 
-    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, bestSellOrder);
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, bestSellOrder, true);
 
     expect(intents).toContainEqual({ kind: "marketDeal", order: "cheapSell", amount: 500, room: "W1N1" });
     expect(intents).toContainEqual({ kind: "marketCancelOrder", order: "buy1" });
     expect(intents).not.toContainEqual(expect.objectContaining({ kind: "marketReprice" }));
+  });
+
+  // ---------------------------------------------------------------------------
+  // BUYING_ACTIVATED kill switch — defaults to off; buying only happens when explicitly turned on
+  // ---------------------------------------------------------------------------
+
+  it("defaults to no buying at all when buyingActivated is omitted, even with an otherwise-valid deficit/price", () => {
+    const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
+    const orders: MarketStats["orders"] = { O: { buyMax: 3 } };
+
+    // No 8th argument passed — must fall back to the BUYING_ACTIVATED module constant (false).
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, noOrders, noBestBuy, noBestSell);
+
+    expect(intents).toEqual([]);
+  });
+
+  it("does not immediate-deal-buy against a good-deal sell order when buyingActivated is false", () => {
+    const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
+    const bestSellOrder = () => ({ id: "cheapSell", price: 9, remainingAmount: 3000 });
+
+    const intents = marketFallback(leftover, noCapacity, {}, avgPrices, noOrders, noBestBuy, bestSellOrder, false);
+
+    expect(intents).toEqual([]);
+  });
+
+  it("cancels an existing standing buy order outright when buyingActivated is false, even though its leftover deficit is still real", () => {
+    const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)];
+    const orders: MarketStats["orders"] = { O: { buyMax: 3 } };
+    const existing = [order({ id: "buy1", type: "buy", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 3000, price: 2 })];
+
+    const intents = marketFallback(leftover, noCapacity, orders, avgPrices, existing, noBestBuy, noBestSell, false);
+
+    expect(intents).toEqual([{ kind: "marketCancelOrder", order: "buy1" }]);
+  });
+
+  it("leaves selling untouched when buyingActivated is false — the kill switch is buy-side only", () => {
+    const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+    const orders: MarketStats["orders"] = { O: { sellMin: 13 } };
+
+    const intents = marketFallback(leftover, () => 0.85, orders, avgPrices, noOrders, noBestBuy, noBestSell, false);
+
+    expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 500, price: 13, type: "sell" }]);
+  });
+
+  it("leaves force-selling untouched when buyingActivated is false", () => {
+    const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+    const bestBuyOrder = () => ({ id: "otherPlayerBuy", price: 1 });
+
+    const intents = marketFallback(leftover, () => 0.95, {}, avgPrices, noOrders, bestBuyOrder, noBestSell, false);
+
+    expect(intents).toEqual([{ kind: "marketDeal", order: "otherPlayerBuy", amount: 500, room: "W1N1" }]);
   });
 
   // ---------------------------------------------------------------------------
