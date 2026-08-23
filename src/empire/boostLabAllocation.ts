@@ -88,14 +88,26 @@ export function planBoostLabAllocation(
   }
 
   // Assign each granted compound to a specific lab: prefer a lab already stocked with that exact compound
-  // (see file header), else the first still-free lab in boostLabIds order.
+  // (see file header), else the first still-free lab in boostLabIds order. Two passes, not one — an
+  // unstocked compound's "first free lab" fallback must never run before every OTHER granted compound has
+  // had a chance to claim its own already-stocked lab, or an early unstocked compound can grab a lab a
+  // later compound is sitting on top of, forcing that later compound into a cold lab for no reason
+  // (confirmed live: labs=[A,B], A stocked with Y, B empty, grantedCompounds=[X,Y] in that order — a single
+  // pass let X's fallback claim A before Y's own stocked-lab lookup ever ran).
   const labByCompound = new Map<ResourceConstant, Id<StructureLab>>();
   const claimedLabs = new Set<Id<StructureLab>>();
+  const unstocked: ResourceConstant[] = [];
   for (const compound of grantedCompounds) {
-    const stocked = labStates.find(
-      l => l.resource === compound && boostLabIds.includes(l.labId as Id<StructureLab>) && !claimedLabs.has(l.labId as Id<StructureLab>)
-    );
-    const labId = stocked ? (stocked.labId as Id<StructureLab>) : boostLabIds.find(id => !claimedLabs.has(id));
+    const stocked = labStates.find(l => l.resource === compound && boostLabIds.includes(l.labId as Id<StructureLab>));
+    if (!stocked) {
+      unstocked.push(compound);
+      continue;
+    }
+    claimedLabs.add(stocked.labId as Id<StructureLab>);
+    labByCompound.set(compound, stocked.labId as Id<StructureLab>);
+  }
+  for (const compound of unstocked) {
+    const labId = boostLabIds.find(id => !claimedLabs.has(id));
     if (!labId) continue; // no free lab left (shouldn't happen: grantedCompounds.length <= boostLabIds.length)
     claimedLabs.add(labId);
     labByCompound.set(compound, labId);

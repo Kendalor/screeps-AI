@@ -21,6 +21,8 @@ function boostableCreep(opts: {
   pos?: { x: number; y: number };
   labPos?: { x: number; y: number };
   boosted?: boolean; // whether the creep's body already carries the boost (simulates a completed boostCreep call)
+  body?: { type: BodyPartConstant; hits: number; boost?: ResourceConstant }[]; // overrides the default single-HEAL-part body
+  boostCreepResult?: ScreepsReturnCode; // simulates boostCreep()'s own return code — defaults to OK
 }): { creep: Creep; traveled: { x: number; y: number }[]; boostCreepCalls: string[] } {
   const traveled: { x: number; y: number }[] = [];
   const boostCreepCalls: string[] = [];
@@ -35,7 +37,7 @@ function boostableCreep(opts: {
     spawning: false,
     memory: { role: "simpleHealer", task: { step: 0 }, home: "W1N1", boosts: opts.boosts },
     store: { getFreeCapacity: () => 0, getUsedCapacity: () => 0 },
-    body: opts.boosted ? [{ type: HEAL, hits: 100, boost: RESOURCE_CATALYZED_LEMERGIUM_ALKALIDE }] : [{ type: HEAL, hits: 100 }],
+    body: opts.body ?? (opts.boosted ? [{ type: HEAL, hits: 100, boost: RESOURCE_CATALYZED_LEMERGIUM_ALKALIDE }] : [{ type: HEAL, hits: 100 }]),
     hits: 100,
     hitsMax: 100,
     pos: {
@@ -43,7 +45,14 @@ function boostableCreep(opts: {
       y: py,
       roomName: "W1N1",
       getRangeTo: (p: { x: number; y: number }) => Math.max(Math.abs(px - p.x), Math.abs(py - p.y)),
-      inRangeTo: (p: { x: number; y: number }, range: number) => Math.max(Math.abs(px - p.x), Math.abs(py - p.y)) <= range,
+      // Accepts either a raw {x,y} position or a HasPos-shaped object ({pos: {x,y}}) — actOnResolved
+      // calls creep.pos.inRangeTo(target, range) with the target OBJECT (e.g. a lab), not target.pos,
+      // matching the real RoomPosition.inRangeTo signature (RoomPosition | RoomObject).
+      inRangeTo: (p: { x?: number; y?: number; pos?: { x: number; y: number } }, range: number) => {
+        const qx = p.pos?.x ?? p.x!;
+        const qy = p.pos?.y ?? p.y!;
+        return Math.max(Math.abs(px - qx), Math.abs(py - qy)) <= range;
+      },
       isEqualTo: (p: { x: number; y: number }) => px === p.x && py === p.y,
       findClosestByPath: (list: object[]) => list[0] ?? null
     },
@@ -52,7 +61,11 @@ function boostableCreep(opts: {
       find: () => []
     },
     getActiveBodyparts: (part: BodyPartConstant) => (part === HEAL ? 1 : 0),
-    travelTo: (p: { x: number; y: number }) => traveled.push({ x: p.x, y: p.y }),
+    // Accepts either a raw {x,y} position or a HasPos-shaped object ({pos: {x,y}}) — actOnResolved
+    // (behaviors/actions.ts) calls travelTo with the target object itself, matching the real
+    // Creep.travelTo/Traveler signature (RoomPosition | {pos: RoomPosition}), not just a bare position.
+    travelTo: (p: { x?: number; y?: number; pos?: { x: number; y: number } }) =>
+      traveled.push(p.pos ? { x: p.pos.x, y: p.pos.y } : { x: p.x!, y: p.y! }),
     heal: () => OK
   } as unknown as Creep;
 
@@ -67,7 +80,7 @@ function boostableCreep(opts: {
       },
       boostCreep: (c: Creep) => {
         boostCreepCalls.push(c.id);
-        return OK;
+        return opts.boostCreepResult ?? OK;
       }
     };
     stubGame({ objects: { [LAB_ID]: lab } });
@@ -167,6 +180,24 @@ describe("boost pre-emption: boostable role with a pending order", () => {
 
     expect(boostCreepCalls).toEqual(["h1"]);
     expect(traveled).toEqual([]);
+  });
+
+  it("leaves the order pending (not cleared, not thrown) when boostCreep returns a non-OK code", () => {
+    // e.g. the lab #74 assigned isn't actually stocked yet -- a real race the design's own docs
+    // acknowledge. A failed call must not be treated as success; the order stays pending for retry.
+    const { creep, boostCreepCalls } = boostableCreep({
+      boosts: ["heal"],
+      hasAssignment: true,
+      pos: { x: 5, y: 5 },
+      labPos: { x: 6, y: 5 },
+      boostCreepResult: ERR_NOT_ENOUGH_RESOURCES
+    });
+    Game.creeps = { h1: creep };
+
+    expect(() => runCreepBehaviors(undefined, boostAssignments("h1"))).not.toThrow();
+
+    expect(boostCreepCalls).toEqual(["h1"]);
+    expect(creep.memory.boosts).toEqual(["heal"]); // still pending -- the failed call satisfied nothing
   });
 
   it("reads only its own entry from the assignment map — a differently-keyed creep is untouched by another's assignment", () => {
@@ -272,5 +303,28 @@ describe("boost pre-emption: order cleared once satisfied", () => {
 
     // Falls through to healerAdvance's own no-op (no followFlag/targetRoom) rather than the boost routine.
     expect(traveled).toEqual([]);
+  });
+
+  it("does NOT clear the order when only SOME of a multi-part body's matching parts are boosted", () => {
+    // 3 HEAL parts, only 1 carries a boost -- a real engine boostCreep() call can boost fewer than every
+    // matching part when the lab's compound falls short of the full count. Satisfaction must require every
+    // matching part, not just one, or the remaining unboosted parts get abandoned with no retry.
+    const { creep, boostCreepCalls } = boostableCreep({
+      boosts: ["heal"],
+      hasAssignment: true,
+      pos: { x: 5, y: 5 },
+      labPos: { x: 6, y: 5 },
+      body: [
+        { type: HEAL, hits: 100, boost: RESOURCE_CATALYZED_LEMERGIUM_ALKALIDE },
+        { type: HEAL, hits: 100 },
+        { type: HEAL, hits: 100 }
+      ]
+    });
+    Game.creeps = { h1: creep };
+
+    runCreepBehaviors(undefined, boostAssignments("h1"));
+
+    expect(creep.memory.boosts).toEqual(["heal"]); // still pending -- 2 of 3 parts remain unboosted
+    expect(boostCreepCalls).toEqual(["h1"]); // retried this tick, since the order isn't satisfied yet
   });
 });

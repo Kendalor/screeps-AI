@@ -1406,34 +1406,42 @@ export function retreatIfDisarmed(creep: Creep, part: BodyPartConstant): boolean
   return true;
 }
 
-// Boost pre-emption (gh #75, final sub-ticket of the #61 boosting epic) — mirrors fleeThreat/
-// retreatIfDisarmed's placement exactly: a static, cheap check (Role.boostable non-empty) gates whether a
-// role can ever be a candidate at all, checked before ever looking at a specific creep's memory; only then
-// does creep.memory.boosts (a pending order, see memory/schema.ts) matter. Both together short-circuit the
-// entire normal step table for the tick, same as the two checks above.
+// Boost pre-emption (gh #75, final sub-ticket of the #61 boosting epic) — checked inside runOne
+// (empire/creeps.ts) alongside its two siblings, fleeThreat and retreatIfDisarmed, AFTER both of them: a
+// static, cheap check (Role.boostable non-empty) gates whether a role can ever be a candidate at all,
+// checked before ever looking at a specific creep's memory; only then does creep.memory.boosts (a pending
+// order, see memory/schema.ts) matter. Ordered after flee/retreat deliberately — an armed hostile closing in
+// or a disarmed retreat both outrank a calm walk to a boost lab; a boostable creep that also needs to flee
+// or retreat must still do so, never getting stuck pursuing its boost order instead. All three checks live
+// in the same place (runOne) and run in the same fixed order, rather than one of them being special-cased
+// ahead of the others at a different call site.
 //
 // `assignment` is this creep's own already-resolved slice of gh #74's planBoostLabAllocation output — a
 // per-tick Map computed ONCE per colony (never per creep) and threaded down as a plain argument, exactly
-// like runOne already receives no comparable map today but dispatchCreep/runCreepBehaviors is the layer
-// that already threads other precomputed per-tick data (transportByHome) down to individual creep dispatch
-// the same way. This function only ever reads ITS OWN entry — it never scans or ranks other creeps, and
-// never reaches into #74's allocation logic itself.
+// like empire/creeps.ts's dispatchCreep already threads other precomputed per-tick data (transportByHome)
+// down to individual creep dispatch. This function only ever reads ITS OWN entry — it never scans or ranks
+// other creeps, and never reaches into #74's allocation logic itself.
 //
 // Two outcomes once pre-empted:
 // - Assigned a lab: walk to range 1 of it, then call boostCreep once adjacent. The engine allows exactly
 //   one boostCreep() call per lab per tick anyway; issuing at most one call per creep per tick trivially
-//   respects that without any extra locking (see the epic's user story 19).
+//   respects that without any extra locking (see the epic's user story 19). The call's return code is
+//   logged (never silently swallowed) — a short-on-compound or otherwise-failed call leaves the order
+//   pending exactly as if nothing had been assigned, so the next planBoostLabAllocation pass gets a chance
+//   to fix the underlying cause (e.g. more compound arriving) rather than this routine silently spinning.
 // - Not assigned (absent from the map — #74's "step aside" outcome, lost the scarcity tie-break, or no
 //   colony boost pass has run yet): do nothing this tick rather than act on stale state. The order stays
 //   pending in memory, retried automatically next tick once #74 recomputes fresh.
 //
 // Order-clearing: a boost order's entries are abstract ACTION names (e.g. "heal"), not compounds — the only
-// live signal that an action was actually applied is the corresponding body part now carrying a `.boost`
-// field (the engine sets this the tick boostCreep() succeeds). An action whose resolved body part is either
-// absent from the body or already boosted counts as satisfied — nothing further this routine could do for
-// it. Once every entry is satisfied the whole order clears in one write (creep.memory.boosts = undefined),
-// the same self-clearing shape every other opt-in memory field in this codebase already follows (Role.
-// boostable's own doc, behaviors/roles/role.ts).
+// live signal that an action was actually applied is every one of the resolved body part's copies now
+// carrying `.boost` (the engine sets this the tick boostCreep() succeeds, and can boost fewer than all
+// matching parts in one call if the lab's compound falls short of the full count — checking only "at least
+// one part boosted" would clear the order with parts still unboosted and no retry). An action whose
+// resolved body part is absent from the body at all also counts as satisfied — nothing further this routine
+// could do for it. Once every entry is satisfied the whole order clears in one write (creep.memory.boosts =
+// undefined), the same self-clearing shape every other opt-in memory field in this codebase already follows
+// (Role.boostable's own doc, behaviors/roles/role.ts).
 export function boostPreemption(creep: Creep, assignment: BoostLabAssignment | undefined): boolean {
   const boosts = creep.memory.boosts;
   if (!boosts || boosts.length === 0) return false;
@@ -1441,7 +1449,8 @@ export function boostPreemption(creep: Creep, assignment: BoostLabAssignment | u
   const remaining = boosts.filter(action => {
     const resolved = boostActionFor(action);
     if (resolved.kind === "not-found") return false; // nothing this routine could ever satisfy — drop it
-    return !creep.body.some(p => p.type === resolved.bodyPart && p.boost !== undefined);
+    const matchingParts = creep.body.filter(p => p.type === resolved.bodyPart);
+    return matchingParts.length > 0 && matchingParts.some(p => p.boost === undefined);
   });
   if (remaining.length === 0) {
     creep.memory.boosts = undefined;
@@ -1457,11 +1466,14 @@ export function boostPreemption(creep: Creep, assignment: BoostLabAssignment | u
   const lab = Game.getObjectById(assignment.labId);
   if (!lab) return true; // lab vanished (destroyed?) — hold; #74 will stop assigning it next pass
 
-  if (!creep.pos.inRangeTo(lab.pos, 1)) {
-    creep.travelTo(lab.pos, { range: 1 });
-    return true;
+  // actOnResolved (behaviors/actions.ts) owns the shared "in range -> act, else travelTo" leaf every other
+  // step in this file already routes through; boostCreep()'s own return code is captured via this closure
+  // since actOnResolved discards its action callback's return value (no existing caller has ever needed it).
+  let boostResult: ScreepsReturnCode | undefined;
+  actOnResolved(creep, lab, t => (boostResult = (t as StructureLab).boostCreep(creep)), 1);
+  if (boostResult !== undefined && boostResult !== OK) {
+    log.debugCreep(creep.name, `boostPreemption: boostCreep(${lab.id}) returned ${boostResult} — will retry next tick`);
   }
-  lab.boostCreep(creep);
   return true;
 }
 

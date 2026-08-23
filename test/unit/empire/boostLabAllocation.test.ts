@@ -175,6 +175,25 @@ describe("planBoostLabAllocation", () => {
     expect(usedLabs.size).toBeLessThanOrEqual(3);
   });
 
+  it("does not let an unstocked compound steal a lab another granted compound is already stocked in", () => {
+    // Lab A holds compound Y (creep b's need) at a sufficient amount; lab B is empty. Both compounds fit
+    // (2 labs, 2 compounds -> no scarcity), so both should be granted -- the bug was that iteration order
+    // let X (unstocked) grab lab A first via the "first free lab" fallback, forcing Y into cold lab B
+    // despite A already holding exactly what Y needs.
+    const colony = colonyWith([creep("a", ["heal"]), creep("b", ["tough"])]);
+    const resolveNeeds = (creepId: Id<Creep>) => (creepId === "a" ? { XLH2O: 400 } : { GO: 300 });
+    const labs: LabState[] = [
+      { labId: LAB_A, resource: "GO", amount: 300 },
+      { labId: LAB_B, amount: 0 }
+    ];
+    const result = planBoostLabAllocation(colony, [LAB_A, LAB_B], labs, resolveNeeds);
+
+    expect(result.get("b" as Id<Creep>)?.compound).toBe("GO");
+    // b's already-stocked lab (A) must go to b, not get claimed by a's unstocked compound first.
+    expect(result.get("b" as Id<Creep>)?.labId).toBe(LAB_A);
+    expect(result.get("a" as Id<Creep>)?.labId).toBe(LAB_B);
+  });
+
   it("is pure: identical inputs produce an identical (deep-equal) output map every call", () => {
     const colony = colonyWith([creep("a", ["heal"]), creep("b", ["tough"])]);
     const resolveNeeds = (creepId: Id<Creep>) =>

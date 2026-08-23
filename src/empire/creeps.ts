@@ -166,20 +166,17 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(
 // resolved slice of gh #74's colony-wide planBoostLabAllocation output (see boostPreemption's doc,
 // behaviors/interpreter.ts) — undefined for the overwhelming majority of creeps with no pending boost order.
 function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boostAssignment: BoostLabAssignment | undefined): void {
-  // Boost pre-emption runs before even the dispatch-diversion switch below — a boostable role bypassing
-  // the ordinary step table via Role.dispatch (none do today, but nothing rules it out) must still be
-  // pulled out of its own dispatch to go get boosted, same as fleeThreat is special-cased ahead of the
-  // "logistics" diversion below for the identical reason.
-  if ((roleDef(creep.memory.role)?.boostable?.length ?? 0) > 0 && boostPreemption(creep, boostAssignment)) return;
-
   // Diverted before the step-table dispatch per the role's own opt-in (Role.dispatch's doc,
   // behaviors/roles/role.ts) rather than a static step table.
   switch (roleDef(creep.memory.role)?.dispatch) {
     case "logistics": {
-      // Doesn't run through runOne's step table, so its flee check (gated on Role.flee) never sees
-      // it — checked here instead, ahead of the diversion, so a hauler running the logistics
-      // allocator's own task retreats from an armed hostile exactly like a step-table hauler.
+      // Doesn't run through runOne's step table, so its flee/boost checks (gated on Role.flee/
+      // Role.boostable) never see it — checked here instead, ahead of the diversion, so a hauler running
+      // the logistics allocator's own task retreats from an armed hostile (or goes to get boosted) exactly
+      // like a step-table hauler would. Flee is checked FIRST — an armed threat always outranks a calm
+      // walk to a boost lab, same ordering runOne itself uses below.
       if (fleeThreat(creep)) return;
+      if ((roleDef(creep.memory.role)?.boostable?.length ?? 0) > 0 && boostPreemption(creep, boostAssignment)) return;
       // Supply and Transport share dispatch:"logistics" (Role.dispatch's doc) and, as of gh #53, share an
       // executor shape too: both are now driven entirely by their own self-registered LogisticsRequest/
       // SupplyRequest pool (behaviors/transportTaskRunner.ts / behaviors/supplyTaskRunner.ts) — the old
@@ -200,7 +197,7 @@ function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boos
       dispatchSteward(creep);
       return;
     default:
-      runOne(creep);
+      runOne(creep, boostAssignment);
   }
 }
 
@@ -342,7 +339,7 @@ function atLockedTarget(creep: Creep, locked: Id<_HasId> | undefined): boolean {
   return !!obj?.pos && creep.pos.inRangeTo(obj.pos, 1);
 }
 
-const runOne = wrapFn(function runOne(creep: Creep): void {
+const runOne = wrapFn(function runOne(creep: Creep, boostAssignment: BoostLabAssignment | undefined): void {
   const def = roleDef(creep.memory.role);
   if (!def || def.steps.length === 0) return;
 
@@ -356,6 +353,12 @@ const runOne = wrapFn(function runOne(creep: Creep): void {
   // toward a healer (or home, where it then sits until the tower heals it back to full — see
   // retreatIfDisarmed's own doc) instead of running its normal steps for zero return.
   if (def.retreatPart && retreatIfDisarmed(creep, def.retreatPart)) return;
+
+  // Boost pre-emption (gh #75, epic #61) — checked AFTER flee/retreat, not before: an armed hostile closing
+  // in or a disarmed retreat both outrank a calm walk to a boost lab, same priority order a human player
+  // would want. Placed alongside its two siblings (not ahead of the whole dispatch switch in dispatchCreep)
+  // so every one of runOne's pre-emption checks lives in exactly one place, checked in exactly one order.
+  if ((def.boostable?.length ?? 0) > 0 && boostPreemption(creep, boostAssignment)) return;
 
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us

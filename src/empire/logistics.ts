@@ -16,6 +16,7 @@ import type { ColonyRole } from "../memory/schema";
 import type { Intent } from "../intents/types";
 import type { CreepRequest } from "../spawn/request";
 import { boostedRequestsInCensus } from "./boostCensus";
+import { aggregateBoostDemand, type CreepBoostDemand } from "./boostDemand";
 import { BOOST_TARGETS } from "./boostTargets";
 import { MARKET_TRADING_ENABLED, marketFallback } from "./marketFallback";
 
@@ -74,6 +75,13 @@ export function effectiveTargetFor(baseTarget: number, role: ColonyRole | undefi
  * from Memory directly) so this stays a pure function over plain stubs in tests; the tier-3 caller passes
  * `room => Memory.colonies[room]?.empireRole`.
  */
+/** One colony's live storage+terminal stock of a resource — the single summation every deficit/surplus,
+ * availability, and emergency-offer calculation below reads, so a future change to what "stock" means
+ * (e.g. a third structure type) only needs updating here. */
+function stockOf(colony: ColonyEmpireStock, resource: ResourceConstant): number {
+  return (colony.storage?.getUsedCapacity(resource) ?? 0) + (colony.terminal?.getUsedCapacity(resource) ?? 0);
+}
+
 export function computeEmpireRequests(
   colonies: readonly ColonyEmpireStock[],
   targets: Partial<Record<ResourceConstant, number>>,
@@ -87,8 +95,7 @@ export function computeEmpireRequests(
       const baseTarget = targets[resource];
       if (baseTarget == null) continue;
       const effectiveTarget = effectiveTargetFor(baseTarget, role);
-      const stock = (c.storage?.getUsedCapacity(resource) ?? 0) + (c.terminal?.getUsedCapacity(resource) ?? 0);
-      const amount = effectiveTarget - stock;
+      const amount = effectiveTarget - stockOf(c, resource);
       if (amount === 0) continue;
       out.push({ colony: c.colony, resource, amount });
     }
@@ -113,8 +120,7 @@ export function availableEmpireStock(
 ): number {
   let total = 0;
   for (const c of colonies) {
-    const stock = (c.storage?.getUsedCapacity(resource) ?? 0) + (c.terminal?.getUsedCapacity(resource) ?? 0);
-    total += stock - reservedOf(c.colony);
+    total += stockOf(c, resource) - reservedOf(c.colony);
   }
   return total;
 }
@@ -153,24 +159,21 @@ export interface ColonyBoostCensus {
  * Sums boostNeeds (gh #66) across every boosted request (gh #69's boostedRequestsInCensus) in each colony's
  * census into one emergency EmpireRequest per colony per compound (positive amount = wants, matching
  * EmpireRequest's existing sign convention). A request whose boosts array is non-empty but which carries no
- * boostNeeds (no tier resolved yet) contributes nothing — there's no amount to sum. Purely additive, same
- * spirit as boostDemand.ts's aggregateBoostDemand, just scoped per-colony and keyed off CreepRequest.boostNeeds
- * instead of a pre-built CreepBoostDemand[] (adapting that shape here would just be extra ceremony around the
- * same summation for no benefit, since this function needs no creepId).
+ * boostNeeds (no tier resolved yet) contributes nothing — there's no amount to sum. Reuses boostDemand.ts's
+ * aggregateBoostDemand for the actual pooling rather than re-implementing the same summation inline — a
+ * pre-spawn CreepRequest has no real creep id yet, so each request is keyed by its array index instead
+ * (aggregateBoostDemand never reads CreepBoostDemand.creepId itself; the field only exists so a caller with
+ * real creep ids can pass them through with no cast — an index is just as good a placeholder key here).
  */
 export function computeEmergencyBoostRequests(censuses: readonly ColonyBoostCensus[]): EmpireRequest[] {
   const out: EmpireRequest[] = [];
   for (const c of censuses) {
-    const pooled: Partial<Record<ResourceConstant, number>> = {};
-    for (const request of boostedRequestsInCensus(c.requests)) {
-      if (!request.boostNeeds) continue;
-      for (const [resource, amount] of Object.entries(request.boostNeeds) as [ResourceConstant, number | undefined][]) {
-        if (amount == null) continue;
-        pooled[resource] = (pooled[resource] ?? 0) + amount;
-      }
-    }
+    const demands: CreepBoostDemand[] = boostedRequestsInCensus(c.requests)
+      .filter(request => request.boostNeeds)
+      .map((request, i) => ({ creepId: `${i}` as Id<Creep>, needs: request.boostNeeds! }));
+    const pooled = aggregateBoostDemand(demands);
     for (const [resource, amount] of Object.entries(pooled) as [ResourceConstant, number | undefined][]) {
-      if (!amount) continue;
+      if (amount == null || amount === 0) continue;
       out.push({ colony: c.colony, resource, amount });
     }
   }
@@ -188,7 +191,7 @@ export function computeEmergencyBoostRequests(censuses: readonly ColonyBoostCens
 export function computeEmergencyDonorOffers(colonies: readonly ColonyEmpireStock[], resource: ResourceConstant): EmpireRequest[] {
   const out: EmpireRequest[] = [];
   for (const c of colonies) {
-    const stock = (c.storage?.getUsedCapacity(resource) ?? 0) + (c.terminal?.getUsedCapacity(resource) ?? 0);
+    const stock = stockOf(c, resource);
     if (stock <= 0) continue;
     out.push({ colony: c.colony, resource, amount: -stock });
   }
