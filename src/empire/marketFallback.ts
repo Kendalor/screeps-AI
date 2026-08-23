@@ -24,6 +24,21 @@ export const MARKET_TRADING_ENABLED = __SERVER__ === "main";
 // constant directly — keeps this function callable with an override in tests.
 export const BUYING_ACTIVATED = false;
 
+// Liquidation switch: flip to true and redeploy to empty out the empire's ENTIRE boost-line stockpile —
+// every colony's full current stock of every BOOST_TARGETS resource becomes sellable surplus, not just
+// what's above its normal target (see runEmpireLogisticsPass, which swaps in an all-zero targets map for
+// computeEmpireRequests while this is true — that's what actually reclassifies "stock" as "surplus", not
+// anything in this file). Buying is naturally unaffected by (and unnecessary alongside) this: a target of
+// 0 can never produce a positive deficit, so buyPath simply never fires for these resources regardless of
+// BUYING_ACTIVATED — no separate wiring needed to "turn buying off" here.
+// While this is true, sellPath (below) also: (1) ignores SELL_CAPACITY_PCT entirely — waiting for a
+// terminal to fill up defeats the point of a deliberate liquidation — and (2) swaps the normal ±20%
+// avgPrice guardrail for a looser, liquidation-specific floor (see withinLiquidationSellGuardrail) so a
+// large stockpile actually clears instead of sitting just as gated as it would in normal operation.
+// Same manual, hand-edited (not runtime Memory) convention as BUYING_ACTIVATED, for the same reason:
+// nothing in this file should be able to silently start liquidating the stockpile on its own.
+export const LIQUIDATION_MODE = false;
+
 // Per-resource terminal-fullness threshold above which a surplus force-sells immediately (ignoring the
 // normal price floor) instead of maintaining a priced standing order — a jammed terminal blocks
 // everything else the colony needs to receive (decision 6).
@@ -50,6 +65,15 @@ function withinBuyGuardrail(buyPrice: number, avgPrice: number | undefined): boo
 
 function withinSellGuardrail(sellPrice: number, avgPrice: number | undefined): boolean {
   return avgPrice !== undefined && sellPrice >= avgPrice * (1 + GUARDRAIL_BAND);
+}
+
+// LIQUIDATION_MODE's own, looser sell floor — replaces (not layers on top of) withinSellGuardrail while
+// active: sell at the average price or up to one standard deviation below it, rather than requiring 20%
+// ABOVE average. A missing stddevPrice (no cached history-derived spread yet) falls back to requiring
+// exactly avgPrice or better — never a price floor of 0, which zero/undefined would otherwise produce.
+function withinLiquidationSellGuardrail(sellPrice: number, avgPrice: number | undefined, stddevPrice: number | undefined): boolean {
+  if (avgPrice === undefined) return false;
+  return sellPrice >= avgPrice - (stddevPrice ?? 0);
 }
 
 /** The credit cost to buy a full BOOST_TARGETS quantity of every boost-line resource, at today's live
@@ -123,7 +147,8 @@ export function marketFallback(
   myOrders: readonly LiveOrder[],
   bestBuyOrder: (resource: ResourceConstant) => { id: string; price: number } | undefined,
   bestSellOrder: (resource: ResourceConstant) => { id: string; price: number; remainingAmount: number } | undefined,
-  buyingActivated: boolean = BUYING_ACTIVATED
+  buyingActivated: boolean = BUYING_ACTIVATED,
+  liquidationMode: boolean = LIQUIDATION_MODE
 ): Intent[] {
   const intents: Intent[] = [];
 
@@ -139,22 +164,22 @@ export function marketFallback(
   for (const entry of leftover) {
     const { colony, resource, amount } = entry;
     if (amount === 0) continue;
-    const avgPrice = (prices as Record<string, { avgPrice: number } | undefined>)[resource]?.avgPrice;
+    const priceInfo = (prices as Record<string, { avgPrice: number; stddevPrice: number } | undefined>)[resource];
+    const avgPrice = priceInfo?.avgPrice;
 
     if (amount < 0) {
       const capacityPct = terminalCapacityPct(colony, resource);
-      // The force-sell branch is price-blind by design (decision 6) — always "wanted" regardless of the
-      // guardrail or SELL_CAPACITY_PCT. The normal priced branch only counts as wanted (kept alive, not
-      // pruned) when the terminal is actually full enough to bother selling AND the live sellMin clears
-      // the price guardrail this pass — a surplus below SELL_CAPACITY_PCT just sits, full stop, however
-      // good the price is (see sellPath).
-      if (
-        capacityPct >= FORCE_SELL_CAPACITY_PCT ||
-        (capacityPct >= SELL_CAPACITY_PCT && withinSellGuardrail(orders[resource]?.sellMin ?? -Infinity, avgPrice))
-      ) {
+      const sellMin = orders[resource]?.sellMin;
+      // Liquidation mode swaps in a looser sell floor (avgPrice - 1 stddev, not +20%) and ignores
+      // SELL_CAPACITY_PCT entirely — see LIQUIDATION_MODE's own doc for why. The force-sell branch is
+      // price-blind by design either way (decision 6) — always "wanted" regardless of any guardrail.
+      const priceClears = liquidationMode
+        ? withinLiquidationSellGuardrail(sellMin ?? -Infinity, avgPrice, priceInfo?.stddevPrice)
+        : withinSellGuardrail(sellMin ?? -Infinity, avgPrice);
+      if (capacityPct >= FORCE_SELL_CAPACITY_PCT || ((liquidationMode || capacityPct >= SELL_CAPACITY_PCT) && priceClears)) {
         wanted.add(`${colony}:${resource}:sell`);
       }
-      sellPath(colony, resource, wantedAmount(amount), capacityPct, orders, avgPrice, byKey, bestBuyOrder, intents);
+      sellPath(colony, resource, wantedAmount(amount), capacityPct, orders, avgPrice, priceInfo?.stddevPrice, byKey, bestBuyOrder, intents, liquidationMode);
     } else if (buyingActivated) {
       // A good-deal immediate buy (below) is a one-shot deal(), not a standing order — it deliberately
       // does NOT mark "wanted", so any standing buy order left over from a previous pass gets pruned
@@ -187,9 +212,11 @@ function sellPath(
   capacityPct: number,
   orders: MarketStats["orders"],
   avgPrice: number | undefined,
+  stddevPrice: number | undefined,
   byKey: Map<string, LiveOrder>,
   bestBuyOrder: (resource: ResourceConstant) => { id: string; price: number } | undefined,
-  intents: Intent[]
+  intents: Intent[],
+  liquidationMode: boolean
 ): void {
   const key = `${colony}:${resource}:sell`;
   const existing = byKey.get(key);
@@ -208,13 +235,19 @@ function sellPath(
   // (an empire-wide surplus over BOOST_TARGETS) isn't by itself a reason to trade; only a terminal that's
   // genuinely filling up with this resource is. Falling through to nothing here also means an existing
   // standing order gets pruned once capacity drops back below this floor (see marketFallback's `wanted`).
-  if (capacityPct < SELL_CAPACITY_PCT) return;
+  // Liquidation mode ignores this floor entirely — see LIQUIDATION_MODE's own doc for why.
+  if (!liquidationMode && capacityPct < SELL_CAPACITY_PCT) return;
 
   const sellPrice = orders[resource]?.sellMin;
   if (sellPrice === undefined) return;
-  // Guardrail: never sell more than 20% below the 7-day average — a live sellMin below that band is
-  // rejected outright this pass (not clamped up to the band edge), same as if no price were cached at all.
-  if (!withinSellGuardrail(sellPrice, avgPrice)) return;
+  // Guardrail: normally never sell more than 20% below the 7-day average; liquidation mode swaps in the
+  // looser avgPrice-1stddev floor instead (see withinLiquidationSellGuardrail). Either way, a live
+  // sellMin below the active floor is rejected outright this pass (not clamped up to the edge), same as
+  // if no price were cached at all.
+  const priceClears = liquidationMode
+    ? withinLiquidationSellGuardrail(sellPrice, avgPrice, stddevPrice)
+    : withinSellGuardrail(sellPrice, avgPrice);
+  if (!priceClears) return;
   if (existing) {
     intents.push({ kind: "marketReprice", order: existing.id, price: sellPrice });
     // Only ever tops up toward the CURRENT real surplus — a shrunk surplus that's already below

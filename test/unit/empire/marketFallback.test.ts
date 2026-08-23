@@ -478,4 +478,91 @@ describe("marketFallback", () => {
 
     expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 3000, price: 13, type: "sell" }]);
   });
+
+  // ---------------------------------------------------------------------------
+  // LIQUIDATION_MODE — a looser sell floor (avgPrice - 1 stddev), and SELL_CAPACITY_PCT is bypassed
+  // ---------------------------------------------------------------------------
+
+  describe("liquidationMode", () => {
+    // avgPrice=10, stddevPrice=2 for RESOURCE_OXYGEN — liquidation floor is 10-2=8 (vs the ±20% guardrail's
+    // normal floor of 12, which none of these sellMin values would ever clear).
+    const liqPrices: MarketStats["prices"] = { O: { avgPrice: 10, stddevPrice: 2 } };
+
+    it("sells below the sell-capacity floor when liquidating, even at 0% terminal capacity", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+      const orders: MarketStats["orders"] = { O: { sellMin: 9 } }; // clears avgPrice-stddev=8, would fail the normal ±20% guardrail
+
+      const intents = marketFallback(leftover, () => 0, orders, liqPrices, noOrders, noBestBuy, noBestSell, undefined, true);
+
+      expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 500, price: 9, type: "sell" }]);
+    });
+
+    it("sells right at the avgPrice-minus-1-stddev edge", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+      const orders: MarketStats["orders"] = { O: { sellMin: 8 } }; // exactly 10-2
+
+      const intents = marketFallback(leftover, () => 0, orders, liqPrices, noOrders, noBestBuy, noBestSell, undefined, true);
+
+      expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 500, price: 8, type: "sell" }]);
+    });
+
+    it("does not sell below the avgPrice-minus-1-stddev floor even while liquidating", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+      const orders: MarketStats["orders"] = { O: { sellMin: 7 } }; // below 10-2=8
+
+      expect(marketFallback(leftover, () => 0, orders, liqPrices, noOrders, noBestBuy, noBestSell, undefined, true)).toEqual([]);
+    });
+
+    it("falls back to requiring exactly avgPrice or better when stddevPrice is missing, even while liquidating", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+      const orders: MarketStats["orders"] = { O: { sellMin: 9 } }; // below avgPrice=10, would need stddev>=1 to clear
+      const prices: MarketStats["prices"] = { O: { avgPrice: 10, stddevPrice: undefined as unknown as number } };
+
+      expect(marketFallback(leftover, () => 0, orders, prices, noOrders, noBestBuy, noBestSell, undefined, true)).toEqual([]);
+    });
+
+    it("does not sell at all when liquidating a resource with no cached avgPrice yet", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+      const orders: MarketStats["orders"] = { O: { sellMin: 999 } };
+
+      expect(marketFallback(leftover, () => 0, orders, {}, noOrders, noBestBuy, noBestSell, undefined, true)).toEqual([]);
+    });
+
+    it("still uses the normal ±20% guardrail (not the liquidation floor) when liquidationMode is false/omitted", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+      const orders: MarketStats["orders"] = { O: { sellMin: 9 } }; // clears the liquidation floor (8) but not the normal one (12)
+
+      expect(marketFallback(leftover, () => 0.85, orders, liqPrices, noOrders, noBestBuy, noBestSell)).toEqual([]);
+    });
+
+    it("force-sell stays unguarded and unaffected by liquidationMode either way", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+      const bestBuyOrder = () => ({ id: "otherPlayerBuy", price: 1 });
+
+      const intents = marketFallback(leftover, () => 0.95, {}, liqPrices, noOrders, bestBuyOrder, noBestSell, undefined, true);
+
+      expect(intents).toEqual([{ kind: "marketDeal", order: "otherPlayerBuy", amount: 500, room: "W1N1" }]);
+    });
+
+    it("prunes an existing standing sell order once its price drifts below the liquidation floor", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, -500)];
+      const orders: MarketStats["orders"] = { O: { sellMin: 7 } }; // below 10-2=8
+      const existing = [order({ id: "sell1", type: "sell", resourceType: RESOURCE_OXYGEN, roomName: "W1N1", remainingAmount: 3000, price: 8 })];
+
+      const intents = marketFallback(leftover, () => 0, orders, liqPrices, existing, noBestBuy, noBestSell, undefined, true);
+
+      expect(intents).toEqual([{ kind: "marketCancelOrder", order: "sell1" }]);
+    });
+
+    it("never buys while liquidating, even with a favorable good-deal sell order, since zeroed targets never produce a positive leftover entry in the first place — but as a direct guard, buyingActivated still gates it", () => {
+      const leftover = [req("W1N1", RESOURCE_OXYGEN, 500)]; // a positive leftover would only occur if targets weren't actually zeroed
+      const bestSellOrder = () => ({ id: "cheapSell", price: 9, remainingAmount: 3000 });
+
+      // liquidationMode=true, buyingActivated left at its default (false) — confirms liquidation doesn't
+      // implicitly turn buying on.
+      const intents = marketFallback(leftover, () => 0, {}, liqPrices, noOrders, noBestBuy, bestSellOrder, undefined, true);
+
+      expect(intents).toEqual([]);
+    });
+  });
 });
