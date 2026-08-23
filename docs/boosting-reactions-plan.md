@@ -1,5 +1,13 @@
 # Boosting & reactions plan
 
+## Superseded (2026-08-23)
+**M2 (empire assignment algorithm), M3 (colony-scoped shortfall), M4 (terminal distribution), and M7
+(boosting flow) are superseded** — M2/M4 by `empire/boostTargets.ts` + `empire/logistics.ts`
+(`docs/empire-logistics-plan.md`, gh #59) and M4's market half by `docs/market-plan.md` (gh #60); M3/M7 by
+**`docs/boosting-plan.md`**, the redesigned boosting architecture from a follow-up grilling session. M0
+(mineral harvesting) and M1 (lab snapshot) are unaffected and still apply as written. Kept below as
+historical record of the original reasoning — read `docs/boosting-plan.md` for the current design.
+
 ## Status: design only (2026-08-12)
 Zero code written. This file is the agreed design after a research + back-and-forth session on how
 other Screeps bots (Overmind, bonzAI, TooAngel, The International) handle lab reactions and creep
