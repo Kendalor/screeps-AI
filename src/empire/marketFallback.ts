@@ -71,7 +71,21 @@ export interface LiveOrder {
   price: number;
 }
 
-const ORDER_AMOUNT = 3000; // flat per-order size; no partial-fill sizing in this MVP slice
+// Ceiling on any single trade/standing-order size — a backstop against a corrupted or absurd leftover
+// value, not the normal sizing mechanism (see `wantedAmount` below for that). Real per-trade sizing is
+// always min(this, abs(leftover.amount)): sizing off the flat ceiling alone (the old behavior) meant a
+// small remaining deficit/surplus (e.g. 500 left to fill) still traded a full 3000 — overshooting straight
+// past the target into the opposite direction — and, more subtly, once an outstanding order DID fully
+// fill, the next pass's fresh deficit recompute could still be a non-multiple of 3000 (e.g. colony-to-
+// colony matching or a role-multiplier retarget changed the true remaining gap between passes), so the
+// flat ceiling had no way to land exactly on it even across multiple fills.
+const ORDER_AMOUNT_CEILING = 3000;
+
+/** The real per-pass trade/order size for a leftover entry: never more than what's actually still needed,
+ * and never more than the flat ceiling above. */
+function wantedAmount(leftoverAmount: number): number {
+  return Math.min(ORDER_AMOUNT_CEILING, Math.abs(leftoverAmount));
+}
 
 /**
  * Buy/sell/reprice/prune decision logic (decisions 6/7): for every leftover deficit/surplus, maintains
@@ -127,12 +141,12 @@ export function marketFallback(
       ) {
         wanted.add(`${colony}:${resource}:sell`);
       }
-      sellPath(colony, resource, capacityPct, orders, avgPrice, byKey, bestBuyOrder, intents);
+      sellPath(colony, resource, wantedAmount(amount), capacityPct, orders, avgPrice, byKey, bestBuyOrder, intents);
     } else {
       // A good-deal immediate buy (below) is a one-shot deal(), not a standing order — it deliberately
       // does NOT mark "wanted", so any standing buy order left over from a previous pass gets pruned
       // below instead of sitting there duplicating what the deal already bought.
-      const dealt = buyPath(colony, resource, orders, avgPrice, byKey, bestSellOrder, intents);
+      const dealt = buyPath(colony, resource, wantedAmount(amount), orders, avgPrice, byKey, bestSellOrder, intents);
       if (!dealt && withinBuyGuardrail(orders[resource]?.buyMax ?? Infinity, avgPrice)) {
         wanted.add(`${colony}:${resource}:buy`);
       }
@@ -153,6 +167,7 @@ export function marketFallback(
 function sellPath(
   colony: string,
   resource: ResourceConstant,
+  wanted: number,
   capacityPct: number,
   orders: MarketStats["orders"],
   avgPrice: number | undefined,
@@ -169,7 +184,7 @@ function sellPath(
     // guardrailed: a jammed terminal must clear regardless of price, that's the whole point of this branch.
     // No real buy order to deal against yet this pass simply means nothing force-sells this tick.
     const buy = bestBuyOrder(resource);
-    if (buy) intents.push({ kind: "marketDeal", order: buy.id, amount: ORDER_AMOUNT, room: colony });
+    if (buy) intents.push({ kind: "marketDeal", order: buy.id, amount: wanted, room: colony });
     return;
   }
 
@@ -186,11 +201,14 @@ function sellPath(
   if (!withinSellGuardrail(sellPrice, avgPrice)) return;
   if (existing) {
     intents.push({ kind: "marketReprice", order: existing.id, price: sellPrice });
-    if (existing.remainingAmount < ORDER_AMOUNT) {
-      intents.push({ kind: "marketExtendOrder", order: existing.id, amount: ORDER_AMOUNT - existing.remainingAmount });
+    // Only ever tops up toward the CURRENT real surplus — a shrunk surplus that's already below
+    // remainingAmount is left alone (extendOrder can only add, never remove; the order naturally shrinks
+    // as it fills, or gets pruned outright once the surplus is fully gone).
+    if (existing.remainingAmount < wanted) {
+      intents.push({ kind: "marketExtendOrder", order: existing.id, amount: wanted - existing.remainingAmount });
     }
   } else {
-    intents.push({ kind: "marketCreateOrder", room: colony, resource, amount: ORDER_AMOUNT, price: sellPrice, type: "sell" });
+    intents.push({ kind: "marketCreateOrder", room: colony, resource, amount: wanted, price: sellPrice, type: "sell" });
   }
 }
 
@@ -199,6 +217,7 @@ function sellPath(
 function buyPath(
   colony: string,
   resource: ResourceConstant,
+  wanted: number,
   orders: MarketStats["orders"],
   avgPrice: number | undefined,
   byKey: Map<string, LiveOrder>,
@@ -212,7 +231,7 @@ function buyPath(
   if (avgPrice !== undefined) {
     const sell = bestSellOrder(resource);
     if (sell && sell.price <= avgPrice) {
-      intents.push({ kind: "marketDeal", order: sell.id, amount: Math.min(ORDER_AMOUNT, sell.remainingAmount), room: colony });
+      intents.push({ kind: "marketDeal", order: sell.id, amount: Math.min(wanted, sell.remainingAmount), room: colony });
       return true;
     }
   }
@@ -228,11 +247,14 @@ function buyPath(
   const existing = byKey.get(key);
   if (existing) {
     intents.push({ kind: "marketReprice", order: existing.id, price: buyPrice });
-    if (existing.remainingAmount < ORDER_AMOUNT) {
-      intents.push({ kind: "marketExtendOrder", order: existing.id, amount: ORDER_AMOUNT - existing.remainingAmount });
+    // Only ever tops up toward the CURRENT real deficit — a shrunk deficit that's already below
+    // remainingAmount is left alone (extendOrder can only add, never remove; the order naturally shrinks
+    // as it fills, or gets pruned outright once the deficit is fully gone).
+    if (existing.remainingAmount < wanted) {
+      intents.push({ kind: "marketExtendOrder", order: existing.id, amount: wanted - existing.remainingAmount });
     }
   } else {
-    intents.push({ kind: "marketCreateOrder", room: colony, resource, amount: ORDER_AMOUNT, price: buyPrice, type: "buy" });
+    intents.push({ kind: "marketCreateOrder", room: colony, resource, amount: wanted, price: buyPrice, type: "buy" });
   }
   return false;
 }
