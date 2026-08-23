@@ -1,6 +1,8 @@
 // nextStep decides step advancement as a pure function, testable without a creep; runStep is the actuator that touches the game API.
 
 import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
+import { boostActionFor } from "../empire/boostActions";
+import type { BoostLabAssignment } from "../empire/boostLabAllocation";
 import { log } from "../lib/log";
 import { HEAL_ASSIST_RANGE, massAttackDamagePerPartAt, RANGED_ATTACK_RANGE } from "../lib/combat";
 import { isDangerous } from "../memory/reputation";
@@ -1401,6 +1403,65 @@ export function retreatIfDisarmed(creep: Creep, part: BodyPartConstant): boolean
   } else {
     log.debugCreep(creep.name, `retreatIfDisarmed: no ${part} parts left, home but not fully healed — holding`);
   }
+  return true;
+}
+
+// Boost pre-emption (gh #75, final sub-ticket of the #61 boosting epic) — mirrors fleeThreat/
+// retreatIfDisarmed's placement exactly: a static, cheap check (Role.boostable non-empty) gates whether a
+// role can ever be a candidate at all, checked before ever looking at a specific creep's memory; only then
+// does creep.memory.boosts (a pending order, see memory/schema.ts) matter. Both together short-circuit the
+// entire normal step table for the tick, same as the two checks above.
+//
+// `assignment` is this creep's own already-resolved slice of gh #74's planBoostLabAllocation output — a
+// per-tick Map computed ONCE per colony (never per creep) and threaded down as a plain argument, exactly
+// like runOne already receives no comparable map today but dispatchCreep/runCreepBehaviors is the layer
+// that already threads other precomputed per-tick data (transportByHome) down to individual creep dispatch
+// the same way. This function only ever reads ITS OWN entry — it never scans or ranks other creeps, and
+// never reaches into #74's allocation logic itself.
+//
+// Two outcomes once pre-empted:
+// - Assigned a lab: walk to range 1 of it, then call boostCreep once adjacent. The engine allows exactly
+//   one boostCreep() call per lab per tick anyway; issuing at most one call per creep per tick trivially
+//   respects that without any extra locking (see the epic's user story 19).
+// - Not assigned (absent from the map — #74's "step aside" outcome, lost the scarcity tie-break, or no
+//   colony boost pass has run yet): do nothing this tick rather than act on stale state. The order stays
+//   pending in memory, retried automatically next tick once #74 recomputes fresh.
+//
+// Order-clearing: a boost order's entries are abstract ACTION names (e.g. "heal"), not compounds — the only
+// live signal that an action was actually applied is the corresponding body part now carrying a `.boost`
+// field (the engine sets this the tick boostCreep() succeeds). An action whose resolved body part is either
+// absent from the body or already boosted counts as satisfied — nothing further this routine could do for
+// it. Once every entry is satisfied the whole order clears in one write (creep.memory.boosts = undefined),
+// the same self-clearing shape every other opt-in memory field in this codebase already follows (Role.
+// boostable's own doc, behaviors/roles/role.ts).
+export function boostPreemption(creep: Creep, assignment: BoostLabAssignment | undefined): boolean {
+  const boosts = creep.memory.boosts;
+  if (!boosts || boosts.length === 0) return false;
+
+  const remaining = boosts.filter(action => {
+    const resolved = boostActionFor(action);
+    if (resolved.kind === "not-found") return false; // nothing this routine could ever satisfy — drop it
+    return !creep.body.some(p => p.type === resolved.bodyPart && p.boost !== undefined);
+  });
+  if (remaining.length === 0) {
+    creep.memory.boosts = undefined;
+    return true; // order just cleared — normal dispatch resumes next tick, not this one
+  }
+  if (remaining.length !== boosts.length) creep.memory.boosts = remaining;
+
+  if (!assignment) {
+    log.debugCreep(creep.name, "boostPreemption: no lab assigned this tick — waiting");
+    return true;
+  }
+
+  const lab = Game.getObjectById(assignment.labId);
+  if (!lab) return true; // lab vanished (destroyed?) — hold; #74 will stop assigning it next pass
+
+  if (!creep.pos.inRangeTo(lab.pos, 1)) {
+    creep.travelTo(lab.pos, { range: 1 });
+    return true;
+  }
+  lab.boostCreep(creep);
   return true;
 }
 

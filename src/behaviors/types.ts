@@ -298,4 +298,7 @@ export interface RoleDef {
   // Opt in to bypass the step-table dispatch entirely — see Role.dispatch's doc (behaviors/roles/role.ts)
   // for the full rationale.
   dispatch?: "logistics" | "steward";
+  // The abstract boost actions this role's body can ever benefit from (gh #61 epic) — see Role.boostable's
+  // doc (behaviors/roles/role.ts) for the full rationale. Empty/undeclared is correct for almost every role.
+  boostable?: readonly string[];
 }

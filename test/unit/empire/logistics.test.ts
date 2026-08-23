@@ -7,13 +7,18 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  availableEmpireStock,
+  computeEmergencyBoostRequests,
+  computeEmergencyDonorOffers,
   computeEmpireRequests,
   effectiveTargetFor,
   matchEmpireRequests,
   roleMultiplierFor,
+  type ColonyBoostCensus,
   type EmpireRequest,
   type EmpireStock
 } from "../../../src/empire/logistics";
+import type { CreepRequest } from "../../../src/spawn/request";
 
 function stock(overrides: Partial<Record<ResourceConstant, number>> = {}): EmpireStock {
   return {
@@ -228,6 +233,192 @@ describe("matchEmpireRequests send-cost accounting for RESOURCE_ENERGY", () => {
 
     expect(matches).toHaveLength(1);
     expect(matches[0].amount).toBe(10_000); // no carve-out for a non-energy resource
+  });
+});
+
+// ---------------------------------------------------------------------------
+// availableEmpireStock (gh #64)
+// ---------------------------------------------------------------------------
+
+describe("availableEmpireStock", () => {
+  it("sums storage+terminal stock for a resource across every colony", () => {
+    const colonies = [
+      colonyStock("W1N1", stock({ GO: 1000 }), stock({ GO: 500 })),
+      colonyStock("W2N2", stock({ GO: 2000 }), stock())
+    ];
+    expect(availableEmpireStock(colonies, "GO", () => 0)).toBe(1000 + 500 + 2000);
+  });
+
+  it("subtracts each colony's currently-reserved-to-leave stock for that resource", () => {
+    const colonies = [colonyStock("W1N1", stock({ GO: 1000 }), stock())];
+    expect(availableEmpireStock(colonies, "GO", colony => (colony === "W1N1" ? 300 : 0))).toBe(700);
+  });
+
+  it("sums net-of-reservation across multiple colonies independently", () => {
+    const colonies = [
+      colonyStock("W1N1", stock({ GO: 1000 }), stock()),
+      colonyStock("W2N2", stock({ GO: 2000 }), stock())
+    ];
+    const reservedOf = (colony: string): number => (colony === "W1N1" ? 300 : 500);
+    expect(availableEmpireStock(colonies, "GO", reservedOf)).toBe(1000 - 300 + (2000 - 500));
+  });
+
+  it("treats a missing storage or terminal as zero stock there, not a crash", () => {
+    const colonies = [colonyStock("W1N1", undefined, stock({ GO: 500 })), colonyStock("W2N2", stock({ GO: 100 }), undefined)];
+    expect(availableEmpireStock(colonies, "GO", () => 0)).toBe(500 + 100);
+  });
+
+  it("returns 0 for an empire with no stock and no reservations", () => {
+    const colonies = [colonyStock("W1N1", stock(), stock())];
+    expect(availableEmpireStock(colonies, "GO", () => 0)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeEmergencyBoostRequests / computeEmergencyDonorOffers (gh #71, part of the #61 boosting epic)
+// ---------------------------------------------------------------------------
+
+// Minimal fabricated CreepRequest, same pattern as boostCensus.test.ts's fakeRequest — only the fields
+// computeEmergencyBoostRequests actually reads (memory.boosts, boostNeeds) matter.
+function fakeBoostedRequest(boostNeeds: Partial<Record<ResourceConstant, number>>): CreepRequest {
+  return {
+    body: [],
+    priority: 1,
+    memory: { role: "hauler", home: "W1N1", boosts: ["heal"] } as CreepRequest["memory"],
+    targetRoom: "W1N1",
+    boostNeeds
+  };
+}
+
+function fakePlainRequest(): CreepRequest {
+  return {
+    body: [],
+    priority: 1,
+    memory: { role: "hauler", home: "W1N1" } as CreepRequest["memory"],
+    targetRoom: "W1N1"
+  };
+}
+
+function census(colony: string, requests: readonly CreepRequest[]): ColonyBoostCensus {
+  return { colony, requests };
+}
+
+describe("computeEmergencyBoostRequests", () => {
+  it("sums boostNeeds across every boosted request in one colony's census into one emergency want per compound", () => {
+    const censuses = [
+      census("W1N1", [fakeBoostedRequest({ LO: 400 }), fakeBoostedRequest({ LO: 200, GO: 100 }), fakePlainRequest()])
+    ];
+    const requests = computeEmergencyBoostRequests(censuses);
+
+    expect(requests).toHaveLength(2);
+    expect(requests).toContainEqual({ colony: "W1N1", resource: "LO", amount: 600 });
+    expect(requests).toContainEqual({ colony: "W1N1", resource: "GO", amount: 100 });
+  });
+
+  it("emits nothing for a colony with no boosted requests", () => {
+    const censuses = [census("W1N1", [fakePlainRequest(), fakePlainRequest()])];
+    expect(computeEmergencyBoostRequests(censuses)).toHaveLength(0);
+  });
+
+  it("ignores a boosted request with no boostNeeds attached", () => {
+    const noNeeds: CreepRequest = {
+      body: [],
+      priority: 1,
+      memory: { role: "hauler", home: "W1N1", boosts: ["heal"] } as CreepRequest["memory"],
+      targetRoom: "W1N1"
+    };
+    const censuses = [census("W1N1", [noNeeds])];
+    expect(computeEmergencyBoostRequests(censuses)).toHaveLength(0);
+  });
+
+  it("keeps colonies independent", () => {
+    const censuses = [
+      census("W1N1", [fakeBoostedRequest({ LO: 400 })]),
+      census("W2N2", [fakeBoostedRequest({ LO: 300 })])
+    ];
+    const requests = computeEmergencyBoostRequests(censuses);
+    expect(requests).toHaveLength(2);
+    expect(requests).toContainEqual({ colony: "W1N1", resource: "LO", amount: 400 });
+    expect(requests).toContainEqual({ colony: "W2N2", resource: "LO", amount: 300 });
+  });
+
+  it("produces a positive amount (a want), never negative, regardless of input shape", () => {
+    const censuses = [census("W1N1", [fakeBoostedRequest({ LO: 400 })])];
+    const requests = computeEmergencyBoostRequests(censuses);
+    expect(requests[0].amount).toBeGreaterThan(0);
+  });
+});
+
+describe("computeEmergencyDonorOffers", () => {
+  it("offers a donor's FULL current stock (storage+terminal), not stock-above-target", () => {
+    const colonies = [colonyStock("W1N1", stock({ LO: 1000 }), stock({ LO: 500 }))];
+    const offers = computeEmergencyDonorOffers(colonies, "LO");
+
+    expect(offers).toHaveLength(1);
+    // Signed negative, matching matchEmpireRequests' "has-to-give" convention — the FULL 1500, no target
+    // subtracted (there is no BOOST_TARGETS lookup involved in this function at all).
+    expect(offers[0]).toEqual<EmpireRequest>({ colony: "W1N1", resource: "LO", amount: -1500 });
+  });
+
+  it("omits a colony with zero stock of that resource (nothing to offer)", () => {
+    const colonies = [colonyStock("W1N1", stock({ LO: 0 }), undefined)];
+    expect(computeEmergencyDonorOffers(colonies, "LO")).toHaveLength(0);
+  });
+
+  it("treats a missing storage or terminal as zero stock there, not a crash", () => {
+    const colonies = [colonyStock("W1N1", undefined, stock({ LO: 500 }))];
+    const offers = computeEmergencyDonorOffers(colonies, "LO");
+    expect(offers[0].amount).toBe(-500);
+  });
+
+  it("computes offers independently per colony", () => {
+    const colonies = [
+      colonyStock("W1N1", stock({ LO: 1000 }), stock()),
+      colonyStock("W2N2", stock({ LO: 2000 }), stock())
+    ];
+    const offers = computeEmergencyDonorOffers(colonies, "LO");
+    expect(offers).toHaveLength(2);
+    expect(offers).toContainEqual({ colony: "W1N1", resource: "LO", amount: -1000 });
+    expect(offers).toContainEqual({ colony: "W2N2", resource: "LO", amount: -2000 });
+  });
+});
+
+describe("emergency boost matching (gh #71): reusing matchEmpireRequests for the emergency pass", () => {
+  it("matches an emergency want against a donor's full stock via the SAME matchEmpireRequests pairing function", () => {
+    const wants = computeEmergencyBoostRequests([census("A", [fakeBoostedRequest({ LO: 400 })])]);
+    const offers = computeEmergencyDonorOffers([colonyStock("B", stock({ LO: 1000 }), stock())], "LO");
+
+    const { matches } = matchEmpireRequests([...wants, ...offers], () => 999999);
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({ from: "B", to: "A", resource: "LO", amount: 400 });
+  });
+
+  it("can drain a donor below its own target-level stock — no floor protection, plain full-stock offer", () => {
+    // Donor B only has 300 LO — well below any plausible BOOST_TARGETS baseline for LO — yet it's still
+    // offered in full and gets drained to zero for this compound; nothing in computeEmergencyDonorOffers or
+    // matchEmpireRequests consults a target/floor at all for the emergency pass.
+    const wants = computeEmergencyBoostRequests([census("A", [fakeBoostedRequest({ LO: 400 })])]);
+    const offers = computeEmergencyDonorOffers([colonyStock("B", stock({ LO: 300 }), stock())], "LO");
+
+    const { matches, leftover } = matchEmpireRequests([...wants, ...offers], () => 999999);
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({ from: "B", to: "A", resource: "LO", amount: 300 }); // drained to zero
+    expect(leftover).toContainEqual({ colony: "A", resource: "LO", amount: 100 }); // remaining want carries over
+  });
+
+  it("pulls from the biggest available donor stock first among multiple donors, same pairing behavior as the ordinary pass", () => {
+    const wants = computeEmergencyBoostRequests([census("A", [fakeBoostedRequest({ LO: 500 })])]);
+    const offers = computeEmergencyDonorOffers(
+      [colonyStock("B", stock({ LO: 2000 }), stock()), colonyStock("C", stock({ LO: 100 }), stock())],
+      "LO"
+    );
+
+    const { matches } = matchEmpireRequests([...wants, ...offers], () => 999999);
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({ from: "B", to: "A", amount: 500 }); // bigger donor picked first
   });
 });
 

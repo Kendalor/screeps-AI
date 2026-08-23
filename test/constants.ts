@@ -257,6 +257,25 @@ Object.assign(globalThis, {
   RESOURCE_GHODIUM_OXIDE: "GO",
   RESOURCE_GHODIUM_ALKALIDE: "GHO2",
   RESOURCE_CATALYZED_GHODIUM_ALKALIDE: "XGHO2",
+  RESOURCE_GHODIUM: "G",
+  RESOURCE_UTRIUM_OXIDE: "UO",
+  RESOURCE_UTRIUM_ALKALIDE: "UHO2",
+  RESOURCE_CATALYZED_UTRIUM_ALKALIDE: "XUHO2",
+  RESOURCE_KEANIUM_HYDRIDE: "KH",
+  RESOURCE_KEANIUM_ACID: "KH2O",
+  RESOURCE_CATALYZED_KEANIUM_ACID: "XKH2O",
+  RESOURCE_LEMERGIUM_HYDRIDE: "LH",
+  RESOURCE_LEMERGIUM_ACID: "LH2O",
+  RESOURCE_CATALYZED_LEMERGIUM_ACID: "XLH2O",
+  RESOURCE_ZYNTHIUM_HYDRIDE: "ZH",
+  RESOURCE_ZYNTHIUM_ACID: "ZH2O",
+  RESOURCE_CATALYZED_ZYNTHIUM_ACID: "XZH2O",
+  RESOURCE_ZYNTHIUM_OXIDE: "ZO",
+  RESOURCE_ZYNTHIUM_ALKALIDE: "ZHO2",
+  RESOURCE_CATALYZED_ZYNTHIUM_ALKALIDE: "XZHO2",
+  RESOURCE_GHODIUM_HYDRIDE: "GH",
+  RESOURCE_GHODIUM_ACID: "GH2O",
+  RESOURCE_CATALYZED_GHODIUM_ACID: "XGH2O",
 
   // Mineral reaction recipes + per-unit reaction time, from screeps/common constants — used by
   // src/empire/market.ts's manufacturingCost() to recursively price compounds.
@@ -316,6 +335,60 @@ Object.assign(globalThis, {
   // Every Lab.runReaction() call consumes/produces this many units regardless of which reaction, from
   // screeps/common constants — REACTION_TIME above is the cooldown for one such call, i.e. one batch.
   LAB_REACTION_AMOUNT: 5,
+
+  // Units of compound Lab.boostCreep() consumes PER BODY PART boosted, from @screeps/common constants.
+  // Used by src/empire/boostNeeds.ts to scale a compound's needed amount by a creep's actual body.
+  LAB_BOOST_MINERAL: 30,
+
+  // Boost multiplier table, copied verbatim from node_modules/@screeps/common/lib/constants.js
+  // (BOOSTS[bodyPart][compound][action] = multiplier). Used by src/empire/boostActions.ts to build its
+  // action->{bodyPart,T1,T2,T3} reverse index.
+  BOOSTS: {
+    work: {
+      UO: { harvest: 3 },
+      UHO2: { harvest: 5 },
+      XUHO2: { harvest: 7 },
+      LH: { build: 1.5, repair: 1.5 },
+      LH2O: { build: 1.8, repair: 1.8 },
+      XLH2O: { build: 2, repair: 2 },
+      ZH: { dismantle: 2 },
+      ZH2O: { dismantle: 3 },
+      XZH2O: { dismantle: 4 },
+      GH: { upgradeController: 1.5 },
+      GH2O: { upgradeController: 1.8 },
+      XGH2O: { upgradeController: 2 }
+    },
+    attack: {
+      UH: { attack: 2 },
+      UH2O: { attack: 3 },
+      XUH2O: { attack: 4 }
+    },
+    ranged_attack: {
+      KO: { rangedAttack: 2, rangedMassAttack: 2 },
+      KHO2: { rangedAttack: 3, rangedMassAttack: 3 },
+      XKHO2: { rangedAttack: 4, rangedMassAttack: 4 }
+    },
+    heal: {
+      LO: { heal: 2, rangedHeal: 2 },
+      LHO2: { heal: 3, rangedHeal: 3 },
+      XLHO2: { heal: 4, rangedHeal: 4 }
+    },
+    carry: {
+      KH: { capacity: 2 },
+      KH2O: { capacity: 3 },
+      XKH2O: { capacity: 4 }
+    },
+    move: {
+      ZO: { fatigue: 2 },
+      ZHO2: { fatigue: 3 },
+      XZHO2: { fatigue: 4 }
+    },
+    tough: {
+      GO: { damage: 0.7 },
+      GHO2: { damage: 0.5 },
+      XGHO2: { damage: 0.3 }
+    }
+  },
 
   // gh #59's empire logistics: real engine values from @screeps/common/lib/constants.js (verified, not
   // recalled — see docs/empire-logistics-plan.md's own header note on this).

@@ -152,6 +152,19 @@ declare global {
     // raw getActiveBodyparts re-check alone isn't enough (a single tower-heal tick can revive one part
     // above 0 hits long before the creep is genuinely healed). Cleared once hits reaches hitsMax again.
     retreating?: boolean;
+    // Pending boost order for THIS creep instance (gh #61 epic, gh #63's schema-only cut — see
+    // docs/boosting-plan.md decision 7). Per-creep runtime state paired with the static Role.boostable tag:
+    // the role declares what CAN ever be boosted, this declares what's actually outstanding for this one
+    // creep right now. A list of abstract action names (Role.boostable's vocabulary, e.g. "heal"/"tough"),
+    // not a single boolean or body-part flag — a creep can have multiple boostable actions still pending at
+    // once (a healer wants both heal AND tough boosted before it's "done"), and a plain boolean can't
+    // represent "some satisfied, some not". Deliberately NOT resolving to a specific compound/tier here:
+    // gh #62 (sibling ticket, may land independently) owns the action->compound lookup against the engine's
+    // BOOSTS table, so this field only records WHICH actions are still wanted, kept minimal until the
+    // resolution/lab-assignment machinery (later tickets) exists to act on it. Undefined means no pending
+    // boost order — the common case, and (per decision 7) the exact signal runOne's future pre-emption
+    // check keys off (`creep.memory.boosts !== undefined`). Nothing reads or clears this yet.
+    boosts?: string[];
   }
 
   interface RoomMemory {

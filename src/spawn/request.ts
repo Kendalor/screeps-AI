@@ -8,6 +8,11 @@ export interface CreepRequest {
   targetRoom: string; // where the creep is needed; arbiter routes to nearest spawn-capable colony, defaults to memory.home
   spawnRoom?: string; // hard override: spawn in exactly this colony; absent means "let the arbiter choose"
   maxSpawnRange?: number; // caps how far the arbiter's nearest-colony search may reach when spawnRoom is absent; absent means unlimited
+  // Compound->amount this specific request's body needs to reach its resolved boost tier (gh #61 epic,
+  // gh #66's empire/boostNeeds.ts computeBoostNeeds — LAB_BOOST_MINERAL per body part actually boosted,
+  // not a flat per-action amount). Absent means this request isn't boost-eligible or no tier was resolved;
+  // populating it from an actual desiredCreeps() call site is later integration, not this field's job.
+  boostNeeds?: Partial<Record<ResourceConstant, number>>;
 }
 
 // Reserved for the wipe restart — a colony with no creeps has no other way out, since every normal quota evaluates to zero.

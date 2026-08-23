@@ -15,10 +15,13 @@
 import type { Colony } from "../colony";
 import type { SponsorConfig } from "../operations/operation";
 import type { RoomDistance } from "./spawning";
+import { pickAvailableTier } from "./boostAvailability";
+import type { TierRequest } from "./boostTier";
+import { availableEmpireStock, type ColonyEmpireStock } from "./logistics";
 
 export interface SponsorPick {
   colony?: Colony;
-  reason?: "no colonies" | "unreachable" | "unaffordable";
+  reason?: "no colonies" | "unreachable" | "unaffordable" | "boostTierUnavailable";
 }
 
 /** Nearest colony (real room-graph hops, via the injected roomDistance) that can afford `floor` energy
@@ -54,4 +57,61 @@ export function pickSponsorFor(
   roomDistance: RoomDistance
 ): SponsorPick {
   return pickSponsor(colonies, target, OpClass.sponsorConfig.minCost, roomDistance);
+}
+
+/** A boost-tier request to additionally check once an ordinary sponsor pick already succeeded (gh #68) —
+ * see pickBoostedSponsor's own doc for how this plugs in. `tierRequest` is #65's parseTierSegment output;
+ * `resolveCompound`/`colonies`/`reservedOf` are the exact injected dependencies #67's pickAvailableTier and
+ * #64's availableEmpireStock already take (see boostAvailability.ts / logistics.ts) — this function is a
+ * thin composition of both, not a new stock/compound authority of its own. */
+export interface BoostRequest {
+  requiredActions: readonly string[];
+  tierRequest: TierRequest;
+  neededAmount: number;
+  resolveCompound: (action: string, tier: 1 | 2 | 3) => ResourceConstant | undefined;
+  colonies: readonly ColonyEmpireStock[];
+  reservedOf: (colony: string) => number;
+}
+
+/** pickSponsor, plus an advisory boost-tier-availability check (gh #68, epic #61) run only once the
+ * ordinary pick already succeeded — the existing "no colonies" -> "unaffordable" -> "unreachable" order is
+ * completely unchanged (this function calls pickSponsor first and returns its result verbatim on failure).
+ * A forced-tier request checks empire-wide stock for exactly that tier and rejects with
+ * "boostTierUnavailable" if short, with NO fallback to a lower tier even if one would have cleared — the
+ * caller asked for a specific tier on purpose. A greedy request runs #67's T3->T2->T1 walk and only rejects
+ * if none of the three tiers clears the bar for every required action. Either way this is purely advisory:
+ * it only READS availableEmpireStock, it never reserves/claims anything — a later real send still has to
+ * re-check and actually commit the reservation itself.
+ *
+ * A malformed ("invalid") tierRequest reaching this function is a caller bug (the flag/console parser
+ * should already have rejected it before ever calling sponsor-pick) — rather than throwing on unexpected
+ * input, it's treated as an unconditional "boostTierUnavailable", the safest default available from this
+ * function's existing reason union. */
+export function pickBoostedSponsor(
+  colonies: readonly Colony[],
+  target: string,
+  floor: number,
+  roomDistance: RoomDistance,
+  boost: BoostRequest
+): SponsorPick {
+  const base = pickSponsor(colonies, target, floor, roomDistance);
+  if (!base.colony) return base;
+
+  const availableStock = (resource: ResourceConstant): number => availableEmpireStock(boost.colonies, resource, boost.reservedOf);
+
+  if (boost.tierRequest.kind === "invalid") return { reason: "boostTierUnavailable" };
+
+  if (boost.tierRequest.kind === "forced") {
+    const tier = boost.tierRequest.tier;
+    const allClear = boost.requiredActions.every(action => {
+      const compound = boost.resolveCompound(action, tier);
+      if (compound === undefined) return false;
+      return availableStock(compound) >= boost.neededAmount;
+    });
+    return allClear ? base : { reason: "boostTierUnavailable" };
+  }
+
+  // greedy
+  const availability = pickAvailableTier(boost.requiredActions, boost.resolveCompound, availableStock, boost.neededAmount);
+  return availability.kind === "available" ? base : { reason: "boostTierUnavailable" };
 }

@@ -43,6 +43,19 @@ export abstract class Role {
   // by mistake fails loudly (runOne's `steps.length === 0` early-return does nothing) instead of
   // silently behaving like a diverted role it never opted into.
   static readonly dispatch?: "logistics" | "steward";
+  // Opt in to boosting (gh #61 epic): the abstract boost ACTIONS this role's body can ever benefit from,
+  // e.g. Healer -> ["heal", "tough"]. Deliberately an action name (matching the engine's own
+  // BOOSTS[bodyPart][compound] = { actionType: multiplier } shape), not a BodyPartConstant list — one part
+  // (WORK) boosts differently depending on what it's doing (harvest vs. build vs. upgradeController vs.
+  // dismantle vs. repair are different compounds on the same part), so a part alone is ambiguous about
+  // which compound would even apply. This is the cheap, static half of the eventual boosting pre-emption
+  // check (mirroring flee/retreatPart's split above): a role with no boostable actions can never be a boost
+  // candidate at all, checked before ever looking at a specific creep's memory. Empty/undeclared (the
+  // default) is correct for almost every role — only a handful of combat-adjacent roles (Healer today,
+  // later Attacker/Defender/Drain roles) have a body worth spending compound on. See docs/boosting-plan.md
+  // decision 4 for the full reasoning and decision 7 for how this pairs with CreepMemory.boosts at runtime
+  // (not wired up yet — this ticket is schema-only).
+  static readonly boostable: readonly string[] = [];
   static body(_energy: number, _ctx: BodyContext): BodyPartConstant[] {
     return [];
   }

@@ -5,6 +5,7 @@
 // Empire-scoped because it iterates Game.creeps directly, not a snapshot.
 
 import {
+  boostPreemption,
   canCoFire,
   firstRunnableStep,
   fleeThreat,
@@ -14,6 +15,7 @@ import {
   runStep,
   type CreepState
 } from "../behaviors/interpreter";
+import type { BoostLabAssignment } from "./boostLabAllocation";
 import { roleDef } from "../behaviors/roles";
 import { resolveStewardTriangle, runStewardTask } from "../behaviors/stewardTaskRunner";
 import { sweepEnRoute } from "../behaviors/sweep";
@@ -129,7 +131,10 @@ function transportCreepsByHome(): Map<string, Creep[]> {
 // Returns the squad anchor write-back intents (see SquadBearingOperation.setSquadAnchor's doc) — the ONE
 // piece of this function's work that goes through the Intent/execute.ts pipeline; everything else
 // (movement, actions) acts directly on Game objects, per the module header.
-export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: readonly Colony[] = []): Intent[] {
+export const runCreepBehaviors = wrapFn(function runCreepBehaviors(
+  colonies: readonly Colony[] = [],
+  boostAssignments: Map<Id<Creep>, BoostLabAssignment> = new Map()
+): Intent[] {
   // Compute squad membership once, up front — the single source of truth shared between the per-creep
   // skip below and the runSquads pass, so a squadded creep is never run by both or neither (ADR 0007).
   const { squads, members: squadMembers } = resolveSquads(colonies);
@@ -147,7 +152,7 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
     // (Invader NPC) reaching roadAvoidance's moverNearby threw and froze the rest of Game.creeps for the
     // tick, since the only guard used to be the one system-level runGuarded("creeps", ...) in kernel/tick.ts.
     try {
-      dispatchCreep(creep, transportByHome);
+      dispatchCreep(creep, transportByHome, boostAssignments.get(creep.id));
     } catch (e) {
       log.error(`creep ${name} threw: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
     }
@@ -157,8 +162,16 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(colonies: rea
 }, "creeps:runCreepBehaviors");
 
 // One creep's behavior for the tick — split out of the loop above so it can be wrapped in its own
-// try/catch without duplicating the dispatch logic.
-function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>): void {
+// try/catch without duplicating the dispatch logic. `boostAssignment` is this one creep's own already-
+// resolved slice of gh #74's colony-wide planBoostLabAllocation output (see boostPreemption's doc,
+// behaviors/interpreter.ts) — undefined for the overwhelming majority of creeps with no pending boost order.
+function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boostAssignment: BoostLabAssignment | undefined): void {
+  // Boost pre-emption runs before even the dispatch-diversion switch below — a boostable role bypassing
+  // the ordinary step table via Role.dispatch (none do today, but nothing rules it out) must still be
+  // pulled out of its own dispatch to go get boosted, same as fleeThreat is special-cased ahead of the
+  // "logistics" diversion below for the identical reason.
+  if ((roleDef(creep.memory.role)?.boostable?.length ?? 0) > 0 && boostPreemption(creep, boostAssignment)) return;
+
   // Diverted before the step-table dispatch per the role's own opt-in (Role.dispatch's doc,
   // behaviors/roles/role.ts) rather than a static step table.
   switch (roleDef(creep.memory.role)?.dispatch) {

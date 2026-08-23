@@ -24,7 +24,11 @@ export interface ColonizeSponsorResult {
   colony?: Colony;
   // Set only when no colony qualifies — distinguishes "nobody could afford it" from "nobody can reach
   // it" so the flag handler's error message says something useful instead of a bare "not found".
-  reason?: "no colonies" | "unreachable" | "unaffordable" | "gclLimitReached";
+  // Widened to match sponsor.ts's SponsorPick (gh #68 added "boostTierUnavailable" for pickBoostedSponsor)
+  // since pickColonizeSponsor's last branch returns pickSponsor's result verbatim; pickSponsor itself
+  // never produces that reason, only pickBoostedSponsor does, so it's unreachable here in practice, just
+  // required for the type to still describe what pickSponsor's real return type now allows.
+  reason?: "no colonies" | "unreachable" | "unaffordable" | "gclLimitReached" | "boostTierUnavailable";
 }
 
 // GCL room budget: gclLevel (Game.gcl.level, injected by the caller — see the roomDistance doc above for

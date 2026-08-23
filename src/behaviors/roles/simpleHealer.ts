@@ -35,6 +35,10 @@ export class SimpleHealerRole extends Role {
   static override readonly mover = true;
   // Once every HEAL part is destroyed this body can't do its job at all — see Role.retreatPart.
   static override readonly retreatPart = HEAL;
+  // A healer's body is worth boosting on both the action it performs (heal) and its main survival trait
+  // (tough) — see Role.boostable's doc for why these are abstract action names, not body parts. Concrete
+  // example for docs/boosting-plan.md decision 4; no runtime code reads this yet.
+  static override readonly boostable: readonly string[] = ["heal", "tough"];
   static override body(energy: number): BodyPartConstant[] {
     return simpleHealerBody(energy);
   }

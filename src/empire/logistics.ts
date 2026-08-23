@@ -14,6 +14,8 @@
 
 import type { ColonyRole } from "../memory/schema";
 import type { Intent } from "../intents/types";
+import type { CreepRequest } from "../spawn/request";
+import { boostedRequestsInCensus } from "./boostCensus";
 import { BOOST_TARGETS } from "./boostTargets";
 import { MARKET_TRADING_ENABLED, marketFallback } from "./marketFallback";
 
@@ -90,6 +92,105 @@ export function computeEmpireRequests(
       if (amount === 0) continue;
       out.push({ colony: c.colony, resource, amount });
     }
+  }
+  return out;
+}
+
+/**
+ * Net empire-wide stock currently available for a resource (gh #64): summed live storage+terminal across
+ * every colony (same read as computeEmpireRequests' own `stock` line), minus each colony's currently
+ * reserved-to-leave stock for that resource — stock a colony-to-colony match already committed to send out
+ * this pass (see ColonyMemory.empireReservations' doc) must not be offered again as if it were still free.
+ * The single point of truth later sponsor-pick/tier-selection tickets read from, rather than each
+ * duplicating this summation. `reservedOf` is injected (same style as computeEmpireRequests' `roleOf`) so
+ * this stays pure over plain stubs in tests; the tier-3 caller passes
+ * `room => Memory.colonies[room]?.empireReservations?.[resource] ?? 0`.
+ */
+export function availableEmpireStock(
+  colonies: readonly ColonyEmpireStock[],
+  resource: ResourceConstant,
+  reservedOf: (colony: string) => number
+): number {
+  let total = 0;
+  for (const c of colonies) {
+    const stock = (c.storage?.getUsedCapacity(resource) ?? 0) + (c.terminal?.getUsedCapacity(resource) ?? 0);
+    total += stock - reservedOf(c.colony);
+  }
+  return total;
+}
+
+// ---------------------------------------------------------------------------
+// Emergency boost pulls (gh #71, part of the #61 boosting epic) — a higher-priority request kind computed
+// ALONGSIDE (not replacing) the ordinary target-based pass above. Driven by #69's census-presence trigger:
+// a colony with an outstanding boosted request (memory.boosts non-empty) has a REAL, immediate compound
+// need — #66's boostNeeds already tells us exactly how much of what, so this layer only ever sums
+// already-computed boostNeeds data, never re-derives an amount from a role/body table itself.
+//
+// Unlike the ordinary pass (deficit/surplus measured against an effectiveTarget), an emergency pull may
+// drain a donor colony's FULL current stock — not just the surplus it holds above its own target. There's
+// deliberately no floor concept introduced here: draining a donor to zero for that compound just leaves it
+// with an ordinary deficit, which the standing target-based pass above will pick up and refill on some
+// later tier-3 tick like any other deficit. Both functions below produce plain EmpireRequest-shaped values
+// so the SAME matchEmpireRequests pairing function (decision 5) can be reused verbatim for the emergency
+// pass — no parallel matcher.
+//
+// Wiring note (not implemented here — see runEmpireLogisticsPass's own doc for why Game-coupled glue is
+// left untested): a future integration would call matchEmpireRequests once for
+// [...computeEmergencyBoostRequests(...), ...computeEmergencyDonorOffers(...)] BEFORE the existing
+// computeEmpireRequests/matchEmpireRequests call, so an emergency want is satisfied first; whatever the
+// emergency pass leaves as leftover (including any donor's now-real deficit reappearing next pass) simply
+// flows into the ordinary pass and, beyond that, into market-fallback exactly as today.
+
+/** One colony's current desiredCreeps()-shaped CreepRequest census this tick — the same shape #69's
+ * boostedRequestsInCensus already reads, just paired with the colony name so a per-colony emergency want
+ * can be attributed correctly across the whole empire. */
+export interface ColonyBoostCensus {
+  colony: string;
+  requests: readonly CreepRequest[];
+}
+
+/**
+ * Sums boostNeeds (gh #66) across every boosted request (gh #69's boostedRequestsInCensus) in each colony's
+ * census into one emergency EmpireRequest per colony per compound (positive amount = wants, matching
+ * EmpireRequest's existing sign convention). A request whose boosts array is non-empty but which carries no
+ * boostNeeds (no tier resolved yet) contributes nothing — there's no amount to sum. Purely additive, same
+ * spirit as boostDemand.ts's aggregateBoostDemand, just scoped per-colony and keyed off CreepRequest.boostNeeds
+ * instead of a pre-built CreepBoostDemand[] (adapting that shape here would just be extra ceremony around the
+ * same summation for no benefit, since this function needs no creepId).
+ */
+export function computeEmergencyBoostRequests(censuses: readonly ColonyBoostCensus[]): EmpireRequest[] {
+  const out: EmpireRequest[] = [];
+  for (const c of censuses) {
+    const pooled: Partial<Record<ResourceConstant, number>> = {};
+    for (const request of boostedRequestsInCensus(c.requests)) {
+      if (!request.boostNeeds) continue;
+      for (const [resource, amount] of Object.entries(request.boostNeeds) as [ResourceConstant, number | undefined][]) {
+        if (amount == null) continue;
+        pooled[resource] = (pooled[resource] ?? 0) + amount;
+      }
+    }
+    for (const [resource, amount] of Object.entries(pooled) as [ResourceConstant, number | undefined][]) {
+      if (!amount) continue;
+      out.push({ colony: c.colony, resource, amount });
+    }
+  }
+  return out;
+}
+
+/**
+ * A donor's FULL current stock (storage+terminal) for one resource, offered as a negative-amount
+ * EmpireRequest — for matching against emergency wants ONLY, never the ordinary target-based pass. Unlike
+ * computeEmpireRequests, there is no target/baseline subtracted here at all: the whole point of the
+ * emergency pull is that a donor's target-level stock (not just surplus above it) is fair game, so this
+ * function doesn't even read BOOST_TARGETS. A colony with zero stock of the resource is omitted (nothing to
+ * offer, and `amount: 0` would be filtered out by matchEmpireRequests anyway).
+ */
+export function computeEmergencyDonorOffers(colonies: readonly ColonyEmpireStock[], resource: ResourceConstant): EmpireRequest[] {
+  const out: EmpireRequest[] = [];
+  for (const c of colonies) {
+    const stock = (c.storage?.getUsedCapacity(resource) ?? 0) + (c.terminal?.getUsedCapacity(resource) ?? 0);
+    if (stock <= 0) continue;
+    out.push({ colony: c.colony, resource, amount: -stock });
   }
   return out;
 }
