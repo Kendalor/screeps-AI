@@ -37,7 +37,7 @@ export const BUYING_ACTIVATED = false;
 // large stockpile actually clears instead of sitting just as gated as it would in normal operation.
 // Same manual, hand-edited (not runtime Memory) convention as BUYING_ACTIVATED, for the same reason:
 // nothing in this file should be able to silently start liquidating the stockpile on its own.
-export const LIQUIDATION_MODE = false;
+export const LIQUIDATION_MODE = true;
 
 // Per-resource terminal-fullness threshold above which a surplus force-sells immediately (ignoring the
 // normal price floor) instead of maintaining a priced standing order — a jammed terminal blocks
