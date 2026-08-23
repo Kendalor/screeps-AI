@@ -264,9 +264,15 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
       remainingAmount: o.remainingAmount,
       price: o.price
     }));
+    // Excludes our own standing orders from ever being picked as a deal target or "best live price" —
+    // matches Overmind's TraderJoe.buildMarketCache: Game.market.orders is inherently our-orders-only, so
+    // its id set is the authoritative exclusion list (see marketOrders.ts's summarizeOrders for the full
+    // rationale/the live bug this fixes).
+    const ownOrderIds = new Set(Object.keys(Game.market.orders));
     const bestBuyOrder = (resource: ResourceConstant): { id: string; price: number } | undefined => {
       let best: { id: string; price: number } | undefined;
       for (const o of Game.market.getAllOrders({ type: ORDER_BUY, resourceType: resource })) {
+        if (ownOrderIds.has(o.id)) continue;
         if (!best || o.price > best.price) best = { id: o.id, price: o.price };
       }
       return best;
@@ -274,6 +280,7 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
     const bestSellOrder = (resource: ResourceConstant): { id: string; price: number; remainingAmount: number } | undefined => {
       let best: { id: string; price: number; remainingAmount: number } | undefined;
       for (const o of Game.market.getAllOrders({ type: ORDER_SELL, resourceType: resource })) {
+        if (ownOrderIds.has(o.id)) continue;
         if (!best || o.price < best.price) best = { id: o.id, price: o.price, remainingAmount: o.remainingAmount };
       }
       return best;
