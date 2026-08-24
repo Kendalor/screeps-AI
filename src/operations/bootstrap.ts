@@ -15,6 +15,12 @@ import { Operation } from "./operation";
 // not just freshly claimed ones.
 const MAX_SETTLERS = 4;
 
+// Body sizing budget for a settler request bound for a sponsor colony's purse (see noSpawnRequests
+// below) — deliberately NOT the spawn-less target room's own energy, which is stuck at 0 with nothing
+// built. Top settler rung's threshold (SETTLER_RUNGS in settler.ts): big enough to be worth sending, cheap
+// enough that most established sponsors can actually afford it; pickPurse does the real affordability check.
+const SETTLER_SPONSOR_BUDGET = 450;
+
 // A colony with no spawn can't be reached by supply (it only tops off an existing spawn/extensions —
 // see supply.ts's dispatch: "logistics", which plans its task against creep.room, not targetRoom, so a
 // creep spawned cross-colony never even walks home) and can't be rebuilt by a single bootstrap creep
@@ -31,11 +37,14 @@ function noSpawnRequests(colony: ColonySnapshot): CreepRequest[] {
   const owned = colony.creeps.filter(c => c.role === "settler" && c.home === colony.name);
   if (owned.length >= MAX_SETTLERS) return [];
 
-  // Sized against energyAvailable, not capacity: a spawn-less room has no spawn to grow capacity toward
-  // filling anyway, same reasoning recoveryRequests uses below.
-  const body = orderBody(def.body(colony.energyAvailable, bodyContext(colony)));
+  // Sized against this colony's own energyAvailable/energyCapacity would deadlock: a room wiped down to
+  // zero (0 spawns, 0 extensions) has both permanently stuck at 0, since those ceilings are themselves
+  // built from spawn/extension structures — the very request meant to rebuild them would starve forever.
+  // These requests are deliberately unpinned (no spawnRoom) so a sponsor colony pays instead; size
+  // against a fixed generous budget and let planSpawning's pickPurse (empire/spawning.ts) reject/wait if
+  // no sponsor's own capacity/budget can actually afford it — that's the real affordability gate here.
+  const body = orderBody(def.body(SETTLER_SPONSOR_BUDGET, bodyContext(colony)));
   if (body.length === 0) return [];
-  if (bodyCost(body) > colony.energyAvailable) return [];
 
   const missing = MAX_SETTLERS - owned.length;
   return Array.from({ length: missing }, () => ({

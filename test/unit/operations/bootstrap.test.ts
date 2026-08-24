@@ -174,10 +174,16 @@ describe("Recovery (via Bootstrap): no spawn at all", () => {
     for (const r of bootstrap.desiredCreeps(snap)) expect(r.spawnRoom).toBeUndefined();
   });
 
-  it("withholds when even the smallest settler body is unaffordable", () => {
-    const snap = colonySnap({ sources: [sourceAt(20, 10)], energyAvailable: 100, energyCapacity: 100 });
+  // A spawn-less room's own energyAvailable/energyCapacity is stuck at 0 with nothing built to hold
+  // energy — sizing or gating against it would deadlock the very request meant to fix that. These
+  // requests are unpinned (no spawnRoom) so a sponsor colony pays instead; the sponsor's own
+  // capacity/budget is what the arbiter (planSpawning's pickPurse) actually judges, not this snapshot.
+  it("still requests settlers even when the target room's own energy is zero", () => {
+    const snap = colonySnap({ sources: [sourceAt(20, 10)], energyAvailable: 0, energyCapacity: 0 });
 
-    expect(bootstrap.desiredCreeps(snap)).toEqual([]);
+    const requests = bootstrap.desiredCreeps(snap);
+    expect(requests).toHaveLength(MAX_SETTLERS);
+    for (const r of requests) expect(r.memory.role).toBe("settler");
   });
 });
 
