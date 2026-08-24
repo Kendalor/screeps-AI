@@ -546,9 +546,33 @@ describe("building planner focus policy", () => {
     expect(placeSites(snap.building()).some(i => i.type === "container")).toBe(true);
   });
 
+  // A spawn-less colony can spawn nothing at all — see operations/bootstrap.ts's noSpawnRequests, which
+  // fields a settler workforce specifically to rebuild it. That workforce has no site to build until the
+  // spawn wins the focus-cap budget over every other unbuilt structure, including defense (tower) and
+  // capacity (extension) — both are useless while there's still no spawn to grow toward using them.
+  it("ranks the spawn above everything else, including tower, in the focus slots", () => {
+    const crowding = Array.from({ length: 19 }, () => ({ room: "W1N1", type: "rampart" as const }));
+    const snap = colony(
+      colonySnap({
+        anchor,
+        controllerLevel: 3,
+        energyCapacity: 800,
+        sources: [sourceAt(20, 10)],
+        structures: [],
+        sites: [],
+        siteSummary: crowding
+      })
+    );
+    const placed = placeSites(snap.building());
+    expect(placed).toHaveLength(1);
+    expect(placed[0].type).toBe("spawn");
+  });
+
   it("ranks containers below extensions in the focus slots", () => {
+    // Spawn already built (see the higher-ranked "ranks spawn above everything else" test above) so
+    // this test isolates the extension-vs-container comparison it's actually about.
     const withTower = [
-      ...allNonRoadStructuresAt(anchor, 3).filter(s => s.type === "tower")
+      ...allNonRoadStructuresAt(anchor, 3).filter(s => s.type === "tower" || s.type === "spawn")
     ];
     // Squeeze the home-room budget down to 1 (19 home-room sites already open) so extensions and
     // the container claim genuinely compete for a single slot. Crowding must be in the colony's own

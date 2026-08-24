@@ -37,12 +37,16 @@ export const MAX_CONTAINER_SITES = 1;
 // Roads are dead weight while the bunker is still going up; hold until the colony can afford paving
 // (RCL3 with all extensions built = 800 capacity). Mining's source-access roads are exempt — see wantedStructures.
 export const ROADS_FROM_ENERGY_CAPACITY = 800;
-// Most important first: tower (defense), extensions (capacity), containers, storage. Unlisted types sort at DEFAULT_PRIORITY; roads last.
+// Most important first: spawn (nothing else can ever be spawned without one — a spawn-less colony's
+// settler workforce, see operations/bootstrap.ts's noSpawnRequests, has no site to build at all until
+// this wins the focus-cap budget over everything else), tower (defense), extensions (capacity),
+// containers, storage. Unlisted types sort at DEFAULT_PRIORITY; roads last.
 const TYPE_PRIORITY: Partial<Record<BuildableStructureConstant, number>> = {
-  tower: 0,
-  extension: 1,
-  container: 2,
-  storage: 3
+  spawn: 0,
+  tower: 1,
+  extension: 2,
+  container: 3,
+  storage: 4
 };
 const DEFAULT_TYPE_PRIORITY = 10;
 const ROAD_PRIORITY = 99;
