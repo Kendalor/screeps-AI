@@ -105,20 +105,28 @@ export interface LiveOrder {
   price: number;
 }
 
-// Ceiling on any single trade/standing-order size — a backstop against a corrupted or absurd leftover
-// value, not the normal sizing mechanism (see `wantedAmount` below for that). Real per-trade sizing is
+// Ceiling on any single BUY trade/standing-order size — a backstop against a corrupted or absurd leftover
+// value, not the normal sizing mechanism (see `wantedBuyAmount` below for that). Real per-trade sizing is
 // always min(this, abs(leftover.amount)): sizing off the flat ceiling alone (the old behavior) meant a
-// small remaining deficit/surplus (e.g. 500 left to fill) still traded a full 3000 — overshooting straight
-// past the target into the opposite direction — and, more subtly, once an outstanding order DID fully
-// fill, the next pass's fresh deficit recompute could still be a non-multiple of 3000 (e.g. colony-to-
-// colony matching or a role-multiplier retarget changed the true remaining gap between passes), so the
-// flat ceiling had no way to land exactly on it even across multiple fills.
+// small remaining deficit (e.g. 500 left to fill) still traded a full 3000 — overshooting straight past
+// the target into the opposite direction — and, more subtly, once an outstanding order DID fully fill,
+// the next pass's fresh deficit recompute could still be a non-multiple of 3000 (e.g. colony-to-colony
+// matching or a role-multiplier retarget changed the true remaining gap between passes), so the flat
+// ceiling had no way to land exactly on it even across multiple fills. Buying spends real credits, so this
+// stays capped; selling does not, so sell sizing (`wantedSellAmount` below) is uncapped — a large surplus
+// should clear in one order/extend rather than trickling out 3000 at a time.
 const ORDER_AMOUNT_CEILING = 3000;
 
-/** The real per-pass trade/order size for a leftover entry: never more than what's actually still needed,
- * and never more than the flat ceiling above. */
-function wantedAmount(leftoverAmount: number): number {
+/** The real per-pass BUY trade/order size for a leftover entry: never more than what's actually still
+ * needed, and never more than the flat ceiling above. */
+function wantedBuyAmount(leftoverAmount: number): number {
   return Math.min(ORDER_AMOUNT_CEILING, Math.abs(leftoverAmount));
+}
+
+/** The real per-pass SELL trade/order size for a leftover entry: exactly what's actually still needed, no
+ * ceiling — see ORDER_AMOUNT_CEILING's own doc for why sell sizing is deliberately uncapped. */
+function wantedSellAmount(leftoverAmount: number): number {
+  return Math.abs(leftoverAmount);
 }
 
 /**
@@ -177,12 +185,12 @@ export function marketFallback(
       if (capacityPct >= FORCE_SELL_CAPACITY_PCT || ((liquidationMode || capacityPct >= SELL_CAPACITY_PCT) && priceClears)) {
         wanted.add(`${colony}:${resource}:sell`);
       }
-      sellPath(colony, resource, wantedAmount(amount), capacityPct, orders, avgPrice, priceInfo?.stddevPrice, byKey, bestBuyOrder, intents, liquidationMode);
+      sellPath(colony, resource, wantedSellAmount(amount), capacityPct, orders, avgPrice, priceInfo?.stddevPrice, byKey, bestBuyOrder, intents, liquidationMode);
     } else if (buyingActivated) {
       // A good-deal immediate buy (below) is a one-shot deal(), not a standing order — it deliberately
       // does NOT mark "wanted", so any standing buy order left over from a previous pass gets pruned
       // below instead of sitting there duplicating what the deal already bought.
-      const dealt = buyPath(colony, resource, wantedAmount(amount), orders, avgPrice, byKey, bestSellOrder, intents);
+      const dealt = buyPath(colony, resource, wantedBuyAmount(amount), orders, avgPrice, byKey, bestSellOrder, intents);
       if (!dealt && withinBuyGuardrail(orders[resource]?.buyMax ?? Infinity, avgPrice)) {
         wanted.add(`${colony}:${resource}:buy`);
       }

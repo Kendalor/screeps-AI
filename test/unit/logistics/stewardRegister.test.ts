@@ -27,6 +27,7 @@ import {
   TERMINAL_ENERGY_TARGET
 } from "../../../src/logistics/stewardRegister";
 import { baseTargetFor, boostLineResources, setLiquidationModeOverrideForTest } from "../../../src/empire/boostTargets";
+import { pickBestPair } from "../../../src/logistics/greedyMatch";
 import { pickBestRequest } from "../../../src/logistics/request";
 import { evaluateRoutes, pickBestRoute, type Buffer } from "../../../src/logistics/route";
 
@@ -619,4 +620,47 @@ describe("Steward's delivery requests reuse route.ts's evaluateRoutes/pickBestRo
     expect(routes).toHaveLength(1); // direct only, no via-buffer candidate for a negative-amount request
     expect(routes[0].viaBuffer).toBeUndefined();
   });
+});
+
+// ---------------------------------------------------------------------------
+// LIQUIDATION_MODE: registerMineralTerminalHaveRequest must stay silent, or it starves the pool's only
+// real liquidating pair — confirmed live: storage and terminal settled into a rough "balance" per resource
+// instead of storage ever draining to zero, across every colony with a terminal.
+// ---------------------------------------------------------------------------
+describe("registerMineralTerminalHaveRequest under LIQUIDATION_MODE (target collapses to 0)", () => {
+  afterAll(() => setLiquidationModeOverrideForTest(false)); // restore this file's own module-scope override
+
+  it("returns undefined once the resource's target collapses to 0, even with real terminal stock", () => {
+    setLiquidationModeOverrideForTest(true);
+    const terminal = stubMultiTerminal({ GO: 1000 });
+    expect(registerMineralTerminalHaveRequest(terminal, "GO")).toBeUndefined();
+  });
+
+  it(
+    "end-to-end via pickBestPair: storage's surplus output wins and pairs with the terminal's overflow want, " +
+      "even when the terminal happens to hold MORE of the resource than storage — the exact live scenario " +
+      "where terminalHave (if left live) would have won the 'best output' race by magnitude, found no partner " +
+      "(its only real one, storageWant, is also suppressed at target 0), and silently starved storageSurplus",
+    () => {
+      setLiquidationModeOverrideForTest(true);
+      // Terminal holds MORE than storage — before this fix, terminalHave's output (-2200) would outscore
+      // storageSurplus's output (-1000) by raw magnitude and win pickBestPair's "best output" slot, then
+      // fail to find a matching input (registerMineralStorageOverflowWantRequest also targets the terminal,
+      // excluded by the same-target self-pairing guard) — net result: nothing moves this pass.
+      const storage = stubMultiStorage({ GO: 1000 });
+      const terminal = stubMultiTerminal({ GO: 2200 });
+
+      const pool = registerStewardRequests(undefined, undefined, storage, terminal);
+      // terminalHave must not even be in the pool now.
+      expect(pool.some(r => r.target === terminal && r.amount < 0)).toBe(false);
+
+      const distanceTo = (): number => 1; // distance-neutral: only the pairing mechanics are under test
+      const pair = pickBestPair(pool, distanceTo);
+      expect(pair).toBeDefined();
+      expect(pair?.resource).toBe("GO");
+      expect(pair?.output.target).toBe(storage); // storageSurplus wins — the only real liquidating direction
+      expect(pair?.input.target).toBe(terminal); // pairs with the terminal's overflow want
+      expect(pair?.output.amount).toBe(-1000); // storage's FULL stock (threshold collapses to 0 too)
+    }
+  );
 });

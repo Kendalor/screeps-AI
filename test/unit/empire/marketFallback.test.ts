@@ -470,13 +470,13 @@ describe("marketFallback", () => {
     expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 1234, price: 13, type: "sell" }]);
   });
 
-  it("caps a fresh standing sell order at the flat ceiling when the surplus exceeds it", () => {
+  it("does NOT cap a fresh standing sell order at the flat ceiling when the surplus exceeds it (sell sizing is uncapped; only buy sizing has a ceiling)", () => {
     const leftover = [req("W1N1", RESOURCE_OXYGEN, -50000)];
     const orders: MarketStats["orders"] = { O: { sellMin: 13 } };
 
     const intents = marketFallback(leftover, () => 0.85, orders, avgPrices, noOrders, noBestBuy, noBestSell);
 
-    expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 3000, price: 13, type: "sell" }]);
+    expect(intents).toEqual([{ kind: "marketCreateOrder", room: "W1N1", resource: RESOURCE_OXYGEN, amount: 50000, price: 13, type: "sell" }]);
   });
 
   // ---------------------------------------------------------------------------

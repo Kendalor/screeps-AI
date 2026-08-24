@@ -204,6 +204,22 @@ export function registerMineralStorageWantRequest(storage: StructureStorage | un
  * this drain — it's subtracted from the terminal's stock before computing what's still spare to give up, so
  * Steward's own local rebalance can't vacuum a mineral back into storage out from under a send the empire
  * layer already decided to make. Ignored (no protection) when omitted/0.
+ *
+ * Suppressed entirely while `target === 0` (LIQUIDATION_MODE): this leg's only real pairing partner is
+ * registerMineralStorageWantRequest, which is itself always suppressed at target 0 (storage never wants
+ * more of a liquidated resource) — so an un-suppressed terminalHave here has structurally nothing to pair
+ * with via its own intended route. Worse, left live it actively STARVES liquidation: this output and
+ * registerMineralStorageSurplusRequest's output compete for the single "best output" slot per resource
+ * (greedyMatch.ts's pickBestPair picks exactly one), and whichever structure happens to hold MORE of the
+ * resource wins that slot by raw magnitude. Confirmed live: once terminal's stock caught up to (or passed)
+ * storage's for a resource, terminalHave started winning the race, got excluded from pairing with
+ * registerMineralStorageOverflowWantRequest (same-target self-pairing guard — both target the terminal),
+ * and found no input at all — while storageSurplus (the only leg that actually drains storage) sat
+ * unscored that whole pass. Net effect: storage/terminal appeared to "balance" rather than storage ever
+ * draining to zero, since real liquidation ran only on the passes storageSurplus happened to win the race,
+ * not every pass the way SELL_CAPACITY_PCT/withinLiquidationSellGuardrail's own removal of gates implies.
+ * `target === 0` (not `== null`) is deliberately distinguished from an untracked resource (`undefined`) —
+ * an untracked resource already returns undefined two lines up via the same `target == null` check.
  */
 export function registerMineralTerminalHaveRequest(
   terminal: StructureTerminal | undefined,
@@ -213,6 +229,7 @@ export function registerMineralTerminalHaveRequest(
   if (!terminal) return undefined;
   const target = baseTargetFor(resource);
   if (target == null) return undefined; // no assigned target — this resource isn't tracked at all
+  if (target === 0) return undefined; // liquidation: this leg's own pairing partner is itself suppressed
   const terminalUsed = terminal.store.getUsedCapacity(resource);
   const spare = terminalUsed - empireReservedAmount;
   if (spare <= 0) return undefined;
