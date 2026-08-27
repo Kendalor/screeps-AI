@@ -49,6 +49,14 @@ export type System = ColonySystem | EmpireSystem;
 // Room distance for spawn routing — the arbiter's one Game.* input, injected so it stays pure.
 const roomDistance = (a: string, b: string): number => Game.map.getRoomLinearDistance(a, b);
 
+// A boosted spawn request's readiness check (empire/spawning.ts's boostCompoundsReady): the same
+// storage+terminal stock definition empire/logistics.ts's own stockOf uses for empire-wide redistribution,
+// read live off Game.rooms rather than through a ColonySnapshot (the arbiter itself is snapshot-driven,
+// but this one signal needs to be current-tick-fresh the same way runEmpireLogisticsPass's own Game.*
+// reads are).
+const boostStockOf = (room: string, resource: ResourceConstant): number =>
+  (Game.rooms[room]?.storage?.store.getUsedCapacity(resource) ?? 0) + (Game.rooms[room]?.terminal?.store.getUsedCapacity(resource) ?? 0);
+
 // tier 1: must run every tick even at 0 bucket. tier 2: economy planning, skipped under CPU pressure. tier 3: luxury, needs bucket headroom.
 export const SYSTEMS: System[] = [
   // Runs before "operations" so a claimsOf pass that fires this same tick (its own interval:100 gate)
@@ -56,10 +64,20 @@ export const SYSTEMS: System[] = [
   // findPath — see that module's own doc on findPath's cross-tick read staleness bound. "operations"
   // still fires every tick regardless (tier 1); this ordering only matters on the 1-in-100 tick both fire.
   { name: "building", tier: 3, scope: "colony", interval: 100, run: c => c.building() },
+  // The LabRunner (gh #61 epic, docs/boosting-lab-runner-design.md): recomputes lab-identity discovery
+  // (one-time, idempotent once decided) and boost-claim allocation. Was interval:5 — confirmed live via
+  // integration testing this created a real bug, not just latency: registerBoostLabWantRequest
+  // (transportRegister.ts) re-reads ColonyMemory.boostClaims every tick regardless of this system's own
+  // cadence, so a claim satisfied mid-interval (the creep's own memory.boosts already cleared) stayed
+  // stale for up to 5 ticks — long enough for Transport to see the old claim.amount, compute a fresh
+  // (correctly-precise, per gh #61 Q4) want against it, and deliver a full second, entirely unnecessary
+  // batch into a lab whose real need was already zero. Running every tick closes that window; the CPU
+  // cost of doing so is deliberately not measured/optimized here (tracked as a follow-up, not blocking).
+  { name: "labs", tier: 3, scope: "colony", run: c => c.labs() },
   // Operations' direct intents (tower fire, link transfers, etc), unarbitrated.
   { name: "operations", tier: 1, scope: "colony", run: runOperations },
   // Empire-scoped: spawn routing is cross-colony, so the arbiter sees every colony's demand and idle spawns at once.
-  { name: "spawning", tier: 1, scope: "empire", run: e => e.spawning(roomDistance) },
+  { name: "spawning", tier: 1, scope: "empire", run: e => e.spawning(roomDistance, boostStockOf) },
   { name: "creeps", tier: 1, scope: "empire", run: runCreeps },
   // Repurpose idle builders once construction is finished (converted creeps act under the new role next
   // tick). Tier 2, so it's placed after the tier-1 creeps run — a tier-2 system ahead of creeps would
