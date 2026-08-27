@@ -9,7 +9,7 @@ import type { EmpireRequest } from "../../../src/empire/logistics";
 import type { MarketStats } from "../../../src/memory/schema";
 
 function req(colony: string, resource: ResourceConstant, amount: number): EmpireRequest {
-  return { colony, resource, amount };
+  return { colony, resource, amount, priority: "Normal" };
 }
 
 function order(overrides: Partial<LiveOrder>): LiveOrder {

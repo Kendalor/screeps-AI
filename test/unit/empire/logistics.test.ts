@@ -65,7 +65,7 @@ describe("computeEmpireRequests", () => {
     const requests = computeEmpireRequests(colonies, { GO: 6000 }, () => undefined);
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toEqual<EmpireRequest>({ colony: "W1N1", resource: "GO", amount: 5000 });
+    expect(requests[0]).toEqual<EmpireRequest>({ colony: "W1N1", resource: "GO", amount: 5000, priority: "Normal" });
   });
 
   it("emits a negative (has-to-give) request for a colony above its effective target", () => {
@@ -122,9 +122,40 @@ describe("computeEmpireRequests", () => {
     ];
     const requests = computeEmpireRequests(colonies, targets, () => undefined);
     expect(requests).toHaveLength(3);
-    expect(requests).toContainEqual({ colony: "W1N1", resource: "GO", amount: 5000 });
-    expect(requests).toContainEqual({ colony: "W1N1", resource: "GHO2", amount: -1000 });
-    expect(requests).toContainEqual({ colony: "W2N2", resource: "GO", amount: -3000 });
+    expect(requests).toContainEqual({ colony: "W1N1", resource: "GO", amount: 5000, priority: "Normal" });
+    expect(requests).toContainEqual({ colony: "W1N1", resource: "GHO2", amount: -1000, priority: "Normal" });
+    expect(requests).toContainEqual({ colony: "W2N2", resource: "GO", amount: -3000, priority: "Normal" });
+  });
+
+  it("defaults every request to Normal priority when no urgentResourcesOf callback is injected", () => {
+    const colonies = [colonyStock("W1N1", stock({ GO: 1000 }), stock())];
+    const requests = computeEmpireRequests(colonies, { GO: 6000 }, () => undefined);
+    expect(requests[0].priority).toBe("Normal");
+  });
+
+  it("stamps High priority on a deficit for a resource the colony urgently needs (a real boosted-spawn-request need)", () => {
+    const colonies = [colonyStock("W1N1", stock({ GO: 1000 }), stock())];
+    const requests = computeEmpireRequests(
+      colonies,
+      { GO: 6000 },
+      () => undefined,
+      colony => (colony === "W1N1" ? new Set(["GO"]) : new Set())
+    );
+    expect(requests[0].priority).toBe("High");
+  });
+
+  it("does not flag a SURPLUS (has-to-give) as High even if the resource is also listed urgent", () => {
+    const colonies = [colonyStock("W1N1", stock({ GO: 9000 }), stock())];
+    const requests = computeEmpireRequests(colonies, { GO: 6000 }, () => undefined, () => new Set(["GO"]));
+    expect(requests[0].amount).toBe(-3000);
+    expect(requests[0].priority).toBe("Normal");
+  });
+
+  it("only flags the specific urgent resource, leaving a colony's other deficits at Normal", () => {
+    const colonies = [colonyStock("W1N1", stock({ GO: 1000, GHO2: 1000 }), stock())];
+    const requests = computeEmpireRequests(colonies, { GO: 6000, GHO2: 3000 }, () => undefined, () => new Set(["GO"]));
+    expect(requests.find(r => r.resource === "GO")?.priority).toBe("High");
+    expect(requests.find(r => r.resource === "GHO2")?.priority).toBe("Normal");
   });
 });
 
@@ -132,8 +163,8 @@ describe("computeEmpireRequests", () => {
 // matchEmpireRequests
 // ---------------------------------------------------------------------------
 
-function req(colony: string, resource: ResourceConstant, amount: number): EmpireRequest {
-  return { colony, resource, amount };
+function req(colony: string, resource: ResourceConstant, amount: number, priority: EmpireRequest["priority"] = "Normal"): EmpireRequest {
+  return { colony, resource, amount, priority };
 }
 
 describe("matchEmpireRequests", () => {
@@ -207,6 +238,18 @@ describe("matchEmpireRequests", () => {
     const { matches, leftover } = matchEmpireRequests(requests, () => 0);
     expect(matches).toHaveLength(0);
     expect(leftover).toHaveLength(2);
+  });
+
+  it("stamps the transfer's priority from the RECEIVING (deficit) side, not the sender's offer", () => {
+    const requests = [req("A", "GO", 3000, "High"), req("B", "GO", -3000, "Normal")];
+    const { matches } = matchEmpireRequests(requests, () => 999999);
+    expect(matches[0].priority).toBe("High");
+  });
+
+  it("preserves a leftover request's own priority unchanged", () => {
+    const requests = [req("A", "GO", 3000, "High")]; // no opposite-signed side at all -> pure leftover
+    const { leftover } = matchEmpireRequests(requests, () => 999999);
+    expect(leftover).toContainEqual({ colony: "A", resource: "GO", amount: 3000, priority: "High" });
   });
 });
 
@@ -311,8 +354,8 @@ describe("computeEmergencyBoostRequests", () => {
     const requests = computeEmergencyBoostRequests(censuses);
 
     expect(requests).toHaveLength(2);
-    expect(requests).toContainEqual({ colony: "W1N1", resource: "LO", amount: 600 });
-    expect(requests).toContainEqual({ colony: "W1N1", resource: "GO", amount: 100 });
+    expect(requests).toContainEqual({ colony: "W1N1", resource: "LO", amount: 600, priority: "High" });
+    expect(requests).toContainEqual({ colony: "W1N1", resource: "GO", amount: 100, priority: "High" });
   });
 
   it("emits nothing for a colony with no boosted requests", () => {
@@ -338,8 +381,8 @@ describe("computeEmergencyBoostRequests", () => {
     ];
     const requests = computeEmergencyBoostRequests(censuses);
     expect(requests).toHaveLength(2);
-    expect(requests).toContainEqual({ colony: "W1N1", resource: "LO", amount: 400 });
-    expect(requests).toContainEqual({ colony: "W2N2", resource: "LO", amount: 300 });
+    expect(requests).toContainEqual({ colony: "W1N1", resource: "LO", amount: 400, priority: "High" });
+    expect(requests).toContainEqual({ colony: "W2N2", resource: "LO", amount: 300, priority: "High" });
   });
 
   it("produces a positive amount (a want), never negative, regardless of input shape", () => {
@@ -357,7 +400,7 @@ describe("computeEmergencyDonorOffers", () => {
     expect(offers).toHaveLength(1);
     // Signed negative, matching matchEmpireRequests' "has-to-give" convention — the FULL 1500, no target
     // subtracted (there is no BOOST_TARGETS lookup involved in this function at all).
-    expect(offers[0]).toEqual<EmpireRequest>({ colony: "W1N1", resource: "LO", amount: -1500 });
+    expect(offers[0]).toEqual<EmpireRequest>({ colony: "W1N1", resource: "LO", amount: -1500, priority: "Normal" });
   });
 
   it("omits a colony with zero stock of that resource (nothing to offer)", () => {
@@ -378,8 +421,8 @@ describe("computeEmergencyDonorOffers", () => {
     ];
     const offers = computeEmergencyDonorOffers(colonies, "LO");
     expect(offers).toHaveLength(2);
-    expect(offers).toContainEqual({ colony: "W1N1", resource: "LO", amount: -1000 });
-    expect(offers).toContainEqual({ colony: "W2N2", resource: "LO", amount: -2000 });
+    expect(offers).toContainEqual({ colony: "W1N1", resource: "LO", amount: -1000, priority: "Normal" });
+    expect(offers).toContainEqual({ colony: "W2N2", resource: "LO", amount: -2000, priority: "Normal" });
   });
 });
 
@@ -405,7 +448,7 @@ describe("emergency boost matching (gh #71): reusing matchEmpireRequests for the
 
     expect(matches).toHaveLength(1);
     expect(matches[0]).toMatchObject({ from: "B", to: "A", resource: "LO", amount: 300 }); // drained to zero
-    expect(leftover).toContainEqual({ colony: "A", resource: "LO", amount: 100 }); // remaining want carries over
+    expect(leftover).toContainEqual({ colony: "A", resource: "LO", amount: 100, priority: "High" }); // remaining want carries over, priority intact
   });
 
   it("pulls from the biggest available donor stock first among multiple donors, same pairing behavior as the ordinary pass", () => {

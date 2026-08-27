@@ -20,6 +20,34 @@ import { aggregateBoostDemand, type CreepBoostDemand } from "./boostDemand";
 import { baseTargetFor, boostLineResources, LIQUIDATION_MODE } from "./boostTargets";
 import { MARKET_TRADING_ENABLED, marketFallback } from "./marketFallback";
 
+/** EmpireRequest.priority — a caller-stated urgency tier, independent of `amount`'s own magnitude.
+ * Defaults to "Normal" from every ordinary source; two carve-outs currently ever produce "High":
+ * computeEmergencyBoostRequests (its entire input IS a boosted spawn request, unconditionally urgent — see
+ * its own doc) and computeEmpireRequests' urgent-resource parameter (a colony with a REAL boosted spawn
+ * request currently waiting on a resource — ColonyMemory.boostClaims non-empty for it, set by the LabRunner
+ * from live contenders, see empire/labClaims.ts — has that resource's ordinary deficit stamped "High" too).
+ * Flows through matchEmpireRequests (the matched deficit side's priority is carried onto the resulting
+ * EmpireTransfer) into runEmpireLogisticsPass's ColonyMemory.empireReservations write, and from there into
+ * logistics/stewardRegister.ts's registerMineralStorageSurplusRequest, which picks a bigger multiplier for
+ * "High" than the flat EMPIRE_RESERVED_MULTIPLIER every reservation used to get regardless of urgency. See
+ * gh #61 epic's cross-colony boosting integration test for the motivating observation: with every one of ~35
+ * boost-line resources simultaneously reserved for send, that flat multiplier had nothing left to
+ * differentiate — all 35 tied, so a specific compound an active boost operation was waiting on got only
+ * 1/35th of Steward's attention per cycle. */
+export type EmpirePriority = "Low" | "Normal" | "High";
+
+// Priority ordering, low to high — used to combine multiple matches for the same sender+resource in one
+// pass (runEmpireLogisticsPass's reservation map) without diluting a High-priority match's urgency down to
+// whatever an unrelated Normal-priority match for the same resource happened to also need this pass.
+const PRIORITY_RANK: Record<EmpirePriority, number> = { Low: 0, Normal: 1, High: 2 };
+function maxPriority(a: EmpirePriority, b: EmpirePriority): EmpirePriority {
+  return PRIORITY_RANK[a] >= PRIORITY_RANK[b] ? a : b;
+}
+
+// computeEmpireRequests' default when no urgentResourcesOf callback is injected (every existing call/test
+// site) — an always-empty set means every request stamps "Normal", identical to pre-urgency behavior.
+const EMPTY_URGENT_SET: ReadonlySet<ResourceConstant> = new Set();
+
 /** One signed unit of empire-scale transport demand — mirrors LogisticsRequest's shape (positive = wants
  * delivered, negative = has to give) but scoped to a colony rather than a live in-room target, and with no
  * dAmountdt/multiplier fields: there's no known empire-scale accrual rate, and the role-multiplier bias
@@ -30,6 +58,16 @@ export interface EmpireRequest {
   colony: string; // bare room-name string, resolved back to Game.rooms[...] only at dispatch time
   resource: ResourceConstant;
   amount: number;
+  priority: EmpirePriority;
+}
+
+/** ColonyMemory.empireReservations' per-resource value (gh #59 decision 6) — how much of a resource this
+ * colony has already committed to send out this pass, plus the urgency of whichever matched deficit drove
+ * it (see EmpireTransfer.priority's doc). Read by logistics/stewardRegister.ts to both protect `amount` from
+ * being drained elsewhere and pick a priority-scaled multiplier for rushing it to the terminal. */
+export interface EmpireReservation {
+  amount: number;
+  priority: EmpirePriority;
 }
 
 /** The minimal live-store surface this module reads — satisfied by a real StructureStorage/StructureTerminal
@@ -85,19 +123,26 @@ function stockOf(colony: ColonyEmpireStock, resource: ResourceConstant): number 
 export function computeEmpireRequests(
   colonies: readonly ColonyEmpireStock[],
   targets: Partial<Record<ResourceConstant, number>>,
-  roleOf: (colony: string) => ColonyRole | undefined
+  roleOf: (colony: string) => ColonyRole | undefined,
+  // Resources this colony has a REAL, live boosted-spawn-request need for right now (see EmpirePriority's
+  // own doc) — only ever bumps a DEFICIT (amount > 0, "wants delivered") to "High"; a colony's SURPLUS of a
+  // resource it also happens to urgently need elsewhere makes no sense to flag urgent (nothing to rush
+  // sending away). Defaults to "nothing is urgent", so every existing call site keeps stamping "Normal".
+  urgentResourcesOf: (colony: string) => ReadonlySet<ResourceConstant> = () => EMPTY_URGENT_SET
 ): EmpireRequest[] {
   const out: EmpireRequest[] = [];
   const resources = Object.keys(targets) as ResourceConstant[];
   for (const c of colonies) {
     const role = roleOf(c.colony);
+    const urgent = urgentResourcesOf(c.colony);
     for (const resource of resources) {
       const baseTarget = targets[resource];
       if (baseTarget == null) continue;
       const effectiveTarget = effectiveTargetFor(baseTarget, role);
       const amount = effectiveTarget - stockOf(c, resource);
       if (amount === 0) continue;
-      out.push({ colony: c.colony, resource, amount });
+      const priority: EmpirePriority = amount > 0 && urgent.has(resource) ? "High" : "Normal";
+      out.push({ colony: c.colony, resource, amount, priority });
     }
   }
   return out;
@@ -174,7 +219,10 @@ export function computeEmergencyBoostRequests(censuses: readonly ColonyBoostCens
     const pooled = aggregateBoostDemand(demands);
     for (const [resource, amount] of Object.entries(pooled) as [ResourceConstant, number | undefined][]) {
       if (amount == null || amount === 0) continue;
-      out.push({ colony: c.colony, resource, amount });
+      // "High" unconditionally: this whole function's entire input is boosted spawn requests (see its own
+      // header) — there's no "routine" case here to distinguish from, unlike computeEmpireRequests' ordinary
+      // target-based pass (see EmpirePriority's own doc).
+      out.push({ colony: c.colony, resource, amount, priority: "High" });
     }
   }
   return out;
@@ -193,17 +241,22 @@ export function computeEmergencyDonorOffers(colonies: readonly ColonyEmpireStock
   for (const c of colonies) {
     const stock = stockOf(c, resource);
     if (stock <= 0) continue;
-    out.push({ colony: c.colony, resource, amount: -stock });
+    out.push({ colony: c.colony, resource, amount: -stock, priority: "Normal" });
   }
   return out;
 }
 
-/** One decided colony-to-colony transfer, ready for the dispatch glue to issue as terminal.send(). */
+/** One decided colony-to-colony transfer, ready for the dispatch glue to issue as terminal.send().
+ * `priority` is the RECEIVING (deficit) side's priority, not the sender's — the sender's own offer is just
+ * "has to give," it's the receiver's want that carries whatever urgency exists (see EmpirePriority's doc).
+ * Threaded through so runEmpireLogisticsPass can stamp the resulting ColonyMemory.empireReservations entry
+ * with it. */
 export interface EmpireTransfer {
   from: string;
   to: string;
   resource: ResourceConstant;
   amount: number;
+  priority: EmpirePriority;
 }
 
 /** No fee carve-out needed unless the shipped resource IS energy (decision 8) — sendCost is always
@@ -280,12 +333,15 @@ export function matchEmpireRequests(
         break;
       }
 
-      matches.push({ from: sender.colony, to: receiver.colony, resource, amount });
+      matches.push({ from: sender.colony, to: receiver.colony, resource, amount, priority: receiver.priority });
       sender.amount += cappedAmount; // moves toward 0 (less negative)
       receiver.amount -= cappedAmount;
     }
 
-    for (const r of remaining) if (r.amount !== 0) leftover.push({ colony: r.colony, resource, amount: r.amount });
+    // `r` already carries its own priority (remaining is a shallow copy of the original request) — a
+    // leftover is still the same request, just partially or wholly unmatched, so its priority is
+    // preserved rather than reset to a default.
+    for (const r of remaining) if (r.amount !== 0) leftover.push(r);
   }
 
   return { matches, leftover };
@@ -341,13 +397,27 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
   const targets = Object.fromEntries(
     boostLineResources().map(resource => [resource, baseTargetFor(resource)])
   ) as Partial<Record<ResourceConstant, number>>;
+  // Which resources each colony has a REAL, live boosted-spawn-request need for right now (EmpirePriority's
+  // doc) — sourced from ColonyMemory.boostClaims, the LabRunner's already-computed "which compound does a
+  // real contender currently need" answer (empire/labClaims.ts's planLabClaims), so this doesn't re-derive
+  // urgency from a fresh census scan of its own.
+  const urgentResourcesOf = (name: string): ReadonlySet<ResourceConstant> => {
+    const claims = Memory.colonies[name]?.boostClaims;
+    if (!claims) return EMPTY_URGENT_SET;
+    const urgent = new Set<ResourceConstant>();
+    for (const claim of Object.values(claims)) if (claim) urgent.add(claim.compound);
+    return urgent;
+  };
   // A colony whose terminal is on cooldown can still be a RECEIVER this pass (its deficit is real) but
   // must not be offered as a SURPLUS candidate (decision 11: a cooldown-blocked match is dropped, not
   // persisted) — its surplus request (amount <= 0, "has to give") is filtered out here, before matching,
   // rather than zeroing its stock reads (which would corrupt its own deficit computation instead).
-  const requests = computeEmpireRequests(stocks, targets, name => Memory.colonies[name]?.empireRole).filter(
-    r => r.amount > 0 || sendableSet.has(r.colony)
-  );
+  const requests = computeEmpireRequests(
+    stocks,
+    targets,
+    name => Memory.colonies[name]?.empireRole,
+    urgentResourcesOf
+  ).filter(r => r.amount > 0 || sendableSet.has(r.colony));
 
   const receiverFreeCapacity = (colony: string, resource: ResourceConstant): number =>
     Game.rooms[colony]?.terminal?.store.getFreeCapacity(resource) ?? 0;
@@ -356,11 +426,19 @@ export function runEmpireLogisticsPass(colonyNames: readonly string[]): Intent[]
   const { matches, leftover } = matchEmpireRequests(requests, receiverFreeCapacity, sendCost);
 
   const intents: Intent[] = [];
-  const reservations = new Map<string, Partial<Record<ResourceConstant, number>>>();
+  const reservations = new Map<string, Partial<Record<ResourceConstant, EmpireReservation>>>();
   for (const m of matches) {
     intents.push({ kind: "terminalSend", from: m.from, to: m.to, resource: m.resource, amount: m.amount });
     const colonyReservations = reservations.get(m.from) ?? {};
-    colonyReservations[m.resource] = (colonyReservations[m.resource] ?? 0) + m.amount;
+    const existing = colonyReservations[m.resource];
+    // Two matches can reserve the SAME sender+resource in one pass (one sender's surplus split across two
+    // receivers) — amounts sum as before; priority takes the higher of the two rather than whichever match
+    // happened to be processed last, so a High-priority receiver's urgency is never diluted by an unrelated
+    // Normal-priority receiver sharing the same resource this pass.
+    colonyReservations[m.resource] = {
+      amount: (existing?.amount ?? 0) + m.amount,
+      priority: existing ? maxPriority(existing.priority, m.priority) : m.priority
+    };
     reservations.set(m.from, colonyReservations);
   }
   // Every colony gets a fresh (possibly empty) reservations write, not just senders with a match — a
