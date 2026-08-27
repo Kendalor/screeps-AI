@@ -6,12 +6,12 @@
 // Requires Node 24 + the native mockup build. Runs on demand via `npm run test:integration`.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ScreepsServer, TerrainMatrix } from "screeps-server-mockup";
-import { CONTROLLER_LEVELS, COLOR_WHITE, EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY } from "@screeps/common/lib/constants";
+import { CONTROLLER_LEVELS, COLOR_WHITE, EXTENSION_ENERGY_CAPACITY, SPAWN_ENERGY_CAPACITY, SPAWN_HITS } from "@screeps/common/lib/constants";
 import goalLayout from "../../src/construction/Base_2.json";
 import { buildableAtRcl } from "../../src/construction/goal";
 import { findAnchorCandidates, pickAnchor, stampLayout } from "../../src/construction/stamp";
@@ -43,6 +43,34 @@ export function bundleBot(): string {
   execFileSync(process.execPath, [rollupBin, "-c"], { cwd: REPO_ROOT, stdio: "ignore" });
   cachedBundle = readFileSync(path.join(REPO_ROOT, "dist", "main.js"), "utf8");
   return cachedBundle;
+}
+
+// A private, uncached, non-default bundle — for a scenario that needs a build-time flag other than what
+// bundleBot()'s shared dist/main.js was built with (e.g. LIQUIDATION_MODE_OVERRIDE, see boostTargets.ts's
+// own doc on why this can't be a runtime override for the bundled bot's sandboxed isolate). Builds into its
+// own temp OUT_DIR (rollup.config.mjs's override — both the emitted file AND the clear() plugin's target
+// follow it) rather than the shared dist/, so it never races with other test files concurrently
+// building/reading the default bundle under `pool: "forks"`. Not memoised — callers needing this pay the
+// rollup cost themselves (acceptable for the handful of scenarios that need a non-default build), unlike
+// bundleBot()'s process-wide cache.
+export function buildBotBundle(env: Record<string, string>): string {
+  const rollupBin = path.join(REPO_ROOT, "node_modules", "rollup", "dist", "bin", "rollup");
+  // Must live INSIDE dist/, not a fully separate temp dir: @rollup/plugin-typescript requires its
+  // outDir (tsconfig.json's fixed "dist") to contain the emitted file. A subdirectory of dist/ still
+  // isolates this build from the shared dist/main.js — clear({ targets: [outDir] }) only wipes this
+  // one subdirectory, never the sibling file a concurrent bundleBot() call is building/reading.
+  mkdirSync(path.join(REPO_ROOT, "dist"), { recursive: true });
+  const outDir = mkdtempSync(path.join(REPO_ROOT, "dist", "tmp-bundle-"));
+  try {
+    execFileSync(process.execPath, [rollupBin, "-c"], {
+      cwd: REPO_ROOT,
+      stdio: "ignore",
+      env: { ...process.env, ...env, OUT_DIR: outDir }
+    });
+    return readFileSync(path.join(outDir, "main.js"), "utf8");
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
 }
 
 // Lets any number of colonies boot concurrently without a shared "ports in use" list to maintain.
@@ -257,6 +285,59 @@ export class BootedColony {
     return new BootedColony(server, bot, room, ownedServerDir);
   }
 
+  /**
+   * A second owned room under the SAME bot user — for an empire-logistics scenario needing two sibling
+   * colonies (Memory.colonies keys under one bot's own Memory tree, exactly what empire/logistics.ts's
+   * cross-colony matcher operates over). screeps-server-mockup's own addBot always inserts a brand-new
+   * user (see its source — `db.users.insert(...)` unconditionally), so a genuine second colony under the
+   * SAME empire can't be produced by calling boot()/addBot() twice; this replicates addBot's own room-
+   * ownership half (controller claim + starting spawn), verbatim, against `this.bot.id` instead of a new
+   * user id. Must be called before the terrain/anchor-sensitive steps a scenario runs against the new
+   * room (setTerrain first, same ordering boot() itself follows), and returns a sibling BootedColony VIEW
+   * via forRoom() — call methods on THAT returned object for the new room, not this one.
+   */
+  async addOwnedRoom(room: string, x: number, y: number, spawnName = "Spawn2"): Promise<BootedColony> {
+    const { db, env } = await this.server.world.load();
+    const data = await db["rooms.objects"].findOne({ room, type: "controller" });
+    if (data == null) throw new Error(`cannot add owned room ${room}: room has no controller`);
+    await Promise.all([
+      env.sadd(env.keys.ACTIVE_ROOMS, room),
+      db.rooms.update({ _id: room }, { $set: { active: true } }),
+      db["rooms.objects"].update(
+        { room, type: "controller" },
+        { $set: { user: this.bot.id, level: 1, progress: 0, downgradeTime: null, safeMode: 20000 } }
+      ),
+      db["rooms.objects"].insert({
+        room,
+        type: "spawn",
+        x,
+        y,
+        user: this.bot.id,
+        name: spawnName,
+        store: { energy: SPAWN_ENERGY_CAPACITY },
+        storeCapacityResource: { energy: SPAWN_ENERGY_CAPACITY },
+        hits: SPAWN_HITS,
+        hitsMax: SPAWN_HITS,
+        spawning: null,
+        notifyWhenAttacked: true
+      })
+    ]);
+    await this.resetGlobal();
+    return this.forRoom(room);
+  }
+
+  /**
+   * A sibling view onto a DIFFERENT room under the same running server/bot (see addOwnedRoom's doc) —
+   * shares `server`/`bot`, so every method scoped to `this.room` (roomObjects, structures, controller,
+   * ...) reads/writes the new room instead. Deliberately has no ownedServerDir, so calling `.stop()` on
+   * this view is a no-op for cleanup purposes — always call `.stop()` on the ORIGINAL BootedColony
+   * returned by `boot()`, never on a forRoom() view, or the underlying server/temp dir is torn down while
+   * the original view still expects it to be alive.
+   */
+  forRoom(room: string): BootedColony {
+    return new BootedColony(this.server, this.bot, room, undefined);
+  }
+
   /** All room objects in the colony room (walls excluded — engine object rows). */
   async roomObjects(): Promise<RoomObject[]> {
     return (await this.server.world.roomObjects(this.room)) as RoomObject[];
@@ -327,6 +408,16 @@ export class BootedColony {
   async setStore(id: string, energy: number): Promise<void> {
     const { db } = await this.server.world.load();
     await db["rooms.objects"].update({ _id: id }, { $set: { store: { energy } } });
+  }
+
+  // Multi-resource variant of setStore — for seeding storage/terminal with minerals/compounds
+  // (boosting scenarios), where a flat energy number isn't enough. Storage/terminal use a single flat
+  // storeCapacity shared across every resource (no per-resource storeCapacityResource, unlike
+  // extensions/spawns/labs/towers — see @screeps/engine/src/utils.js's capacityForResource), so this
+  // fully replaces the store object rather than merging into it, same as setStore does for energy alone.
+  async setStoreResources(id: string, store: Partial<Record<ResourceConstant, number>>): Promise<void> {
+    const { db } = await this.server.world.load();
+    await db["rooms.objects"].update({ _id: id }, { $set: { store } });
   }
 
   // Deletes a room object outright (not decay, not a store change) — for scenarios that need a task's

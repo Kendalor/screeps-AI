@@ -72,6 +72,15 @@ export const BOOST_TARGETS: Partial<Record<ResourceConstant, number>> = Object.f
   ...UNWANTED_BOOST_COMPOUNDS.map(resource => [resource, UNWANTED_BOOST_TARGET])
 ]);
 
+// Build-time override (mirrors __PROFILER_ENABLED__/__SERVER__ in rollup.config.mjs, substituted the same
+// way — see rollup.config.mjs's replace() call and each vitest.*.config.ts's define block): lets the
+// integration test harness build a private bundle with liquidation forced off, since LIQUIDATION_MODE's
+// real effect (storage/terminal targets collapsing to 0) runs inside the bundled bot's own sandboxed
+// isolate, completely out of reach of setLiquidationModeOverrideForTest's in-process module variable
+// below — a test asserting boost compounds stay stocked and get hauled to a lab needs the SOURCE default
+// actually replaced at build time, not merely overridden from the test process.
+declare const __LIQUIDATION_MODE__: boolean;
+
 // Liquidation switch: flip to true and redeploy to empty out the empire's ENTIRE boost-line stockpile —
 // baseTargetFor collapses every configured resource's target to 0 (still `undefined` for anything not in
 // BOOST_TARGETS at all — a target of 0 and "not tracked" are different states, see baseTargetFor's own
@@ -87,7 +96,7 @@ export const BOOST_TARGETS: Partial<Record<ResourceConstant, number>> = Object.f
 // actually clear it. Same manual, hand-edited (not runtime Memory) convention as marketFallback.ts's
 // BUYING_ACTIVATED, for the same reason: nothing should be able to silently start liquidating the
 // stockpile on its own.
-export const LIQUIDATION_MODE = true;
+export const LIQUIDATION_MODE = __LIQUIDATION_MODE__;
 
 // Test-only override for LIQUIDATION_MODE, since the constant above is intentionally not a function
 // parameter (baseTargetFor/BOOST_TARGETS are called unparameterized throughout the codebase — Steward and

@@ -27,7 +27,13 @@ export default defineConfig({
     __GIT_COMMIT__: '"test"',
     // Integration/benchmark harnesses boot the real bundled bot against a local pserver — "pserver" here
     // matches that reality and exercises market.ts's gating exactly like a real pserver build would.
-    __SERVER__: '"pserver"'
+    __SERVER__: '"pserver"',
+    // Matches rollup.config.mjs's LIQUIDATION_MODE_OVERRIDE-gated replace — some fixtures import
+    // empire/boostTargets.ts directly alongside the rollup-bundled bot, same reasoning as
+    // __PROFILER_ENABLED__ above. Fixed to the real hand-edited default; the boosting scenarios that need
+    // liquidation OFF build their own private bundle instead (see harness.ts's buildBotBundle), since this
+    // define only reaches direct src/ imports from the test process, never the bundled bot's own isolate.
+    __LIQUIDATION_MODE__: "true"
   },
   test: {
     environment: "node",

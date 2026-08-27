@@ -45,16 +45,23 @@ try {
 }
 console.log(`Building commit ${gitCommit}`);
 
+// Overridable output directory (default "dist"): lets a caller building a private, non-default bundle
+// (e.g. test/integration/harness.ts's buildBotBundle, for a LIQUIDATION_MODE_OVERRIDE build) point BOTH
+// the emitted file and the clear() plugin's own target at an isolated directory, so it can run concurrently
+// with another process's plain `rollup -c` (which clears/writes the shared dist/ — see global-setup.ts's
+// own race-avoidance doc) without either one clobbering the other.
+const outDir = process.env.OUT_DIR ?? "dist";
+
 export default {
   input: "src/main.ts",
   output: {
-    file: "dist/main.js",
+    file: `${outDir}/main.js`,
     format: "cjs",
     sourcemap: true
   },
 
   plugins: [
-    clear({ targets: ["dist"] }),
+    clear({ targets: [outDir] }),
     resolve(),
     commonjs(),
     json(),
@@ -68,7 +75,18 @@ export default {
         // shouldn't run there at all. A build-time constant, not a runtime Game.shard.name check: see
         // docs/market-plan.md decision 10 for why the latter was rejected (shard naming is incidental,
         // undocumented config, not a guaranteed distinction).
-        __SERVER__: JSON.stringify(dest ?? "unknown")
+        __SERVER__: JSON.stringify(dest ?? "unknown"),
+        // gh #61 epic: empire/boostTargets.ts's hand-edited liquidation switch, made build-time-overridable
+        // (LIQUIDATION_MODE_OVERRIDE env var) so the integration test harness can build a private bundle
+        // with liquidation forced off — the flag's real effect runs inside the bundled bot's own sandboxed
+        // isolate, out of reach of any in-process test override. Every other build (push-main, push-dev,
+        // plain bundle) is unaffected: the env var is unset, so this falls back to the real hand-edited
+        // default in boostTargets.ts itself.
+        __LIQUIDATION_MODE__: JSON.stringify(
+          process.env.LIQUIDATION_MODE_OVERRIDE === undefined
+            ? true
+            : process.env.LIQUIDATION_MODE_OVERRIDE === "true"
+        )
       }
     }),
     typescript({ tsconfig: "./tsconfig.json" }),
