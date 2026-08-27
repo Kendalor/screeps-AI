@@ -6,7 +6,7 @@
 // live-object registration code belongs in the integration seam.
 
 import { describe, expect, it } from "vitest";
-import { pickSupplyRequest, SUPPLY_TIER, type SupplyRequest } from "../../../src/logistics/supplyRegister";
+import { pickSupplyRequest, registerBoostLabRequests, SUPPLY_TIER, type SupplyRequest } from "../../../src/logistics/supplyRegister";
 
 function stubRequest(id: string, tier: number): SupplyRequest {
   return {
@@ -60,5 +60,50 @@ describe("pickSupplyRequest", () => {
     // Same distance: earlier-seen candidate keeps the win (strict "<" comparison), not the bigger wanted.
     const picked = pickSupplyRequest([small, big], HOME, () => 3);
     expect(picked).toBe(small);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// registerBoostLabRequests — plain data over stubs (no room.find(), unlike its spawn/tower siblings), same
+// stub-a-minimal-store-surface pattern stewardRegister.test.ts already uses.
+// ---------------------------------------------------------------------------
+
+function stubLab(id: string, energyUsed: number, energyCapacity = 2000): StructureLab {
+  return {
+    id,
+    store: {
+      getFreeCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? energyCapacity - energyUsed : 0)
+    }
+  } as unknown as StructureLab;
+}
+
+describe("registerBoostLabRequests", () => {
+  it("registers an energy want at SUPPLY_TIER.boostLab (same as towerLow, above ordinary base) even with no active claim — pre-staged ahead of demand", () => {
+    const lab = stubLab("lab1", 500);
+    const requests = registerBoostLabRequests([lab]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ target: lab, wanted: 1500, tier: SUPPLY_TIER.boostLab });
+    expect(SUPPLY_TIER.boostLab).toBe(SUPPLY_TIER.towerLow);
+    expect(SUPPLY_TIER.boostLab).toBeLessThan(SUPPLY_TIER.base);
+  });
+
+  it("registers nothing for a lab already full of energy", () => {
+    const lab = stubLab("lab1", 2000);
+    const requests = registerBoostLabRequests([lab]);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("skips undefined entries (a stale boostLabIds reference) without crashing", () => {
+    const lab = stubLab("lab1", 500);
+    const requests = registerBoostLabRequests([undefined, lab]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].target).toBe(lab);
+  });
+
+  it("registers every lab, claimed or not", () => {
+    const a = stubLab("a", 500);
+    const b = stubLab("b", 500);
+    const requests = registerBoostLabRequests([a, b]);
+    expect(requests).toHaveLength(2);
   });
 });

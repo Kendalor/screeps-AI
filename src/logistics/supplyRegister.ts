@@ -14,10 +14,21 @@
 // structure. Those remain Transport's (or Steward's) job. Live as of gh #53: driven each tick by
 // behaviors/supplyTaskRunner.ts's runSupplyTask, itself dispatched from empire/creeps.ts for every
 // role==="supply" creep — this module's own registration/selection logic is unchanged from gh #50.
+//
+// A claimed boost lab's own energy want was added on top of that original scope (gh #61 epic follow-up,
+// registerBoostLabRequests below) — deliberately NOT Transport's rate-scored pool, where it lived first:
+// logistics/greedyMatch.ts's pickBestPair decides which resource an idle creep acts on using ONLY the
+// output (source) side's multiplier (score = output.multiplier * amount / distance), never the input
+// (want) side's — so boosting a lab's want-side multiplier there could never actually win the
+// cross-resource race unless something also offered a matching boosted-multiplier ENERGY output, which
+// nothing did. Confirmed live: a fully lab-claimed, fully compound-stocked demolisher still sat unboosted
+// for 900+ ticks (once, indefinitely) waiting on energy alone. Supply's tier-first-then-nearest selection
+// has no such asymmetry — a claimed lab simply competes like any other spawn/extension/tower want.
 
-/** One spawn/extension/tower's outstanding energy need — Supply's own request shape, no rate math. */
+/** One spawn/extension/tower/(claimed boost lab)'s outstanding energy need — Supply's own request shape,
+ * no rate math. */
 export interface SupplyRequest {
-  target: StructureSpawn | StructureExtension | StructureTower;
+  target: StructureSpawn | StructureExtension | StructureTower | StructureLab;
   /** Free capacity right now — how much this target can still receive. */
   wanted: number;
   /** Selection tier: lower number wins ties against a higher one, checked before distance. */
@@ -29,8 +40,18 @@ export interface SupplyRequest {
 // jumps the queue once it's actually running low (see TOWER_LOW_FRACTION below) — an empty tower during
 // an attack is worse than a spawn/extension shortfall, but a merely-not-full one isn't. Lower number =
 // higher priority, so pickSupplyRequest's tier-first comparison is a plain numeric min.
+//
+// boostLab shares towerLow's tier, NOT base — confirmed live this was load-bearing, not a nice-to-have:
+// at the same "base" tier as spawn/extension, a claimed lab's energy want lost the nearest-wins tiebreak
+// almost every time, because a mature colony's spawn/extension pool is chronically hungry (routinely
+// 1500-2000+ combined free capacity, many structures scattered around the bunker) against one or two labs
+// — the lab won often enough by luck to eventually complete, but took 600+ ticks (41% of a demolisher's
+// 1500-tick lifetime) doing nothing after it had already finished spawning. A claimed lab's need is exactly
+// as urgent as a critically-low tower: both represent an already-committed creep (or defense) sitting
+// uselessly idle until this energy arrives, categorically more urgent than routine hatchery top-off.
 export const SUPPLY_TIER = {
   towerLow: 0,
+  boostLab: 0,
   base: 1
 } as const;
 
@@ -76,9 +97,34 @@ export function registerTowerRequests(room: Room): SupplyRequest[] {
   return out;
 }
 
-/** Every live spawn/extension/tower energy need in `room` — Supply's whole pool, nothing else. */
+/** Every live spawn/extension/tower energy need in `room` — the room-scoped half of Supply's pool (see
+ * registerBoostLabRequests below for the other half, which needs ColonyMemory rather than just `room`). */
 export function registerSupplyRequests(room: Room): SupplyRequest[] {
   return [...registerTowerRequests(room), ...registerSpawnSystemRequests(room)];
+}
+
+/**
+ * A boost lab's own energy want, expressed as an ordinary SupplyRequest — see this file's header for why
+ * this lives here rather than Transport's rate-scored pool. Deliberately NOT gated on an active claim
+ * (ColonyMemory.boostClaims) — every one of a colony's reserved boost labs (ColonyMemory.boostLabIds)
+ * always wants energy toward full, regardless of whether it's claimed for a compound right now. Confirmed
+ * live: gating this on the current claim meant a lab's energy only started filling AFTER a claim
+ * appeared, adding ~80-100 ticks of avoidable latency to every boost order on top of whatever the
+ * compound delivery itself took — energy is cheap and lab capacity is small, so pre-staging it for
+ * whichever claim comes next costs nothing. Competes at `SUPPLY_TIER.boostLab` (== towerLow, above
+ * ordinary spawn/extension refill) — see SUPPLY_TIER's own doc for why a boost lab can't just share the
+ * base tier. `labs` may contain `undefined` entries (a stale id whose object no longer resolves) —
+ * skipped, not an error, same tolerance boostLabs()'s own caller (transportTaskRunner.ts) already has.
+ */
+export function registerBoostLabRequests(labs: readonly (StructureLab | undefined)[]): SupplyRequest[] {
+  const out: SupplyRequest[] = [];
+  for (const lab of labs) {
+    if (!lab) continue;
+    const wanted = lab.store.getFreeCapacity(RESOURCE_ENERGY);
+    if (!wanted || wanted <= 0) continue;
+    out.push({ target: lab, wanted, tier: SUPPLY_TIER.boostLab });
+  }
+  return out;
 }
 
 /**

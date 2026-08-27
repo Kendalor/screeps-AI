@@ -8,9 +8,18 @@
 // cutover onto transportTaskRunner.ts. Still exercised directly by the test-only __runSupplyTask console
 // hook (testHooks.ts) too, unchanged from gh #50.
 
-import { registerSupplyRequests, pickSupplyRequest } from "../logistics/supplyRegister";
+import { registerBoostLabRequests, registerSupplyRequests, pickSupplyRequest } from "../logistics/supplyRegister";
 import { fork, persistTask, resolveTask, type Task } from "../logistics/task";
 import { transferTo, withdrawOrPickup } from "./actions";
+
+/** The colony's (up to 3) live boost lab objects, resolved from ColonyMemory.boostLabIds — mirrors
+ * transportTaskRunner.ts's own boostLabs() exactly (same persisted ids, same "absent until Colony.labs()
+ * has reserved 3 labs" contract); duplicated locally rather than shared since it's a 3-line Memory ->
+ * Game.* lookup, not worth a cross-module import for. */
+function boostLabs(home: string): (StructureLab | undefined)[] {
+  const ids = Memory.colonies[home]?.boostLabIds;
+  return ids ? ids.map(id => Game.getObjectById(id) ?? undefined) : [];
+}
 
 // A withdraw leg is complete once the creep can't carry more; a transfer leg once it has nothing left to
 // give — mirrors logisticsTaskRunner.ts's isTaskComplete exactly (same Task shape, same completion rule).
@@ -60,12 +69,15 @@ function findEnergySource(creep: Creep): (_HasId & { pos: RoomPosition }) | null
 
 /**
  * Builds a fresh withdraw -> transfer chain for an idle Supply creep: registerSupplyRequests() reads the
- * room's live spawn/extension/tower state, pickSupplyRequest() picks tier-first-then-nearest, and the
- * pickup leg draws from whatever live energy is nearest. Undefined when the creep already carries energy
- * (nothing to withdraw) or no request/source exists.
+ * room's live spawn/extension/tower state, registerBoostLabRequests() adds every reserved boost lab's own
+ * energy want, unconditionally (see supplyRegister.ts's header for why that lives here rather than
+ * Transport's pool, and why it isn't gated on an active claim), pickSupplyRequest() picks
+ * tier-first-then-nearest across both, and the pickup leg draws from whatever live energy is nearest.
+ * Undefined when the creep already carries energy (nothing to withdraw) or no request/source exists.
  */
 export function planSupplyTask(creep: Creep): Task | undefined {
-  const requests = registerSupplyRequests(creep.room);
+  const home = creep.memory.home;
+  const requests = [...registerSupplyRequests(creep.room), ...registerBoostLabRequests(boostLabs(home))];
   const request = pickSupplyRequest(requests, creep.pos);
   if (!request) return undefined;
 
