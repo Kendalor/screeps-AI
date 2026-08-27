@@ -12,22 +12,22 @@ const supply = new Supply("W1N1");
 const supplyRequests = (over: Parameters<typeof colonySnap>[0]) => supply.desiredCreeps(colonySnap(over));
 
 describe("Supply.desiredCreeps", () => {
-  it("wants one supply creep from RCL1, before the room can afford the RCL3-sized body", () => {
-    expect(supplyRequests({ energyCapacity: 300, controllerLevel: 2 })).toHaveLength(1);
+  it("wants two supply creeps from RCL1 on, before the room can afford the RCL3-sized body", () => {
+    expect(supplyRequests({ energyCapacity: 300, controllerLevel: 2 })).toHaveLength(2);
   });
 
-  it("wants one supply creep once energyCapacity reaches the RCL3 threshold", () => {
-    expect(supplyRequests({ energyCapacity: 550, controllerLevel: 3 })).toHaveLength(1);
+  it("wants two supply creeps once energyCapacity reaches the RCL3 threshold", () => {
+    expect(supplyRequests({ energyCapacity: 550, controllerLevel: 3 })).toHaveLength(2);
   });
 
-  it("scales to two supply creeps at the high-RCL threshold", () => {
+  it("still wants two supply creeps at the high-RCL threshold", () => {
     expect(supplyRequests({ energyCapacity: 550, controllerLevel: 6 })).toHaveLength(2);
     expect(supplyRequests({ energyCapacity: 550, controllerLevel: 8 })).toHaveLength(2);
   });
 
   it("returns nothing once the live supply creeps meet the quota", () => {
     expect(
-      supplyRequests({ energyCapacity: 550, controllerLevel: 4, creeps: snapCreeps("supply", 1) })
+      supplyRequests({ energyCapacity: 550, controllerLevel: 4, creeps: snapCreeps("supply", 2) })
     ).toEqual([]);
   });
 
@@ -66,14 +66,17 @@ describe("Supply.desiredCreeps", () => {
   });
 
   // A late request leaves the room without a supply creep for however long spawning runs past
-  // death — the replacement must be requested with enough lead time to be ready in time.
+  // death — the replacement must be requested with enough lead time to be ready in time. Quota is
+  // 2 everywhere now, so the handoff (one-in-one-out) branch only applies when exactly one of the
+  // two is missing already replaced by a shortfall request — these cases seed both alive so the
+  // per-survivor ticksToLive branch is the one actually exercised.
   describe("handoff before the last supply creep dies", () => {
     it("requests nothing while the sole survivor has plenty of ticksToLive left", () => {
       expect(
         supplyRequests({
           energyCapacity: 550,
           controllerLevel: 4,
-          creeps: snapCreeps("supply", 1, { ticksToLive: 500 })
+          creeps: snapCreeps("supply", 2, { ticksToLive: 500 })
         })
       ).toEqual([]);
     });
@@ -83,7 +86,7 @@ describe("Supply.desiredCreeps", () => {
       const requests = supplyRequests({
         controllerLevel: 4,
         energyCapacity: 550,
-        creeps: snapCreeps("supply", 1, { ticksToLive: 30 })
+        creeps: snapCreeps("supply", 2, { ticksToLive: 30 })
       });
       expect(requests).toHaveLength(1);
       expect(requests[0].body).toHaveLength(10);
@@ -94,21 +97,33 @@ describe("Supply.desiredCreeps", () => {
         supplyRequests({
           controllerLevel: 4,
           energyCapacity: 550,
-          creeps: snapCreeps("supply", 1, { ticksToLive: 31 })
+          creeps: snapCreeps("supply", 2, { ticksToLive: 31 })
         })
       ).toEqual([]);
     });
 
-    it("does not apply the one-in-one-out handoff check when at quota with more than one alive", () => {
-      // RCL6 quota is 2; both alive and both about to die — no per-source ticksToLive branch fires,
-      // so nothing is requested until one actually dies and the count drops to one.
+    it("does not apply the handoff check when short of quota with fewer than wanted alive", () => {
+      // Quota is 2; only one alive is already the shortfall branch (missing=1) regardless of
+      // ticksToLive — the handoff branch never needs to fire on top of it.
+      expect(
+        supplyRequests({
+          energyCapacity: 550,
+          controllerLevel: 6,
+          creeps: snapCreeps("supply", 1, { ticksToLive: 1 })
+        })
+      ).toHaveLength(1);
+    });
+
+    it("requests a replacement even when every survivor at quota is dying on the same tick", () => {
+      // Both alive (at quota) and both about to die — needsHandoff now checks every survivor, not
+      // just a lone one, so this no longer falls through to nothing.
       expect(
         supplyRequests({
           energyCapacity: 550,
           controllerLevel: 6,
           creeps: snapCreeps("supply", 2, { ticksToLive: 1 })
         })
-      ).toEqual([]);
+      ).toHaveLength(1);
     });
   });
 

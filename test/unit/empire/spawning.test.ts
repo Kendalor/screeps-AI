@@ -29,7 +29,7 @@ describe("spawn arbiter — single colony", () => {
   it("emits nothing when every requester is satisfied", () => {
     // A single-tile source seats exactly one miner; that 1-WORK miner's output warrants one hauler.
     // No container energy or drops, so no pre-storage upgraders; no construction, so no builders.
-    // A live supply creep satisfies supply's own RCL1-and-up quota of 1.
+    // Two live supply creeps satisfy supply's own RCL1-and-up quota of 2.
     const source = sourceAt(20, 10, "source_20_10", 1);
     expect(
       arbitrate({
@@ -38,7 +38,7 @@ describe("spawn arbiter — single colony", () => {
         creeps: [
           snapCreep("miner", { memory: { sourceId: source.id, op: "mining:W1N1" } }),
           ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } }),
-          ...snapCreeps("supply", 1)
+          ...snapCreeps("supply", 2)
         ]
       })
     ).toEqual([]);
@@ -62,7 +62,7 @@ describe("spawn arbiter — single colony", () => {
       creeps: [
         snapCreep("miner", { memory: { sourceId: source.id, op: "mining:W1N1" } }),
         ...snapCreeps("hauler", 1, { memory: { op: "mining:W1N1" } }),
-        ...snapCreeps("supply", 1)
+        ...snapCreeps("supply", 2)
       ],
       // Energy in the controller container (a logistics *consumer*, not a provider) gives the upgrader
       // something to draw from without also creating a transport provider — a ground drop would, and
@@ -125,9 +125,9 @@ describe("spawn arbiter — single colony", () => {
   it("waits for a refill rather than spawning a runt sized to a drained room", () => {
     expect(
       arbitrate({
-        // A live supply creep satisfies supply's own quota (wanted from RCL1 on) so it doesn't take
+        // Two live supply creeps satisfy supply's own quota (wanted from RCL1 on) so it doesn't take
         // the spawn slot ahead of the refill-wait behaviour this test targets.
-        creeps: [...snapCreeps("bootstrap", 1), ...snapCreeps("supply", 1)],
+        creeps: [...snapCreeps("bootstrap", 1), ...snapCreeps("supply", 2)],
         spawns: [spawn()],
         energyAvailable: 300,
         energyCapacity: 500,
@@ -141,9 +141,9 @@ describe("spawn arbiter — single colony", () => {
   it("stops on an unaffordable request instead of skipping to a cheaper one", () => {
     expect(
       arbitrate({
-        // A live supply creep so supply's own (now top-priority, 101) request doesn't leapfrog the
+        // Supply staffed to quota so its own (now top-priority, 101) request doesn't leapfrog the
         // miner this test is actually targeting — see the supply-vs-transport priority fix below.
-        creeps: [...snapCreeps("bootstrap", 1), ...snapCreeps("miner", 1), ...snapCreeps("supply", 1)],
+        creeps: [...snapCreeps("bootstrap", 1), ...snapCreeps("miner", 1), ...snapCreeps("supply", 2)],
         spawns: [spawn()],
         energyAvailable: 200,
         energyCapacity: 800,
@@ -227,9 +227,9 @@ describe("spawn arbiter — single colony", () => {
       energyCapacity: 550,
       controllerLevel: 3,
       sources: [sourceAt(20, 10, "s0", 3), sourceAt(20, 12, "s1", 3)],
-      // A live supply creep so supply's own (top-priority, 101) request doesn't take the one slot
+      // Supply staffed to quota so its own (top-priority, 101) request doesn't take the one slot
       // ahead of transport — this test targets transport-vs-miner/upgrader, not supply-vs-transport.
-      creeps: [miner, upgrader, ...snapCreeps("supply", 1)],
+      creeps: [miner, upgrader, ...snapCreeps("supply", 2)],
       drops: [dropAt(33, 21, 500), dropAt(33, 20, 400)],
       containers: [containerAt(21, 10, 300)],
       anchor: { x: 25, y: 15 }

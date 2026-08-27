@@ -111,15 +111,17 @@ function resolveSquads(colonies: readonly Colony[]): { squads: ResolvedSquad[]; 
   return { squads, members };
 }
 
-// Every live Transport creep, grouped by home room — computed once per tick (not once per creep) so
-// planTransportTask's targetedBy scan (see transportTaskRunner.ts's own doc: "derive fresh each tick,
-// never cache") stays O(creeps) overall rather than O(creeps^2). A colony with no Transport creeps simply
-// has no entry, so dispatchCreep's lookup below just sees an empty list.
-function transportCreepsByHome(): Map<string, Creep[]> {
+// Every live creep of `role`, grouped by home room — computed once per tick (not once per creep) so a
+// pool's targetedBy scan (see transportTaskRunner.ts's own doc: "derive fresh each tick, never cache")
+// stays O(creeps) overall rather than O(creeps^2). Shared by Transport and Supply (as of Supply's own
+// targetedBy discount, supplyRegister.ts's pickSupplyRequest) — both need the exact same "every OTHER live
+// creep of my own role in my own home room" grouping. A colony with none of `role` simply has no entry, so
+// dispatchCreep's lookup below just sees an empty list.
+function creepsByHomeForRole(role: string): Map<string, Creep[]> {
   const out = new Map<string, Creep[]>();
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
-    if (creep.memory.role !== "transport" || creep.spawning) continue;
+    if (creep.memory.role !== role || creep.spawning) continue;
     const list = out.get(creep.memory.home);
     if (list) list.push(creep);
     else out.set(creep.memory.home, [creep]);
@@ -144,7 +146,8 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(
   // Compute squad membership once, up front — the single source of truth shared between the per-creep
   // skip below and the runSquads pass, so a squadded creep is never run by both or neither (ADR 0007).
   const { squads, members: squadMembers } = resolveSquads(colonies);
-  const transportByHome = transportCreepsByHome();
+  const transportByHome = creepsByHomeForRole("transport");
+  const supplyByHome = creepsByHomeForRole("supply");
 
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
@@ -158,7 +161,7 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(
     // (Invader NPC) reaching roadAvoidance's moverNearby threw and froze the rest of Game.creeps for the
     // tick, since the only guard used to be the one system-level runGuarded("creeps", ...) in kernel/tick.ts.
     try {
-      dispatchCreep(creep, transportByHome, boostLabIdsByHome.get(creep.memory.home) ?? []);
+      dispatchCreep(creep, transportByHome, supplyByHome, boostLabIdsByHome.get(creep.memory.home) ?? []);
     } catch (e) {
       log.error(`creep ${name} threw: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
     }
@@ -171,7 +174,12 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(
 // try/catch without duplicating the dispatch logic. `boostLabIds` is the colony's reserved boost lab IDs
 // (see boostPreemption's doc, behaviors/interpreter.ts) — the same array passed to every boostable creep;
 // a creep with no pending boost order never even looks at it.
-function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boostLabIds: readonly Id<StructureLab>[]): void {
+function dispatchCreep(
+  creep: Creep,
+  transportByHome: Map<string, Creep[]>,
+  supplyByHome: Map<string, Creep[]>,
+  boostLabIds: readonly Id<StructureLab>[]
+): void {
   // Diverted before the step-table dispatch per the role's own opt-in (Role.dispatch's doc,
   // behaviors/roles/role.ts) rather than a static step table.
   switch (roleDef(creep.memory.role)?.dispatch) {
@@ -194,7 +202,8 @@ function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boos
         const siblings = (transportByHome.get(creep.memory.home) ?? []).filter(c => c !== creep);
         runTransportTask(creep, siblings);
       } else {
-        runSupplyTask(creep);
+        const siblings = (supplyByHome.get(creep.memory.home) ?? []).filter(c => c !== creep);
+        runSupplyTask(creep, siblings);
       }
       if (!creep.memory.logisticsTask) parkNearBunker(creep);
       return;

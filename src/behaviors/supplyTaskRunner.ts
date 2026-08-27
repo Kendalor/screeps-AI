@@ -9,6 +9,7 @@
 // hook (testHooks.ts) too, unchanged from gh #50.
 
 import { registerBoostLabRequests, registerSupplyRequests, pickSupplyRequest } from "../logistics/supplyRegister";
+import { buildTargetedBy } from "../logistics/targeted";
 import { fork, persistTask, resolveTask, type Task } from "../logistics/task";
 import { transferTo, withdrawOrPickup } from "./actions";
 
@@ -72,13 +73,17 @@ function findEnergySource(creep: Creep): (_HasId & { pos: RoomPosition }) | null
  * room's live spawn/extension/tower state, registerBoostLabRequests() adds every reserved boost lab's own
  * energy want, unconditionally (see supplyRegister.ts's header for why that lives here rather than
  * Transport's pool, and why it isn't gated on an active claim), pickSupplyRequest() picks
- * tier-first-then-nearest across both, and the pickup leg draws from whatever live energy is nearest.
+ * tier-first-then-nearest across both — discounted by `otherSupplyCreeps`' already-persisted tasks
+ * (targeted.ts's buildTargetedBy, same mechanism as Transport's own gh #49 discount) so two live Supply
+ * creeps (quota is 2 as of operations/supply.ts) don't both pile onto the same nearest starved extension
+ * while a different one sits unfilled — and the pickup leg draws from whatever live energy is nearest.
  * Undefined when the creep already carries energy (nothing to withdraw) or no request/source exists.
  */
-export function planSupplyTask(creep: Creep): Task | undefined {
+export function planSupplyTask(creep: Creep, otherSupplyCreeps: readonly Creep[] = []): Task | undefined {
   const home = creep.memory.home;
   const requests = [...registerSupplyRequests(creep.room), ...registerBoostLabRequests(boostLabs(home))];
-  const request = pickSupplyRequest(requests, creep.pos);
+  const targetedBy = buildTargetedBy(otherSupplyCreeps);
+  const request = pickSupplyRequest(requests, creep.pos, undefined, targetedBy, creep);
   if (!request) return undefined;
 
   const deliver: Task = { kind: "transfer", target: request.target, resource: RESOURCE_ENERGY };
@@ -89,15 +94,20 @@ export function planSupplyTask(creep: Creep): Task | undefined {
   return fork({ kind: "withdraw", target: source, resource: RESOURCE_ENERGY }, deliver);
 }
 
-/** Runs `creep`'s current persisted Supply task one tick, planning a fresh one when idle. */
-export function runSupplyTask(creep: Creep): void {
+/**
+ * Runs `creep`'s current persisted Supply task one tick, planning a fresh one when idle.
+ * `otherSupplyCreeps` should be every OTHER live Supply creep in the same colony (empire/creeps.ts's
+ * dispatchCreep builds this the same way it already does for Transport's own siblings) — see
+ * planSupplyTask's own doc for why it's threaded through rather than defaulting to empty in real dispatch.
+ */
+export function runSupplyTask(creep: Creep, otherSupplyCreeps: readonly Creep[] = []): void {
   let task: Task | undefined;
   if (creep.memory.logisticsTask) {
     task = resolveTask(creep.memory.logisticsTask) ?? undefined;
     if (!task) creep.memory.logisticsTask = undefined; // dead reference — drop and replan below
   }
   if (!task) {
-    task = planSupplyTask(creep);
+    task = planSupplyTask(creep, otherSupplyCreeps);
     if (!task) return; // nothing to do this tick
   }
 

@@ -7,6 +7,10 @@
 
 import { describe, expect, it } from "vitest";
 import { pickSupplyRequest, registerBoostLabRequests, SUPPLY_TIER, type SupplyRequest } from "../../../src/logistics/supplyRegister";
+import type { Task } from "../../../src/logistics/task";
+import type { TargetedBy } from "../../../src/logistics/targeted";
+
+const CATALYST: ResourceConstant = "XGH2O";
 
 function stubRequest(id: string, tier: number): SupplyRequest {
   return {
@@ -14,6 +18,19 @@ function stubRequest(id: string, tier: number): SupplyRequest {
     wanted: 50,
     tier
   };
+}
+
+// A hand-built TargetedBy map — buildTargetedBy itself is only exercised against a live Game.* in the
+// integration suite (it walks resolveTask, which calls Game.getObjectById), but discountedWanted only
+// ever reads the already-resolved map, so a plain stub is enough to prove ITS behaviour without a server.
+function stubTargetedBy(targetId: string, carryCapacity: number, resource: ResourceConstant = RESOURCE_ENERGY): {
+  targetedBy: TargetedBy;
+  creep: Creep;
+} {
+  const creep = { store: { getCapacity: (r: ResourceConstant) => (r === resource ? carryCapacity : 0) } } as unknown as Creep;
+  const task: Task = { kind: "transfer", target: { id: targetId } as unknown as Task["target"], resource };
+  const targetedBy: TargetedBy = new Map([[targetId as unknown as Id<_HasId>, [{ creep, task }]]]);
+  return { targetedBy, creep };
 }
 
 const HOME = { x: 25, y: 25, roomName: "W1N1" } as unknown as RoomPosition;
@@ -60,6 +77,55 @@ describe("pickSupplyRequest", () => {
     // Same distance: earlier-seen candidate keeps the win (strict "<" comparison), not the bigger wanted.
     const picked = pickSupplyRequest([small, big], HOME, () => 3);
     expect(picked).toBe(small);
+  });
+
+  // The bug this section guards: with Supply's quota raised to 2 (operations/supply.ts), two live Supply
+  // creeps ran this same selection independently and always agreed on the SAME nearest starved extension,
+  // since neither had any way to see the other's already-assigned target — one extension got double-served
+  // while a second one sat unfilled. The targetedBy discount fixes this the same way Transport's own gh #49
+  // discount does: a target another Supply creep is already routed toward reads as less (or no longer)
+  // wanted on THIS creep's ranking pass.
+  describe("targetedBy discount — two Supply creeps don't pile onto the same target", () => {
+    it("skips a target another creep's incoming carry already fully covers", () => {
+      const near = stubRequest("near", SUPPLY_TIER.base);
+      near.wanted = 40; // <= the other creep's 50 carry capacity — fully covered.
+      const far = stubRequest("far", SUPPLY_TIER.base);
+      const { targetedBy } = stubTargetedBy("near", 50);
+      const ranges: Record<string, number> = { near: 1, far: 20 };
+      const picked = pickSupplyRequest([near, far], HOME, t => ranges[(t as unknown as { id: string }).id], targetedBy);
+      expect(picked).toBe(far); // the nearer one is skipped despite winning on distance alone
+    });
+
+    it("still offers a target once its wanted exceeds the other creep's incoming carry (soft, not hard)", () => {
+      const near = stubRequest("near", SUPPLY_TIER.base);
+      near.wanted = 200; // well above the other creep's 50 carry — one creep's incoming load isn't enough.
+      const { targetedBy } = stubTargetedBy("near", 50);
+      const picked = pickSupplyRequest([near], HOME, () => 1, targetedBy);
+      expect(picked).toBe(near);
+    });
+
+    it("does not discount the ranking creep's own already-assigned target (exclude)", () => {
+      const near = stubRequest("near", SUPPLY_TIER.base);
+      near.wanted = 40;
+      const { targetedBy, creep } = stubTargetedBy("near", 50);
+      // Same creep re-evaluating the target it's itself already routed toward: exclude must stop it
+      // discounting its own claim away.
+      const picked = pickSupplyRequest([near], HOME, () => 1, targetedBy, creep);
+      expect(picked).toBe(near);
+    });
+
+    it("ignores a targeting leg for a different resource", () => {
+      const near = stubRequest("near", SUPPLY_TIER.base);
+      near.wanted = 40;
+      const { targetedBy } = stubTargetedBy("near", 50, CATALYST);
+      const picked = pickSupplyRequest([near], HOME, () => 1, targetedBy);
+      expect(picked).toBe(near); // a power-carrying leg has no bearing on an energy want
+    });
+
+    it("defaults to no discount when targetedBy is omitted", () => {
+      const only = stubRequest("only", SUPPLY_TIER.base);
+      expect(pickSupplyRequest([only], HOME, () => 1)).toBe(only);
+    });
   });
 });
 

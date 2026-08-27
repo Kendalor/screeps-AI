@@ -24,6 +24,14 @@
 // nothing did. Confirmed live: a fully lab-claimed, fully compound-stocked demolisher still sat unboosted
 // for 900+ ticks (once, indefinitely) waiting on energy alone. Supply's tier-first-then-nearest selection
 // has no such asymmetry — a claimed lab simply competes like any other spawn/extension/tower want.
+//
+// pickSupplyRequest's targetedBy discount (below) was added once Supply's own quota moved from 1 to 2
+// (operations/supply.ts): with two creeps independently running this same selection, both picked the same
+// nearest starved extension every time — confirmed live — since neither had any way to see the other's
+// already-assigned target. Reuses targeted.ts's buildTargetedBy/TargetedBy exactly (same live-scan-fresh-
+// every-tick shape as Transport's own discount, gh #49) rather than inventing a second mechanism.
+
+import type { TargetedBy } from "./targeted";
 
 /** One spawn/extension/tower/(claimed boost lab)'s outstanding energy need — Supply's own request shape,
  * no rate math. */
@@ -128,19 +136,55 @@ export function registerBoostLabRequests(labs: readonly (StructureLab | undefine
 }
 
 /**
+ * `request.wanted` discounted by every OTHER live Supply creep already routed toward that same target for
+ * energy — Overmind's predicted-amount discount (ADR 0008, targeted.ts's own doc), reused here rather than
+ * reimplemented: with two Supply creeps live (see operations/supply.ts's quota-of-2 fix), both used to
+ * independently run pickSupplyRequest's tier-first-then-nearest selection with no idea the other existed,
+ * so they piled onto the SAME nearest starved extension while a second one sat unfilled — confirmed live,
+ * the actual bug this discount fixes. `targetedBy`'s incoming-carry accounting already excludes `exclude`
+ * (the creep doing the ranking) so a creep re-evaluating its own already-assigned target isn't discounted
+ * by its own claim. A discount can only ever reduce `wanted`, never below 0 — a target already fully
+ * covered by another creep's incoming load reads as 0, not skipped outright, so callers filtering on
+ * `wanted > 0` naturally drop it while a partially-covered one can still legitimately attract a second
+ * creep (mirrors discountedAmount's own "soft, not hard" framing exactly).
+ */
+function discountedWanted(request: SupplyRequest, targetedBy: TargetedBy, exclude?: Creep): number {
+  const legs = targetedBy.get(request.target.id as Id<_HasId>);
+  if (!legs || legs.length === 0) return request.wanted;
+
+  let influx = 0;
+  const counted = new Set<Creep>();
+  for (const { creep, task } of legs) {
+    if (task.resource !== RESOURCE_ENERGY) continue;
+    if (creep === exclude) continue;
+    if (counted.has(creep)) continue;
+    counted.add(creep);
+    influx += creep.store.getCapacity(RESOURCE_ENERGY) ?? 0;
+  }
+  return Math.max(0, request.wanted - influx);
+}
+
+/**
  * Tier-first-then-nearest selection, no rate math: the lowest tier number present wins outright; among
  * ties at that tier, the request nearest `from` wins. `rangeTo` is injected (rather than this module
  * calling creep.pos.getRangeTo itself) so the selection logic stays a plain function over data, testable
- * without a live creep. Undefined when `requests` is empty.
+ * without a live creep. `targetedBy` (default: empty — no discount) is every OTHER live Supply creep's
+ * persisted task, folded via targeted.ts's buildTargetedBy; a target already fully covered by another
+ * Supply creep's incoming carry (discountedWanted <= 0) is skipped so a second idle creep doesn't pile onto
+ * the same extension while a different one sits unfilled. `exclude` should be the creep doing the ranking,
+ * mirroring pickBestDiscountedRequest's own param. Undefined when nothing has any real remaining want.
  */
 export function pickSupplyRequest(
   requests: readonly SupplyRequest[],
   from: RoomPosition,
-  rangeTo: (target: SupplyRequest["target"]) => number = target => from.getRangeTo(target)
+  rangeTo: (target: SupplyRequest["target"]) => number = target => from.getRangeTo(target),
+  targetedBy: TargetedBy = new Map(),
+  exclude?: Creep
 ): SupplyRequest | undefined {
   let best: SupplyRequest | undefined;
   let bestRange = Infinity;
   for (const request of requests) {
+    if (discountedWanted(request, targetedBy, exclude) <= 0) continue;
     if (best) {
       if (request.tier > best.tier) continue; // a worse tier never wins, regardless of distance
       if (request.tier === best.tier) {
