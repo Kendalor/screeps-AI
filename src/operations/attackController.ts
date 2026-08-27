@@ -18,6 +18,7 @@ export class AttackControllerOperation extends SingleTargetFlagOperation {
   // Original shape: never replace a dead creep once its slot has been used.
   public static readonly defaultLifetime = "oneShot" as const;
   public static readonly supportedLifetimes = new Set(["oneShot", "constant"] as const);
+  public static readonly role = ATTACK_CONTROLLER_ROLE;
 
   public readonly kind = AttackControllerOperation.kind;
   protected readonly role = ATTACK_CONTROLLER_ROLE;

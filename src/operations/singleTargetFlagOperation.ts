@@ -26,6 +26,7 @@ import type { Intent } from "../intents/types";
 import type { ColonySnapshot } from "../snapshot/types";
 import { orderBody } from "../spawn/body";
 import type { CreepRequest } from "../spawn/request";
+import { computeBoostNeeds } from "../empire/boostNeeds";
 import { Operation, type SponsorConfig } from "./operation";
 
 /**
@@ -41,6 +42,12 @@ export interface SingleTargetFlagOperationClass {
   readonly sponsorConfig: SponsorConfig;
   readonly defaultLifetime: OperationLifetime;
   readonly supportedLifetimes: ReadonlySet<OperationLifetime>;
+  // The one role this operation spawns, exposed as a static so a caller with only the CLASS (no instance
+  // yet — e.g. empire/singleTargetFlags.ts's boost-eligibility check, run before any sponsor is even
+  // picked) can read Role.boostable off it via behaviors/roles' roleDef, same reachable-without-
+  // constructing-an-instance reasoning as sponsorConfig/defaultLifetime above. Mirrors the instance-side
+  // `protected abstract readonly role` every concrete subclass already declares.
+  readonly role: RoleName;
   new (room: string, target: string, state: SingleTargetOpState): SingleTargetFlagOperation;
 }
 
@@ -92,6 +99,14 @@ export abstract class SingleTargetFlagOperation extends Operation {
     const body = this.skipBodyOrdering ? rawBody : orderBody(rawBody);
     if (body.length === 0) return [];
 
+    // Boost-stamping (gh #61 epic, Task E): only when this entry's flag resolved a tier at handoff time
+    // (empire/singleTargetFlags.ts's runSingleTargetFlags) — strictly additive, so an ordinary un-boosted
+    // request (the overwhelming majority) gets neither field at all, not empty-array/empty-object stand-ins.
+    const boostableActions = def.boostable ?? [];
+    const boosts = this.state.boostTier !== undefined ? boostableActions : undefined;
+    const boostNeeds =
+      this.state.boostTier !== undefined ? computeBoostNeeds(boostableActions, body, this.state.boostTier) : undefined;
+
     return Array.from({ length: outstanding }, () => ({
       body: [...body],
       priority: def.priority,
@@ -99,10 +114,12 @@ export abstract class SingleTargetFlagOperation extends Operation {
         role: this.role,
         home: colony.name,
         op: this.name,
-        followFlag: this.stampsFollowFlag ? this.state.flag : undefined
+        followFlag: this.stampsFollowFlag ? this.state.flag : undefined,
+        boosts: boosts ? [...boosts] : undefined
       },
       targetRoom: this.targetRoom,
-      spawnRoom: colony.name
+      spawnRoom: colony.name,
+      boostNeeds
     }));
   }
 

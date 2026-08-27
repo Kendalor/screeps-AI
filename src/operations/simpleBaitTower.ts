@@ -24,6 +24,7 @@ export class SimpleBaitTowerOperation extends SingleTargetFlagOperation {
   // Original shape: never replace a dead bait creep once its slot has been used.
   public static readonly defaultLifetime = "oneShot" as const;
   public static readonly supportedLifetimes = new Set(["oneShot", "constant"] as const);
+  public static readonly role = SIMPLE_BAIT_TOWER_ROLE;
 
   public readonly kind = SimpleBaitTowerOperation.kind;
   protected readonly role = SIMPLE_BAIT_TOWER_ROLE;

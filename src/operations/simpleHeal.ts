@@ -23,6 +23,7 @@ export class SimpleHealOperation extends SingleTargetFlagOperation {
   public static readonly sponsorConfig = { minCost: SIMPLE_HEALER_MIN_COST };
   public static readonly defaultLifetime = "constant" as const;
   public static readonly supportedLifetimes = new Set(["oneShot", "constant"] as const);
+  public static readonly role = SIMPLE_HEALER_ROLE;
 
   public readonly kind = SimpleHealOperation.kind;
   protected readonly role = SIMPLE_HEALER_ROLE;

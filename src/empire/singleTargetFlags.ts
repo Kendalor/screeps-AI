@@ -22,11 +22,15 @@
 // itself (remove the orphaned flag).
 
 import { flagRequests, lifetimeOf, routeDistance, targetRoomFor } from "./flagRequest";
-import { pickSponsorFor } from "./sponsor";
+import { canHostBoosting, pickBoostedSponsor, pickSponsorFor, type BoostRequest } from "./sponsor";
+import { pickAvailableTier, resolveCompoundViaBoostActions } from "./boostAvailability";
+import { availableEmpireStock, type ColonyEmpireStock } from "./logistics";
+import { roleDef } from "../behaviors/roles";
 import { execute } from "../intents/execute";
 import { log } from "../lib/log";
 import type { SingleTargetFlagOperationClass } from "../operations/singleTargetFlagOperation";
 import type { Empire } from "./index";
+import { parseTierSegment, type TierRequest } from "./boostTier";
 
 /** Creep count for a "<kind>:<room>:<n>" flag: an explicit third segment sets how many creeps to spawn;
  * omitted (or not a positive integer) defaults to 1. Every predecessor of this generic runner
@@ -35,6 +39,17 @@ function numCreepsFor(flag: Flag): number {
   const [, , countStr] = flag.name.split(":");
   const n = countStr ? parseInt(countStr, 10) : NaN;
   return Number.isInteger(n) && n > 0 ? n : 1;
+}
+
+/** Optional 4th "<kind>:<room>:<n>:<tier>" segment: a boost tier request for this flag's spawned creeps.
+ * Absent segment parses the same as parseTierSegment's own "omitted" case (greedy). An INVALID tier segment
+ * (present but not T/T1/T2/T3) is surfaced by returning the invalid result as-is — the caller decides
+ * whether to reject the whole flag or fall back; this function itself makes no policy decision. Wired into
+ * runSingleTargetFlags below: a "greedy"/"forced" result routes through pickBoostedSponsor and stamps the
+ * resolved tier onto setSingleTargetOp; "invalid" rejects the whole flag. */
+export function tierRequestFor(flag: Flag): TierRequest {
+  const [, , , tierStr] = flag.name.split(":");
+  return parseTierSegment(tierStr);
 }
 
 /** Runs once per tick from kernel/tick.ts, once per registered kind (see kernel/tick.ts's call sites).
@@ -113,14 +128,78 @@ export function runSingleTargetFlags(world: Empire, OpClass: SingleTargetFlagOpe
     // one active entry per (kind, colony) at a time, same rule the scalar family always used.
     const eligible = world.colonies.filter(c => !hasActiveEntry(c.snapshot.singleTargetOps[kind]));
 
-    const pick = pickSponsorFor(OpClass, eligible, target, routeDistance);
-    if (!pick.colony) {
-      log.error(`${kind} flag "${flag.name}": no fitting colony for ${target} (${pick.reason})`);
+    // A 4th segment must be PRESENT for this flag to opt into boosting at all — parseTierSegment's own
+    // "omitted" case reads identically to a bare "T" (both "greedy") since that file has no opinion on
+    // policy (see its own doc), but this call site does: a flag that never mentioned tiers in the first
+    // place must take the completely unchanged, pre-existing un-boosted path, never touching
+    // canHostBoosting/pickBoostedSponsor — only a flag that explicitly wrote a 4th segment (even a bare
+    // "T") is asking for a greedy/forced boost.
+    const hasTierSegment = flag.name.split(":")[3] !== undefined;
+    const tierRequest = tierRequestFor(flag);
+    if (hasTierSegment && tierRequest.kind === "invalid") {
+      // A typo on a flag that explicitly included a tier segment — reject the whole flag rather than
+      // silently falling back to un-boosted (see tierRequestFor's own doc).
+      log.error(`${kind} flag "${flag.name}": ${tierRequest.reason}`);
       continue;
     }
 
     const numCreeps = numCreepsFor(flag);
-    execute([{ kind: "setSingleTargetOp", room: pick.colony.name, opKind: kind, target, flag: flag.name, lifetime, numCreeps }]);
+    let boostTier: 1 | 2 | 3 | undefined;
+    let pick;
+
+    if (hasTierSegment && (tierRequest.kind === "greedy" || tierRequest.kind === "forced")) {
+      // A colony that can never host boost labs at all (below RCL6, <3 labs, no terminal) is never a
+      // candidate for a BOOSTED sponsor pick regardless of tier stock — filtered before pickBoostedSponsor
+      // even runs its own affordability/reachability/stock checks, same "filter the candidate list first"
+      // shape `eligible` above already uses for the one-active-entry-per-colony rule.
+      const boostEligible = eligible.filter(canHostBoosting);
+
+      const requiredActions = roleDef(OpClass.role)?.boostable ?? [];
+      const stocks: ColonyEmpireStock[] = world.colonies.map(c => ({
+        colony: c.name,
+        storage: Game.rooms[c.name]?.storage?.store,
+        terminal: Game.rooms[c.name]?.terminal?.store
+      }));
+      const reservedOf = (): number => 0; // advisory-only check; nothing reserves here yet
+      const boostRequest: BoostRequest = {
+        requiredActions,
+        tierRequest,
+        // A single flat amount-per-action, per pickAvailableTier's own documented simplification (a real
+        // per-action/body-aware amount is computeBoostNeeds' job, used below in desiredCreeps() once an
+        // actual body is known — this advisory stock check has no body yet, just a role's action list).
+        neededAmount: LAB_BOOST_MINERAL,
+        resolveCompound: resolveCompoundViaBoostActions,
+        colonies: stocks,
+        reservedOf
+      };
+
+      pick = pickBoostedSponsor(boostEligible, target, OpClass.sponsorConfig.minCost, routeDistance, boostRequest);
+      if (!pick.colony) {
+        log.error(`${kind} flag "${flag.name}": no fitting colony for ${target} (${pick.reason})`);
+        continue;
+      }
+
+      if (tierRequest.kind === "forced") {
+        boostTier = tierRequest.tier;
+      } else {
+        // pickBoostedSponsor's own SponsorPick has no room for which tier a greedy pick actually resolved
+        // to — re-run the same tier walk now that a sponsor is confirmed, to learn which one cleared, so
+        // desiredCreeps() can stamp the right tier's compounds rather than assuming T3.
+        const availableStock = (resource: ResourceConstant): number => availableEmpireStock(stocks, resource, reservedOf);
+        const availability = pickAvailableTier(requiredActions, resolveCompoundViaBoostActions, availableStock, LAB_BOOST_MINERAL);
+        boostTier = availability.kind === "available" ? availability.tier : undefined;
+      }
+    } else {
+      pick = pickSponsorFor(OpClass, eligible, target, routeDistance);
+      if (!pick.colony) {
+        log.error(`${kind} flag "${flag.name}": no fitting colony for ${target} (${pick.reason})`);
+        continue;
+      }
+    }
+
+    execute([
+      { kind: "setSingleTargetOp", room: pick.colony.name, opKind: kind, target, flag: flag.name, lifetime, numCreeps, boostTier }
+    ]);
     log.info(`${kind} flag "${flag.name}": handed ${target} off to ${pick.colony.name} (${numCreeps} creep${numCreeps === 1 ? "" : "s"}, ${lifetime})`);
     // Flag deliberately left in place: it's the live on/off switch for this target (see file header).
   }

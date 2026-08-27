@@ -20,6 +20,7 @@ export class DemolishOperation extends SingleTargetFlagOperation {
   // A WHITE flag now gets the (arguably more correct) one-shot-per-slot behavior SimpleBaitTower always had.
   public static readonly defaultLifetime = "constant" as const;
   public static readonly supportedLifetimes = new Set(["oneShot", "constant"] as const);
+  public static readonly role = DEMOLISHER_ROLE;
 
   public readonly kind = DemolishOperation.kind;
   protected readonly role = DEMOLISHER_ROLE;

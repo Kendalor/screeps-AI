@@ -87,6 +87,22 @@ export interface BoostRequest {
  * should already have rejected it before ever calling sponsor-pick) — rather than throwing on unexpected
  * input, it's treated as an unconditional "boostTierUnavailable", the safest default available from this
  * function's existing reason union. */
+/** Whether `colony` could ever host boosting at all — RCL6+ (labs unlock then), at least 3 labs actually
+ * built, and a terminal (boost compound arrives via empire logistics, which requires one). A colony failing
+ * this can never be picked as a boosted sponsor regardless of tier stock — checked as a candidate-list
+ * filter BEFORE pickSponsor's own affordability/reachability checks, same shape singleTargetFlags.ts's
+ * existing `eligible = colonies.filter(...)` pre-filter already uses for a different eligibility rule.
+ * Lab count isn't on ColonySnapshot (never added — see docs/boosting-lab-runner-design.md), so this reads
+ * live Game.rooms[...] directly for that one fact, matching stewardRegister.ts's established ADR 0008
+ * precedent of reading live Game.* for structure data the snapshot doesn't carry. */
+export function canHostBoosting(colony: Colony): boolean {
+  const snap = colony.snapshot;
+  if (snap.controllerLevel < 6) return false;
+  if (snap.terminalId === undefined) return false;
+  const labCount = Game.rooms[snap.name]?.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_LAB }).length ?? 0;
+  return labCount >= 3;
+}
+
 export function pickBoostedSponsor(
   colonies: readonly Colony[],
   target: string,
