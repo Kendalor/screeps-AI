@@ -24,6 +24,10 @@ export class DemolisherRole extends Role {
   static override readonly mover = true;
   // Once every WORK part is destroyed this body can't dismantle anything — see Role.retreatPart.
   static override readonly retreatPart = WORK;
+  // Boostable on the one non-MOVE action its body ever performs: dismantle (WORK's ZH/ZH2O/XZH2O line,
+  // distinct from WORK's other action-per-compound lines — harvest/build+repair/upgradeController — which
+  // this role's body never uses). See Role.boostable's doc.
+  static override readonly boostable: readonly string[] = ["dismantle"];
   static override body(energy: number): BodyPartConstant[] {
     return demolisherBody(energy);
   }

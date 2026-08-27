@@ -31,6 +31,10 @@ export class SimpleBaitTowerRole extends Role {
   // pure loss instead of the intended damage-absorption trade — retreat home the same way Defender/
   // Attacker/SimpleHealer already do once disarmed of THEIR one defining part. See Role.retreatPart.
   static override readonly retreatPart = HEAL;
+  // Boostable on every non-MOVE part its body actually uses: TOUGH (survivability), HEAL (self-heal), and
+  // ATTACK (the tail's damage output) — see Role.boostable's doc. MOVE deliberately excluded, matching
+  // SimpleHealerRole's existing precedent.
+  static override readonly boostable: readonly string[] = ["tough", "heal", "attack"];
   static override body(energy: number): BodyPartConstant[] {
     return simpleBaitTowerBody(energy);
   }

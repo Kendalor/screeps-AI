@@ -15,7 +15,6 @@ import {
   runStep,
   type CreepState
 } from "../behaviors/interpreter";
-import type { BoostLabAssignment } from "./boostLabAllocation";
 import { roleDef } from "../behaviors/roles";
 import { resolveStewardTriangle, runStewardTask } from "../behaviors/stewardTaskRunner";
 import { sweepEnRoute } from "../behaviors/sweep";
@@ -131,9 +130,16 @@ function transportCreepsByHome(): Map<string, Creep[]> {
 // Returns the squad anchor write-back intents (see SquadBearingOperation.setSquadAnchor's doc) — the ONE
 // piece of this function's work that goes through the Intent/execute.ts pipeline; everything else
 // (movement, actions) acts directly on Game objects, per the module header.
+//
+// `boostLabIdsByHome`: each colony's OWN reserved boost lab ids (ColonyMemory.boostLabIds, written by the
+// LabRunner — see colony/index.ts's labs()), keyed by colony room name — the exact per-colony keying
+// transportByHome (above) already establishes. A creep spawned by colony A must never be handed colony B's
+// lab ids, so this is looked up per creep (via creep.memory.home) inside the loop below, and only the
+// resulting plain array — never the whole map — is threaded down into dispatchCreep/runOne/boostPreemption,
+// whose own signatures stay exactly as Task B left them (a flat readonly Id<StructureLab>[]).
 export const runCreepBehaviors = wrapFn(function runCreepBehaviors(
   colonies: readonly Colony[] = [],
-  boostAssignments: Map<Id<Creep>, BoostLabAssignment> = new Map()
+  boostLabIdsByHome: Map<string, readonly Id<StructureLab>[]> = new Map()
 ): Intent[] {
   // Compute squad membership once, up front — the single source of truth shared between the per-creep
   // skip below and the runSquads pass, so a squadded creep is never run by both or neither (ADR 0007).
@@ -152,7 +158,7 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(
     // (Invader NPC) reaching roadAvoidance's moverNearby threw and froze the rest of Game.creeps for the
     // tick, since the only guard used to be the one system-level runGuarded("creeps", ...) in kernel/tick.ts.
     try {
-      dispatchCreep(creep, transportByHome, boostAssignments.get(creep.id));
+      dispatchCreep(creep, transportByHome, boostLabIdsByHome.get(creep.memory.home) ?? []);
     } catch (e) {
       log.error(`creep ${name} threw: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
     }
@@ -162,10 +168,10 @@ export const runCreepBehaviors = wrapFn(function runCreepBehaviors(
 }, "creeps:runCreepBehaviors");
 
 // One creep's behavior for the tick — split out of the loop above so it can be wrapped in its own
-// try/catch without duplicating the dispatch logic. `boostAssignment` is this one creep's own already-
-// resolved slice of gh #74's colony-wide planBoostLabAllocation output (see boostPreemption's doc,
-// behaviors/interpreter.ts) — undefined for the overwhelming majority of creeps with no pending boost order.
-function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boostAssignment: BoostLabAssignment | undefined): void {
+// try/catch without duplicating the dispatch logic. `boostLabIds` is the colony's reserved boost lab IDs
+// (see boostPreemption's doc, behaviors/interpreter.ts) — the same array passed to every boostable creep;
+// a creep with no pending boost order never even looks at it.
+function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boostLabIds: readonly Id<StructureLab>[]): void {
   // Diverted before the step-table dispatch per the role's own opt-in (Role.dispatch's doc,
   // behaviors/roles/role.ts) rather than a static step table.
   switch (roleDef(creep.memory.role)?.dispatch) {
@@ -176,7 +182,7 @@ function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boos
       // like a step-table hauler would. Flee is checked FIRST — an armed threat always outranks a calm
       // walk to a boost lab, same ordering runOne itself uses below.
       if (fleeThreat(creep)) return;
-      if ((roleDef(creep.memory.role)?.boostable?.length ?? 0) > 0 && boostPreemption(creep, boostAssignment)) return;
+      if ((roleDef(creep.memory.role)?.boostable?.length ?? 0) > 0 && boostPreemption(creep, boostLabIds)) return;
       // Supply and Transport share dispatch:"logistics" (Role.dispatch's doc) and, as of gh #53, share an
       // executor shape too: both are now driven entirely by their own self-registered LogisticsRequest/
       // SupplyRequest pool (behaviors/transportTaskRunner.ts / behaviors/supplyTaskRunner.ts) — the old
@@ -197,7 +203,7 @@ function dispatchCreep(creep: Creep, transportByHome: Map<string, Creep[]>, boos
       dispatchSteward(creep);
       return;
     default:
-      runOne(creep, boostAssignment);
+      runOne(creep, boostLabIds);
   }
 }
 
@@ -339,7 +345,7 @@ function atLockedTarget(creep: Creep, locked: Id<_HasId> | undefined): boolean {
   return !!obj?.pos && creep.pos.inRangeTo(obj.pos, 1);
 }
 
-const runOne = wrapFn(function runOne(creep: Creep, boostAssignment: BoostLabAssignment | undefined): void {
+const runOne = wrapFn(function runOne(creep: Creep, boostLabIds: readonly Id<StructureLab>[]): void {
   const def = roleDef(creep.memory.role);
   if (!def || def.steps.length === 0) return;
 
@@ -358,7 +364,7 @@ const runOne = wrapFn(function runOne(creep: Creep, boostAssignment: BoostLabAss
   // in or a disarmed retreat both outrank a calm walk to a boost lab, same priority order a human player
   // would want. Placed alongside its two siblings (not ahead of the whole dispatch switch in dispatchCreep)
   // so every one of runOne's pre-emption checks lives in exactly one place, checked in exactly one order.
-  if ((def.boostable?.length ?? 0) > 0 && boostPreemption(creep, boostAssignment)) return;
+  if ((def.boostable?.length ?? 0) > 0 && boostPreemption(creep, boostLabIds)) return;
 
   const task = (creep.memory.task ??= { step: 0 });
   if (task.step >= def.steps.length) task.step = 0; // steps changed under us

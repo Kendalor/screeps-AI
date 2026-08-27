@@ -2,7 +2,6 @@
 
 import { actOnResolved, transferTo, withdrawOrPickup } from "./actions";
 import { boostActionFor } from "../empire/boostActions";
-import type { BoostLabAssignment } from "../empire/boostLabAllocation";
 import { log } from "../lib/log";
 import { HEAL_ASSIST_RANGE, massAttackDamagePerPartAt, RANGED_ATTACK_RANGE } from "../lib/combat";
 import { isDangerous } from "../memory/reputation";
@@ -1406,32 +1405,46 @@ export function retreatIfDisarmed(creep: Creep, part: BodyPartConstant): boolean
   return true;
 }
 
-// Boost pre-emption (gh #75, final sub-ticket of the #61 boosting epic) — checked inside runOne
-// (empire/creeps.ts) alongside its two siblings, fleeThreat and retreatIfDisarmed, AFTER both of them: a
-// static, cheap check (Role.boostable non-empty) gates whether a role can ever be a candidate at all,
-// checked before ever looking at a specific creep's memory; only then does creep.memory.boosts (a pending
-// order, see memory/schema.ts) matter. Ordered after flee/retreat deliberately — an armed hostile closing in
-// or a disarmed retreat both outrank a calm walk to a boost lab; a boostable creep that also needs to flee
-// or retreat must still do so, never getting stuck pursuing its boost order instead. All three checks live
-// in the same place (runOne) and run in the same fixed order, rather than one of them being special-cased
-// ahead of the others at a different call site.
+// Boost pre-emption (gh #75, epic #61; rewritten per docs/boosting-lab-runner-design.md section 5) —
+// checked inside runOne (empire/creeps.ts) alongside its two siblings, fleeThreat and retreatIfDisarmed,
+// AFTER both of them: a static, cheap check (Role.boostable non-empty) gates whether a role can ever be a
+// candidate at all, checked before ever looking at a specific creep's memory; only then does
+// creep.memory.boosts (a pending order, see memory/schema.ts) matter. Ordered after flee/retreat
+// deliberately — an armed hostile closing in or a disarmed retreat both outrank a calm walk to a boost
+// lab; a boostable creep that also needs to flee or retreat must still do so, never getting stuck pursuing
+// its boost order instead. All three checks live in the same place (runOne) and run in the same fixed
+// order, rather than one of them being special-cased ahead of the others at a different call site.
 //
-// `assignment` is this creep's own already-resolved slice of gh #74's planBoostLabAllocation output — a
-// per-tick Map computed ONCE per colony (never per creep) and threaded down as a plain argument, exactly
-// like empire/creeps.ts's dispatchCreep already threads other precomputed per-tick data (transportByHome)
-// down to individual creep dispatch. This function only ever reads ITS OWN entry — it never scans or ranks
-// other creeps, and never reaches into #74's allocation logic itself.
+// No per-creep assignment map anymore (the old #74 planBoostLabAllocation shape this superseded — see the
+// design doc's "why the previous shape was replaced"): `boostLabIds` is simply the colony's reserved boost
+// lab IDs, the SAME array handed to every boostable creep in the colony. This creep scans them itself
+// every tick for one already stocked with a compound it still needs, in sufficient amount — matching
+// Overmind/Hivemind's self-discovery approach. This sidesteps the old design's tier-ordering problem
+// entirely: no colony-wide allocation pass needs to run and reach this function before creep dispatch, so
+// the colony-scoped LabRunner (tier 3) and this per-creep check (tier 1) stay fully decoupled.
+//
+// Which tier compound counts as a match: creep.memory.boosts entries are abstract ACTION names (e.g.
+// "heal"), not specific compounds/tiers — nothing in a creep's own memory says "I want T3 specifically"
+// (tier resolution happens at the OPERATION level, when the boost order is created). So for lab-discovery
+// purposes, ANY of the action's T1/T2/T3 compounds is an acceptable match — whichever tier a lab happens
+// to be stocked with, take it, rather than holding out for a specific tier the creep has no memory of
+// wanting. Confirmed against memory/schema.ts: CreepMemory.boosts is plain `string[]`, no tier info.
+//
+// Amount math uses the same LAB_BOOST_MINERAL * matching-part-count formula boostNeeds.ts's
+// computeBoostNeeds is built on (see findStockedBoostLab below) — computeBoostNeeds itself sizes against
+// EVERY matching part in a fixed tier's compound, which doesn't fit this per-lab, per-tier, partial-boost
+// check (see findStockedBoostLab's own doc for why it isn't called directly here).
 //
 // Two outcomes once pre-empted:
-// - Assigned a lab: walk to range 1 of it, then call boostCreep once adjacent. The engine allows exactly
-//   one boostCreep() call per lab per tick anyway; issuing at most one call per creep per tick trivially
-//   respects that without any extra locking (see the epic's user story 19). The call's return code is
-//   logged (never silently swallowed) — a short-on-compound or otherwise-failed call leaves the order
-//   pending exactly as if nothing had been assigned, so the next planBoostLabAllocation pass gets a chance
-//   to fix the underlying cause (e.g. more compound arriving) rather than this routine silently spinning.
-// - Not assigned (absent from the map — #74's "step aside" outcome, lost the scarcity tie-break, or no
-//   colony boost pass has run yet): do nothing this tick rather than act on stale state. The order stays
-//   pending in memory, retried automatically next tick once #74 recomputes fresh.
+// - A matching, sufficiently-stocked lab is found among boostLabIds: walk to range 1 of it, then call
+//   boostCreep once adjacent. The engine allows exactly one boostCreep() call per lab per tick anyway;
+//   issuing at most one call per creep per tick trivially respects that without any extra locking (see the
+//   epic's user story 19). The call's return code is logged (never silently swallowed) — a short-on-
+//   compound or otherwise-failed call leaves the order pending exactly as if no lab had matched, so the
+//   next tick's fresh scan gets a chance to fix the underlying cause (e.g. more compound arriving) rather
+//   than this routine silently spinning.
+// - No matching lab found: do nothing this tick rather than travel toward or act on a lab that can't help.
+//   The order stays pending in memory, retried automatically next tick with a fresh scan.
 //
 // Order-clearing: a boost order's entries are abstract ACTION names (e.g. "heal"), not compounds — the only
 // live signal that an action was actually applied is every one of the resolved body part's copies now
@@ -1442,7 +1455,7 @@ export function retreatIfDisarmed(creep: Creep, part: BodyPartConstant): boolean
 // could do for it. Once every entry is satisfied the whole order clears in one write (creep.memory.boosts =
 // undefined), the same self-clearing shape every other opt-in memory field in this codebase already follows
 // (Role.boostable's own doc, behaviors/roles/role.ts).
-export function boostPreemption(creep: Creep, assignment: BoostLabAssignment | undefined): boolean {
+export function boostPreemption(creep: Creep, boostLabIds: readonly Id<StructureLab>[]): boolean {
   const boosts = creep.memory.boosts;
   if (!boosts || boosts.length === 0) return false;
 
@@ -1458,13 +1471,21 @@ export function boostPreemption(creep: Creep, assignment: BoostLabAssignment | u
   }
   if (remaining.length !== boosts.length) creep.memory.boosts = remaining;
 
-  if (!assignment) {
-    log.debugCreep(creep.name, "boostPreemption: no lab assigned this tick — waiting");
+  // computeBoostNeeds sizes each remaining action's compound need against THIS creep's real body (the
+  // same LAB_BOOST_MINERAL * matching-part-count math the colony-side demand aggregation already uses).
+  // Its return shape is keyed by ONE resolved compound per action (tier 1 here, arbitrarily — see below),
+  // so `wantedActions` recomputes the acceptable T1/T2/T3 SET per action separately, since any tier is a
+  // valid match (the design's "which tier" note above) and computeBoostNeeds only ever returns a single
+  // chosen tier's compound per call.
+  const wantedActions = remaining
+    .map(action => boostActionFor(action))
+    .filter((r): r is Extract<ReturnType<typeof boostActionFor>, { kind: "found" }> => r.kind === "found");
+
+  const lab = wantedActions.length > 0 ? findStockedBoostLab(creep, boostLabIds, wantedActions) : undefined;
+  if (!lab) {
+    log.debugCreep(creep.name, "boostPreemption: no stocked lab found among boostLabIds this tick — waiting");
     return true;
   }
-
-  const lab = Game.getObjectById(assignment.labId);
-  if (!lab) return true; // lab vanished (destroyed?) — hold; #74 will stop assigning it next pass
 
   // actOnResolved (behaviors/actions.ts) owns the shared "in range -> act, else travelTo" leaf every other
   // step in this file already routes through; boostCreep()'s own return code is captured via this closure
@@ -1475,6 +1496,36 @@ export function boostPreemption(creep: Creep, assignment: BoostLabAssignment | u
     log.debugCreep(creep.name, `boostPreemption: boostCreep(${lab.id}) returned ${boostResult} — will retry next tick`);
   }
   return true;
+}
+
+// Scans boostLabIds (live Game reads, same as any other step-table target resolution) for one whose
+// current stock (mineralType + mineralAmount) matches ANY of the creep's still-wanted actions' T1/T2/T3
+// compounds, in an amount sufficient to boost every one of that action's still-unboosted matching body
+// parts. The per-part unit cost is LAB_BOOST_MINERAL regardless of tier (boostNeeds.ts's own doc: "the real
+// engine boosts LAB_BOOST_MINERAL units of compound PER BODY PART"), the same constant computeBoostNeeds
+// uses — reused directly here rather than re-declared, since computeBoostNeeds itself can't be called as-is
+// for this per-lab check: it sizes against EVERY matching part in the body (boosted or not) for one fixed
+// tier's compound, whereas this needs the count of parts STILL unboosted (a partial-boost retry — see the
+// "multi-part body where only some matching parts are boosted" test) checked against WHICHEVER tier the
+// candidate lab actually holds. Returns the first such lab found; the exact tie-break among multiple
+// simultaneously-matching labs is not specified by the design (FCFS allocation already keeps at most one
+// stocked lab per compound in the common case) and is not tested here.
+function findStockedBoostLab(
+  creep: Creep,
+  boostLabIds: readonly Id<StructureLab>[],
+  wantedActions: readonly Extract<ReturnType<typeof boostActionFor>, { kind: "found" }>[]
+): StructureLab | undefined {
+  for (const labId of boostLabIds) {
+    const lab = Game.getObjectById(labId);
+    if (!lab || !lab.mineralType) continue;
+    for (const action of wantedActions) {
+      if (lab.mineralType !== action.T1 && lab.mineralType !== action.T2 && lab.mineralType !== action.T3) continue;
+      const unboostedPartCount = creep.body.filter(p => p.type === action.bodyPart && p.boost === undefined).length;
+      if (unboostedPartCount === 0) continue;
+      if (lab.mineralAmount >= unboostedPartCount * LAB_BOOST_MINERAL) return lab;
+    }
+  }
+  return undefined;
 }
 
 // Nudge an in-range upgrader toward a better standing tile: the free controller container if there is
