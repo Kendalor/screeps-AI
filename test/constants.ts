@@ -495,6 +495,7 @@ Object.assign(globalThis, {
   STRUCTURE_CONTAINER: "container",
   STRUCTURE_CONTROLLER: "controller",
   STRUCTURE_TERMINAL: "terminal",
+  STRUCTURE_LAB: "lab",
   STRUCTURE_INVADER_CORE: "invaderCore",
   STRUCTURE_KEEPER_LAIR: "keeperLair",
   STRUCTURE_EXTRACTOR: "extractor",

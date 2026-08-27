@@ -12,8 +12,20 @@ import type { CreepRequest } from "../spawn/request";
 import { log } from "../lib/log";
 import type { PlacedStructure } from "../construction/stamp";
 import { buildingRowsFromPlan, claimsOf, planBuilding, repurposeIdleBuilders } from "../construction/planner";
+import { roleDef } from "../behaviors/roles";
+import { computeBoostNeeds } from "../empire/boostNeeds";
+import { aggregateBoostDemand, type CreepBoostDemand } from "../empire/boostDemand";
+import { planLabClaims, type BoostContender, type LabClaim } from "../empire/labClaims";
+import type { ColonyMemory } from "../memory/schema";
 import { collectMetrics } from "./metrics";
 import { visualize } from "./metricsVisual";
+
+// The tier every boost order resolves against until a later task threads a real resolved tier through
+// from flag-parsing (see docs/boosting-lab-runner-design.md's own note on this gap). T1 is the safe
+// placeholder: it demands the least compound and is never wrong in kind, only potentially under-boosted
+// compared to whatever tier a future task would have picked. No field on CreepMemory/SnapCreep carries a
+// resolved tier today — searched both before choosing this default.
+const DEFAULT_BOOST_TIER = 1 as const;
 
 export class Colony {
   public readonly operations: Operation[];
@@ -130,6 +142,75 @@ export class Colony {
   /** The construction arbiter for this colony. */
   public building(): Intent[] {
     return planBuilding(this.snapshot, this.operations);
+  }
+
+  /**
+   * The LabRunner (gh #61 epic, docs/boosting-lab-runner-design.md sections 2-3): thin wrapper, same shape
+   * as building() above — reads live/persisted state, calls Task A's pure planLabClaims, returns Intent[]
+   * that persist the result. Two independent halves:
+   *
+   * (a) One-time lab-identity discovery: once Memory.colonies[this.name].boostLabIds is set, this half
+   * never runs again (see ColonyMemory.boostLabIds' own doc for why re-deciding later is deliberately
+   * unsupported). Reads live labs off Game.rooms directly (not the snapshot, which carries no lab list) —
+   * an unavoidable direct Game.* read, same precedent stewardRegister.ts already sets for out-of-snapshot
+   * structure data.
+   *
+   * (b) Every-call claim reconciliation/allocation: runs only once boostLabIds exists, over every
+   * currently-boostable creep this colony owns with a still-pending memory.boosts order.
+   */
+  public labs(): Intent[] {
+    const intents: Intent[] = [];
+    const mem: ColonyMemory | undefined = Memory.colonies[this.name];
+    let boostLabIds = mem?.boostLabIds;
+
+    if (!boostLabIds) {
+      const labs = Game.rooms[this.name]
+        ?.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_LAB })
+        .map(s => s.id as Id<StructureLab>);
+      if (labs && labs.length >= 3) {
+        const chosen = [...labs].sort().slice(0, 3);
+        intents.push({ kind: "setBoostLabIds", room: this.name, labIds: chosen });
+        boostLabIds = chosen; // usable this same call for (b) below, though normally not set until next tick
+      }
+    }
+
+    if (!boostLabIds) return intents; // fewer than 3 labs built yet — nothing to allocate onto
+
+    const existingClaims: LabClaim[] = Object.entries(mem?.boostClaims ?? {}).map(([labId, claim]) => ({
+      labId: labId as Id<StructureLab>,
+      compound: claim!.compound,
+      amount: claim!.amount
+    }));
+
+    const contenders: BoostContender[] = [];
+    const demands: CreepBoostDemand[] = [];
+    for (const creep of this.snapshot.creeps) {
+      const pending = creep.memory.boosts;
+      if (!pending || pending.length === 0) continue;
+      const boostable = roleDef(creep.role)?.boostable ?? [];
+      // Only the still-outstanding actions — a creep whose "heal" is already satisfied shouldn't keep
+      // demanding lab capacity for it (see this method's own header doc / the spec's own reasoning).
+      const stillPending = boostable.filter(action => pending.includes(action));
+      if (stillPending.length === 0) continue;
+      // The snapshot's own body (live parts only) is exactly what computeBoostNeeds wants; falling back to
+      // live Game.creeps only if a future snapshot ever omits body (it doesn't today — SnapCreep.body
+      // exists), matching stewardRegister.ts's precedent for reading live Game.* when a snapshot lacks
+      // something this capability needs.
+      const body = creep.body ?? Game.creeps[creep.name]?.body.map(p => p.type) ?? [];
+      const needs = computeBoostNeeds(stillPending, body, DEFAULT_BOOST_TIER);
+      // Spawning creeps have no ticksToLive; SnapCreep carries no spawn-progress/remaining-ticks field
+      // either, so 0 is used as a documented placeholder meaning "always most urgent" (see this method's
+      // header doc) — Task A's planLabClaims sorts contenders ascending by this value.
+      const ticksUntilReady = creep.spawning ? 0 : (creep.ticksToLive ?? 0);
+      contenders.push({ creepId: creep.id, ticksUntilReady, needs });
+      demands.push({ creepId: creep.id, needs });
+    }
+
+    const aggregatedDemand = aggregateBoostDemand(demands);
+    const claims = planLabClaims(existingClaims, boostLabIds, contenders, aggregatedDemand);
+    intents.push({ kind: "setBoostClaims", room: this.name, claims });
+
+    return intents;
   }
 
   /**

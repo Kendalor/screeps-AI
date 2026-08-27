@@ -21,4 +21,14 @@ declare module "@screeps/common/lib/constants" {
   export const ROAD_HITS: number;
   export const RAMPART_HITS: number;
   export const WALL_HITS: number;
+  export const LAB_ENERGY_CAPACITY: number;
+  export const LAB_MINERAL_CAPACITY: number;
+  export const LAB_HITS: number;
+  export const LINK_CAPACITY: number;
+  export const LINK_HITS: number;
+  export const TERMINAL_CAPACITY: number;
+  export const TERMINAL_HITS: number;
+  /** Controller progress required to advance FROM the given level, indexed by controller level. */
+  export const CONTROLLER_LEVELS: Record<number, number>;
+  export const COLOR_WHITE: number;
 }

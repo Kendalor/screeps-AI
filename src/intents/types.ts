@@ -2,6 +2,8 @@
 
 import type { OperationLifetime, RoleName, RemoteMemory, SquadAnchorMemory } from "../memory/schema";
 import type { XY } from "../lib/geometry";
+import type { LabClaim } from "../empire/labClaims";
+import type { EmpireReservation } from "../empire/logistics";
 
 export type Intent =
   | { kind: "towerAttack"; tower: Id<StructureTower>; target: Id<Creep> }
@@ -185,8 +187,20 @@ export type Intent =
   // at `target`. execute.ts owns the ColonyMemory.singleTargetOps[kind][target] write (a plain set, not an
   // append — each (kind, target) pair holds at most one entry). `flag` ties the entry's lifetime to its
   // one originating flag in both directions (see SingleTargetOpState.flag's doc); `lifetime` is resolved
-  // once here from the flag's color (empire/flagRequest.ts's lifetimeOf) and never re-derived.
-  | { kind: "setSingleTargetOp"; room: string; opKind: string; target: string; flag: string; lifetime: OperationLifetime; numCreeps: number }
+  // once here from the flag's color (empire/flagRequest.ts's lifetimeOf) and never re-derived. `boostTier`
+  // (gh #61 epic, Task E) is the resolved tier from the flag's optional ":T3"/":T" suffix, once
+  // pickBoostedSponsor/pickAvailableTier has confirmed the empire can actually supply it — absent for a
+  // flag with no tier suffix at all (see SingleTargetOpState.boostTier's own doc).
+  | {
+      kind: "setSingleTargetOp";
+      room: string;
+      opKind: string;
+      target: string;
+      flag: string;
+      lifetime: OperationLifetime;
+      numCreeps: number;
+      boostTier?: 1 | 2 | 3;
+    }
   // Manual/flag-removal stop: clears ColonyMemory.singleTargetOps[opKind][target] entirely (there's no
   // flag left to clean up — it's already gone) so Colony's constructor stops attaching that operation
   // instance from the next tick on. Emitted by empire/singleTargetFlags.ts once a colony's tracked flag is
@@ -220,6 +234,15 @@ export type Intent =
   // own intents() at the moment a squad first welds up (seeding the value from the live squad's position).
   | { kind: "setDrainAnchor"; room: string; anchor: SquadAnchorMemory }
   | { kind: "setParadeAnchor"; room: string; anchor: SquadAnchorMemory }
+  // The LabRunner's one-time lab-identity discovery (see ColonyMemory.boostLabIds' doc) — emitted by
+  // Colony.labs() the first tick this colony's room has 3+ built labs and boostLabIds is still unset.
+  // execute.ts owns the Memory.colonies[room].boostLabIds write; never re-emitted afterward (Colony.labs()
+  // skips this half of its work entirely once the field is already set).
+  | { kind: "setBoostLabIds"; room: string; labIds: Id<StructureLab>[] }
+  // The LabRunner's every-call claim reconciliation/allocation result (see ColonyMemory.boostClaims' doc)
+  // — emitted by Colony.labs() every call once boostLabIds is set, from empire/labClaims.ts's planLabClaims.
+  // A full overwrite (not a merge), same "fresh snapshot every pass" rule as setEmpireReservations.
+  | { kind: "setBoostClaims"; room: string; claims: LabClaim[] }
   // gh #60's four market side effects — one Intent kind per distinct Game.market.* call, matching this
   // codebase's existing one-kind-per-API-call convention (see docs/market-plan.md decision 8). Emitted by
   // empire/marketFallback.ts's buy/sell/reprice/prune decision logic.
@@ -240,7 +263,7 @@ export type Intent =
   // at least one resource; execute.ts owns the Memory write. A colony with nothing to reserve this pass
   // gets an empty object, not a skipped intent, so a stale reservation from a resource no longer matched
   // doesn't linger past the pass that produced it.
-  | { kind: "setEmpireReservations"; room: string; reservations: Partial<Record<ResourceConstant, number>> }
+  | { kind: "setEmpireReservations"; room: string; reservations: Partial<Record<ResourceConstant, EmpireReservation>> }
   // Spends PIXEL_CPU_COST bucket for one pixel — emitted empire-wide (not per-colony) whenever the bucket
   // is full; see empire/pixels.ts.
   | { kind: "generatePixel" }

@@ -6,6 +6,7 @@ import type { PersistedTask } from "../logistics/task";
 import type { LogLevel } from "../lib/log";
 import type { XY } from "../lib/geometry";
 import type { Reputation } from "./reputation";
+import type { EmpireReservation } from "../empire/logistics";
 
 declare global {
   interface Memory {
@@ -286,6 +287,23 @@ export interface ColonyMemory {
   // (clearSingleTargetOp — see that intent's own doc for the one-shot self-end case); read every tick by
   // Colony's constructor to attach one real operation instance per (kind, target) entry.
   singleTargetOps?: Partial<Record<string, Record<string, SingleTargetOpState>>>;
+  // The 3 permanently-reserved boost lab structure ids for this colony (gh #61 epic,
+  // docs/boosting-lab-runner-design.md sections 2-3) — set ONCE, the first tick Colony.labs() (the
+  // LabRunner) observes 3+ labs built in this room (RCL6+), and never re-decided afterward even if more
+  // labs get built later (a 4th+ lab simply isn't reserved for boosting). Chosen deterministically (sorted
+  // by `.id` ascending, first 3) rather than by position — this codebase has no "built-at" timestamp to
+  // sort by more precisely, and any consistent pick is equally valid per the design doc's own "first 3
+  // built" rule. Absent until that first observation; written via the setBoostLabIds intent (execute.ts).
+  boostLabIds?: Id<StructureLab>[];
+  // Current lab claims (docs/boosting-lab-runner-design.md sections 2-3) — labId -> {compound, amount} this
+  // lab should be stocked with, as last computed by Colony.labs()' own call to empire/labClaims.ts's
+  // planLabClaims. Recomputed and fully overwritten every LabRunner pass (kernel/tick.ts's "labs" SYSTEMS
+  // entry, tier 3/interval 5) from that tick's live contenders — not merged/accumulated, matching
+  // empireReservations' own "fresh snapshot, not a durable obligation" rule below. Read by the colony's
+  // logistics system to generate an actual lab-fill want-request (a SEPARATE task — nothing consumes this
+  // yet). Absent/empty means no creep currently needs anything boosted. Written via the setBoostClaims
+  // intent (execute.ts).
+  boostClaims?: Partial<Record<Id<StructureLab>, { compound: ResourceConstant; amount: number }>>;
   // The drain squad's own persisted anchor — the formation's bounding box's FIXED top-left corner (see
   // lib/squad.ts's SquadState doc), owned by operations/drain.ts. Seeded once from the live squad's own
   // position at the moment it first welds up (the same live-position derivation the anchor used to be
@@ -342,8 +360,12 @@ export interface ColonyMemory {
   // pass (kernel/tick.ts's runEmpireLogistics), never merged/accumulated — consistent with decision 11's
   // "no persisted pending-send intent, recompute fresh": this is a same-tick-fresh reservation HINT for
   // Steward's own request pool, not a durable cross-pass obligation the empire is tracking. Absent/empty
-  // between passes for a colony with nothing currently matched to send.
-  empireReservations?: Partial<Record<ResourceConstant, number>>;
+  // between passes for a colony with nothing currently matched to send. Each entry's `priority` (added
+  // alongside `amount`, see EmpireReservation's own doc) is the matched deficit's urgency — "High" only ever
+  // originates from a colony with a REAL boosted-spawn-request need for that resource right now
+  // (ColonyMemory.boostClaims) — and lets Steward's own multiplier decisively outrank an ordinary "Normal"
+  // reservation instead of tying with it.
+  empireReservations?: Partial<Record<ResourceConstant, EmpireReservation>>;
 }
 
 // See ColonyMemory.empireRole's doc — pulled out as its own type so empire/logistics.ts can name it
@@ -392,6 +414,13 @@ export interface SingleTargetOpState {
   // which tops up against live count instead) — distinguishes "still below `wanted`, keep requesting"
   // from "hit the quota, stop" even across deaths, so a one-shot slot never reopens once used.
   spawnedCount: number;
+  // The boost tier this entry's flag resolved to at handoff time (gh #61 epic, Task E), set once by
+  // setSingleTargetOp alongside every other field here and never re-derived afterward — a forced ":T3"
+  // flag stamps its exact tier, a greedy ":T" flag stamps whichever tier empire/singleTargetFlags.ts's
+  // pickAvailableTier walk actually found available at handoff time. Absent means this flag carried no
+  // tier suffix at all (the ordinary, un-boosted path) — desiredCreeps() (singleTargetFlagOperation.ts)
+  // reads this to decide whether to stamp memory.boosts/boostNeeds onto its spawned creeps at all.
+  boostTier?: 1 | 2 | 3;
 }
 
 // One remote room we've chosen to mine, cached in ColonyMemory so selection is stable and not re-ranked

@@ -378,7 +378,8 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
         flag: intent.flag,
         lifetime: intent.lifetime,
         wanted: intent.numCreeps,
-        spawnedCount: 0
+        spawnedCount: 0,
+        boostTier: intent.boostTier
       };
       return OK;
     }
@@ -421,6 +422,16 @@ function act(intent: Intent, resolvedRouteTiles: Set<string>): ScreepsReturnCode
     case "setDrainAnchor": {
       const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
       mem.drainAnchor = intent.anchor;
+      return OK;
+    }
+    case "setBoostLabIds": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.boostLabIds = intent.labIds;
+      return OK;
+    }
+    case "setBoostClaims": {
+      const mem = (Memory.colonies[intent.room] ??= { sources: {}, remotes: [], danger: 0, colonizing: [], attacking: [], defending: [] });
+      mem.boostClaims = Object.fromEntries(intent.claims.map(c => [c.labId, { compound: c.compound, amount: c.amount }]));
       return OK;
     }
     case "setParadeAnchor": {
