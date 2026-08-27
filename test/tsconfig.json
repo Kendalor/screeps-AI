@@ -3,5 +3,14 @@
   "compilerOptions": {
     "rootDir": ".."
   },
-  "include": ["./**/*", "../src/**/*", "../vitest.config.ts"]
+  "include": ["./**/*", "../src/**/*", "../vitest.config.ts"],
+  // Overrides (not merges with) the base tsconfig.json's own "exclude": ["node_modules", "test/*"] —
+  // TypeScript resolves an inherited exclude pattern relative to the FILE THAT DEFINES it, not the
+  // extending config, so that inherited "test/*" resolved to <repo root>/test/* and, left unoverridden,
+  // silently pruned this config's own test/** include entirely (a directory-matching exclude prunes the
+  // whole subtree) — confirmed live: every `.test.ts` file was completely absent from `tsc -p
+  // test/tsconfig.json --listFiles`'s output, meaning this config had never actually typechecked a single
+  // test file, ever, despite every `tsc -p test/tsconfig.json --noEmit` run in this project's history
+  // reporting a clean pass. Only node_modules needs excluding here; nothing under test/ should be pruned.
+  "exclude": ["../node_modules"]
 }
