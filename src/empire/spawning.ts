@@ -10,6 +10,39 @@ import { log } from "../lib/log";
 // Injected room-grid distance (Game.map.getRoomLinearDistance) so tests need no Game.
 export type RoomDistance = (a: string, b: string) => number;
 
+// Injected live storage+terminal stock lookup (gh #61 epic follow-up) so tests need no Game — mirrors
+// RoomDistance's own injection style. The real caller (kernel/tick.ts) wires this to
+// `Game.rooms[room]?.storage?.store.getUsedCapacity(resource) ?? 0 + the same for terminal`, the same
+// stock definition empire/logistics.ts's stockOf already uses for empire-wide redistribution. Defaults to
+// "always enough" so every existing call site (none of which exercises a boosted request) is unaffected.
+export type BoostStockOf = (room: string, resource: ResourceConstant) => number;
+const ALWAYS_ENOUGH: BoostStockOf = () => Infinity;
+
+/**
+ * A boosted request (CreepRequest.boostNeeds, set by SingleTargetFlagOperation.desiredCreeps once a flag
+ * resolves a boost tier) is only ready to spawn once every compound it'll need is ALREADY sitting in the
+ * spawning colony's storage+terminal (`request.spawnRoom` — always set for a boosted request, pinned to
+ * whichever colony hosts the labs; see that field's own doc). An ordinary, un-boosted request (no
+ * `boostNeeds` at all — the overwhelming majority) is always ready; nothing here changes for it.
+ *
+ * Why this matters: without this gate, a boosted creep spawns the instant it's merely AFFORDABLE (body
+ * cost within budget), regardless of whether its boost compound has even arrived yet — confirmed live via
+ * integration testing, this is exactly what let a demolisher finish spawning and then sit fully idle for
+ * hundreds of ticks (once as long as ~500) waiting on a compound that a cross-colony transfer hadn't
+ * delivered yet, burning a large fraction of the creep's own 1500-tick lifetime before it could even start
+ * its job. Delaying the SPAWN itself until the compound is already available means that lifetime only
+ * starts ticking once the creep can actually go to work.
+ */
+export function boostCompoundsReady(request: CreepRequest, boostStockOf: BoostStockOf): boolean {
+  if (!request.boostNeeds) return true;
+  const room = request.spawnRoom ?? request.targetRoom;
+  for (const [resource, amount] of Object.entries(request.boostNeeds) as [ResourceConstant, number | undefined][]) {
+    if (amount == null || amount <= 0) continue;
+    if (boostStockOf(room, resource) < amount) return false;
+  }
+  return true;
+}
+
 interface SpawnSlot {
   id: Id<StructureSpawn>;
   room: string;
@@ -28,7 +61,7 @@ interface Purse {
  * colony within maxSpawnRange if set, or a pinned spawnRoom).
  * A colony that can't afford its top request stops for the tick rather than letting a cheaper request leapfrog it, but other colonies are unaffected.
  */
-export function planSpawning(colonies: Colony[], roomDistance: RoomDistance): Intent[] {
+export function planSpawning(colonies: Colony[], roomDistance: RoomDistance, boostStockOf: BoostStockOf = ALWAYS_ENOUGH): Intent[] {
   const requests = colonies
     .flatMap(c => c.requests())
     .sort((a, b) => b.priority - a.priority);
@@ -53,6 +86,11 @@ export function planSpawning(colonies: Colony[], roomDistance: RoomDistance): In
 
   const out: Intent[] = [];
   for (const request of requests) {
+    // Skipped, not stopped: an unready boosted request must not block its colony's OTHER, lower-priority
+    // (but actually spawnable) requests the way an unaffordable one does (see stopped's own doc) — it
+    // simply reappears next pass, unaffected, once desiredCreeps() re-emits it (see boostCompoundsReady's
+    // own doc for why this gate exists at all).
+    if (!boostCompoundsReady(request, boostStockOf)) continue;
     const choice = pickPurse(request, purses, roomDistance, stopped);
     if (choice.stop) stopped.add(choice.stop);
     if (!choice.purse) continue; // nowhere can spawn this right now

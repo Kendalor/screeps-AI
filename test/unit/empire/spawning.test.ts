@@ -5,8 +5,9 @@
 
 import { describe, expect, it } from "vitest";
 import { bodyCost } from "../../../src/spawn/body";
-import { planSpawning } from "../../../src/empire/spawning";
+import { boostCompoundsReady, planSpawning, type BoostStockOf } from "../../../src/empire/spawning";
 import type { Intent } from "../../../src/intents/types";
+import type { CreepRequest } from "../../../src/spawn/request";
 import { colonySnap, containerAt, dropAt, roomDistance, snapCreep, snapCreeps, sourceAt, spawn, testEmpire } from "../../fixtures";
 
 // The arbiter takes colonies + a room-distance function. Every ported single-colony case wraps one
@@ -381,6 +382,55 @@ describe("spawn arbiter — cross-colony routing", () => {
     const intents = planSpawning(testEmpire(a, b).colonies, roomDistance);
     const spawnsUsed = intents.filter(i => i.kind === "spawn").map(i => (i as Extract<Intent, { kind: "spawn" }>).spawn);
     expect(new Set(spawnsUsed)).toEqual(new Set(["aSpawn", "bSpawn"]));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// boostCompoundsReady (gh #61 epic follow-up) — a boosted request must not spawn before its compound is
+// actually available, or the creep finishes spawning and then sits idle burning its own lifetime waiting
+// on a delivery. Pure over a hand-built CreepRequest, no colony/operations plumbing needed.
+// ---------------------------------------------------------------------------
+
+function boostedRequest(boostNeeds: Partial<Record<ResourceConstant, number>> | undefined, spawnRoom = "W1N1"): CreepRequest {
+  return {
+    body: [WORK, MOVE],
+    priority: 66,
+    memory: { role: "demolisher", home: spawnRoom, op: "demolish:W1N1" },
+    targetRoom: "W1N1",
+    spawnRoom,
+    boostNeeds
+  };
+}
+
+describe("boostCompoundsReady", () => {
+  it("is always ready for an ordinary request with no boostNeeds at all", () => {
+    expect(boostCompoundsReady(boostedRequest(undefined), () => 0)).toBe(true);
+  });
+
+  it("is not ready when the spawning colony's stock is below what's needed", () => {
+    const stockOf: BoostStockOf = () => 100;
+    expect(boostCompoundsReady(boostedRequest({ ZH: 390 }), stockOf)).toBe(false);
+  });
+
+  it("is ready once the spawning colony's stock meets the need exactly", () => {
+    const stockOf: BoostStockOf = () => 390;
+    expect(boostCompoundsReady(boostedRequest({ ZH: 390 }), stockOf)).toBe(true);
+  });
+
+  it("requires EVERY needed compound to be available, not just one of several", () => {
+    const stock: Partial<Record<ResourceConstant, number>> = { LO: 1000, UH: 0 };
+    const stockOf: BoostStockOf = (_room, resource) => stock[resource] ?? 0;
+    expect(boostCompoundsReady(boostedRequest({ LO: 1000, UH: 500 }), stockOf)).toBe(false);
+  });
+
+  it("checks stock in the request's spawnRoom (where the labs are), not targetRoom", () => {
+    const seen: string[] = [];
+    const stockOf: BoostStockOf = room => {
+      seen.push(room);
+      return 1000;
+    };
+    boostCompoundsReady(boostedRequest({ ZH: 390 }, "W2N2"), stockOf);
+    expect(seen).toEqual(["W2N2"]);
   });
 });
 
