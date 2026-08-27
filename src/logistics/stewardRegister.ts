@@ -27,6 +27,7 @@
 
 import { requestInput, requestOutput, type LogisticsRequest } from "./request";
 import { baseTargetFor, boostLineResources } from "../empire/boostTargets";
+import type { EmpirePriority, EmpireReservation } from "../empire/logistics";
 
 // A link should never sit full — it needs headroom for the next source delivery — so drain it toward
 // storage the instant it holds anything at all, no fractional floor needed on this leg. Mirrors
@@ -236,6 +237,41 @@ export function registerMineralTerminalHaveRequest(
   return requestOutput(terminal, resource, spare);
 }
 
+// A resource the empire layer has already matched and reserved for an outbound send (gh #59 decision 6,
+// ColonyMemory.empireReservations) needs to reach THIS colony's terminal promptly — Steward otherwise
+// treats it as just one more of up to ~34 boost-line resources cycling through its own single anchor
+// creep's attention, each scored by plain amount/distance with no notion of "this one has an actual
+// commitment behind it, the rest are ordinary unscheduled rebalancing." Confirmed live via cross-colony
+// integration testing: a resource the empire had already reserved for send sat in storage for 1000+ ticks
+// before Steward's single creep got around to moving it to the terminal, because it never scored any
+// higher than the OTHER ~33 resources also sitting above their own target with no deadline at all — by the
+// time it finally reached the terminal and then the receiving colony, the receiving creep waiting on it
+// had aged out and died before the delivery could complete. Mirrors transportRegister.ts's
+// BOOST_URGENCY_MULTIPLIER exactly, same reasoning: an actively-committed movement is categorically more
+// urgent than routine, no-deadline accumulation, and needs a large enough multiplier to actually win that
+// race rather than just occasionally happening to.
+//
+// This alone can't tell two simultaneously-reserved resources apart, though — confirmed live via the #61
+// epic's cross-colony boosting integration test: with every one of ~35 boost-line resources reserved for
+// send at once (an ordinary, no-deadline empire rebalance touches all of them), EVERY one of them got this
+// exact multiplier, so they stayed tied and Steward round-robined through all 35 giving each just 1/35th of
+// its attention — including the one compound a live boost operation was actually blocked on.
+// EmpireReservation.priority (see its own doc) breaks that tie: RESERVED_MULTIPLIER below scales this base
+// value up (for "High", stamped only when a colony has a REAL live boosted-spawn-request need) or down (for
+// "Low") so an actually-urgent reservation decisively outranks the routine ones instead of merely tying.
+const EMPIRE_RESERVED_MULTIPLIER = 1000;
+
+// Per-priority scaling of EMPIRE_RESERVED_MULTIPLIER above. "Normal" is left at exactly the historical flat
+// value — every reservation the empire matcher produces today still defaults to "Normal", so this table
+// changes nothing for existing behavior until something actually stamps "High"/"Low" (computeEmpireRequests'
+// urgentResourcesOf carve-out). "Low" still earns a real (if much smaller) boost over an unreserved routine
+// request — a reservation is a real commitment either way, just a deprioritized one.
+const RESERVED_MULTIPLIER: Record<EmpirePriority, number> = {
+  Low: 10,
+  Normal: EMPIRE_RESERVED_MULTIPLIER,
+  High: EMPIRE_RESERVED_MULTIPLIER * 100
+};
+
 /**
  * EXPERIMENTAL (gh #59 follow-up, not yet load-bearing): storage's surplus above `target *
  * RESOURCE_STORAGE_SURPLUS_MULTIPLIER`, if any — an output request (storage HAS more than its own surplus
@@ -247,8 +283,19 @@ export function registerMineralTerminalHaveRequest(
  * outward. Registered here as storage's OUTPUT half; registerMineralStorageOverflowWantRequest below is
  * its INPUT counterpart (terminal side) so greedyMatch.ts's pickBestPair has a real pair to match, same
  * shape as every other leg in this file.
+ *
+ * `reservation` (gh #59 decision 6, ColonyMemory.empireReservations[resource]): when present with a positive
+ * amount, this resource has an actual empire-matched send waiting on it reaching the terminal — see
+ * EMPIRE_RESERVED_MULTIPLIER's own doc for why that earns a priority multiplier instead of the default, and
+ * RESERVED_MULTIPLIER's doc for how `reservation.priority` scales it. Undefined/zero-amount (the
+ * overwhelming majority of calls, for a resource with no active reservation) keeps today's ordinary,
+ * unprioritized rebalancing behavior exactly as before.
  */
-export function registerMineralStorageSurplusRequest(storage: StructureStorage | undefined, resource: ResourceConstant): LogisticsRequest | undefined {
+export function registerMineralStorageSurplusRequest(
+  storage: StructureStorage | undefined,
+  resource: ResourceConstant,
+  reservation?: EmpireReservation
+): LogisticsRequest | undefined {
   if (!storage) return undefined;
   const target = baseTargetFor(resource);
   if (target == null) return undefined;
@@ -256,7 +303,8 @@ export function registerMineralStorageSurplusRequest(storage: StructureStorage |
   const storageUsed = storage.store.getUsedCapacity(resource);
   const surplus = storageUsed - surplusThreshold;
   if (surplus <= 0) return undefined;
-  return requestOutput(storage, resource, surplus);
+  const multiplier = reservation && reservation.amount > 0 ? RESERVED_MULTIPLIER[reservation.priority] : undefined;
+  return requestOutput(storage, resource, surplus, 0, multiplier);
 }
 
 /**
@@ -291,13 +339,25 @@ export function registerMineralStorageOverflowWantRequest(terminal: StructureTer
  * raises registerTerminalEnergyRebalanceRequest's wanted amount; for a mineral it protects that much of the
  * terminal's stock from registerMineralTerminalHaveRequest's drain (see that function's own doc). Omitted/
  * empty by default, so ordinary (non-empire-driven) rebalancing is unaffected.
+ *
+ * Boost labs are deliberately NOT part of this pool (reverted from an earlier Task F attempt, gh #61
+ * epic): Steward's whole design is a creep permanently parked on ONE fixed anchor tile, acting only at
+ * range 1 (see this module's own header and stewardTaskRunner.ts's own doc — distance is a constant, not
+ * a real computation) — true for the link/storage/terminal triangle by construction, but NOT true for
+ * boost labs, which sit elsewhere in the bunker layout. Confirmed live via integration testing: a Steward
+ * creep given a boost-lab transfer task withdrew the compound fine (storage is at the anchor) but could
+ * never actually deliver it — the moment it stepped off the anchor tile toward the lab, the very next
+ * tick's dispatchSteward saw it off-anchor and walked it straight back, a permanent stalemate. Boost lab
+ * want-requests are registered into Transport's pool instead (transportRegister.ts's
+ * registerBoostLabWantRequest / transportTaskRunner.ts's buildTransportPool) — ordinary Transport creeps
+ * already roam the whole room freely with no fixed-position constraint.
  */
 export function registerStewardRequests(
   link: StructureLink | undefined,
   controllerLink: StructureLink | undefined,
   storage: StructureStorage | undefined,
   terminal: StructureTerminal | undefined,
-  empireReservations: Partial<Record<ResourceConstant, number>> = {}
+  empireReservations: Partial<Record<ResourceConstant, EmpireReservation>> = {}
 ): LogisticsRequest[] {
   const out: LogisticsRequest[] = [];
   const drain = registerLinkDrainRequest(link, storage);
@@ -305,20 +365,28 @@ export function registerStewardRequests(
   const topUp = registerControllerLinkTopUpRequest(link, controllerLink, storage);
   if (topUp) out.push(topUp.input, topUp.output);
 
-  const energyRebalance = registerTerminalEnergyRebalanceRequest(storage, terminal, empireReservations[RESOURCE_ENERGY] ?? 0);
+  const energyRebalance = registerTerminalEnergyRebalanceRequest(
+    storage,
+    terminal,
+    empireReservations[RESOURCE_ENERGY]?.amount ?? 0
+  );
   if (energyRebalance) out.push(energyRebalance.input, energyRebalance.output);
 
   for (const resource of boostLineResources()) {
     const storageWant = registerMineralStorageWantRequest(storage, resource);
     if (storageWant) out.push(storageWant);
-    const terminalHave = registerMineralTerminalHaveRequest(terminal, resource, empireReservations[resource] ?? 0);
+    const terminalHave = registerMineralTerminalHaveRequest(terminal, resource, empireReservations[resource]?.amount ?? 0);
     if (terminalHave) out.push(terminalHave);
 
     // EXPERIMENTAL (see registerMineralStorageSurplusRequest's own doc) — storage overflow -> terminal.
-    const storageSurplus = registerMineralStorageSurplusRequest(storage, resource);
+    // Passes this resource's empire reservation (if any) through so an actively-committed send is
+    // prioritized over ordinary no-deadline surplus rebalancing, scaled by its priority — see
+    // EMPIRE_RESERVED_MULTIPLIER/RESERVED_MULTIPLIER's own docs.
+    const storageSurplus = registerMineralStorageSurplusRequest(storage, resource, empireReservations[resource]);
     if (storageSurplus) out.push(storageSurplus);
     const overflowWant = registerMineralStorageOverflowWantRequest(terminal, resource);
     if (overflowWant) out.push(overflowWant);
   }
+
   return out;
 }

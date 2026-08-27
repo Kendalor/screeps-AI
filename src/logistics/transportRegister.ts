@@ -198,3 +198,145 @@ export function registerStorageSinkRequests(storage: StructureStorage | undefine
 
   return out;
 }
+
+/** One boost lab's persisted claim — Colony.labs()'s own output (ColonyMemory.boostClaims' value shape),
+ * named here so registerBoostLabWantRequest/buildTransportPool don't need to import the whole
+ * ColonyMemory interface for one nested type. */
+export interface BoostLabClaim {
+  compound: ResourceConstant;
+  amount: number;
+}
+
+/**
+ * One boost lab's want-request (gh #61 epic, docs/boosting-lab-runner-design.md section 4's "claims are
+ * data; the logistics system generates its own request from them" — moved here from stewardRegister.ts's
+ * pool after live integration testing found Steward's fixed single-anchor-tile design can never reach a
+ * boost lab elsewhere in the bunker layout, see registerStewardRequests's own doc for the confirmed
+ * failure mode): if this lab currently holds a persisted claim (Colony.labs()'s output,
+ * ColonyMemory.boostClaims), it wants `claim.amount` of `claim.compound` delivered — same "want" shape as
+ * every other pickup/deliver request in Transport's pool, so it competes fairly in the SAME rate-ranked
+ * pool rather than needing its own bespoke delivery mechanism. Transport creeps roam the whole room freely
+ * (no fixed-position constraint), so a lab anywhere in the bunker is reachable exactly like any other
+ * consumer here.
+ *
+ * Mirrors stewardRegister.ts's registerMineralStorageWantRequest's own double-cap exactly: the shortfall
+ * (`claim.amount - used`) is capped by the lab's own `getFreeCapacity(claim.compound)` — never larger than
+ * what the lab can actually receive right now. This cap does double duty for the single-mineral-type case
+ * (a lab currently committed to a DIFFERENT compound than `claim.compound`, leftover from an earlier,
+ * now-reconciled claim): per the real engine's store semantics, `getFreeCapacity` for any OTHER compound
+ * reports 0/null until the lab is actually emptied of the old compound, with no special-casing needed here.
+ */
+// Every boost-related request in Transport's pool (a lab's compound want, its energy want, and the
+// matching storage/terminal compound source) needs to reliably outscore Transport's OWN routine traffic —
+// pickBestPair's selection is pure amount*multiplier/distance, and at the default multiplier (1, what
+// every request in this codebase used before gh #61 — confirmed by inspection) a boost delivery's amount
+// is often tiny next to a mature economy's routine legs (storage's energy sink alone can run into the
+// hundreds of thousands of free capacity; a long-running colony's established container/ground-pickup
+// traffic keeps every idle Transport creep busy). Confirmed live via integration testing, TWICE, in two
+// different shapes of the same underlying bug:
+//   1. A claimed lab's energy want (LAB_ENERGY_CAPACITY=2000) sat at 0 for 400+ ticks against storage's
+//      much larger routine energy want, in an otherwise-idle freshly-seeded colony.
+//   2. A claimed lab's COMPOUND want, seeded fresh into an idle colony from tick 0, delivered within ~20
+//      ticks with the default multiplier and looked completely fine — until the exact same compound
+//      arrived into an ALREADY-RUNNING, mature colony's economy (the cross-colony empire-transfer
+//      scenario) over a thousand ticks in, where it then sat undelivered for 1000+ ticks: the timing of
+//      *when* a boost need appears determines whether the default multiplier happens to win, which means
+//      it was never reliable, just accidentally fast in the single-colony test's idle-from-tick-0 case.
+// An actively-needed boost is categorically more urgent than routine accumulation/hauling, so every boost
+// request gets the same large multiplier — large enough to win even against a fully-drained
+// 1,000,000-capacity storage's worst case for energy (~1,000,000 / LAB_ENERGY_CAPACITY ≈ 500) with real
+// headroom, and equally applied to the compound side so its priority can't regress the same way once a
+// colony's economy is mature rather than freshly seeded.
+const BOOST_URGENCY_MULTIPLIER = 1000;
+
+export function registerBoostLabWantRequest(lab: StructureLab | undefined, claim: BoostLabClaim | undefined): LogisticsRequest | undefined {
+  if (!lab || !claim) return undefined;
+  const used = lab.store.getUsedCapacity(claim.compound) ?? 0;
+  const free = lab.store.getFreeCapacity(claim.compound) ?? 0;
+  const towardClaim = Math.min(claim.amount - used, free);
+  if (towardClaim <= 0) return undefined;
+  return requestInput(lab, claim.compound, towardClaim, 0, BOOST_URGENCY_MULTIPLIER);
+}
+
+/**
+ * A boost lab's own energy want (gh #61 epic) — `StructureLab.boostCreep()` consumes BOTH
+ * LAB_BOOST_MINERAL (30/part, registerBoostLabWantRequest's own concern) AND LAB_BOOST_ENERGY (20/part)
+ * per the real engine (@screeps/engine's processor/intents/labs/boost-creep.js: `object.store.energy <
+ * C.LAB_BOOST_ENERGY` fails the whole call) — confirmed live via integration testing: a lab correctly
+ * stocked with its claimed compound still made boostCreep() fail with ERR_NOT_ENOUGH_RESOURCES every tick,
+ * since nothing anywhere in this pipeline had ever requested energy for it. Tops a lab up toward its own
+ * energy capacity rather than sizing precisely to any claim's exact per-part need — energy is cheap/
+ * abundant compared to a boost compound, and a topped-up lab stays ready for whichever creep queues up
+ * next rather than being re-emptied to near-zero after every single boost.
+ *
+ * Deliberately NOT gated on an active claim (unlike registerBoostLabWantRequest's own compound want,
+ * which only makes sense for whatever's actually claimed) — every one of a colony's reserved boost labs
+ * always wants energy toward full, all the time. Confirmed live: gating this on `claim` the same way the
+ * compound want is gated meant a lab's energy only ever started filling AFTER a claim appeared, adding a
+ * full top-up's worth of avoidable latency (~80-100 ticks observed) on top of every boost order, even
+ * though the compound itself could already be sitting in the lab from an earlier delivery. Energy is
+ * cheap and lab capacity is small (LAB_ENERGY_CAPACITY) — pre-staging it costs nothing and means a fresh
+ * claim only ever has to wait on the compound, never on energy too. See BOOST_URGENCY_MULTIPLIER's own
+ * doc for why this needs a deliberately high multiplier, not the default.
+ */
+export function registerBoostLabEnergyWantRequest(lab: StructureLab | undefined): LogisticsRequest | undefined {
+  if (!lab) return undefined;
+  const wanted = lab.store.getFreeCapacity(RESOURCE_ENERGY);
+  if (!wanted || wanted <= 0) return undefined;
+  return requestInput(lab, RESOURCE_ENERGY, wanted, 0, BOOST_URGENCY_MULTIPLIER);
+}
+
+/**
+ * Storage's/terminal's own resting stock of a compound with an ACTIVE boost claim right now, offered as
+ * Transport's withdraw source for that compound — the paired half registerBoostLabWantRequest's own want
+ * needs to ever actually match (greedyMatch.ts's pickBestPair requires a real opposite-signed candidate to
+ * exist before pairing at all; a one-sided want, however large, is never scored — see that module's own
+ * header). Deliberately NOT the same as registerStorageSinkRequests (that's the INPUT/sink half, and only
+ * for energy/the room's own mined mineral) or stewardRegister.ts's registerMineralStorageSurplusRequest
+ * (that's gated on being above BOOST_TARGETS' empire target, LIQUIDATION_MODE-sensitive, and Steward-only —
+ * exactly the mechanism that made compound-at-target unreachable for a lab in earlier testing). This
+ * function has no target/threshold at all: it offers whatever's actually sitting in storage/terminal for a
+ * compound something is CLAIMING right now, full stop — scoped to active claims only (not "storage's ENTIRE
+ * mineral stock is always biddable"), so it can't turn into a constant, pointless self-pairing race against
+ * registerStorageSinkRequests's own want for the same resource on every other tick.
+ *
+ * Uses BOOST_URGENCY_MULTIPLIER on the OUTPUT side too, not just the lab's own want: greedyMatch.ts's
+ * pickBestPair scores the OVERALL cross-resource race by the OUTPUT side's `multiplier * amount /
+ * distance` (see that module's own doc), so this is what actually decides whether an idle Transport creep
+ * picks up a boost delivery at all versus one of the colony's routine energy/ground-pickup tasks — see
+ * BOOST_URGENCY_MULTIPLIER's own doc for the confirmed live failure this fixes (a compound arriving into
+ * an already-mature economy sat undelivered for 1000+ ticks at the default multiplier, even though the
+ * exact same delivery mechanism worked in under 20 ticks against a freshly-seeded, still-idle colony).
+ *
+ * `shortfalls` carries each claim's REMAINING need (registerBoostLabWantRequest's own `labWant.amount`,
+ * already `claim.amount` minus whatever the lab currently holds), not the claim's raw face-value amount —
+ * offering the compound's full stored stock as this leg's output (the original shape) let a Transport
+ * creep's uncapped withdraw+deliver carry away far more than any order actually needed (confirmed live: a
+ * 390-unit order ended up with 1150 units sitting in the lab, permanently stranded — nothing ever
+ * requests a lab drain its own OVER-stock back out). Capping the registered amount here to the real
+ * summed shortfall keeps the SCORING honest; the actual withdraw is separately capped to the precise
+ * amount via Task.amount (transportTaskRunner.ts's planTransportTask) — this is what keeps `stored` from
+ * ever being read as "you may take all of this."
+ */
+export function registerBoostCompoundSourceRequests(
+  storage: StructureStorage | undefined,
+  terminal: StructureTerminal | undefined,
+  shortfalls: Iterable<BoostLabClaim>
+): LogisticsRequest[] {
+  const out: LogisticsRequest[] = [];
+  const neededByCompound = new Map<ResourceConstant, number>();
+  for (const s of shortfalls) neededByCompound.set(s.compound, (neededByCompound.get(s.compound) ?? 0) + s.amount);
+
+  for (const [compound, needed] of neededByCompound) {
+    if (needed <= 0) continue;
+    if (storage) {
+      const amount = Math.min(storage.store.getUsedCapacity(compound), needed);
+      if (amount > 0) out.push(requestOutput(storage, compound, amount, 0, BOOST_URGENCY_MULTIPLIER));
+    }
+    if (terminal) {
+      const amount = Math.min(terminal.store.getUsedCapacity(compound), needed);
+      if (amount > 0) out.push(requestOutput(terminal, compound, amount, 0, BOOST_URGENCY_MULTIPLIER));
+    }
+  }
+  return out;
+}

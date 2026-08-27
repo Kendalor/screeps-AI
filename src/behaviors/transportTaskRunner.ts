@@ -17,13 +17,17 @@ import { buildTargetedBy, discountedAmount, type TargetedBy } from "../logistics
 import { pickBestPair } from "../logistics/greedyMatch";
 import { fork, persistTask, resolveTask, type Task } from "../logistics/task";
 import {
+  registerBoostCompoundSourceRequests,
+  registerBoostLabEnergyWantRequest,
+  registerBoostLabWantRequest,
   registerControllerContainerRequest,
   registerCreepBatteryRequests,
   registerGroundResources,
   registerMineralContainerOutput,
   registerMinerContainerOutput,
   registerRemoteGroundResources,
-  registerStorageSinkRequests
+  registerStorageSinkRequests,
+  type BoostLabClaim
 } from "../logistics/transportRegister";
 import { runLogisticsTask } from "./logisticsTaskRunner";
 
@@ -48,10 +52,21 @@ function remoteRoomsWithVision(home: string): Room[] {
   return out;
 }
 
+/** The colony's (up to 3) live boost lab objects, resolved from ColonyMemory.boostLabIds — a live Game.*
+ * lookup off a persisted id, same pattern stewardTaskRunner.ts's own controllerLink() uses, absent
+ * entirely (empty array) until Colony.labs() has actually reserved 3 labs. */
+function boostLabs(home: string): (StructureLab | undefined)[] {
+  const ids = Memory.colonies[home]?.boostLabIds;
+  return ids ? ids.map(id => Game.getObjectById(id) ?? undefined) : [];
+}
+
 /**
  * Every live LogisticsRequest in Transport's pool for `home` right now — every provider/consumer
  * graph.ts's transportProviders()/consumers() covered that isn't Supply's (spawn/extension/tower) or
- * Steward's (anchor link/storage/terminal). See transportRegister.ts's header for the exact scope.
+ * Steward's (anchor link/storage/terminal) — PLUS boost labs' own want-requests (gh #61 epic; moved here
+ * from Steward's pool, see logistics/stewardRegister.ts's registerStewardRequests doc for why a boost
+ * lab's delivery can't go through Steward's fixed-anchor design). See transportRegister.ts's header for
+ * the rest of the scope.
  */
 export function buildTransportPool(home: Room): LogisticsRequest[] {
   const out: LogisticsRequest[] = [];
@@ -77,6 +92,26 @@ export function buildTransportPool(home: Room): LogisticsRequest[] {
   const storage = home.storage;
   out.push(...registerCreepBatteryRequests(home.find(FIND_MY_CREEPS), controller, storage !== undefined));
   out.push(...registerStorageSinkRequests(storage, mineral?.mineralType));
+
+  const boostClaims = Memory.colonies[home.name]?.boostClaims ?? {};
+  // The real remaining SHORTFALL per lab (labWant.amount, gh #61 epic Q4 follow-up), not the claim's own
+  // total `amount` — a lab already partway stocked (e.g. a prior partial delivery) needs less than its
+  // claim's face value, and registerBoostCompoundSourceRequests must offer no more than what's actually
+  // still wanted or it inflates the OUTPUT side's own score with phantom demand and, downstream, lets a
+  // Transport creep's uncapped withdraw carry away far more than the order needs.
+  const shortfalls: BoostLabClaim[] = [];
+  for (const lab of boostLabs(home.name)) {
+    if (!lab) continue;
+    const claim = boostClaims[lab.id];
+    const labWant = registerBoostLabWantRequest(lab, claim);
+    if (labWant) {
+      out.push(labWant);
+      shortfalls.push({ compound: labWant.resource, amount: labWant.amount });
+    }
+    const energyWant = registerBoostLabEnergyWantRequest(lab);
+    if (energyWant) out.push(energyWant);
+  }
+  out.push(...registerBoostCompoundSourceRequests(storage, home.terminal, shortfalls));
 
   return out;
 }
@@ -212,7 +247,20 @@ export function planTransportTask(creep: Creep, home: Room, otherTransportCreeps
   );
   if (!pair) return undefined;
 
-  const withdraw: Task = { kind: "withdraw", target: pair.output.target, resource: pair.resource };
+  // A boost lab's own COMPOUND want (never its energy want — that one deliberately tops up to full, see
+  // registerBoostLabEnergyWantRequest's own doc) carries its real remaining shortfall as `pair.input.amount`
+  // (registerBoostLabWantRequest's `labWant.amount`) — capping the withdraw to exactly that (Task.amount,
+  // see its own doc) is what actually stops a big-CARRY Transport creep from scooping up and dumping in
+  // far more than the order needs. Only the withdraw leg needs the cap: the deliver leg then simply
+  // transfers whatever the creep is carrying, which is already the precise amount.
+  const isBoostCompoundDeliver =
+    (pair.input.target as { structureType?: string }).structureType === STRUCTURE_LAB && pair.resource !== RESOURCE_ENERGY;
+  const withdraw: Task = {
+    kind: "withdraw",
+    target: pair.output.target,
+    resource: pair.resource,
+    amount: isBoostCompoundDeliver ? pair.input.amount : undefined
+  };
   const deliver: Task = { kind: "transfer", target: pair.input.target, resource: pair.resource };
   return fork(withdraw, deliver);
 }

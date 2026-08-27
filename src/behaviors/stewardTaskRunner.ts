@@ -51,7 +51,11 @@ function act(creep: Creep, task: Task): { didAct: boolean } {
 /** Live handles for the anchor link/storage/terminal triangle — the one set of Game.* lookups this module
  * needs, mirroring stewardBehavior.ts's own anchorLink()/controllerLink() helpers. `controllerLink` is
  * read the same way stewardBehavior.ts does (ColonyMemory.links.controller — out of Steward's reach at the
- * controller, not the anchor), so this module doesn't re-derive its position either. */
+ * controller, not the anchor), so this module doesn't re-derive its position either.
+ *
+ * Boost labs are deliberately NOT part of this triangle (see registerStewardRequests's own doc for why —
+ * Steward's fixed single-tile range-1 design can't reach a boost lab elsewhere in the bunker; that
+ * delivery now goes through Transport's pool instead, transportRegister.ts/transportTaskRunner.ts). */
 export interface StewardTriangle {
   link?: StructureLink;
   controllerLink?: StructureLink;

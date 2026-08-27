@@ -17,6 +17,7 @@ import {
   LINK_DRAIN_FLOOR,
   registerControllerLinkTopUpRequest,
   registerLinkDrainRequest,
+  registerMineralStorageSurplusRequest,
   registerMineralStorageWantRequest,
   registerMineralTerminalHaveRequest,
   registerStewardRequests,
@@ -413,6 +414,55 @@ describe("the mineral want/have pair together (storage above target / terminal 1
   });
 });
 
+describe("registerMineralStorageSurplusRequest", () => {
+  const GO_TARGET = baseTargetFor("GO")!;
+
+  it("returns undefined when storage is missing", () => {
+    expect(registerMineralStorageSurplusRequest(undefined, "GO")).toBeUndefined();
+  });
+
+  it("returns undefined at or below the surplus threshold", () => {
+    const atThreshold = stubMultiStorage({ GO: GO_TARGET * RESOURCE_STORAGE_SURPLUS_MULTIPLIER });
+    expect(registerMineralStorageSurplusRequest(atThreshold, "GO")).toBeUndefined();
+  });
+
+  it("offers the amount above threshold as an output, at the default multiplier, when nothing is reserved", () => {
+    const storage = stubMultiStorage({ GO: GO_TARGET * RESOURCE_STORAGE_SURPLUS_MULTIPLIER + 5000 });
+    const request = registerMineralStorageSurplusRequest(storage, "GO");
+    expect(request?.amount).toBe(-5000);
+    expect(request?.multiplier).toBe(1);
+  });
+
+  it("uses a deliberately high multiplier once this resource has an active empire reservation — confirmed live: a reserved resource with no priority boost sat in storage for 1000+ ticks behind ~33 other equally-scored, no-deadline surplus resources, and by the time it finally reached the terminal the creep waiting on it at the other end had already aged out and died", () => {
+    const storage = stubMultiStorage({ GO: GO_TARGET * RESOURCE_STORAGE_SURPLUS_MULTIPLIER + 5000 });
+    const request = registerMineralStorageSurplusRequest(storage, "GO", { amount: 3000, priority: "Normal" });
+    expect(request?.amount).toBe(-5000);
+    expect(request?.multiplier).toBeGreaterThan(1);
+  });
+
+  it("does not require the reserved amount to itself explain the surplus — any nonzero reservation is enough to earn priority on the whole surplus", () => {
+    const storage = stubMultiStorage({ GO: GO_TARGET * RESOURCE_STORAGE_SURPLUS_MULTIPLIER + 5000 });
+    const request = registerMineralStorageSurplusRequest(storage, "GO", { amount: 1, priority: "Normal" });
+    expect(request?.multiplier).toBeGreaterThan(1);
+  });
+
+  it("scales the multiplier higher for a High-priority reservation than a Normal one — this is the tie-break gh #61's cross-colony integration test needed: with ~35 boost-line resources reserved at once, a flat multiplier left them all tied", () => {
+    const storage = stubMultiStorage({ GO: GO_TARGET * RESOURCE_STORAGE_SURPLUS_MULTIPLIER + 5000 });
+    const normal = registerMineralStorageSurplusRequest(storage, "GO", { amount: 3000, priority: "Normal" });
+    const high = registerMineralStorageSurplusRequest(storage, "GO", { amount: 3000, priority: "High" });
+    expect(high!.multiplier).toBeGreaterThan(normal!.multiplier);
+  });
+
+  it("gives a Low-priority reservation a smaller boost than Normal, but still above the unreserved default", () => {
+    const storage = stubMultiStorage({ GO: GO_TARGET * RESOURCE_STORAGE_SURPLUS_MULTIPLIER + 5000 });
+    const unreserved = registerMineralStorageSurplusRequest(storage, "GO");
+    const low = registerMineralStorageSurplusRequest(storage, "GO", { amount: 3000, priority: "Low" });
+    const normal = registerMineralStorageSurplusRequest(storage, "GO", { amount: 3000, priority: "Normal" });
+    expect(low!.multiplier).toBeGreaterThan(unreserved!.multiplier);
+    expect(low!.multiplier).toBeLessThan(normal!.multiplier);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // registerStewardRequests — the whole pool
 // ---------------------------------------------------------------------------
@@ -489,7 +539,7 @@ describe("registerStewardRequests", () => {
     const storage = stubMultiStorage({ energy: 0, GO: GO_TARGET }); // at target — isolates the terminal-have leg (no storage-want)
     const terminal = stubMultiTerminal({ energy: TERMINAL_CAPACITY, GO: 4000 });
     const ordinary = registerStewardRequests(link, cLink, storage, terminal);
-    const reserved = registerStewardRequests(link, cLink, storage, terminal, { GO: 3200 });
+    const reserved = registerStewardRequests(link, cLink, storage, terminal, { GO: { amount: 3200, priority: "Normal" } });
 
     // Scoped to the specific terminal-have leg (output, target=terminal) rather than every GO request —
     // the experimental storage-overflow leg also registers GO entries now (storage is exactly at target,
