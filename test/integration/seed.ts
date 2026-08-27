@@ -6,11 +6,14 @@
 // (`wantedStructures` and the spawn requesters) rather than listing them here, so a scenario seeded
 // through here moves automatically with layout/quota/body changes.
 
+import { roleDef } from "../../src/behaviors/roles";
 import { claimsOf, wantedStructures } from "../../src/construction/planner";
 import type { PlacedStructure } from "../../src/construction/stamp";
 import type { RoleName } from "../../src/memory/schema";
 import { operationsFor } from "../../src/operations";
 import type { ColonySnapshot } from "../../src/snapshot/types";
+import { orderBody } from "../../src/spawn/body";
+import { bodyContext } from "../../src/spawn/bodyContext";
 import { opName, type CreepRequest } from "../../src/spawn/request";
 import type { BootedColony } from "./harness";
 
@@ -24,12 +27,19 @@ import {
   CREEP_LIFE_TIME,
   EXTENSION_ENERGY_CAPACITY,
   EXTENSION_HITS,
+  LAB_ENERGY_CAPACITY,
+  LAB_HITS,
+  LAB_MINERAL_CAPACITY,
+  LINK_CAPACITY,
+  LINK_HITS,
   RAMPART_HITS,
   ROAD_HITS,
   SPAWN_ENERGY_CAPACITY,
   SPAWN_HITS,
   STORAGE_CAPACITY,
   STORAGE_HITS,
+  TERMINAL_CAPACITY,
+  TERMINAL_HITS,
   TOWER_CAPACITY,
   TOWER_HITS,
   WALL_HITS
@@ -58,10 +68,35 @@ function structureAttrs(type: string, user: string, level: number): Record<strin
       };
     case "tower":
       return { user, store: { energy: 0 }, storeCapacityResource: { energy: TOWER_CAPACITY }, hits: TOWER_HITS, hitsMax: TOWER_HITS };
+    case "link":
+      return { user, store: { energy: 0 }, storeCapacityResource: { energy: LINK_CAPACITY }, hits: LINK_HITS, hitsMax: LINK_HITS, cooldown: 0 };
     case "container":
       return { store: { energy: 0 }, storeCapacity: CONTAINER_CAPACITY, hits: CONTAINER_HITS, hitsMax: CONTAINER_HITS };
     case "storage":
       return { user, store: { energy: 0 }, storeCapacity: STORAGE_CAPACITY, hits: STORAGE_HITS, hitsMax: STORAGE_HITS };
+    case "terminal":
+      return { user, store: { energy: 0 }, storeCapacity: TERMINAL_CAPACITY, hits: TERMINAL_HITS, hitsMax: TERMINAL_HITS, cooldownTime: 0 };
+    case "lab":
+      // A real freshly-built lab carries BOTH storeCapacityResource (energy only, per-resource) AND a flat
+      // storeCapacity (LAB_ENERGY_CAPACITY + LAB_MINERAL_CAPACITY = 5000) — confirmed against the live World
+      // server's own lab objects (get-room-objects.mjs), not assumed. The flat storeCapacity is NOT
+      // redundant: it's the only thing that makes @screeps/engine's utils.capacityForResource return a
+      // nonzero capacity for a mineral the lab has never held yet (capacityForResource falls back to
+      // `storeCapacity - sum(storeCapacityResource)` whenever storeCapacityResource has no entry for the
+      // resource in question) — omitting it (as an earlier version of this case did) makes
+      // getFreeCapacity/getCapacity report 0/null for ANY not-yet-held mineral, so a creep's very first
+      // transfer() into the lab returns ERR_FULL forever, confirmed by direct empirical testing. The
+      // engine's own boost-creep.js resets storeCapacity to this exact same value once a lab fully depletes
+      // its mineral, for the identical reason.
+      return {
+        user,
+        store: { energy: 0 },
+        storeCapacityResource: { energy: LAB_ENERGY_CAPACITY },
+        storeCapacity: LAB_ENERGY_CAPACITY + LAB_MINERAL_CAPACITY,
+        hits: LAB_HITS,
+        hitsMax: LAB_HITS,
+        cooldownTime: 0
+      };
     case "road":
       return { hits: ROAD_HITS, hitsMax: ROAD_HITS };
     case "rampart":
@@ -155,6 +190,21 @@ export function spreadTtl(index: number, total: number): number {
 // miners and no haulers/upgraders, and the running colony fills those in from tick one. This is the
 // same shape the census-based version produced; it is *not* the steady-state workforce a running
 // RCL3 colony fields.
+//
+// Supply is the one exception this caveat needs its own fix for, not just an acknowledgment:
+// operations/supply.ts's desiredCreeps() deliberately sizes its body off energyAvailable rather than
+// energyCapacity while no supply creep is alive yet (correct — it's the real fix for a genuine
+// RCL1-3/wipe deadlock, see that file's own doc). But the empty-creeps snapshot above makes that
+// branch fire for EVERY seeded colony, including a "full census" RCL6 seed whose extensions
+// fillEnergy() is about to top off to energyFraction right after this runs — a colony that is not
+// remotely cold-started, it is being seeded to LOOK like a fully built, already-running base. Taking
+// operations/supply.ts's real energyAvailable-branch body at face value here bakes in a permanently
+// undersized Supply creep (2 CARRY parts instead of the ~14 a real RCL6 energyCapacity affords) for
+// that creep's entire seeded lifetime — confirmed live, this starved the whole spawn/extension (and
+// by extension, boost lab) pipeline for hundreds of ticks despite the room being fully built out the
+// whole time. Fixed here, not in operations/supply.ts: this is a seeding-fidelity gap ("a full census
+// should reflect a fully built, filled base"), not a production bug — the cold-start guard itself is
+// correct and must stay exactly as it is for a genuine live cold start/wipe.
 export function plannedWorkforce(colony: ColonySnapshot): SeededCreep[] {
   // Every operation's demand, polled exactly as the empire arbiter polls it. Two exclusions:
   // recovery (Bootstrap folds it in with its workforce, filtered by its own `op` stamp — it only
@@ -169,7 +219,15 @@ export function plannedWorkforce(colony: ColonySnapshot): SeededCreep[] {
   const byRole = (role: RoleName) => (r: CreepRequest) => r.memory.role === role;
   const demand = operationsFor(colony.name)
     .flatMap(op => op.desiredCreeps(colony))
-    .filter(r => r.body.length > 0 && r.memory.op !== recovery);
+    .filter(r => r.body.length > 0 && r.memory.op !== recovery)
+    // Re-sizes ONLY the body, off the same real roleDef("supply").body() the production code itself
+    // uses once a supply creep is alive — count/priority/memory still come from the real
+    // desiredCreeps() output above, so the quota itself still moves with any future quota change.
+    .map(r =>
+      r.memory.role === "supply"
+        ? { ...r, body: orderBody(roleDef("supply")!.body(colony.energyCapacity, bodyContext(colony))) }
+        : r
+    );
 
   const requests = [
     ...demand.filter(byRole("bootstrap")),
@@ -223,6 +281,15 @@ export async function seedCreeps(colony: BootedColony, creeps: SeededCreep[]): P
 }
 
 // `count` walkable tiles nearest (x, y) that no structure or creep occupies, in expanding rings.
+//
+// The eight tiles immediately around any spawn are reserved (never handed out), even when walkable: a
+// creep the bot itself left mid-spawn (a recovery bootstrap from the fresh-boot ticks before seeding,
+// say) can only emerge onto a free spawn-adjacent tile, and a denser layout (RCL6's bunker rings the
+// anchor spawn with extension/tower/terminal/link) leaves only a handful of those. Seeding creeps onto
+// them traps the spawning creep at 100% progress forever, wedging the spawn `busy` and starving every
+// later spawn request — the exact failure boosting-single-colony.test.ts hit. Keeping the ring clear costs
+// nothing (seeded creeps just land one ring further out, claimed identically) and is why the lower-RCL
+// scenarios never tripped this: their sparser bunkers always left a spare exit.
 async function openTilesNear(
   colony: BootedColony,
   x: number,
@@ -230,11 +297,17 @@ async function openTilesNear(
   count: number
 ): Promise<{ x: number; y: number }[]> {
   const terrain = await colony.terrain();
+  const objects = await colony.roomObjects();
   const blocked = new Set(
-    (await colony.roomObjects())
-      .filter(o => o.type !== "road" && o.type !== "container" && o.type !== "rampart")
-      .map(o => `${o.x},${o.y}`)
+    objects.filter(o => o.type !== "road" && o.type !== "container" && o.type !== "rampart").map(o => `${o.x},${o.y}`)
   );
+  for (const spawn of objects.filter(o => o.type === "spawn")) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        blocked.add(`${spawn.x + dx},${spawn.y + dy}`);
+      }
+    }
+  }
 
   const out: { x: number; y: number }[] = [];
   for (let r = 1; r <= 12 && out.length < count; r++) {
