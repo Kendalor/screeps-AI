@@ -8,6 +8,10 @@ import { transferTo, withdrawOrPickup } from "./actions";
 
 // A task is done once it can no longer make progress before acting this tick: a withdraw with no free
 // capacity left, or a transfer with nothing left to give. Mirrors logisticsRunner.ts's isTaskDone.
+// An amount-capped task (Task.amount, see its own doc) is a one-shot: "move exactly this much, once" —
+// checked by the caller instead, since completion there only needs the tick's own act() result, not any
+// store-capacity signal (a capped withdraw commonly leaves both the creep and the source with room to
+// spare, which would otherwise never be read as complete).
 function isTaskComplete(creep: Creep, task: Task): boolean {
   if (task.kind === "withdraw") return creep.store.getFreeCapacity(task.resource) === 0;
   return creep.store.getUsedCapacity(task.resource) === 0;
@@ -42,8 +46,8 @@ function act(creep: Creep, task: Task): { didAct: boolean } {
       ? undefined
       : dangerAvoidanceOptions(creep.memory.home, target.pos.roomName);
   return task.kind === "withdraw"
-    ? withdrawOrPickup(creep, target, task.resource, true, travelOptions)
-    : transferTo(creep, target, task.resource, true, travelOptions);
+    ? withdrawOrPickup(creep, target, task.resource, true, travelOptions, task.amount)
+    : transferTo(creep, target, task.resource, true, travelOptions, task.amount);
 }
 
 /** Runs `creep`'s current persisted task one tick: act (or travel), advance to `.parent` on completion. */
@@ -65,7 +69,10 @@ export function runLogisticsTask(creep: Creep): void {
   // would never run even once. Acting first and checking completion only afterward means a leg that's
   // already done gets exactly one (harmless, no-op) act() call before advancing, never zero.
   const result = act(creep, task);
-  if (result.didAct && (isTaskComplete(creep, task) || targetExhausted(task))) {
+  // An amount-capped leg (Task.amount) is a one-shot: any successful act already moved (up to) exactly
+  // what it was meant to, so it's complete regardless of remaining creep/target capacity — see Task's own
+  // doc for why isTaskComplete's store-capacity checks can't tell that on their own.
+  if (result.didAct && (task.amount !== undefined || isTaskComplete(creep, task) || targetExhausted(task))) {
     creep.memory.logisticsTask = task.parent ? persistTask(task.parent) : undefined;
   }
 }

@@ -38,7 +38,15 @@ export function withdrawOrPickup(
   target: RoomObject,
   resource: ResourceConstant,
   allowTravel = true,
-  travelOptions?: TravelToOptions
+  travelOptions?: TravelToOptions,
+  // Caps the withdraw at exactly this much (engine's own optional 3rd arg) instead of "as much as fits" —
+  // undefined (every step-table caller) preserves today's behavior. Not forwarded to pickup(): a dropped
+  // pile is never the boost-compound-precision case this exists for (see logistics/task.ts's Task.amount).
+  // Deliberately NOT passed through when undefined (rather than always passing a 3rd arg that happens to
+  // be undefined) — every existing step-table test asserts the exact withdraw(target, resource) call
+  // signature against a mock, and an explicit-undefined 3rd argument is still a 3rd argument as far as
+  // that assertion is concerned, even though it's behaviorally identical to omitting it.
+  amount?: number
 ): StepResult {
   return actOnResolved(
     creep,
@@ -46,7 +54,9 @@ export function withdrawOrPickup(
     t =>
       isResource(t)
         ? creep.pickup(t)
-        : creep.withdraw(t as Structure & { store: StoreDefinition }, resource),
+        : amount === undefined
+          ? creep.withdraw(t as Structure & { store: StoreDefinition }, resource)
+          : creep.withdraw(t as Structure & { store: StoreDefinition }, resource, amount),
     1,
     allowTravel,
     travelOptions
@@ -58,7 +68,19 @@ export function transferTo(
   target: RoomObject,
   resource: ResourceConstant,
   allowTravel = true,
-  travelOptions?: TravelToOptions
+  travelOptions?: TravelToOptions,
+  // See withdrawOrPickup's own doc for both the purpose and why undefined is never passed through.
+  amount?: number
 ): StepResult {
-  return actOnResolved(creep, target, t => creep.transfer(t as Structure & { store: StoreDefinition }, resource), 1, allowTravel, travelOptions);
+  return actOnResolved(
+    creep,
+    target,
+    t =>
+      amount === undefined
+        ? creep.transfer(t as Structure & { store: StoreDefinition }, resource)
+        : creep.transfer(t as Structure & { store: StoreDefinition }, resource, amount),
+    1,
+    allowTravel,
+    travelOptions
+  );
 }

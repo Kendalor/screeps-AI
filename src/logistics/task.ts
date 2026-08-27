@@ -14,6 +14,17 @@ export interface Task {
   resource: ResourceConstant;
   /** Demoted-to on this task's completion; execution resumes here. Absent means "done, nothing follows". */
   parent?: Task;
+  /** Caps a single act() call to exactly this much (via the engine's own withdraw/transfer amount
+   * parameter) instead of "as much as fits" — undefined (the default, every existing caller) preserves
+   * today's unbounded behavior. A capped task is considered complete after ONE successful act regardless
+   * of remaining creep/target capacity (see logisticsTaskRunner.ts's isTaskComplete) — "move exactly this
+   * much, once," not an open-ended repeated top-off. Added for boost compound delivery (gh #61 epic,
+   * transportRegister.ts's registerBoostLabWantRequest): a Transport creep's CARRY capacity and a boost
+   * lab's LAB_MINERAL_CAPACITY are both far larger than a real boost order's actual need, so an uncapped
+   * withdraw+deliver pair reliably over-delivers (confirmed live: a lab ended up holding ~3x its real
+   * need, e.g. 1150 units for a 390-unit order) — the leftover then sits stranded in the lab, wasted, and
+   * skews later scoring since it fills the lab's own free-capacity check without anything to show for it. */
+  amount?: number;
 }
 
 /** Task, but with every live object reference replaced by a bare ID — Memory's serialization boundary. */
@@ -22,6 +33,7 @@ export interface PersistedTask {
   targetId: Id<_HasId>;
   resource: ResourceConstant;
   parent?: PersistedTask;
+  amount?: number;
 }
 
 /** Composes `parent` as `child`'s new `.parent`, so working `child` to completion resumes `parent`. */
@@ -34,7 +46,8 @@ export function persistTask(task: Task): PersistedTask {
     kind: task.kind,
     targetId: task.target.id as Id<_HasId>,
     resource: task.resource,
-    parent: task.parent ? persistTask(task.parent) : undefined
+    parent: task.parent ? persistTask(task.parent) : undefined,
+    amount: task.amount
   };
 }
 
@@ -48,5 +61,5 @@ export function resolveTask(persisted: PersistedTask): Task | null {
   if (!target) return null;
   const parent = persisted.parent ? resolveTask(persisted.parent) : undefined;
   if (persisted.parent && !parent) return null;
-  return { kind: persisted.kind, target, resource: persisted.resource, parent: parent ?? undefined };
+  return { kind: persisted.kind, target, resource: persisted.resource, parent: parent ?? undefined, amount: persisted.amount };
 }
