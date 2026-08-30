@@ -7,14 +7,22 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  CONTROLLER_CONTAINER_FILL_FLOOR,
   DROP_WORTHWHILE_FLOOR,
   registerBoostCompoundSourceRequests,
   registerBoostLabEnergyWantRequest,
   registerBoostLabWantRequest,
+  registerBunkerContainerRequest,
   registerGroundResources,
   registerRemoteGroundResources,
   type BoostLabClaim
 } from "../../../src/logistics/transportRegister";
+import GOAL_JSON from "../../../src/construction/Base_2.json";
+import type { GoalLayout } from "../../../src/construction/sync";
+
+const GOAL = GOAL_JSON as GoalLayout;
+const BUNKER_CONTAINER_OFFSET = GOAL.placements.find(p => p.type === "container")!;
+const CONTAINER_CAPACITY = 2000;
 
 const CATALYST: ResourceConstant = "XGH2O";
 
@@ -308,5 +316,54 @@ describe("registerBoostCompoundSourceRequests", () => {
   it("returns nothing at all when neither storage nor terminal is given", () => {
     const claims: BoostLabClaim[] = [{ compound: "GO", amount: 1000 }];
     expect(registerBoostCompoundSourceRequests(undefined, undefined, claims)).toHaveLength(0);
+  });
+});
+
+describe("registerBunkerContainerRequest", () => {
+  const anchor = { x: 25, y: 25 };
+  const containerX = anchor.x + BUNKER_CONTAINER_OFFSET.x;
+  const containerY = anchor.y + BUNKER_CONTAINER_OFFSET.y;
+
+  function stubContainer(stored: number): StructureContainer {
+    return {
+      id: "bunkerContainer1" as Id<StructureContainer>,
+      pos: pos(containerX, containerY),
+      structureType: STRUCTURE_CONTAINER,
+      store: {
+        getUsedCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? stored : 0),
+        getCapacity: (r: ResourceConstant) => (r === RESOURCE_ENERGY ? CONTAINER_CAPACITY : 0)
+      }
+    } as unknown as StructureContainer;
+  }
+
+  function stubRoomAt(x: number, y: number, container: StructureContainer | undefined): Room {
+    return {
+      name: "W1N1",
+      lookForAt: (_look: unknown, lookX: number, lookY: number) => (container && lookX === x && lookY === y ? [container] : [])
+    } as unknown as Room;
+  }
+
+  it("returns undefined with no anchor yet (building hasn't resolved one)", () => {
+    const room = stubRoomAt(containerX, containerY, stubContainer(0));
+    expect(registerBunkerContainerRequest(room, undefined)).toBeUndefined();
+  });
+
+  it("returns undefined when no container is built at the goal tile yet", () => {
+    const room = stubRoomAt(containerX, containerY, undefined);
+    expect(registerBunkerContainerRequest(room, anchor)).toBeUndefined();
+  });
+
+  it("wants energy up to the same fill floor the controller container uses", () => {
+    const room = stubRoomAt(containerX, containerY, stubContainer(0));
+    const request = registerBunkerContainerRequest(room, anchor);
+    expect(request).toBeDefined();
+    expect(request!.resource).toBe(RESOURCE_ENERGY);
+    expect(request!.amount).toBe(Math.floor(CONTAINER_CAPACITY * CONTROLLER_CONTAINER_FILL_FLOOR));
+  });
+
+  it("returns undefined once already at or above the fill floor", () => {
+    const atFloor = Math.floor(CONTAINER_CAPACITY * CONTROLLER_CONTAINER_FILL_FLOOR);
+    const room = stubRoomAt(containerX, containerY, stubContainer(atFloor));
+    expect(registerBunkerContainerRequest(room, anchor)).toBeUndefined();
   });
 });

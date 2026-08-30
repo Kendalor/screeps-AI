@@ -10,15 +10,22 @@
 //     duplicated), dropped piles/tombstones/ruins of ANY resource (registerGroundResources below),
 //     remote ground resources (registerRemoteGroundResources below, no room-boundary special case per
 //     the PRD), the mineral container (register.ts's registerMineralContainerOutput — reused).
-//   - controller container top-up to its fill floor (registerControllerContainerRequest), builder/
-//     upgrader battery requests pre-storage only (registerCreepBatteryRequests), storage as the overflow
-//     sink for energy AND mineral once it exists (registerStorageSinkRequests).
+//   - controller container top-up to its fill floor (registerControllerContainerRequest), the bunker's
+//     own container near the storage tile top-up to the same floor (registerBunkerContainerRequest —
+//     gh #61 follow-up: a Supply battery pre-storage, sitting on the road tile the goal layout claims
+//     next to storage, see Base_2-rcl8.json), builder/upgrader battery requests pre-storage only
+//     (registerCreepBatteryRequests), storage as the overflow sink for energy AND mineral once it exists
+//     (registerStorageSinkRequests).
 //   - Deliberately NOT included: storage's drain-for-spawn-need direction (graph.ts's storageBuffer
 //     entry) — that's Supply's job, never Transport's (see graph.ts's own transportProviders() doc).
 //     Spawn/extension/tower are never registered here at all — Supply's pool owns them exclusively.
 
 import { requestInput, requestOutput, type LogisticsRequest } from "./request";
 import { registerMineralContainerOutput, registerMinerContainerOutput } from "./register";
+import GOAL_JSON from "../construction/Base_2.json";
+import type { GoalLayout } from "../construction/sync";
+
+const GOAL = GOAL_JSON as GoalLayout;
 
 // Same worthwhile bar graph.ts's DROP_WORTHWHILE_FLOOR / topoff.ts's TOPOFF_WORTHWHILE_FLOOR use — a
 // dropped pile/tombstone/ruin below this isn't worth a purpose-built trip.
@@ -144,6 +151,40 @@ export function registerControllerContainerRequest(room: Room, controller: Struc
     filter: s => s.structureType === STRUCTURE_CONTAINER
   }) as StructureContainer[];
   const container = containers[0];
+  if (!container) return undefined;
+
+  const capacity = container.store.getCapacity(RESOURCE_ENERGY);
+  const floorAmount = Math.floor(capacity * CONTROLLER_CONTAINER_FILL_FLOOR);
+  const wanted = floorAmount - container.store.getUsedCapacity(RESOURCE_ENERGY);
+  if (wanted <= 0) return undefined;
+  return requestInput(container, RESOURCE_ENERGY, wanted);
+}
+
+// The bunker container's tile is a fixed offset from the anchor (see Base_2-rcl8.json: the road
+// intersection next to storage, added so a pre-storage colony has a Supply pickup point sitting where
+// storage will eventually go) — same "known before storage is built" shape upgrading.ts's own
+// storageTile() uses for the controller container's road target, duplicated here rather than imported
+// since that helper is private to upgrading.ts and this module's whole convention is reading Game.*/
+// Memory directly rather than pulling in another operation's internals.
+const BUNKER_CONTAINER_OFFSET = GOAL.placements.find(p => p.type === "container");
+
+/**
+ * The bunker's own container (near the storage tile, see BUNKER_CONTAINER_OFFSET's doc) topped to the
+ * same fill floor as the controller container (CONTROLLER_CONTAINER_FILL_FLOOR) — a battery for Supply
+ * to draw spawn/extension/tower energy from without walking to storage, mirroring
+ * registerControllerContainerRequest exactly except keyed on the anchor-relative goal tile instead of
+ * the controller's live position (this container exists before storage does, so it can't be found by
+ * proximity to storage itself). `anchor` is ColonyMemory.anchor (owned by building, read directly since
+ * this module never takes a ColonySnapshot) — undefined until Building has resolved one, same as any
+ * other anchor-relative lookup this early in a colony's life.
+ */
+export function registerBunkerContainerRequest(room: Room, anchor: { x: number; y: number } | undefined): LogisticsRequest | undefined {
+  if (!anchor || !BUNKER_CONTAINER_OFFSET) return undefined;
+  const x = anchor.x + BUNKER_CONTAINER_OFFSET.x;
+  const y = anchor.y + BUNKER_CONTAINER_OFFSET.y;
+  const container = room
+    .lookForAt(LOOK_STRUCTURES, x, y)
+    .find((s): s is StructureContainer => s.structureType === STRUCTURE_CONTAINER);
   if (!container) return undefined;
 
   const capacity = container.store.getCapacity(RESOURCE_ENERGY);

@@ -20,6 +20,7 @@ import {
   registerBoostCompoundSourceRequests,
   registerBoostLabEnergyWantRequest,
   registerBoostLabWantRequest,
+  registerBunkerContainerRequest,
   registerControllerContainerRequest,
   registerCreepBatteryRequests,
   registerGroundResources,
@@ -88,6 +89,9 @@ export function buildTransportPool(home: Room): LogisticsRequest[] {
   const controller = home.controller;
   const controllerRequest = registerControllerContainerRequest(home, controller);
   if (controllerRequest) out.push(controllerRequest);
+
+  const bunkerContainerRequest = registerBunkerContainerRequest(home, Memory.colonies[home.name]?.anchor);
+  if (bunkerContainerRequest) out.push(bunkerContainerRequest);
 
   const storage = home.storage;
   out.push(...registerCreepBatteryRequests(home.find(FIND_MY_CREEPS), controller, storage !== undefined));
