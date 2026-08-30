@@ -69,13 +69,50 @@ describe("pickSupplyRequest", () => {
     expect(picked).toBe(near);
   });
 
+  it("a range stalemate is broken by real path length, not first-seen order", () => {
+    const viaWall = stubRequest("viaWall", SUPPLY_TIER.base);
+    const viaOpen = stubRequest("viaOpen", SUPPLY_TIER.base);
+    // Both sit at the same raw (Chebyshev) range from `from` — a genuine tie on rangeTo alone.
+    const ranges: Record<string, number> = { viaWall: 5, viaOpen: 5 };
+    // But viaWall is walled off and needs a much longer real path to actually reach.
+    const pathLengths: Record<string, number> = { viaWall: 14, viaOpen: 5 };
+    const picked = pickSupplyRequest(
+      [viaWall, viaOpen],
+      HOME,
+      t => ranges[(t as unknown as { id: string }).id],
+      undefined,
+      undefined,
+      t => pathLengths[(t as unknown as { id: string }).id]
+    );
+    expect(picked).toBe(viaOpen);
+  });
+
+  it("does not consult path length at all when ranges differ", () => {
+    const near = stubRequest("near", SUPPLY_TIER.base);
+    const far = stubRequest("far", SUPPLY_TIER.base);
+    const ranges: Record<string, number> = { near: 2, far: 9 };
+    const pathLengthTo = () => {
+      throw new Error("pathLengthTo should not be called when rangeTo already disambiguates");
+    };
+    const picked = pickSupplyRequest(
+      [far, near],
+      HOME,
+      t => ranges[(t as unknown as { id: string }).id],
+      undefined,
+      undefined,
+      pathLengthTo
+    );
+    expect(picked).toBe(near);
+  });
+
   it("never picks based on wanted amount — only tier then distance", () => {
     const small = stubRequest("small", SUPPLY_TIER.base);
     small.wanted = 1;
     const big = stubRequest("big", SUPPLY_TIER.base);
     big.wanted = 500;
-    // Same distance: earlier-seen candidate keeps the win (strict "<" comparison), not the bigger wanted.
-    const picked = pickSupplyRequest([small, big], HOME, () => 3);
+    // Same range AND same path length: earlier-seen candidate keeps the win (strict "<" comparison), not
+    // the bigger wanted.
+    const picked = pickSupplyRequest([small, big], HOME, () => 3, undefined, undefined, () => 3);
     expect(picked).toBe(small);
   });
 

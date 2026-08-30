@@ -164,22 +164,39 @@ function discountedWanted(request: SupplyRequest, targetedBy: TargetedBy, exclud
   return Math.max(0, request.wanted - influx);
 }
 
+// Real walkable path length between `from` and `target`, same room only (maxRooms: 1 — Supply's whole pool
+// is spawn/extension/tower/boost-lab, always in-room, so a cross-room search is never needed here). Used
+// only as pickSupplyRequest's range-tie-breaker, so an incomplete/failed search (e.g. a target boxed in by
+// other structures this exact tick) falls back to Infinity rather than throwing — a request that can't be
+// reached by a real path is still a candidate on plain range, but should never look BETTER than one that
+// resolves a real path, and returning Infinity here means the tie simply keeps whichever candidate was
+// already best (first-seen wins, same as pickSupplyRequest's other tie fallback).
+function pathLength(from: RoomPosition, target: SupplyRequest["target"]): number {
+  const result = PathFinder.search(from, { pos: target.pos, range: 1 }, { maxRooms: 1 });
+  return result.incomplete ? Infinity : result.path.length;
+}
+
 /**
  * Tier-first-then-nearest selection, no rate math: the lowest tier number present wins outright; among
- * ties at that tier, the request nearest `from` wins. `rangeTo` is injected (rather than this module
- * calling creep.pos.getRangeTo itself) so the selection logic stays a plain function over data, testable
- * without a live creep. `targetedBy` (default: empty — no discount) is every OTHER live Supply creep's
- * persisted task, folded via targeted.ts's buildTargetedBy; a target already fully covered by another
- * Supply creep's incoming carry (discountedWanted <= 0) is skipped so a second idle creep doesn't pile onto
- * the same extension while a different one sits unfilled. `exclude` should be the creep doing the ranking,
- * mirroring pickBestDiscountedRequest's own param. Undefined when nothing has any real remaining want.
+ * ties at that tier, the request with the smaller `rangeTo` (plain Chebyshev range) wins. A range
+ * stalemate — two candidates equidistant by that measure — is broken by `pathLengthTo`, the actual
+ * walkable path length, so e.g. a target behind a wall doesn't tie with one in the open just because both
+ * sit at the same raw range. `rangeTo`/`pathLengthTo` are injected (rather than this module calling
+ * creep.pos.getRangeTo/PathFinder.search itself) so the selection logic stays a plain function over data,
+ * testable without a live creep or room. `targetedBy` (default: empty — no discount) is every OTHER live
+ * Supply creep's persisted task, folded via targeted.ts's buildTargetedBy; a target already fully covered
+ * by another Supply creep's incoming carry (discountedWanted <= 0) is skipped so a second idle creep
+ * doesn't pile onto the same extension while a different one sits unfilled. `exclude` should be the creep
+ * doing the ranking, mirroring pickBestDiscountedRequest's own param. Undefined when nothing has any real
+ * remaining want.
  */
 export function pickSupplyRequest(
   requests: readonly SupplyRequest[],
   from: RoomPosition,
   rangeTo: (target: SupplyRequest["target"]) => number = target => from.getRangeTo(target),
   targetedBy: TargetedBy = new Map(),
-  exclude?: Creep
+  exclude?: Creep,
+  pathLengthTo: (target: SupplyRequest["target"]) => number = target => pathLength(from, target)
 ): SupplyRequest | undefined {
   let best: SupplyRequest | undefined;
   let bestRange = Infinity;
@@ -189,7 +206,15 @@ export function pickSupplyRequest(
       if (request.tier > best.tier) continue; // a worse tier never wins, regardless of distance
       if (request.tier === best.tier) {
         const range = rangeTo(request.target);
-        if (range >= bestRange) continue;
+        if (range > bestRange) continue;
+        if (range === bestRange) {
+          // Range stalemate: fall back to real path length. Strict "<" keeps the current best on a tie,
+          // same first-seen-wins convention as the rest of this loop.
+          if (pathLengthTo(request.target) >= pathLengthTo(best.target)) continue;
+          best = request;
+          bestRange = range;
+          continue;
+        }
         best = request;
         bestRange = range;
         continue;
