@@ -34,9 +34,14 @@ export const FOCUS_SITE_CAP = 20;
 // second before the first is built just splits the builder's effort. Existing (built) containers don't count —
 // only concurrent container *sites*. Containers still reach one-per-source over time, one at a time.
 export const MAX_CONTAINER_SITES = 1;
-// Roads are dead weight while the bunker is still going up; hold until the colony can afford paving
-// (RCL3 with all extensions built = 800 capacity). Mining's source-access roads are exempt — see wantedStructures.
-export const ROADS_FROM_ENERGY_CAPACITY = 800;
+// Roads are dead weight while the bunker is still going up; hold every plain/wall-tile road (bunker AND
+// every operation's own claims, e.g. Mining's source access) until the colony has a storage to justify
+// paving — RCL4 is when storage first unlocks, so gating on the structure itself (rather than an RCL
+// number that would also pass on a not-yet-built one) is the real "can afford paving" signal. Swamp
+// tiles are exempt (see isSwamp/roadReady below): an unpaved swamp costs 5x the fatigue of a plain
+// tile every tick forever, while an unpaved plain/wall tile only costs the same 1x plain movement it
+// would anyway — the traffic tax withheld here is real (plain) vs. negligible (swamp).
+export const ROADS_FROM_RCL = 4;
 // Most important first: spawn (nothing else can ever be spawned without one — a spawn-less colony's
 // settler workforce, see operations/bootstrap.ts's noSpawnRequests, has no site to build at all until
 // this wins the focus-cap budget over everything else), tower (defense), extensions (capacity),
@@ -194,12 +199,12 @@ function writeBuildingPlan(colony: ColonySnapshot, claimed: PlacedStructure[]): 
     sourceId: p.sourceId,
     built: builtAt(colony, p)
   }));
-  // Below the capacity gate, wantedStructures' own roadReady filter excludes bunker roads entirely (an
-  // operation's own claimed roads, e.g. Mining's source access, are never gated — see that function's own
-  // doc), so an empty road list there means "not asked for yet", not "done" — check the gate explicitly
+  // Below the storage gate, wantedStructures' own roadReady filter excludes every plain/wall-tile road
+  // (bunker layout AND operation claims alike — only swamp-tile roads still appear), so an all-swamp
+  // road list there means "everything else not asked for yet", not "done" — check the gate explicitly
   // rather than inferring it from absence.
-  const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
-  mem.roadsBuilt = roadReady && targeted.every(p => p.type !== ROAD || builtAt(colony, p));
+  const storageReady = colony.controllerLevel >= ROADS_FROM_RCL && colony.storageId !== undefined;
+  mem.roadsBuilt = storageReady && targeted.every(p => p.type !== ROAD || builtAt(colony, p));
 }
 
 // --- findPath: the planner-owned pathing seam every operation's structures()/intents() shares -------
@@ -230,6 +235,7 @@ const terrainCache = new Map<string, Uint8Array>();
 export function resetFindPathCacheForTests(): void {
   matrixCache.clear();
   terrainCache.clear();
+  swampCache.clear();
 }
 
 function terrainFromGame(room: string): Uint8Array {
@@ -250,6 +256,34 @@ function terrainFor(room: string, colony: ColonySnapshot): Uint8Array {
     terrainCache.set(room, terrain);
   }
   return terrain;
+}
+
+// Swamp-tile lookup for roadReady's exemption (see ROADS_FROM_RCL's own doc) — separate from
+// terrain/terrainCache above, which only ever needs walkable-vs-wall for pathing and deliberately
+// collapses swamp into "walkable". Static map data (Game.map.getRoomTerrain works for any room name,
+// seen or not — same call terrainFromGame already makes), so in production this would be safe to cache
+// forever; cleared by resetFindPathCacheForTests anyway (mirroring terrainCache) so a unit test reusing
+// a room name with different stubbed terrain across tests can't read a stale swamp verdict.
+//
+// typeof-guarded like writeBuildingPlan/hasOutstandingConstruction's own Memory checks, for the same
+// reason: this is now called from wantedStructures/bunkerTargetCounts, which many plain-object-fixture
+// unit tests (colony/operation tests with no reason to care about terrain) exercise via planBuilding
+// without ever stubbing a global Game. "false" is the safe fallback — a tile that can't be proven
+// swamp just falls back to the storage gate, exactly like every real tile did before this exemption
+// existed.
+const swampCache = new Map<string, Uint8Array>();
+function isSwamp(room: string, x: number, y: number): boolean {
+  if (typeof Game === "undefined") return false;
+  let swamp = swampCache.get(room);
+  if (!swamp) {
+    const terrain = Game.map.getRoomTerrain(room);
+    swamp = new Uint8Array(2500);
+    for (let sx = 0; sx < 50; sx++)
+      for (let sy = 0; sy < 50; sy++)
+        swamp[sx * 50 + sy] = terrain.get(sx, sy) === TERRAIN_MASK_SWAMP ? 1 : 0;
+    swampCache.set(room, swamp);
+  }
+  return swamp[x * 50 + y] === 1;
 }
 
 // A claim can never legitimately un-wall a tile — same "wall wins even over a claimed road" rule the
@@ -472,7 +506,6 @@ export const wantedStructures = wrapFn(function wantedStructures(
   // it from ever being selected.
   const walkable = (p: XY) => colony.terrain[p.x * 50 + p.y] === 1;
   const stamped = substituteBlockedCapped(colony, stampLayout(atRcl, anchor).filter(walkable), anchor);
-  const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
   // Note: the terrain filter above runs BEFORE substituteBlockedCapped, so a wall-blocked CAPPED
   // placement (extension/tower/etc, unlike a road) currently just vanishes with no substitute — same
   // class of gap substituteBlockedCapped already closes for a spawn-blocked slot, just not extended to
@@ -480,9 +513,14 @@ export const wantedStructures = wrapFn(function wantedStructures(
   // road (uncapped, no slot to lose); revisit if a capped type is ever actually seen losing an RCL slot
   // to terrain.
   //
-  // Bunker roads wait for the capacity gate; an operation's claimed roads (e.g. Mining's source
-  // access) are never capacity- or adjacency-gated — claimed is the gate.
-  const rawBuildable = [...(roadReady ? stamped : stamped.filter(p => p.type !== ROAD)), ...gated];
+  // A plain/wall-tile road (bunker layout OR an operation's own claim, e.g. Mining's source access)
+  // waits for storage (see ROADS_FROM_RCL's own doc); a swamp-tile road is exempt from that wait and
+  // always wanted the moment something claims it — same rule for both provenances, since a colony's
+  // haulers pay swamp fatigue on an operation-claimed route exactly as they would on a bunker one.
+  const storageReady = colony.controllerLevel >= ROADS_FROM_RCL && colony.storageId !== undefined;
+  const roadReady = (p: PlacedStructure) => storageReady || isSwamp(roomOf(p, colony), p.x, p.y);
+  const notHeldBack = (p: PlacedStructure) => p.type !== ROAD || roadReady(p);
+  const rawBuildable = [...stamped.filter(notHeldBack), ...gated.filter(notHeldBack)];
   // Roads are gated after the merge, so a road adjacent to an operation's container counts as served.
   const buildable = gateRoads(rawBuildable, colony, gated);
   // Ties within a type keep buildableAtRcl's original build-sequence order, so extension growth stays contiguous.
@@ -660,21 +698,24 @@ function substituteBlockedCapped(colony: ColonySnapshot, capped: PlacedStructure
 //
 // Per-type target count for the bunker layout portion only (not `claimed` — see hasOutstandingConstruction's
 // own doc for why operation claims are checked separately, item by item). Mirrors wantedStructures' own
-// road gate (colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY) but skips substituteBlockedCapped/
-// gateRoads/sort entirely: a straight per-type COUNT never needs to know which specific tile a structure
-// sits on, only how many of each type the RCL currently permits — substituteBlockedCapped exists purely to
-// keep a spawn-blocked slot's COUNT from silently shrinking (see its own doc), so a count comparison
-// against buildableAtRcl's raw cap is already correct without re-deriving which tile the substitute landed
-// on. buildableAtRcl itself is already cached (see goal.ts) — this only adds one more cheap pass
-// over its (already-computed) result.
+// road gate (roadReady, storage- and swamp-aware) but skips substituteBlockedCapped/gateRoads/sort
+// entirely: a straight per-type COUNT never needs to know which specific tile a structure sits on, only
+// how many of each type the RCL currently permits — substituteBlockedCapped exists purely to keep a
+// spawn-blocked slot's COUNT from silently shrinking (see its own doc), so a count comparison against
+// buildableAtRcl's raw cap is already correct without re-deriving which tile the substitute landed on.
+// buildableAtRcl itself is already cached (see goal.ts) — this only adds one more cheap pass over its
+// (already-computed) result. The road subset alone is stamped (anchor-relative -> real coordinates) to
+// answer the now-per-tile swamp exemption; every other type stays count-only, unstamped.
 function bunkerTargetCounts(colony: ColonySnapshot): Partial<Record<BuildableStructureConstant, number>> {
   const anchor = colony.anchor;
   if (!anchor) return {};
   const atRcl = buildableAtRcl(GOAL, colony.controllerLevel, { anchor, sources: colony.sources });
-  const roadReady = colony.energyCapacity >= ROADS_FROM_ENERGY_CAPACITY;
+  const stampedAtRcl = stampLayout(atRcl, anchor);
+  const storageReady = colony.controllerLevel >= ROADS_FROM_RCL && colony.storageId !== undefined;
+  const roadReady = (p: XY) => storageReady || isSwamp(colony.name, p.x, p.y);
   const counts: Partial<Record<BuildableStructureConstant, number>> = {};
-  for (const p of atRcl) {
-    if (p.type === ROAD && !roadReady) continue;
+  for (const p of stampedAtRcl) {
+    if (p.type === ROAD && !roadReady(p)) continue;
     counts[p.type] = (counts[p.type] ?? 0) + 1;
   }
   return counts;
@@ -737,16 +778,17 @@ export function buildingRowsFromPlan(plan: readonly BuildingPlanEntry[]): { type
 
 // Everything that can flip the expensive fallback's answer (bunkerBacklogRemains / claimed.some below),
 // joined into one cheap string: structure/site counts (something built, demolished, or newly sited),
-// energyCapacity (crosses ROADS_FROM_ENERGY_CAPACITY), controllerLevel (RCL-up permits more), and
-// claimed's own length (an operation's demand changed, e.g. a new remote selected). Every one of these
-// is already a plain number/length read off the snapshot — no iteration beyond what the caller already
-// paid for building `claimed`.
+// storageId (crosses ROADS_FROM_RCL's storage gate — undefined vs. set is enough, the id's own value
+// never matters), controllerLevel (RCL-up permits more, and gates the same storage check), and claimed's
+// own length (an operation's demand changed, e.g. a new remote selected). Every one of these is already a
+// plain number/length/boolean read off the snapshot — no iteration beyond what the caller already paid
+// for building `claimed`.
 function outstandingConstructionFingerprint(colony: ColonySnapshot, claimed: PlacedStructure[]): string {
   return [
     colony.structures.length,
     colony.sites.length,
     colony.siteSummary.length,
-    colony.energyCapacity,
+    colony.storageId !== undefined,
     colony.controllerLevel,
     claimed.length
   ].join(",");

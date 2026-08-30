@@ -8,7 +8,6 @@ import {
   findPath,
   resetFindPathCacheForTests,
   wantedStructures,
-  ROADS_FROM_ENERGY_CAPACITY,
   type FindPath
 } from "../../../src/construction/planner";
 import { colonySnap, linkAt, openTerrain, remoteSourceAt, snapCreep, sourceAt } from "../../fixtures";
@@ -115,7 +114,7 @@ describe("wantedStructures — bunker grid tiles that land on a wall", () => {
     const terrain = openTerrain();
     terrain[wallTile.x * 50 + wallTile.y] = 0; // 0 = wall, per ColonySnapshot.terrain's convention
 
-    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, terrain, structures: [], sites: [] });
+    const snap = colonySnap({ anchor, controllerLevel: 4, storageId: "storage1" as Id<StructureStorage>, terrain, structures: [], sites: [] });
     const wanted = wantedStructures(snap, []);
 
     expect(wanted.some(p => p.x === wallTile.x && p.y === wallTile.y && p.type === "road")).toBe(false);
@@ -128,7 +127,7 @@ describe("wantedStructures — bunker grid tiles that land on a wall", () => {
     const terrain = openTerrain();
     terrain[claimedOnWall.x * 50 + claimedOnWall.y] = 0;
 
-    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: 800, terrain, structures: [], sites: [] });
+    const snap = colonySnap({ anchor, controllerLevel: 4, storageId: "storage1" as Id<StructureStorage>, terrain, structures: [], sites: [] });
     const wanted = wantedStructures(snap, [claimedOnWall]);
 
     expect(wanted).toContainEqual(claimedOnWall);
@@ -436,7 +435,7 @@ describe("building planner", () => {
 });
 
 // Focused construction: at most 2 open sites at once, a type priority for which 2,
-// and no roads before 800 energy capacity (RCL3 with all extensions).
+// and no plain/wall-tile roads before RCL4 + storage built (see ROADS_FROM_RCL's own doc).
 describe("building planner focus policy", () => {
   const anchor = { x: 25, y: 25 };
   const placeSites = (intents: Intent[]) =>
@@ -515,7 +514,7 @@ describe("building planner focus policy", () => {
     expect(placed.some(i => i.type === "tower")).toBe(true);
   });
 
-  it("places no container sites below the container energy-capacity gate", () => {
+  it("places no mined container sites below the container energy-capacity gate", () => {
     for (const capacity of [300, 549]) {
       const snap = colony(
         colonySnap({
@@ -527,7 +526,10 @@ describe("building planner focus policy", () => {
           sites: []
         })
       );
-      expect(placeSites(snap.building()).some(i => i.type === "container")).toBe(false);
+      // The bunker layout's own container (near storage, gated only by RCL/type-cap like any other
+      // bunker structure) is unaffected by this gate — only Mining's source-adjacent containers are.
+      const containers = placeSites(snap.building()).filter(i => i.type === "container");
+      expect(containers.every(c => c.x === anchor.x + 3 && c.y === anchor.y)).toBe(true);
     }
   });
 
@@ -595,21 +597,30 @@ describe("building planner focus policy", () => {
     expect(placed[0].type).toBe("extension");
   });
 
-  it("places no roads below 800 energy capacity", () => {
-    for (const capacity of [300, 550, 799]) {
-      // No local source: isolates the bunker's own road grid from Mining's source-access roads,
-      // which are deliberately exempt from this gate (see the bypass test below).
-      const snap = colony(
-        colonySnap({ anchor, controllerLevel: 3, energyCapacity: capacity, sources: [], structures: [], sites: [] })
-      );
+  it("places no plain-tile roads before RCL4 + storage built", () => {
+    // No local source: isolates the bunker's own road grid from Mining's source-access roads, which
+    // are gated by the exact same storage check (see the bypass test below — "bypass" now means the
+    // adjacency gate, not the storage gate, since claimed roads got folded into the storage gate too).
+    for (const [controllerLevel, storageId] of [
+      [3, "storage1" as Id<StructureStorage>], // storage built too early — RCL4 not yet reached
+      [4, undefined], // RCL4 reached — no storage built yet
+      [8, undefined]
+    ] as const) {
+      const snap = colony(colonySnap({ anchor, controllerLevel, storageId, sources: [], structures: [], sites: [] }));
       expect(placeSites(snap.building()).some(i => i.type === "road")).toBe(false);
     }
   });
 
-  it("road gating at 800 energy capacity: paves near placed structures, not the far outer ring", () => {
+  it("road gating at RCL4 + storage built: paves near placed structures, not the far outer ring", () => {
     const builtStructures = allNonRoadStructuresAt(anchor, 4);
     const snap = colony(
-      colonySnap({ anchor, controllerLevel: 4, energyCapacity: 800, structures: builtStructures, sites: [] })
+      colonySnap({
+        anchor,
+        controllerLevel: 4,
+        storageId: "storage1" as Id<StructureStorage>,
+        structures: builtStructures,
+        sites: []
+      })
     );
     const placed = placeSites(snap.building());
 
@@ -617,16 +628,18 @@ describe("building planner focus policy", () => {
     expect(placed.some(i => i.type === "road")).toBe(true);
   });
 
-  // Once Mining claims (at its 800 container gate), building.ts places the claimed source-access roads
-  // via gateRoads' claimed-bypass — a claimed road is kept even where it doesn't neighbour a served
-  // structure, which the plain adjacency gate would strip out. claimed is the gate.
+  // Once Mining claims (at its 550 container gate) AND the storage gate is met, building.ts places the
+  // claimed source-access roads via gateRoads' claimed-bypass — a claimed road is kept even where it
+  // doesn't neighbour a served structure, which the plain adjacency gate would strip out. claimed is
+  // the adjacency gate; the storage gate (ROADS_FROM_RCL) applies to claimed roads just the same now.
   it("mining's source-access roads bypass building.ts's road adjacency gate", () => {
     const base = colonySnap({
       anchor,
-      controllerLevel: 3,
+      controllerLevel: 4,
+      storageId: "storage1" as Id<StructureStorage>,
       energyCapacity: 800,
       sources: [sourceAt(20, 10)],
-      structures: allNonRoadStructuresAt(anchor, 3),
+      structures: allNonRoadStructuresAt(anchor, 4),
       sites: []
     });
     const nonRoadClaims = minedStructures(base)
@@ -732,10 +745,11 @@ describe("building planner — remote construction", () => {
     const snap = colony(
       colonySnap({
         anchor,
-        controllerLevel: 3,
+        controllerLevel: 4,
+        storageId: "storage1" as Id<StructureStorage>,
         energyCapacity: 800,
         sources: [],
-        structures: built,
+        structures: allNonRoadStructuresAt(anchor, 4),
         sites: [],
         remoteSources: [source],
         remoteStructures: { W2N1: [] }
@@ -752,10 +766,11 @@ describe("building planner — remote construction", () => {
     const snap = colony(
       colonySnap({
         anchor,
-        controllerLevel: 3,
+        controllerLevel: 4,
+        storageId: "storage1" as Id<StructureStorage>,
         energyCapacity: 800,
         sources: [],
-        structures: built,
+        structures: allNonRoadStructuresAt(anchor, 4),
         sites: [],
         remoteSources: [source],
         remoteStructures: { W2N1: [] }
@@ -1031,7 +1046,9 @@ describe("idle-builder repurposing", () => {
       // Mirrors outstandingConstructionFingerprint's own join exactly — claimed is empty for this
       // RCL2/no-remotes fixture (Mining's own gate needs energyCapacity>=550, not met here — see the
       // remote-claim test above), matching what maintainWorkforce's real call site passes.
-      return [snap.structures.length, snap.sites.length, snap.siteSummary.length, snap.energyCapacity, snap.controllerLevel, 0].join(",");
+      return [snap.structures.length, snap.sites.length, snap.siteSummary.length, snap.storageId !== undefined, snap.controllerLevel, 0].join(
+        ","
+      );
     }
 
     it("uses a cached value when the fingerprint still matches, even if the cached value is stale/wrong", () => {
@@ -1120,7 +1137,9 @@ describe("ColonyMemory.buildingPlan (metrics panel source, written by building()
 
     const plan = mem.colonies.W1N1.buildingPlan!;
     const containers = plan.filter(p => p.type === "container");
-    expect(containers.length).toBe(claimed.filter(p => p.type === "container").length);
+    // One extra container beyond `claimed`: the bunker layout's own always-buildable container (the
+    // road-intersection tile near storage, see Base_2-rcl8.json), which isn't an operation claim at all.
+    expect(containers.length).toBe(claimed.filter(p => p.type === "container").length + 1);
     // Mining's source containers carry a sourceId; Upgrading's own controller-container claim (also
     // present here, below linkRcl) legitimately doesn't — so at least one, not every, container has one.
     expect(containers.some(c => c.sourceId !== undefined)).toBe(true);
@@ -1151,11 +1170,14 @@ describe("ColonyMemory.buildingPlan (metrics panel source, written by building()
 // ColonyMemory.roadsBuilt — written alongside buildingPlan, in the same interval:100 pass, so
 // spawn/bodyContext.ts can ask the planner directly ("are roads done") instead of re-deriving completion
 // itself from colony.remoteSources' routeBuilt strings (the old, now-deleted allRemoteRoutesBuilt). Below
-// the capacity gate roads are excluded from wantedStructures' own output entirely (see that function's
-// roadReady filter), so an empty road list there must read as "not asked for yet", not "done" — these
-// tests cover that distinction explicitly.
+// the storage gate, plain/wall-tile roads are excluded from wantedStructures' own output entirely (see
+// that function's roadReady filter), so an empty road list there must read as "not asked for yet", not
+// "done" — these tests cover that distinction explicitly. Game.map.getRoomTerrain is stubbed fully open
+// (see this file's beforeEach), so no tile here ever reads as swamp — the swamp exemption is covered by
+// its own describe block below instead.
 describe("ColonyMemory.roadsBuilt (spawn/bodyContext.ts's road-readiness source)", () => {
   const anchor = { x: 25, y: 25 };
+  const storageId = "storage1" as Id<StructureStorage>;
 
   function stubMemory(name: string): { colonies: Record<string, { roadsBuilt?: boolean }> } {
     const mem = { colonies: { [name]: {} } };
@@ -1163,16 +1185,23 @@ describe("ColonyMemory.roadsBuilt (spawn/bodyContext.ts's road-readiness source)
     return mem;
   }
 
-  it("is false below the energyCapacity gate, even though no road is 'wanted' yet to fail against", () => {
+  it("is false below RCL4, even with storage built and no road 'wanted' yet to fail against", () => {
     const mem = stubMemory("W1N1");
-    const snap = colonySnap({ anchor, controllerLevel: 2, energyCapacity: ROADS_FROM_ENERGY_CAPACITY - 1, structures: [], sites: [] });
+    const snap = colonySnap({ anchor, controllerLevel: 3, storageId, structures: [], sites: [] });
+    colony(snap).building();
+    expect(mem.colonies.W1N1.roadsBuilt).toBe(false);
+  });
+
+  it("is false at RCL4+ with no storage built yet, even though no road is 'wanted' yet to fail against", () => {
+    const mem = stubMemory("W1N1");
+    const snap = colonySnap({ anchor, controllerLevel: 4, structures: [], sites: [] });
     colony(snap).building();
     expect(mem.colonies.W1N1.roadsBuilt).toBe(false);
   });
 
   it("is false once past the gate while any planned road is still unbuilt", () => {
     const mem = stubMemory("W1N1");
-    const snap = colonySnap({ anchor, controllerLevel: 3, energyCapacity: ROADS_FROM_ENERGY_CAPACITY, structures: [], sites: [] });
+    const snap = colonySnap({ anchor, controllerLevel: 4, storageId, structures: [], sites: [] });
     colony(snap).building();
     expect(mem.colonies.W1N1.roadsBuilt).toBe(false);
   });
@@ -1182,20 +1211,44 @@ describe("ColonyMemory.roadsBuilt (spawn/bodyContext.ts's road-readiness source)
     // Two-pass: derive the full plan against an empty room first (matching writeBuildingPlan's own
     // wantedStructures(colony, claimed, false) call), then build every road the plan wants and confirm
     // roadsBuilt flips true — proving the check covers operation-claimed roads too, not just the bunker's.
-    const empty = colonySnap({ anchor, controllerLevel: 3, energyCapacity: ROADS_FROM_ENERGY_CAPACITY, structures: [], sites: [] });
+    const empty = colonySnap({ anchor, controllerLevel: 4, storageId, structures: [], sites: [] });
     const claimed = claimsOf(empty, colony(empty).operations);
     const allWantedRoads = wantedStructures(empty, claimed, false).filter(p => p.type === "road");
     const nonRoads = wantedStructures(empty, claimed, false).filter(p => p.type !== "road");
 
     const snap = colonySnap({
       anchor,
-      controllerLevel: 3,
-      energyCapacity: ROADS_FROM_ENERGY_CAPACITY,
+      controllerLevel: 4,
+      storageId,
       structures: [...nonRoads, ...allWantedRoads],
       sites: []
     });
     colony(snap).building();
     expect(mem.colonies.W1N1.roadsBuilt).toBe(true);
+  });
+});
+
+// The storage gate's swamp exemption (see ROADS_FROM_RCL's own doc in construction/planner.ts): a
+// swamp-tile road is wanted immediately, before storage exists, because leaving it unpaved costs real
+// fatigue every tick — unlike a plain/wall tile, which costs nothing extra to leave unpaved.
+describe("wantedStructures — swamp roads bypass the storage gate", () => {
+  const anchor = { x: 25, y: 25 };
+
+  it("excludes a plain-tile bunker road below the storage gate", () => {
+    const snap = colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] });
+    const claimed = claimsOf(snap, colony(snap).operations);
+    const roads = wantedStructures(snap, claimed, false).filter(p => p.type === "road");
+    expect(roads.length).toBe(0);
+  });
+
+  it("still wants a swamp-tile bunker road below the storage gate", () => {
+    (globalThis as unknown as { Game: { map: { getRoomTerrain: (room: string) => { get(x: number, y: number): number } } } }).Game = {
+      map: { getRoomTerrain: () => ({ get: () => TERRAIN_MASK_SWAMP }) } // every tile swamp
+    };
+    const snap = colonySnap({ anchor, controllerLevel: 3, structures: [], sites: [] });
+    const claimed = claimsOf(snap, colony(snap).operations);
+    const roads = wantedStructures(snap, claimed, false).filter(p => p.type === "road");
+    expect(roads.length).toBeGreaterThan(0);
   });
 });
 

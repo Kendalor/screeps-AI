@@ -175,10 +175,10 @@ describe("planBuilding polls operations", () => {
   // neighbours a structure worth serving, and an operation's claim is such a structure. Gating first
   // would drop the road leading to a mining container before the container was ever in the list.
   it("counts an operation's claim as a served tile when gating roads", () => {
-    // RCL4 — roads are permitted from here. The claim sits outside the bunker stamp, so any road
-    // the merge newly keeps is one kept *because of* the claim.
+    // RCL4 + storage built — roads are permitted from here. The claim sits outside the bunker stamp,
+    // so any road the merge newly keeps is one kept *because of* the claim.
     const outside: PlacedStructure = { x: 5, y: 5, type: "container" };
-    const snap = colonySnap({ anchor, controllerLevel: 4, structures: [], sites: [] });
+    const snap = colonySnap({ anchor, controllerLevel: 4, storageId: "storage1" as Id<StructureStorage>, structures: [], sites: [] });
 
     const roadsOf = (claimed: PlacedStructure[]) =>
       wantedStructures(snap, claimed).filter(p => p.type === "road");
@@ -193,7 +193,7 @@ describe("planBuilding polls operations", () => {
   // the anchor, not next to any structure. Without this, gateRoads would strip the chain's middle
   // out and only the tile touching the container would ever get built.
   it("keeps an operation's claimed road even with nothing else served nearby", () => {
-    const snap = colonySnap({ anchor, controllerLevel: 4, structures: [], sites: [] });
+    const snap = colonySnap({ anchor, controllerLevel: 4, storageId: "storage1" as Id<StructureStorage>, structures: [], sites: [] });
     const roadsOf = (claimed: PlacedStructure[]) =>
       wantedStructures(snap, claimed).filter(p => p.type === "road");
 

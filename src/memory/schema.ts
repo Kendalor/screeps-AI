@@ -342,10 +342,10 @@ export interface ColonyMemory {
   buildingPlan?: { type: BuildableStructureConstant; x: number; y: number; room: string; sourceId?: Id<Source>; built: boolean }[];
   // Cached alongside buildingPlan (same write, same interval:100 cadence, same staleness contract) so
   // spawn/bodyContext.ts's body-sizing "roads" flag can ask the planner directly instead of re-deriving
-  // road-completion itself from routeBuilt strings. True once energyCapacity has crossed
-  // ROADS_FROM_ENERGY_CAPACITY AND no ROAD-type entry in this same buildingPlan write is still unbuilt —
-  // the planner's own authoritative claim list, not a parallel scan of colony.remoteSources. Absent only
-  // wherever buildingPlan itself is absent (see that field's own doc).
+  // road-completion itself from routeBuilt strings. True once RCL/storage have crossed ROADS_FROM_RCL's
+  // gate AND no ROAD-type entry in this same buildingPlan write is still unbuilt — the planner's own
+  // authoritative claim list, not a parallel scan of colony.remoteSources. Absent only wherever
+  // buildingPlan itself is absent (see that field's own doc).
   roadsBuilt?: boolean;
   // Manually-set empire logistics bias (gh #59, docs/empire-logistics-plan.md decision 3), set via the
   // in-game console and persisted here so it survives restarts. Undefined = neutral (roleMultiplier 1.0).
