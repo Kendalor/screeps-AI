@@ -199,12 +199,6 @@ function writeBuildingPlan(colony: ColonySnapshot, claimed: PlacedStructure[]): 
     sourceId: p.sourceId,
     built: builtAt(colony, p)
   }));
-  // Below the storage gate, wantedStructures' own roadReady filter excludes every plain/wall-tile road
-  // (bunker layout AND operation claims alike — only swamp-tile roads still appear), so an all-swamp
-  // road list there means "everything else not asked for yet", not "done" — check the gate explicitly
-  // rather than inferring it from absence.
-  const storageReady = colony.controllerLevel >= ROADS_FROM_RCL && colony.storageId !== undefined;
-  mem.roadsBuilt = storageReady && targeted.every(p => p.type !== ROAD || builtAt(colony, p));
 }
 
 // --- findPath: the planner-owned pathing seam every operation's structures()/intents() shares -------

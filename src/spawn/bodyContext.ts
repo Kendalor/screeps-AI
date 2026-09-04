@@ -9,15 +9,14 @@ import type { ColonySnapshot } from "../snapshot/types";
 // room, or a remote source sharing this call, would answer wrong). Omitted, it falls back to "any
 // source", preserving every other caller (builder/upgrader/etc., which don't key off a single source).
 //
-// roads defaults to colony.roadsBuilt rather than false: that's the planner's own verdict (see
-// construction/planner.ts's writeBuildingPlan, ColonyMemory.roadsBuilt) — true once energyCapacity has
-// crossed the road-readiness gate AND no ROAD entry in the planner's own buildingPlan is still unbuilt,
-// covering the bunker layout's roads AND every operation's own claimed roads (Mining's remote/home-room
-// routes among them) in one authoritative check, rather than this module re-deriving completion from
-// routeBuilt strings itself and risking drifting from what the planner actually still considers missing.
-// A caller sizing a body that never leaves the home room (or that deliberately wants the off-road-safe
-// ratio regardless of road state) can still pass an explicit value.
-export function bodyContext(colony: ColonySnapshot, roads = colony.roadsBuilt, sourceId?: Id<Source>): BodyContext {
+// roads defaults to controllerLevel >= 5 rather than false: a colony has been building for a while by
+// RCL5 and its home routes are typically paved by then. Previously this asked the planner's own
+// roadsBuilt verdict (ColonyMemory.roadsBuilt, construction/planner.ts), which required storage AND
+// every last claimed road built — a single unbuilt remote road could hold it false indefinitely, long
+// after the colony's own home routes were realistically usable. A caller sizing a body that never leaves
+// the home room (or that deliberately wants the off-road-safe ratio regardless of road state) can still
+// pass an explicit value.
+export function bodyContext(colony: ColonySnapshot, roads = colony.controllerLevel >= 5, sourceId?: Id<Source>): BodyContext {
   return {
     // Only a SOURCE container flips a miner onto the container-miner body — the controller container is a
     // hauler's deposit target, no miner ever stands on it, so it must not count here.

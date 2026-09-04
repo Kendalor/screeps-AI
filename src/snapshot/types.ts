@@ -306,12 +306,6 @@ export interface ColonySnapshot {
   sourceMemory: Partial<Record<Id<Source>, SnapSourceMemory>>; // keyed by source id; missing means nothing recorded yet
   mineralMemory: SnapMineralMemory; // last-recorded mineral regen state; see SnapMineralMemory's own doc
   linkNetwork: SnapLinkNetwork; // which built link is the anchor link vs the controller link; see SnapLinkNetwork
-  // The planner's own "roads done" verdict (ColonyMemory.roadsBuilt, construction/planner.ts's
-  // writeBuildingPlan) — true once energyCapacity has crossed the road-readiness gate AND no ROAD entry
-  // in its own buildingPlan is still unbuilt. False before planBuilding has ever run once (colony's first
-  // tick, or no anchor yet) — the same absent-means-not-yet-computed rule buildingPlan itself follows.
-  // Consumed by spawn/bodyContext.ts instead of that module re-deriving road completion itself.
-  roadsBuilt: boolean;
   structures: SnapStructure[];
   sites: SnapStructure[];
   // Built structures/sites in a *remote* room, keyed by room name — present only for a remote room with

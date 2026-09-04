@@ -1094,7 +1094,7 @@ describe("idle-builder repurposing", () => {
 describe("ColonyMemory.buildingPlan (metrics panel source, written by building())", () => {
   const anchor = { x: 25, y: 25 };
 
-  function stubMemory(name: string): { colonies: Record<string, { buildingPlan?: BuildingPlanEntry[]; roadsBuilt?: boolean }> } {
+  function stubMemory(name: string): { colonies: Record<string, { buildingPlan?: BuildingPlanEntry[] }> } {
     const mem = { colonies: { [name]: {} } };
     (globalThis as unknown as { Memory: typeof mem }).Memory = mem;
     return mem;
@@ -1164,67 +1164,6 @@ describe("ColonyMemory.buildingPlan (metrics panel source, written by building()
     const mem = stubMemory("W1N1");
     colony(colonySnap({ anchor: null, controllerLevel: 1, structures: [], sites: [] })).building();
     expect(mem.colonies.W1N1.buildingPlan).toBeUndefined();
-  });
-});
-
-// ColonyMemory.roadsBuilt — written alongside buildingPlan, in the same interval:100 pass, so
-// spawn/bodyContext.ts can ask the planner directly ("are roads done") instead of re-deriving completion
-// itself from colony.remoteSources' routeBuilt strings (the old, now-deleted allRemoteRoutesBuilt). Below
-// the storage gate, plain/wall-tile roads are excluded from wantedStructures' own output entirely (see
-// that function's roadReady filter), so an empty road list there must read as "not asked for yet", not
-// "done" — these tests cover that distinction explicitly. Game.map.getRoomTerrain is stubbed fully open
-// (see this file's beforeEach), so no tile here ever reads as swamp — the swamp exemption is covered by
-// its own describe block below instead.
-describe("ColonyMemory.roadsBuilt (spawn/bodyContext.ts's road-readiness source)", () => {
-  const anchor = { x: 25, y: 25 };
-  const storageId = "storage1" as Id<StructureStorage>;
-
-  function stubMemory(name: string): { colonies: Record<string, { roadsBuilt?: boolean }> } {
-    const mem = { colonies: { [name]: {} } };
-    (globalThis as unknown as { Memory: typeof mem }).Memory = mem;
-    return mem;
-  }
-
-  it("is false below RCL4, even with storage built and no road 'wanted' yet to fail against", () => {
-    const mem = stubMemory("W1N1");
-    const snap = colonySnap({ anchor, controllerLevel: 3, storageId, structures: [], sites: [] });
-    colony(snap).building();
-    expect(mem.colonies.W1N1.roadsBuilt).toBe(false);
-  });
-
-  it("is false at RCL4+ with no storage built yet, even though no road is 'wanted' yet to fail against", () => {
-    const mem = stubMemory("W1N1");
-    const snap = colonySnap({ anchor, controllerLevel: 4, structures: [], sites: [] });
-    colony(snap).building();
-    expect(mem.colonies.W1N1.roadsBuilt).toBe(false);
-  });
-
-  it("is false once past the gate while any planned road is still unbuilt", () => {
-    const mem = stubMemory("W1N1");
-    const snap = colonySnap({ anchor, controllerLevel: 4, storageId, structures: [], sites: [] });
-    colony(snap).building();
-    expect(mem.colonies.W1N1.roadsBuilt).toBe(false);
-  });
-
-  it("is true once every planned road (bunker layout + every operation's own claims) is standing", () => {
-    const mem = stubMemory("W1N1");
-    // Two-pass: derive the full plan against an empty room first (matching writeBuildingPlan's own
-    // wantedStructures(colony, claimed, false) call), then build every road the plan wants and confirm
-    // roadsBuilt flips true — proving the check covers operation-claimed roads too, not just the bunker's.
-    const empty = colonySnap({ anchor, controllerLevel: 4, storageId, structures: [], sites: [] });
-    const claimed = claimsOf(empty, colony(empty).operations);
-    const allWantedRoads = wantedStructures(empty, claimed, false).filter(p => p.type === "road");
-    const nonRoads = wantedStructures(empty, claimed, false).filter(p => p.type !== "road");
-
-    const snap = colonySnap({
-      anchor,
-      controllerLevel: 4,
-      storageId,
-      structures: [...nonRoads, ...allWantedRoads],
-      sites: []
-    });
-    colony(snap).building();
-    expect(mem.colonies.W1N1.roadsBuilt).toBe(true);
   });
 });
 

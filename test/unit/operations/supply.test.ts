@@ -143,11 +143,16 @@ describe("Supply.desiredCreeps", () => {
       expect(carry).toBeGreaterThan(0);
     });
 
-    it("still uses the full 1:1 hauler body below RCL6", () => {
-      const [request] = supplyRequests({ energyCapacity: 3900, controllerLevel: 5 });
-      const carry = request.body.filter(p => p === CARRY).length;
-      const move = request.body.filter(p => p === MOVE).length;
-      expect(carry).toBe(move);
+    it("below RCL6, falls back to the plain hauler body — 1:1 before roads are assumed built, 2:1 from RCL5 on (bodyContext's own roads default)", () => {
+      const [belowRoads] = supplyRequests({ energyCapacity: 3900, controllerLevel: 4 });
+      const carryBelow = belowRoads.body.filter(p => p === CARRY).length;
+      const moveBelow = belowRoads.body.filter(p => p === MOVE).length;
+      expect(carryBelow).toBe(moveBelow);
+
+      const [atRoads] = supplyRequests({ energyCapacity: 3900, controllerLevel: 5 });
+      const carryAtRoads = atRoads.body.filter(p => p === CARRY).length;
+      const moveAtRoads = atRoads.body.filter(p => p === MOVE).length;
+      expect(carryAtRoads).toBe(moveAtRoads * 2);
     });
   });
 });

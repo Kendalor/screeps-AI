@@ -68,18 +68,22 @@ describe("bodyContext hasContainer", () => {
   });
 });
 
-// roads drives the hauler/transport 2:1 MOVE:CARRY ratio: only worth it once the planner itself
-// considers every road (bunker layout + every operation's own claimed roads) built — see
-// construction/planner.ts's writeBuildingPlan (ColonyMemory.roadsBuilt) for how that verdict is computed;
-// bodyContext just passes the snapshot's cached value through by default, no re-derivation of its own.
+// roads drives the hauler/transport 2:1 MOVE:CARRY ratio: only worth it once a colony's home routes are
+// realistically paved. Defaults off controllerLevel alone (RCL5+) rather than the planner's own
+// all-roads-built verdict — that required storage AND every last claimed road built, so a single unbuilt
+// remote road could hold it false indefinitely, long after the colony's own home routes were usable.
 describe("bodyContext roads", () => {
-  it("defaults to the snapshot's roadsBuilt flag", () => {
-    expect(bodyContext(colonySnap({ roadsBuilt: false })).roads).toBe(false);
-    expect(bodyContext(colonySnap({ roadsBuilt: true })).roads).toBe(true);
+  it("defaults to false below RCL5", () => {
+    expect(bodyContext(colonySnap({ controllerLevel: 4 })).roads).toBe(false);
   });
 
-  it("an explicit roads argument overrides the snapshot's flag", () => {
-    expect(bodyContext(colonySnap({ roadsBuilt: false }), true).roads).toBe(true);
-    expect(bodyContext(colonySnap({ roadsBuilt: true }), false).roads).toBe(false);
+  it("defaults to true at RCL5 and above", () => {
+    expect(bodyContext(colonySnap({ controllerLevel: 5 })).roads).toBe(true);
+    expect(bodyContext(colonySnap({ controllerLevel: 8 })).roads).toBe(true);
+  });
+
+  it("an explicit roads argument overrides the controllerLevel default", () => {
+    expect(bodyContext(colonySnap({ controllerLevel: 4 }), true).roads).toBe(true);
+    expect(bodyContext(colonySnap({ controllerLevel: 5 }), false).roads).toBe(false);
   });
 });
