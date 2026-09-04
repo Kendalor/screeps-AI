@@ -1199,8 +1199,8 @@ describe("actuator — scouting", () => {
     expect((globalThis as { Memory: { scouting: { radius: number } } }).Memory.scouting.radius).toBe(2);
 
     // At the cap it stays put rather than growing without bound.
-    (globalThis as { Memory: { scouting: { radius: number } } }).Memory.scouting.radius = 6;
+    (globalThis as { Memory: { scouting: { radius: number } } }).Memory.scouting.radius = 8;
     execute([{ kind: "advanceScoutRadius" }]);
-    expect((globalThis as { Memory: { scouting: { radius: number } } }).Memory.scouting.radius).toBe(6);
+    expect((globalThis as { Memory: { scouting: { radius: number } } }).Memory.scouting.radius).toBe(8);
   });
 });

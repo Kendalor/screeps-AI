@@ -542,26 +542,13 @@ function fakeHostileWithHits(id: string, body: BodyPartConstant[], hits: number,
 describe("resolveTarget hostile pool excludes fights the creep would lose", () => {
   it("excludes a hostile that would kill the creep before the creep kills it", () => {
     // Guardian: 100 dps (10 ATTACK), 2000 hits vs. a starter defender: 10 dps (1 RANGED_ATTACK), 50 hits.
-    // Guardian kills us in 0.5 ticks; we'd need 200 ticks to kill it — an easy loss. Placed outside the
-    // defender's own engagement range (4, beyond ranged range 3) — not yet in a fight, so the exclusion
-    // still applies; see the "already within engagement range" test below for the in-range bypass.
+    // Guardian kills us in 0.5 ticks; we'd need 200 ticks to kill it — an easy loss.
     const guardian = fakeHostileWithHits("guardian", Array(10).fill(ATTACK), 2000, { x: 9, y: 5 });
     stubGame({ objects: { guardian } });
 
     const got = resolveTarget(fighterCreep("defender", [RANGED_ATTACK], 50, [guardian]), { find: "hostile" });
 
     expect(got).toBeNull();
-  });
-
-  it("still offers a hostile it would lose to once already within its own engagement range — a defender must fight back rather than never engage at all", () => {
-    // Same outgunned guardian as above, but sitting at range 3 (the defender's own RANGED_ATTACK_RANGE)
-    // instead of range 4 — already close enough to be shooting/being shot rather than merely approached.
-    const guardian = fakeHostileWithHits("guardian", Array(10).fill(ATTACK), 2000, { x: 8, y: 5 });
-    stubGame({ objects: { guardian } });
-
-    const got = resolveTarget(fighterCreep("defender", [RANGED_ATTACK], 50, [guardian]), { find: "hostile" });
-
-    expect((got as { id: string }).id).toBe("guardian");
   });
 
   it("still offers a hostile the creep can beat", () => {

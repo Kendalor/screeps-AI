@@ -427,13 +427,16 @@ function pickByPrefer(creep: Creep, spec: TargetSpec, pool: RoomObject[]): RoomO
   if (prefer === "mostDamaged") {
     // Lowest hits fraction first — the structure closest to being lost. A candidate with no hitsMax
     // (never happens on a "damaged" pool, but guard anyway) sorts to the back. The acting creep itself
-    // always sorts first when it's in the pool (e.g. a healer's own find:"friendly"/find:"squadMate"
-    // pool) — a healer that lets itself die while topping off an ally it doesn't need is a bad trade.
+    // only breaks a tie in damage fraction (e.g. a healer's own find:"friendly"/find:"squadMate" pool) —
+    // a healer that lets an equally-hurt ally sit unhealed to top itself off first is a bad trade, but
+    // ignoring a squad-mate that's genuinely worse off just because the healer itself is also hurt is worse.
     const sorted = [...pool].sort((a, b) => {
+      const diff = damageFraction(a) - damageFraction(b);
+      if (diff !== 0) return diff;
       const aSelf = (a as unknown as { id?: Id<_HasId> }).id === creep.id;
       const bSelf = (b as unknown as { id?: Id<_HasId> }).id === creep.id;
       if (aSelf !== bSelf) return aSelf ? -1 : 1;
-      return damageFraction(a) - damageFraction(b);
+      return 0;
     });
     return sorted[0] ?? null;
   }
