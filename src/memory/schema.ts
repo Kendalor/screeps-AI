@@ -205,13 +205,13 @@ export interface ColonyMemory {
   mineral?: MineralMemory; // owned by mineralMining
   links?: LinkNetworkMemory; // owned by links
   remotes: RemoteMemory[]; // the selected remote rooms + their mined sources; owned by mining (pickRemotes writes it)
-  // Consecutive reevaluate passes each still-selected source has failed to make the cut on, keyed by
-  // source id — owned by mining (pickRemotes writes it). A source's already-built claim (roads,
-  // container) is a sunk cost that only pays back over time, so eviction requires several consecutive
-  // bad passes, not a single one — see pickRemotes.ts's EVICTION_STRIKES_THRESHOLD. Absent/0 means
-  // "currently making the cut, or never selected." Entries for sources no longer selected at all (fully
-  // evicted, or never picked) are pruned by pickRemotes each reevaluate pass so this can't grow unbounded.
-  remoteStrikes?: Partial<Record<Id<Source>, number>>;
+  // Consecutive reevaluate passes each still-selected ROOM has failed to make the cut on, keyed by room
+  // name — owned by mining (pickRemotes writes it). A room's already-built claim (roads, containers) is a
+  // sunk cost that only pays back over time, so eviction requires several consecutive bad passes, not a
+  // single one — see pickRemotes.ts's EVICTION_STRIKES_THRESHOLD. Absent/0 means "currently making the
+  // cut, or never selected." Entries for rooms no longer selected at all (fully evicted, or never picked)
+  // are pruned by pickRemotes each reevaluate pass so this can't grow unbounded.
+  remoteStrikes?: Partial<Record<string, number>>;
   danger: number; // owned by defense
   // Target rooms this colony is actively colonizing (sponsoring a colonizer for), owned by colonize.ts.
   // Written once when a flag/auto-pick resolves this colony as the sponsor (addColonizeTarget), read
@@ -421,7 +421,7 @@ export interface SingleTargetOpState {
 // ColonySnapshot.remoteSources.
 export interface RemoteMemory {
   room: string;
-  sources: RemoteSourceMemory[]; // the sources selected for mining in this room (a room may have unmined far sources)
+  sources: RemoteSourceMemory[]; // every worthwhile source in this room — selection is whole-room, never partial
   reserved: boolean; // are we currently reserving it (recomputed, cached to avoid thrash)
   // Game.time until which the room should still be treated as dangerous, even without current vision.
   // Set from the last-seen hostiles' own ticksToLive (see remoteRoomVision), so a room stays flagged for

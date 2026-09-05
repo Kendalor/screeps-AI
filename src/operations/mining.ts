@@ -6,8 +6,6 @@ import { countPart, orderBody } from "../spawn/body";
 import { roleDef } from "../behaviors/roles";
 import { REMOTE_MINER_PRIORITY, REMOTE_UNRESERVED_WORK, SOURCE_SATURATING_WORK } from "../behaviors/roles/miner";
 import { pickRemotes } from "../mining/pickRemotes";
-import { remoteSourceLoadParts } from "../mining/load";
-import { PARTS_PER_SPAWN } from "../colony/metrics";
 import type { Intent } from "../intents/types";
 import { findPath, type FindPath, type RoadPathResult } from "../construction/planner";
 import { log } from "../lib/log";
@@ -283,10 +281,10 @@ export class Mining extends Operation {
   }
 
   /** Source-spot bookkeeping so roles skip re-pathing. Emitted only when the write would change something. */
-  public override intents(colony: ColonySnapshot, colonyRequestParts = 0): Intent[] {
+  public override intents(colony: ColonySnapshot): Intent[] {
     const out: Intent[] = [];
 
-    const remoteSelection = this.remoteSelection(colony, colonyRequestParts);
+    const remoteSelection = this.remoteSelection(colony);
     if (remoteSelection) out.push(remoteSelection);
 
     const anchor = colony.anchor;
@@ -400,18 +398,18 @@ export class Mining extends Operation {
   }
 
   /**
-   * Throttled remote selection: re-rank the remote source set occasionally and cache it via setRemotes,
-   * so the active remote set is stable rather than re-ranked every tick. Emits only when the selection is
+   * Throttled remote selection: re-rank the remote room set occasionally and cache it via setRemotes, so
+   * the active remote set is stable rather than re-ranked every tick. Emits only when the selection is
    * non-empty — a colony with no worthwhile scouted neighbour stays silent (its remotes are already [],
    * so writing [] would be pure noise every throttle tick). Gated to its throttle tick.
    *
    * Two throttle cadences fire this, at different tick moduli: the frequent one (remoteSelectionEvery)
-   * runs in append-only mode — previously-selected sources are always kept, at most one new room's worth
-   * is added. The much rarer one (remoteReevaluateEvery) runs a full re-rank that can evict a
-   * previously-selected source in favor of a genuinely better one (e.g. real path data that's since
-   * arrived, or a closer room only just scouted) — see pickRemotes' `reevaluate` flag. Structures/miners
-   * already built for an evicted source aren't cleaned up here; staffing gates downstream stop working a
-   * source once it drops out of colony.remoteSources.
+   * runs in append-only mode — previously-selected rooms are always kept, at most one new room is added.
+   * The much rarer one (remoteReevaluateEvery) runs a full re-rank that can evict a previously-selected
+   * room in favor of a genuinely better one (e.g. real path data that's since arrived, or a richer room
+   * only just scouted) — see pickRemotes' `reevaluate` flag. Structures/miners already built for an
+   * evicted room aren't cleaned up here; staffing gates downstream stop working a source once it drops
+   * out of colony.remoteSources.
    *
    * A third, ad-hoc trigger forces reevaluate early: any currently-selected source whose room is now
    * OWNED by another player (colony.remoteSources[].ownedBy — see snapshot/colony.ts's remoteRoomVision).
@@ -420,7 +418,7 @@ export class Mining extends Operation {
    * re-admitting it (info.hostile at candidate-build time) — without this, the dead entry would otherwise
    * sit in ColonyMemory.remotes, unstaffed but still selected, for up to remoteReevaluateEvery ticks.
    */
-  private remoteSelection(colony: ColonySnapshot, colonyRequestParts: number): Intent | undefined {
+  private remoteSelection(colony: ColonySnapshot): Intent | undefined {
     const ownedByOther = colony.remoteSources.some(s => s.ownedBy !== undefined);
     const reevaluate = colony.tick % config.remoteReevaluateEvery === 0 || ownedByOther;
     if (colony.tick % config.remoteSelectionEvery !== 0 && !reevaluate) return undefined;
@@ -431,7 +429,7 @@ export class Mining extends Operation {
         name: colony.name,
         storage: colony.anchor ?? colony.controller,
         energyCapacity: colony.energyCapacity,
-        ...this.spawnLoad(colony, colonyRequestParts)
+        spawnCount: colony.spawns.length
       },
       currentlySelected: colony.remoteSources.map(s => s.id),
       reevaluate,
@@ -439,45 +437,11 @@ export class Mining extends Operation {
       strikes: colony.remoteStrikes
     });
     // A genuinely empty result is silent UNLESS something was actually selected before — that case is a
-    // real eviction (e.g. every currently-selected source just got claimed out from under this colony) and
+    // real eviction (e.g. every currently-selected room just got claimed out from under this colony) and
     // must be written so ColonyMemory.remotes actually clears, not merely silenced the same as "nothing
     // worthwhile has ever been scouted" would be.
     if (remotes.length === 0 && colony.remoteSources.length === 0) return undefined;
     return { kind: "setRemotes", room: colony.name, remotes, strikes };
-  }
-
-  /**
-   * Same colony-fraction formula as the metrics panel's spawn `load` (colony/metrics.ts) — parts /
-   * (spawns * PARTS_PER_SPAWN) — so pickRemotes' 85% ceiling reads against the exact number shown on
-   * screen. `colonyRequestParts` is the colony-wide outstanding-request total, computed once by the
-   * orchestrator and handed in (see Operation.intents' doc comment) — using only Mining's own requests
-   * here would undercount every other operation's demand (haulers/transport in particular are often the
-   * single largest contributor once remotes are running), letting this gate think there's headroom long
-   * after the real, on-screen load has already passed the ceiling.
-   *
-   * `localLoadParts` is total load minus the summed remoteSourceLoadParts of every currently-selected
-   * remote source (same formula pickRemotes prices a candidate with) — what reevaluate's budget nets
-   * out first, so it prices new/kept remote candidates against real remaining headroom instead of the
-   * bare ceiling. Never negative: currently-selected sources' real (pooled, Logistics-sized) transport
-   * cost can exceed this per-source estimate's sum, in which case every part of that excess is correctly
-   * attributed to "local" rather than manufacturing negative local load.
-   */
-  private spawnLoad(
-    colony: ColonySnapshot,
-    colonyRequestParts: number
-  ): { spawnLoad: number; spawnCapacity: number; localLoadParts: number } {
-    const livingParts = colony.creeps.reduce((sum, c) => sum + c.body.length, 0);
-    const spawnCapacity = colony.spawns.length * PARTS_PER_SPAWN;
-    const totalParts = livingParts + colonyRequestParts;
-    const remoteLoadParts = colony.remoteSources.reduce(
-      (sum, s) => sum + remoteSourceLoadParts(colony.energyCapacity, s.reserved, s.distance),
-      0
-    );
-    return {
-      spawnLoad: spawnCapacity > 0 ? totalParts / spawnCapacity : 0,
-      spawnCapacity,
-      localLoadParts: Math.max(0, totalParts - remoteLoadParts)
-    };
   }
 
 }

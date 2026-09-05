@@ -1294,9 +1294,10 @@ describe("Mining.intents — remote selection", () => {
     expect(setRemotesOf(snap)).toEqual([]);
   });
 
-  it("stays silent when the spawn network is already saturated by living creeps", () => {
-    // One spawn sustains PARTS_PER_SPAWN (500) parts. Fill it past capacity with a pile of live
-    // creeps so even a small remote-miner body can't fit underneath — spawn load must read >= 85%.
+  it("selects a remote even when the spawn network is already busy with living creeps — the room cap is the only admission gate now", () => {
+    // Selection no longer gates on spawn load/live-creep headroom at all — only the per-spawn room cap
+    // (MAX_REMOTE_ROOMS_PER_SPAWN * spawns.length) bounds the remote fleet. A colony busy with local
+    // roles still gets its one worthwhile neighbour room.
     const saturating = snapCreeps("upgrader", 50, { body: Array(10).fill(WORK) });
     const snap = colonySnap({
       tick: 1000,
@@ -1308,23 +1309,7 @@ describe("Mining.intents — remote selection", () => {
       scoutTargets: [scoutTarget("W2N1", scouted({ sources: [{ id: "rs" as Id<Source>, x: 25, y: 25 }] }))]
     });
 
-    expect(setRemotesOf(snap)).toEqual([]);
-  });
-
-  it("stays silent when sibling operations' requests alone push colony-wide load past the ceiling", () => {
-    // No living creeps and no miner requests of Mining's own — a colony-blind check would see 0 load
-    // and wave a new remote through. colonyRequestParts is what the metrics panel's load figure is built
-    // from (every operation's desiredCreeps summed), so this must gate on it too, not just Mining's slice.
-    const snap = colonySnap({
-      tick: 1000,
-      anchor: { x: 25, y: 25 },
-      controllerLevel: 3,
-      energyCapacity: 800,
-      spawns: [spawn()],
-      scoutTargets: [scoutTarget("W2N1", scouted({ sources: [{ id: "rs" as Id<Source>, x: 25, y: 25 }] }))]
-    });
-
-    expect(setRemotesOf(snap, 500)).toEqual([]);
+    expect(setRemotesOf(snap)[0]?.remotes.map(r => r.room)).toContain("W2N1");
   });
 
   it("fires on the full-reevaluation tick and can evict a stale source even though it isn't new, once eviction hysteresis's grace period elapses", () => {

@@ -1,16 +1,19 @@
-// Chooses which remote sources to mine, nearest-first, off scout memory (no live vision needed). Pure —
-// its output is cached in ColonyMemory.remotes by a throttled setRemotes intent, so the active source set
-// is stable and not re-ranked every tick. Same testable shape as the scout target picker: plain data in,
-// a selection out, no Game.*. Prefers each candidate's real, precomputed PathFinder distance (see
-// ScoutedSource.paths, populated by the scouting operation before this ever runs) over the cheap
-// remoteDistanceEstimate fallback, so ranking and profitability are judged on the ground truth wherever
-// it's already available.
+// Chooses which remote ROOMS to mine, off scout memory (no live vision needed). Pure — its output is
+// cached in ColonyMemory.remotes by a throttled setRemotes intent, so the active room set is stable and
+// not re-ranked every tick. Same testable shape as the scout target picker: plain data in, a selection
+// out, no Game.*. Prefers each source's real, precomputed PathFinder distance (see ScoutedSource.paths,
+// populated by the scouting operation before this ever runs) over the cheap remoteDistanceEstimate
+// fallback, so ranking and profitability are judged on the ground truth wherever it's already available.
+//
+// The unit of selection is the ROOM, not the source: a room is either mined with ALL of its worthwhile
+// sources, or not mined at all. There is no partial-room selection, so there's no per-source budget to
+// spend or split — entering a room (scouting, eventual reservation) is a one-time cost paid regardless of
+// how many of its sources end up mined, so there is nothing to gain by mining only some of them.
 
 import type { XY } from "../lib/geometry";
 import { wrapFn } from "../lib/profiler";
 import type { RemoteMemory } from "../memory/schema";
 import type { ScoutCandidate } from "../snapshot/types";
-import { remoteSourceLoadParts } from "./load";
 import { remoteDistanceEstimate } from "./distance";
 import { defaultEconomyContext, netEnergy, amortizeClaimer } from "./remoteEconomics";
 
@@ -18,77 +21,58 @@ export interface PickRemotesHome {
   name: string; // home room — never mine our own room as a remote
   storage: XY; // home storage/anchor, the haul endpoint distance is measured from
   energyCapacity: number; // affordability gate: can we spawn a useful miner/claimer body
-  // Capacity gate: same colony-fraction formula as the metrics panel's spawn `load` (parts /
-  // (spawns * PARTS_PER_SPAWN), see colony/metrics.ts) — comparable numbers, not a separate concept.
-  spawnLoad: number; // current colony-wide fraction (0..1+) before any new remote source
-  spawnCapacity: number; // parts these spawns can sustain (spawns.length * PARTS_PER_SPAWN); 0 disables selection
-  // Parts NOT attributable to any currently-selected remote source (local miners/haulers/upgraders/etc,
-  // plus the fixed local-hauling share of transport) — spawnLoad * spawnCapacity minus the summed
-  // remoteSourceLoadParts of every currently-selected source. reevaluate's budget is charged against
-  // (MAX_SPAWN_LOAD * spawnCapacity - localLoadParts), not the bare ceiling: spending the whole ceiling
-  // on remote-source estimates while ignoring what local roles already consume let a colony whose local
-  // load alone was already near/at the ceiling keep "fitting" a full remote fleet under cheap per-source
-  // estimates, even though the real (pooled, Logistics-sized) transport fleet those sources drove had
-  // already pushed total load well past 100%.
-  localLoadParts: number;
+  spawnCount: number; // colony.spawns.length — the room cap is MAX_REMOTE_ROOMS_PER_SPAWN * this
 }
 
 export interface PickRemotesInput {
   candidates: ScoutCandidate[]; // scouted neighbours; each info.sources is the remote-mining input
   home: PickRemotesHome;
   currentlySelected: Id<Source>[]; // sources already committed to Memory.remotes — never dropped here
-  // unless reevaluate is set, and at most one never-before-selected room's worth of sources is added per
-  // call, so a burst of newly-scouted rooms can't all commit their whole remote-mining fleet in the same
-  // throttle tick.
-  // On a normal call (false), previously-selected sources are preserved unconditionally and at most one
-  // new room's sources are added — today's stable, append-only behavior. On a periodic re-evaluation call
-  // (true), every previously-selected source is re-priced and re-ranked alongside fresh candidates as one
-  // combined pool, so a source that's gone stale (e.g. a nearer room only scouted since, or one that's
-  // become unprofitable) can be evicted in favor of a better one. Structures/miners already built for an
-  // evicted source are not touched here — that's a separate cleanup concern.
+  // unless reevaluate is set. On a normal call (false), previously-selected rooms are preserved
+  // unconditionally and at most one new room is added — today's stable, append-only behavior. On a
+  // periodic re-evaluation call (true), every previously-selected room is re-priced and re-ranked
+  // alongside fresh candidates as one combined pool, so a room that's gone stale (e.g. a richer room only
+  // scouted since, or one that's become unprofitable) can be evicted in favor of a better one. Structures/
+  // miners already built for an evicted room are not touched here — that's a separate cleanup concern.
   reevaluate: boolean;
-  // Sources already claimed by any OTHER colony's Memory.remotes this tick — never selectable here,
-  // even on a reevaluate pass, so two colonies never converge on the same source. The caller (Mining's
-  // remoteSelection) computes this from the empire's other colonies; this colony's own current selection
-  // is handled separately via currentlySelected above, not folded into this set.
+  // Sources already claimed by any OTHER colony's Memory.remotes this tick — a room with even one such
+  // source is never selectable here, even on a reevaluate pass, so two colonies never converge on the
+  // same room. The caller (Mining's remoteSelection) computes this from the empire's other colonies;
+  // this colony's own current selection is handled separately via currentlySelected above, not folded
+  // into this set.
   excludedSourceIds: ReadonlySet<Id<Source>>;
-  // Consecutive reevaluate passes each currently-selected source has already failed to make the cut on
+  // Consecutive reevaluate passes each currently-selected ROOM has already failed to make the cut on
   // (ColonyMemory.remoteStrikes) — see EVICTION_STRIKES_THRESHOLD below. Absent/0 entries are the common
-  // case (a source currently making the cut, or one never selected at all).
-  strikes: Partial<Record<Id<Source>, number>>;
+  // case (a room currently making the cut, or one never selected at all).
+  strikes: Partial<Record<string, number>>;
 }
 
 export interface PickRemotesResult {
   remotes: RemoteMemory[];
-  // Updated strike counts to persist as ColonyMemory.remoteStrikes — every source considered this pass
-  // gets a fresh entry (0 if it made the cut or isn't currently selected, incremented if a reevaluate
-  // pass excluded it and it was protected). A source dropped from `strikes` entirely means it's neither
-  // selected nor being protected any more — pruned so this can't grow unbounded across a colony's life.
-  strikes: Record<Id<Source>, number>;
+  // Updated strike counts to persist as ColonyMemory.remoteStrikes, keyed by room name — every room
+  // considered this pass gets a fresh entry (0 if it made the cut or isn't currently selected,
+  // incremented if a reevaluate pass excluded it and it was protected). A room dropped from `strikes`
+  // entirely means it's neither selected nor being protected any more — pruned so this can't grow
+  // unbounded across a colony's life.
+  strikes: Record<string, number>;
 }
 
 // Below this, energyCapacity can't build a miner worth sending (RCL2 with all extensions = 550).
 const MIN_ENERGY_CAPACITY = 550;
 
-// Cap on total selected remote sources — a hard backstop against an unbounded remote fleet even if the
-// spawn-load gate below is somehow satisfied every time (e.g. a very large spawn count). Nearest-first,
-// so the cap keeps the cheapest energy.
-const MAX_REMOTE_SOURCES = 6;
+// Room cap: 2 remote rooms per spawn structure the colony owns. A hard backstop on the remote fleet's
+// size, scaling with how many spawns exist to staff/replace it — a colony with more spawns can sustain
+// more remote rooms' worth of miners/haulers without starving its own local roles.
+export const MAX_REMOTE_ROOMS_PER_SPAWN = 2;
 
-// Never select a source that would push the colony's spawn load (see colony/metrics.ts's `load`: parts /
-// (spawns * PARTS_PER_SPAWN)) past this fraction — the spawn(s) must stay able to keep up with local
-// roles, not just the remote fleet. Same 0..1 units as the metrics panel, so this ceiling reads directly
-// against what's on screen.
-const MAX_SPAWN_LOAD = 0.65;
-
-// A previously-selected source must fail to make the reevaluate cut this many CONSECUTIVE passes before
-// it's actually dropped. Adding a remote is a sunk-cost bet (its road/container only pays back over
-// time — see mining.ts's structures() and building.ts's placeAndDemolish, which tear an evicted source's
-// already-built home-leg road down as unwanted the very next tick), so the bar to walk away from one
+// A previously-selected room must fail to make the reevaluate cut this many CONSECUTIVE passes before
+// it's actually dropped. Adding a remote room is a sunk-cost bet (its roads/containers only pay back over
+// time — see mining.ts's structures() and building.ts's placeAndDemolish, which tear an evicted room's
+// already-built home-leg roads down as unwanted the very next tick), so the bar to walk away from one
 // should sit higher than the bar to take one on — a candidate that's merely marginally better, or one
-// whose edge is a single noisy spawn-load snapshot, must not immediately unwind that investment. Only
-// gates REMOVAL: a genuinely better new candidate can still join immediately (see the reevaluate branch's
-// admission loop below) — hysteresis only protects incumbents, it never slows down picking up a find.
+// whose edge is a single noisy snapshot, must not immediately unwind that investment. Only gates REMOVAL:
+// a genuinely better new room can still join immediately if there's a free slot — hysteresis only
+// protects incumbents, it never slows down picking up a find.
 const EVICTION_STRIKES_THRESHOLD = 3;
 
 // A room farther than this is never worth remote-mining, full stop — not every scouted room is a
@@ -97,17 +81,13 @@ const EVICTION_STRIKES_THRESHOLD = 3;
 // so a source that somehow got a real path cached anyway still can't be selected past this range.
 export const MAX_REMOTE_HOPS = 3;
 
-// One scouted source flattened with the room it lives in, its computed haul distance, and the spawn
-// load it would add if selected (miner + its share of transport, see mining/load.ts) — priced unreserved,
-// same baseline as the economics gate below.
-interface Candidate {
+// One scouted room flattened with its worthwhile sources (each priced at reserved yield) and the room's
+// aggregate net worth: the shared unit pickRemotes ranks/admits.
+interface RoomCandidate {
   room: string;
-  id: Id<Source>;
-  x: number;
-  y: number;
-  distance: number;
-  loadParts: number;
-  claimerShare: number; // this candidate's share of its room's amortized claimer upkeep, energy/tick
+  sources: { id: Id<Source>; x: number; y: number; distance: number }[];
+  nearestDistance: number; // tiebreak / diagnostic; not the primary ranking key
+  netWorth: number; // Σ netEnergy(source, reserved) over the room's sources, minus one shared claimer cost
 }
 
 export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput): PickRemotesResult {
@@ -118,22 +98,22 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
 
   const { home } = input;
 
-  // Gate 2 (affordability) and gate 3 (spawn capacity) are room-wide: if either fails, attempt nothing.
-  // A hard stop, not something hysteresis should soften — if the colony genuinely can't spawn or afford
-  // anything, protecting a claim buys nothing, since staffing gates downstream (Mining/Reservation) will
-  // starve it out regardless of what's returned here.
-  if (home.energyCapacity < MIN_ENERGY_CAPACITY || home.spawnCapacity <= 0) return { remotes: [], strikes: {} };
-  // Already over the load ceiling: the frequent append-only pass can only ever grow the selection, so it
-  // has nothing useful to do here — bail before touching candidates at all. The rarer reevaluate pass is
-  // the one mechanism that can shed load (see below), so it must NOT bail here: skipping it would freeze
-  // an overloaded colony's remote fleet in place forever with no way back under the ceiling. An empty
-  // result here is pure silence, not a write — the caller (Mining's remoteSelection) only emits setRemotes
-  // when the result is non-empty, so the existing selection (and its strikes) simply carry over untouched.
-  if (home.spawnLoad >= MAX_SPAWN_LOAD && !input.reevaluate) return { remotes: [], strikes: {} };
+  // Affordability gate: if the colony can't even afford a useful miner body yet, attempt nothing. A hard
+  // stop, not something hysteresis should soften — staffing gates downstream (Mining/Reservation) will
+  // starve any selection out regardless of what's returned here.
+  if (home.energyCapacity < MIN_ENERGY_CAPACITY) return { remotes: [], strikes: {} };
+
+  const maxRemoteRooms = MAX_REMOTE_ROOMS_PER_SPAWN * home.spawnCount;
+  if (maxRemoteRooms <= 0) return { remotes: [], strikes: {} };
 
   const ctx = defaultEconomyContext();
 
-  const flat: Candidate[] = [];
+  // Build one RoomCandidate per scouted room: its worthwhile sources (positive netEnergy at reserved
+  // rate, ignoring the shared claim cost) and the room's aggregate net worth (their summed netEnergy
+  // minus one shared amortizeClaimer — mirrors remoteEconomics.ts's own worthReserving formula). A room
+  // with even one source already claimed by a sibling colony is excluded whole — a partial room
+  // contradicts the all-or-nothing selection rule.
+  const roomCandidates: RoomCandidate[] = [];
   for (const cand of input.candidates) {
     if (cand.room === home.name) continue; // never our own room
     if (cand.type !== "normal") continue; // highways have no sources; keeper rooms need combat (deferred)
@@ -145,214 +125,127 @@ export const pickRemotes = wrapFn(function pickRemotes(input: PickRemotesInput):
     // own reservation (see execute.ts's observeRoom), which stays selectable-but-unstaffed instead (see
     // Mining/Reservation's own reservedBy gate, and remoteInvaderAttacks.ts, which actively clears it).
     if (info.hostile) continue;
-    for (const src of info.sources) {
-      if (input.excludedSourceIds.has(src.id)) continue; // claimed by another colony this tick
+    if (info.sources.some(src => input.excludedSourceIds.has(src.id))) continue; // a sibling colony holds a source here
+
+    const priced = info.sources.map(src => {
       const cachedPath = src.paths?.[home.name];
       const distance =
         cachedPath !== undefined
           ? cachedPath.length
           : remoteDistanceEstimate({ roomDistance: cand.distance, source: src, storage: home.storage });
-      const loadParts = remoteSourceLoadParts(home.energyCapacity, false, distance);
-      // claimerShare filled in below, once each room's own worthwhile-source count is known.
-      flat.push({ room: cand.room, id: src.id, x: src.x, y: src.y, distance, loadParts, claimerShare: 0 });
-    }
+      return { id: src.id, x: src.x, y: src.y, distance, net: netEnergy({ distance, reserved: true }, ctx) };
+    });
+    // Only sources that already stand on their own (ignoring the shared claim cost) count toward the
+    // room — a source too far to ever pay off doesn't get to shrink its room-mates' share by
+    // "participating" (mirrors the room-worth formula's own logic).
+    const worthwhileSources = priced.filter(s => s.net > 0);
+    if (worthwhileSources.length === 0) continue;
+
+    const netWorth =
+      worthwhileSources.reduce((sum, s) => sum + s.net, 0) - amortizeClaimer(ctx.claimerBodyCost);
+    if (netWorth <= 0) continue;
+
+    roomCandidates.push({
+      room: cand.room,
+      sources: worthwhileSources.map(s => ({ id: s.id, x: s.x, y: s.y, distance: s.distance })),
+      nearestDistance: Math.min(...worthwhileSources.map(s => s.distance)),
+      netWorth
+    });
   }
 
-  // Gate 1 (economics): keep only sources that pay off, priced at RESERVED yield (10/tick) rather than the
-  // unreserved 5/tick a source only sits at until Reservation catches up. A room with any mined source is
-  // (near-)always worth reserving in practice — see remoteEconomics.ts's worthReserving and its test,
-  // "+5/tick dwarfs a cheap claimer's upkeep" — so pricing at the unreserved rate would understate a room's
-  // real value. Each source pays its fair share of that ONE claimer back out of the reserved yield: shared
-  // across the room's own worthwhile-source count, computed per room in a first pass (a source's own net
-  // decides worthwhile-or-not independent of the room's shared claimer cost — the raw per-source economics,
-  // e.g. haul upkeep, don't depend on how many room-mates end up sharing the claim; only the shared cost
-  // itself, divided by however many end up sharing it, does).
-  const byRoomFlat = new Map<string, Candidate[]>();
-  for (const c of flat) {
-    const list = byRoomFlat.get(c.room);
-    if (list) list.push(c);
-    else byRoomFlat.set(c.room, [c]);
-  }
-  const worthwhile: Candidate[] = [];
-  for (const roomCandidates of byRoomFlat.values()) {
-    // First pass: which of this room's sources clear zero on their own merits, ignoring claim cost, to know
-    // how many will actually share it. A source too far to ever pay off doesn't get to shrink its room-mates'
-    // share by "participating" — only sources that already stand on their own remain in the split.
-    const ownMerit = roomCandidates.filter(c => netEnergy({ distance: c.distance, reserved: true }, ctx) > 0);
-    if (ownMerit.length === 0) continue;
-    const claimerShare = amortizeClaimer(ctx.claimerBodyCost) / ownMerit.length;
-    for (const c of ownMerit) {
-      const net = netEnergy({ distance: c.distance, reserved: true }, ctx) - claimerShare;
-      if (net > 0) worthwhile.push({ ...c, claimerShare });
-    }
-  }
+  // Most-worthwhile first: a richer room wins even if farther away (within the hop limit already
+  // enforced above). Nearest-distance is only a diagnostic tiebreak, not the primary ranking key.
+  roomCandidates.sort((a, b) => b.netWorth - a.netWorth || a.nearestDistance - b.nearestDistance);
 
-  // Nearest-first, then capped: the spawn-capacity ceiling keeps the cheapest energy and can't over-commit.
-  // Nearest-first is room-safe, not just source-safe: within a real room (max ~48 tiles between two
-  // sources), finishing a started room by adding its farther sibling never loses to jumping straight to a
-  // farther, never-before-seen room instead — the extra haul/upkeep cost of dragging along a same-room
-  // sibling is always smaller than the claimer-share saved by not paying for a second room's reservation
-  // (verified by sweeping every same-room distance pair up to the 48-tile bound against every possible
-  // competing second-room distance — the worst-case margin across that whole sweep still favored finishing
-  // the room). This only holds within one room's real bounds; it is NOT a general "always prefer more
-  // sources" rule — a room farther out with a much better source can still win the cap outright (see the
-  // "full re-evaluation can evict..." test), it just can't be beaten by a same-room sibling's raw distance.
-  worthwhile.sort((a, b) => a.distance - b.distance);
+  const selectedRoomNames = new Set(
+    roomCandidates
+      .filter(rc => rc.sources.some(s => input.currentlySelected.includes(s.id)))
+      .map(rc => rc.room)
+  );
+  // A currently-selected room whose candidate no longer appears at all this pass (e.g. it fell out of
+  // scouting radius, or every one of its sources stopped being worthwhile) can't be looked up by name
+  // below — but it also can't be re-admitted, so it simply won't appear in `selected`.
+  const byRoomName = new Map(roomCandidates.map(rc => [rc.room, rc]));
 
-  const alreadySelected = new Set(input.currentlySelected);
-  let capped: Candidate[];
-  // Populated only on a reevaluate pass (the only branch that ever changes strikes) — see below.
-  let reevaluateStrikes: Record<Id<Source>, number> | undefined;
+  let selected: RoomCandidate[];
+  let reevaluateStrikes: Record<string, number> | undefined;
   if (input.reevaluate) {
-    // Full re-rank: every worthwhile candidate (previously-selected or not) competes on equal footing,
+    // Full re-rank: every worthwhile room (previously-selected or not) competes on equal footing,
     // re-priced with whatever distance/economics apply right now. This is the only branch that can drop
-    // a previously-selected source — including shedding load on an already-over-budget colony, so it
-    // must charge EVERY survivor (previously-selected or new) against the total budget, nearest-first,
-    // rather than exempting incumbents the way the append-only branch below does. Otherwise a colony
-    // stuck over the ceiling (e.g. from a source that's grown costlier, or the ceiling itself dropping
-    // as the colony's own local roles grew) would freeze there forever with no way back under it.
-    //
-    // Budget nets out localLoadParts first: spending the bare ceiling on remote-source estimates alone
-    // (ignoring what local roles already consume) let every candidate "fit" under cheap per-source
-    // pricing even when local load alone was already near the ceiling — the real, pooled transport fleet
-    // those sources actually drove then pushed total load well past 100% with nothing ever pruned.
-    //
-    // Room-grouped, not flat-per-source: admitting strictly nearest-first across the whole flat list would
-    // greedily interleave rooms (nearest source from room A, then room B's nearest, ...) whenever their
-    // sources' distances happen to interleave — e.g. two 2-source rooms at 50/70 and 51/71 would admit
-    // "one from each" under a 2-source budget, paying two full claimer shares, instead of finishing the
-    // nearer room (50+70, ONE shared claimer) which the sort's comment above proves is always the better
-    // total within one room's real bounds. A flat sort can't see that lookahead — only grouping by room
-    // and walking each room's own sources together can. Rooms are still ranked nearest-first by their own
-    // nearest source (so a genuinely better room, even a single-source one, can still win the cap outright
-    // — the "evict... in favor of..." test), but once a room is reached, its own sources are admitted
-    // nearest-first and PARTIALLY if the room's own remaining sources don't all fit (the "prunes...
-    // farthest first" test): only the sources that fit are taken, then the next room is tried with
-    // whatever budget remains, rather than skipping the room's affordable members entirely.
-    let loadBudget = Math.max(0, MAX_SPAWN_LOAD * home.spawnCapacity - home.localLoadParts);
-    capped = [];
-    const roomsInOrder: string[] = [];
-    const byRoomWorthwhile = new Map<string, Candidate[]>();
-    for (const c of worthwhile) {
-      let list = byRoomWorthwhile.get(c.room);
-      if (!list) {
-        list = [];
-        byRoomWorthwhile.set(c.room, list);
-        roomsInOrder.push(c.room); // worthwhile is sorted nearest-first, so first-seen == nearest source
-      }
-      list.push(c); // already nearest-first within the room, inherited from the flat sort above
-    }
-    outer: for (const room of roomsInOrder) {
-      for (const c of byRoomWorthwhile.get(room)!) {
-        if (capped.length >= MAX_REMOTE_SOURCES) break outer;
-        // `continue` (not `break`) so a room's later members still get a chance — but this can never let a
-        // farther source jump ahead of a nearer one it just skipped: load/.ts's transport headcount only
-        // grows or saturates with distance, so loadParts is monotonic non-decreasing within a room. If the
-        // nearer member didn't fit, no farther same-room member can either; in practice this behaves exactly
-        // like "stop at the room's first non-fitting member" (farthest-first pruning), just without relying
-        // on that monotonicity as an unstated assumption.
-        if (c.loadParts > loadBudget) continue;
-        capped.push(c);
-        loadBudget -= c.loadParts;
-      }
-    }
-    // Eviction hysteresis: a previously-selected source that just missed the cut gets protected until it's
-    // failed EVICTION_STRIKES_THRESHOLD consecutive reevaluate passes in a row — see the constant's doc for
-    // why (an already-built claim is a sunk cost, so removal needs a higher bar than admission).
-    // `protectedThisPass` is exactly the set that survived on borrowed time (not on its own merit) — the
-    // strikes computation below uses it directly rather than re-deriving "was this protected" from
-    // anything else.
-    const worthwhileById = new Map(worthwhile.map(c => [c.id, c]));
-    const cappedIds = new Set(capped.map(c => c.id));
-    const protectedThisPass = new Set<Id<Source>>();
-    for (const id of alreadySelected) {
-      if (cappedIds.has(id)) continue; // made the cut on its own merits — nothing to protect
-      const priorStrikes = input.strikes[id] ?? 0;
+    // a previously-selected room.
+    const ranked = [...roomCandidates];
+    const topRooms = new Set(ranked.slice(0, maxRemoteRooms).map(rc => rc.room));
+
+    // Eviction hysteresis: a previously-selected room that just missed the cut gets protected until it's
+    // failed EVICTION_STRIKES_THRESHOLD consecutive reevaluate passes in a row — see the constant's doc
+    // for why (an already-built claim is a sunk cost, so removal needs a higher bar than admission).
+    const protectedThisPass = new Set<string>();
+    const admitted = ranked.filter(rc => topRooms.has(rc.room));
+    for (const roomName of selectedRoomNames) {
+      if (topRooms.has(roomName)) continue; // made the cut on its own merits — nothing to protect
+      const priorStrikes = input.strikes[roomName] ?? 0;
       if (priorStrikes + 1 >= EVICTION_STRIKES_THRESHOLD) continue; // out of grace — let the eviction happen
-      // Still worthwhile at all (its room/distance still pay off), just squeezed out by the budget/cap this
-      // pass — a source that's stopped being worthwhile in absolute terms (e.g. now reserved-by-another or
-      // genuinely unprofitable) is never protected regardless of strikes, since worthwhile has already
-      // dropped it upstream and there's nothing left here to re-admit.
-      const candidate = worthwhileById.get(id);
+      // Still worthwhile at all (its economics still pay off), just squeezed out by the cap this pass —
+      // a room that's stopped being worthwhile in absolute terms (e.g. now hostile/claimed, or genuinely
+      // unprofitable) is never protected regardless of strikes, since it's already absent from
+      // roomCandidates and there's nothing left here to re-admit.
+      const candidate = byRoomName.get(roomName);
       if (!candidate) continue;
-      capped.push(candidate);
-      cappedIds.add(id);
-      protectedThisPass.add(id);
+      admitted.push(candidate);
+      protectedThisPass.add(roomName);
     }
-    // The hard cap (MAX_REMOTE_SOURCES) always wins, even over a protected incumbent's grace period —
-    // hysteresis softens WHEN a source loses its slot, never whether the total fleet size stays bounded.
-    // If protection alone would push the count past the cap, bump brand-new admissions first (candidates
-    // that were never previously selected at all): they haven't paid any sunk cost yet, so simply waiting
-    // one more reevaluate pass costs them nothing an incumbent's already-built claim doesn't also risk.
-    // Bumped in reverse admission order (last admitted, first bumped) so the bump falls on whichever new
-    // candidate is least established in this pass's own ranking.
-    if (capped.length > MAX_REMOTE_SOURCES) {
-      const newAdmissions = capped.filter(c => !alreadySelected.has(c.id));
-      let overflow = capped.length - MAX_REMOTE_SOURCES;
-      const bumped = new Set<Id<Source>>();
+    // The hard cap always wins, even over a protected incumbent's grace period — hysteresis softens WHEN
+    // a room loses its slot, never whether the total fleet size stays bounded. If protection alone would
+    // push the count past the cap, bump brand-new admissions first (rooms that were never previously
+    // selected at all): they haven't paid any sunk cost yet, so simply waiting one more reevaluate pass
+    // costs them nothing an incumbent's already-built claim doesn't also risk. Bumped lowest-net-worth
+    // first, since `admitted` is still ranked net-worth-descending up to the topRooms slice.
+    if (admitted.length > maxRemoteRooms) {
+      const newAdmissions = admitted.filter(rc => !selectedRoomNames.has(rc.room));
+      let overflow = admitted.length - maxRemoteRooms;
+      const bumped = new Set<string>();
       for (let i = newAdmissions.length - 1; i >= 0 && overflow > 0; i--) {
-        bumped.add(newAdmissions[i].id);
+        bumped.add(newAdmissions[i].room);
         overflow--;
       }
-      capped = capped.filter(c => !bumped.has(c.id));
+      selected = admitted.filter(rc => !bumped.has(rc.room));
+    } else {
+      selected = admitted;
     }
+
     reevaluateStrikes = {};
-    for (const c of capped) {
+    for (const rc of selected) {
       // Protected: carries its incremented strike count forward. Made the cut cleanly (whether a
-      // longtime incumbent or a brand-new admission): resets to 0 — a source that was once struggling
-      // but is now clearly fine again shouldn't still be one bad pass from eviction.
-      reevaluateStrikes[c.id] = protectedThisPass.has(c.id) ? (input.strikes[c.id] ?? 0) + 1 : 0;
+      // longtime incumbent or a brand-new admission): resets to 0 — a room that was once struggling but
+      // is now clearly fine again shouldn't still be one bad pass from eviction.
+      reevaluateStrikes[rc.room] = protectedThisPass.has(rc.room) ? (input.strikes[rc.room] ?? 0) + 1 : 0;
     }
   } else {
-    // Never drop a source we've already committed to, even if it'd fall outside the cap on a re-rank (e.g.
-    // nearer candidates appeared) — pruning an over-budget colony back down is reevaluate's job (above),
-    // not this frequent pass's. Then commit previously-unseen rooms whole: find the single nearest
-    // never-selected room (by its nearest source) and add every worthwhile source in it together, rather
-    // than trickling in one source per call while its room-mates — already paid for by the same scouting/
-    // reservation cost — wait their turn behind a farther room. The whole room's load must fit the
-    // remaining budget together (a partially-affordable room isn't split), since entering a room is a
-    // one-time cost paid regardless of how many of its sources end up mined. Already-selected sources
-    // don't spend this budget — their load is already reflected in home.spawnLoad (they're already
-    // spawning live creeps/requests) — only a fresh addition should be charged.
-    const kept = worthwhile.filter(c => alreadySelected.has(c.id));
-    const fresh = worthwhile.filter(c => !alreadySelected.has(c.id));
-    const loadBudget = Math.max(0, MAX_SPAWN_LOAD - home.spawnLoad) * home.spawnCapacity;
-
-    capped = kept.slice(0, MAX_REMOTE_SOURCES);
-    const nextRoom = fresh[0]?.room; // worthwhile is sorted nearest-first; fresh preserves that order
-    if (nextRoom !== undefined && capped.length < MAX_REMOTE_SOURCES) {
-      const roomSources = fresh.filter(c => c.room === nextRoom);
-      const roomLoad = roomSources.reduce((sum, c) => sum + c.loadParts, 0);
-      if (roomLoad <= loadBudget) {
-        for (const c of roomSources) {
-          if (capped.length >= MAX_REMOTE_SOURCES) break;
-          capped.push(c);
-        }
-      }
-    }
+    // Never drop a room we've already committed to, even if it'd fall outside the cap on a re-rank (e.g.
+    // richer candidates appeared) — pruning an over-cap colony back down is reevaluate's job (above), not
+    // this frequent pass's. Then admit the single most-worthwhile never-selected room, in full, if there's
+    // a free slot.
+    const kept = roomCandidates.filter(rc => selectedRoomNames.has(rc.room));
+    const fresh = roomCandidates.filter(rc => !selectedRoomNames.has(rc.room));
+    selected = kept;
+    if (fresh.length > 0 && selected.length < maxRemoteRooms) selected.push(fresh[0]);
   }
 
-  // Group surviving sources back into per-room RemoteMemory entries.
-  const byRoom = new Map<string, RemoteMemory>();
-  for (const c of capped) {
-    let entry = byRoom.get(c.room);
-    if (!entry) {
-      entry = { room: c.room, sources: [], reserved: false };
-      byRoom.set(c.room, entry);
-    }
-    entry.sources.push({ id: c.id, x: c.x, y: c.y, distance: c.distance });
-  }
+  const remotes: RemoteMemory[] = selected.map(rc => ({
+    room: rc.room,
+    sources: rc.sources.map(s => ({ id: s.id, x: s.x, y: s.y, distance: s.distance })),
+    reserved: false
+  }));
 
   // Strikes only move on a reevaluate pass (reevaluateStrikes is already fully computed there — see
   // above). The append-only pass never evicts, so it has no basis to reset or increment anything; every
-  // currently-selected source just carries its strikes forward unchanged. Either way, a source that's no
+  // currently-selected room just carries its strikes forward unchanged. Either way, a room that's no
   // longer selected at all (fully evicted, or never picked) is simply absent — carrying a stale entry
-  // forward for a source that's gone would only grow this map forever.
-  const strikes: Record<Id<Source>, number> =
+  // forward for a room that's gone would only grow this map forever.
+  const selectedNames = new Set(selected.map(rc => rc.room));
+  const strikes: Record<string, number> =
     reevaluateStrikes ??
-    Object.fromEntries(
-      (Object.entries(input.strikes) as [Id<Source>, number][]).filter(([id]) => alreadySelected.has(id))
-    );
+    Object.fromEntries(Object.entries(input.strikes).filter(([room]) => selectedNames.has(room)) as [string, number][]);
 
-  return { remotes: [...byRoom.values()], strikes };
+  return { remotes, strikes };
 }, "planning:pickRemotes");

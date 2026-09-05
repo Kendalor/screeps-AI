@@ -149,43 +149,39 @@ describe("remote structure claims once a source is evicted (absent from colony.r
   });
 });
 
-describe("scenario: pickRemotes eviction under spawn-capacity pressure, wired end to end", () => {
-  // Home has ALREADY committed to a full slate of distant, marginal sources (MAX_REMOTE_SOURCES = 6,
-  // mirrors a real colony that grew into this state gradually — see pickRemotes.test.ts's own "full
-  // re-evaluation can evict..." test, whose setup this mirrors). A closer, cheaper room is scouted
-  // later. On the throttled reevaluate tick, every candidate — incumbents and new — competes on equal
-  // footing (see pickRemotes.ts's reevaluate branch), so the worst incumbent loses its slot purely to a
-  // better competitor, with no hostiles/danger/reservation involved at all.
-  const incumbentIds = Array.from({ length: 6 }, (_, i) => `incumbent${i}` as Id<Source>);
+describe("scenario: pickRemotes eviction under the per-spawn room cap, wired end to end", () => {
+  // Home has ALREADY committed to two incumbent rooms, filling a 1-spawn colony's room cap
+  // (MAX_REMOTE_ROOMS_PER_SPAWN * spawns.length = 2). One incumbent ("safe") is cheap enough it's never
+  // squeezed; the other ("worse") is costly. A closer, cheaper room is scouted later. On the throttled
+  // reevaluate tick, every candidate room — incumbents and new — competes on equal footing (see
+  // pickRemotes.ts's reevaluate branch), so the worst-ranked incumbent ROOM loses its slot whole (both of
+  // its sources, if it had more than one) purely to a better competitor, with no hostiles/danger/
+  // reservation involved at all.
+  const worseId = "worse" as Id<Source>;
+  const safeId = "safe" as Id<Source>;
   const betterId = "better" as Id<Source>;
 
-  it("reevaluate evicts the worst-ranked incumbent in favor of a much closer one, once the cap is full and eviction hysteresis's grace period elapses", () => {
-    const packedIncumbents = scoutTarget(
-      "W2N1",
-      scouted({
-        sources: incumbentIds.map(id => ({ id, x: 25, y: 25, paths: { W1N1: "1".repeat(80) } }))
-      })
-    );
-    const better = scoutTarget("W3N1", scouted({ sources: [{ id: betterId, x: 25, y: 25, paths: { W1N1: "1" } }] }));
+  it("reevaluate evicts the worst-ranked incumbent room in favor of a much closer one, once the cap is full and eviction hysteresis's grace period elapses", () => {
+    const worseRoom = scoutTarget("W2N1", scouted({ sources: [{ id: worseId, x: 25, y: 25, paths: { W1N1: "1".repeat(80) } }] }));
+    const safeRoom = scoutTarget("W3N1", scouted({ sources: [{ id: safeId, x: 25, y: 25, paths: { W1N1: "1" } }] }));
+    const better = scoutTarget("W4N1", scouted({ sources: [{ id: betterId, x: 25, y: 25, paths: { W1N1: "1".repeat(50) } }] }));
 
     // Eviction hysteresis (pickRemotes.ts's EVICTION_STRIKES_THRESHOLD) protects an incumbent for its
     // first couple of misses, so this drives 3 consecutive reevaluate passes — threading each pass's
     // returned strikes into the next, exactly as mining.ts's remoteSelection does via
     // ColonyMemory.remoteStrikes — to reach the pass where the eviction actually lands.
-    let strikes: Record<Id<Source>, number> = {};
+    let strikes: Record<string, number> = {};
     let selectedIds: Id<Source>[] = [];
     for (let pass = 0; pass < 3; pass++) {
       const result = pickRemotes({
-        candidates: [packedIncumbents, better],
+        candidates: [worseRoom, safeRoom, better],
         home: {
           name: "W1N1",
           storage: anchor,
           energyCapacity: 800,
-          spawnLoad: 0.5,
-          spawnCapacity: 500,
-          localLoadParts: 0
+          spawnCount: 1 // MAX_REMOTE_ROOMS_PER_SPAWN(2) * 1 = cap of 2 rooms
         },
-        currentlySelected: incumbentIds,
+        currentlySelected: [worseId, safeId],
         reevaluate: true,
         excludedSourceIds: new Set(),
         strikes
@@ -195,9 +191,10 @@ describe("scenario: pickRemotes eviction under spawn-capacity pressure, wired en
     }
 
     expect(selectedIds).toContain(betterId);
-    // The cap (6) is unchanged, but "better" displaced exactly one incumbent to fit.
-    expect(selectedIds).toHaveLength(6);
-    expect(incumbentIds.filter(id => !selectedIds.includes(id))).toHaveLength(1);
+    expect(selectedIds).toContain(safeId); // never squeezed — always makes the cut on its own merits
+    // The cap (2 rooms) is unchanged, but "better" displaced the one costly incumbent room to fit.
+    expect(selectedIds).not.toContain(worseId);
+    expect(selectedIds).toHaveLength(2);
   });
 
   it("the evicted incumbent's already-built home-leg road is then torn down as unwanted the same tick colony.remoteSources drops it", () => {
@@ -222,13 +219,13 @@ describe("scenario: pickRemotes eviction under spawn-capacity pressure, wired en
   });
 });
 
-describe("scenario: spawn-load recovering below the ceiling does not resurrect an evicted source on its own", () => {
-  // pickRemotes never re-adds a previously-evicted source automatically — reevaluate re-ranks the
-  // CURRENT candidate pool, and once a source has been dropped from currentlySelected (by the caller,
-  // per setRemotes overwriting Memory.colonies[room].remotes), it competes as a brand-new candidate
-  // again, same as any other. This documents that eviction is a one-way trip absent operator/logic
-  // intervention — there is no "spawn load dropped, so bring back what I lost" path today.
-  it("an evicted source is only reselected if it still wins the pool on its own merits, not automatically restored", () => {
+describe("scenario: the room cap opening back up does not resurrect an evicted room on its own", () => {
+  // pickRemotes never re-adds a previously-evicted room automatically — reevaluate re-ranks the CURRENT
+  // candidate pool, and once a room has been dropped from currentlySelected (by the caller, per
+  // setRemotes overwriting Memory.colonies[room].remotes), it competes as a brand-new candidate again,
+  // same as any other. This documents that eviction is a one-way trip absent operator/logic intervention
+  // — there is no "the cap opened back up, so bring back what I lost" path today.
+  it("an evicted room is only reselected if it still wins the pool on its own merits, not automatically restored", () => {
     const stillWorse = scoutTarget(
       "W2N1",
       scouted({ sources: [{ id: "worse" as Id<Source>, x: 25, y: 25, paths: { W1N1: "1".repeat(80) } }] })
@@ -239,9 +236,7 @@ describe("scenario: spawn-load recovering below the ceiling does not resurrect a
         name: "W1N1",
         storage: anchor,
         energyCapacity: 800,
-        spawnLoad: 0.1, // load has since dropped well below the ceiling
-        spawnCapacity: 500,
-        localLoadParts: 0
+        spawnCount: 5 // plenty of room-cap headroom now
       },
       currentlySelected: [], // already evicted; caller no longer passes it as selected
       reevaluate: true,
@@ -251,8 +246,8 @@ describe("scenario: spawn-load recovering below the ceiling does not resurrect a
 
     // It's still worthwhile on its own (nothing else competes for the slot), so it DOES come back here —
     // but only because pickRemotes independently re-derives it's worthwhile, not because anything
-    // "remembered" it was evicted. A source that had been dropped for being genuinely unprofitable would
-    // not return even after load recovered.
+    // "remembered" it was evicted. A room that had been dropped for being genuinely unprofitable would
+    // not return even after the cap opened up.
     const selectedIds = remotes.flatMap(r => r.sources.map(s => s.id));
     expect(selectedIds).toContain("worse");
   });
